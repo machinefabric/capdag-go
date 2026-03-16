@@ -975,7 +975,7 @@ func Test445a_seq_assigner_same_rid_different_xids_independent(t *testing.T) {
 	fA1.RoutingId = &xidA
 
 	// Flow (rid, xidB)
-	fB0 := NewReq(rid, "cap:op=b", nil)
+	fB0 := NewReq(rid, "cap:op=b", nil, "")
 	fB0.RoutingId = &xidB
 
 	// Flow (rid, no xid)

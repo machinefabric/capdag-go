@@ -389,10 +389,27 @@ func ResolveMediaUrn(mediaUrn string, mediaSpecs []MediaSpecDef, registry *Media
 		return nil, ErrInvalidMediaUrn
 	}
 
+	// Canonicalize the lookup URN for consistent matching.
+	// Cap URNs canonicalize their in/out specs, so the lookup URN is canonical.
+	// media_specs URNs may not be canonical if created directly. Canonicalize both.
+	canonicalUrn := mediaUrn
+	if mediaUrn != "media:" {
+		if parsed, err := urn.NewMediaUrnFromString(mediaUrn); err == nil {
+			canonicalUrn = parsed.String()
+		}
+	}
+
 	// 1. First, try cap's local media_specs (highest priority - cap-specific definitions)
 	if mediaSpecs != nil {
 		for i := range mediaSpecs {
-			if mediaSpecs[i].Urn == mediaUrn {
+			specUrn := mediaSpecs[i].Urn
+			// Canonicalize spec URN for comparison
+			if specUrn != "media:" {
+				if parsed, err := urn.NewMediaUrnFromString(specUrn); err == nil {
+					specUrn = parsed.String()
+				}
+			}
+			if specUrn == canonicalUrn {
 				return resolveMediaSpecDef(&mediaSpecs[i])
 			}
 		}

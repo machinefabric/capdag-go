@@ -64,16 +64,23 @@ func Test117_register_and_find_cap_set(t *testing.T) {
 		t.Errorf("Expected 1 host, got %d", len(sets))
 	}
 
-	// Test subset match: request has MORE tags than the cap
-	// Cap registered: op=test;basic
-	// Request: model=gpt-4;op=test;basic
-	// Cap missing model tag → implicit wildcard → SHOULD MATCH (Rust semantics)
-	sets, err = registry.FindCapSets(matrixTestUrn("model=gpt-4;op=test;basic"))
+	// Test that MORE SPECIFIC request does NOT match LESS SPECIFIC provider
+	// With is_dispatchable: if request requires model=gpt-4, provider must have it
+	// Cap registered: op=test;basic (no model tag)
+	// Request: model=gpt-4;op=test;basic → provider lacks model → FAIL
+	_, err = registry.FindCapSets(matrixTestUrn("model=gpt-4;op=test;basic"))
+	if err == nil {
+		t.Error("Provider without model=gpt-4 cannot dispatch request requiring model=gpt-4")
+	}
+
+	// Test that LESS SPECIFIC request DOES match MORE SPECIFIC provider
+	// Request only needs op=test, provider has op=test;basic — provider refines request
+	sets, err = registry.FindCapSets(matrixTestUrn("op=test"))
 	if err != nil {
-		t.Errorf("Expected match for request with extra tags (cap missing tag = implicit wildcard): %v", err)
+		t.Fatalf("General request should match specific provider: %v", err)
 	}
 	if len(sets) != 1 {
-		t.Errorf("Expected 1 match for request with extra tags, got %d", len(sets))
+		t.Errorf("Expected 1 match for general request, got %d", len(sets))
 	}
 
 	// Test no match (different direction specs)
@@ -183,11 +190,10 @@ func Test120_accepts_request(t *testing.T) {
 	if !registry.AcceptsRequest(matrixTestUrn("op=test")) {
 		t.Error("Registry should handle registered capability")
 	}
-	// Cap registered: op=test
-	// Request: extra=param;op=test
-	// Cap missing extra tag → implicit wildcard → SHOULD MATCH (Rust semantics)
-	if !registry.AcceptsRequest(matrixTestUrn("extra=param;op=test")) {
-		t.Error("Registry should handle capability (cap missing extra tag = implicit wildcard)")
+	// Request with extra constraint — provider CANNOT dispatch (lacks extra=param)
+	// This is the key is_dispatchable semantic: provider must satisfy ALL request constraints
+	if registry.AcceptsRequest(matrixTestUrn("extra=param;op=test")) {
+		t.Error("Provider op=test cannot dispatch request requiring extra=param")
 	}
 	if registry.AcceptsRequest(matrixTestUrn("op=different")) {
 		t.Error("Registry should not handle unregistered capability")
@@ -601,7 +607,7 @@ func Test129_cap_graph_can_convert(t *testing.T) {
 	host := &MockCapSetForRegistry{name: "converter"}
 
 	// binary -> str -> obj
-	cap1 := makeGraphCap(standard.MediaIdentity, standard.MediaString, "Binary to String")
+	cap1 := makeGraphCap("media:binary", standard.MediaString, "Binary to String")
 	cap2 := makeGraphCap(standard.MediaString, standard.MediaObject, "String to Object")
 
 	registry.RegisterCapSet("converter", host, []*Cap{cap1, cap2})
@@ -612,7 +618,7 @@ func Test129_cap_graph_can_convert(t *testing.T) {
 	graph := composite.Graph()
 
 	// Direct conversions
-	if !graph.CanConvert(standard.MediaIdentity, standard.MediaString) {
+	if !graph.CanConvert("media:binary", standard.MediaString) {
 		t.Error("Should be able to convert binary to str")
 	}
 	if !graph.CanConvert(standard.MediaString, standard.MediaObject) {
@@ -620,17 +626,17 @@ func Test129_cap_graph_can_convert(t *testing.T) {
 	}
 
 	// Transitive conversion
-	if !graph.CanConvert(standard.MediaIdentity, standard.MediaObject) {
+	if !graph.CanConvert("media:binary", standard.MediaObject) {
 		t.Error("Should be able to convert binary to obj (transitively)")
 	}
 
 	// Same spec
-	if !graph.CanConvert(standard.MediaIdentity, standard.MediaIdentity) {
+	if !graph.CanConvert("media:binary", "media:binary") {
 		t.Error("Should be able to convert same spec to itself")
 	}
 
 	// Impossible conversions
-	if graph.CanConvert(standard.MediaObject, standard.MediaIdentity) {
+	if graph.CanConvert(standard.MediaObject, "media:binary") {
 		t.Error("Should not be able to convert obj to binary (no reverse edge)")
 	}
 	if graph.CanConvert("media:nonexistent", standard.MediaString) {
@@ -645,7 +651,7 @@ func Test130_cap_graph_find_path(t *testing.T) {
 	host := &MockCapSetForRegistry{name: "converter"}
 
 	// binary -> str -> obj
-	cap1 := makeGraphCap(standard.MediaIdentity, standard.MediaString, "Binary to String")
+	cap1 := makeGraphCap("media:binary", standard.MediaString, "Binary to String")
 	cap2 := makeGraphCap(standard.MediaString, standard.MediaObject, "String to Object")
 
 	registry.RegisterCapSet("converter", host, []*Cap{cap1, cap2})
@@ -656,7 +662,7 @@ func Test130_cap_graph_find_path(t *testing.T) {
 	graph := composite.Graph()
 
 	// Direct path
-	path := graph.FindPath(standard.MediaIdentity, standard.MediaString)
+	path := graph.FindPath("media:binary", standard.MediaString)
 	if path == nil {
 		t.Fatal("Expected to find path from binary to str")
 	}
@@ -665,7 +671,7 @@ func Test130_cap_graph_find_path(t *testing.T) {
 	}
 
 	// Transitive path
-	path = graph.FindPath(standard.MediaIdentity, standard.MediaObject)
+	path = graph.FindPath("media:binary", standard.MediaObject)
 	if path == nil {
 		t.Fatal("Expected to find path from binary to obj")
 	}
@@ -680,13 +686,13 @@ func Test130_cap_graph_find_path(t *testing.T) {
 	}
 
 	// No path
-	path = graph.FindPath(standard.MediaObject, standard.MediaIdentity)
+	path = graph.FindPath(standard.MediaObject, "media:binary")
 	if path != nil {
 		t.Error("Expected nil for impossible path")
 	}
 
 	// Same spec
-	path = graph.FindPath(standard.MediaIdentity, standard.MediaIdentity)
+	path = graph.FindPath("media:binary", "media:binary")
 	if path == nil {
 		t.Fatal("Expected empty path for same spec")
 	}
@@ -704,9 +710,9 @@ func Test131_cap_graph_find_all_paths(t *testing.T) {
 	// Create a graph with multiple paths:
 	// binary -> str -> obj
 	// binary -> obj (direct)
-	cap1 := makeGraphCap(standard.MediaIdentity, standard.MediaString, "Binary to String")
+	cap1 := makeGraphCap("media:binary", standard.MediaString, "Binary to String")
 	cap2 := makeGraphCap(standard.MediaString, standard.MediaObject, "String to Object")
-	cap3 := makeGraphCap(standard.MediaIdentity, standard.MediaObject, "Binary to Object (direct)")
+	cap3 := makeGraphCap("media:binary", standard.MediaObject, "Binary to Object (direct)")
 
 	registry.RegisterCapSet("converter", host, []*Cap{cap1, cap2, cap3})
 
@@ -716,7 +722,7 @@ func Test131_cap_graph_find_all_paths(t *testing.T) {
 	graph := composite.Graph()
 
 	// Find all paths from binary to obj
-	paths := graph.FindAllPaths(standard.MediaIdentity, standard.MediaObject, 3)
+	paths := graph.FindAllPaths("media:binary", standard.MediaObject, 3)
 
 	if len(paths) != 2 {
 		t.Errorf("Expected 2 paths, got %d", len(paths))

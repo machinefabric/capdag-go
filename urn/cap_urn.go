@@ -191,23 +191,28 @@ func NewCapUrnFromString(s string) (*CapUrn, error) {
 		return nil, err
 	}
 
-	// Validate that in and out specs are valid media URNs (or wildcard "media:")
-	// After processing, "media:" is the wildcard (not "*")
+	// Validate and canonicalize in/out specs as media URNs.
+	// Parse through MediaUrn and re-serialize to get canonical tag ordering.
+	// After processing, "media:" is the wildcard (not "*").
 	if inSpec != "media:" {
-		if _, err := NewMediaUrnFromString(inSpec); err != nil {
+		inMediaUrn, err := NewMediaUrnFromString(inSpec)
+		if err != nil {
 			return nil, &CapUrnError{
 				Code:    ErrorInvalidMediaUrn,
 				Message: fmt.Sprintf("Invalid media URN for in spec '%s': %v", inSpec, err),
 			}
 		}
+		inSpec = inMediaUrn.String()
 	}
 	if outSpec != "media:" {
-		if _, err := NewMediaUrnFromString(outSpec); err != nil {
+		outMediaUrn, err := NewMediaUrnFromString(outSpec)
+		if err != nil {
 			return nil, &CapUrnError{
 				Code:    ErrorInvalidMediaUrn,
 				Message: fmt.Sprintf("Invalid media URN for out spec '%s': %v", outSpec, err),
 			}
 		}
+		outSpec = outMediaUrn.String()
 	}
 
 	// Build tags map without in/out
@@ -247,14 +252,16 @@ func NewCapUrnFromTags(tags map[string]string) (*CapUrn, error) {
 	}
 	delete(result, "in")
 
-	// Validate in spec
+	// Validate and canonicalize in spec
 	if inSpec != "media:" {
-		if _, err := NewMediaUrnFromString(inSpec); err != nil {
+		inMediaUrn, err := NewMediaUrnFromString(inSpec)
+		if err != nil {
 			return nil, &CapUrnError{
 				Code:    ErrorInvalidMediaUrn,
 				Message: fmt.Sprintf("Invalid media URN for in spec '%s': %v", inSpec, err),
 			}
 		}
+		inSpec = inMediaUrn.String()
 	}
 
 	outSpec, hasOut := result["out"]
@@ -272,14 +279,16 @@ func NewCapUrnFromTags(tags map[string]string) (*CapUrn, error) {
 	}
 	delete(result, "out")
 
-	// Validate out spec
+	// Validate and canonicalize out spec
 	if outSpec != "media:" {
-		if _, err := NewMediaUrnFromString(outSpec); err != nil {
+		outMediaUrn, err := NewMediaUrnFromString(outSpec)
+		if err != nil {
 			return nil, &CapUrnError{
 				Code:    ErrorInvalidMediaUrn,
 				Message: fmt.Sprintf("Invalid media URN for out spec '%s': %v", outSpec, err),
 			}
 		}
+		outSpec = outMediaUrn.String()
 	}
 
 	return &CapUrn{inSpec: inSpec, outSpec: outSpec, tags: result}, nil
@@ -288,7 +297,19 @@ func NewCapUrnFromTags(tags map[string]string) (*CapUrn, error) {
 // NewCapUrn creates a cap URN from direction specs and additional tags
 // Keys are normalized to lowercase; values are preserved as-is
 // inSpec and outSpec are required direction specifiers
+// Specs are canonicalized through MediaUrn parsing for consistent tag ordering.
 func NewCapUrn(inSpec, outSpec string, tags map[string]string) *CapUrn {
+	// Canonicalize specs through MediaUrn parsing
+	if inSpec != "" && inSpec != "media:" {
+		if mu, err := NewMediaUrnFromString(inSpec); err == nil {
+			inSpec = mu.String()
+		}
+	}
+	if outSpec != "" && outSpec != "media:" {
+		if mu, err := NewMediaUrnFromString(outSpec); err == nil {
+			outSpec = mu.String()
+		}
+	}
 	normalizedTags := make(map[string]string)
 	for k, v := range tags {
 		keyLower := strings.ToLower(k)
