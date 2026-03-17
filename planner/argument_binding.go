@@ -412,7 +412,7 @@ type ArgumentResolutionContext struct {
 	PreviousOutputs  map[string]json.RawMessage
 	PlanMetadata     map[string]json.RawMessage
 	CapSettings      map[string]map[string]json.RawMessage // cap_urn -> setting_urn -> value
-	SlotValues       map[string][]byte                     // "{cap_urn}:{slot_name}" -> raw bytes
+	SlotValues       map[string][]byte                     // "{node_id}:{slot_name}" -> raw bytes (e.g., "step_0:media:width")
 }
 
 // NewArgumentResolutionContext creates a minimal context with just input files.
@@ -484,6 +484,7 @@ func (ab *ArgumentBindings) GetUnresolvedSlots() []string {
 func (ab *ArgumentBindings) ResolveAll(
 	ctx *ArgumentResolutionContext,
 	capUrn string,
+	nodeID string,
 	capDefaults map[string]json.RawMessage,
 	argRequired map[string]bool,
 ) ([]*ResolvedArgument, error) {
@@ -500,7 +501,7 @@ func (ab *ArgumentBindings) ResolveAll(
 			}
 		}
 
-		resolved, err := ResolveBinding(binding, ctx, capUrn, defaultValue, isRequired)
+		resolved, err := ResolveBinding(binding, ctx, capUrn, nodeID, defaultValue, isRequired)
 		if err != nil {
 			return nil, err
 		}
@@ -571,6 +572,7 @@ func ResolveBinding(
 	binding *ArgumentBinding,
 	ctx *ArgumentResolutionContext,
 	capUrn string,
+	nodeID string,
 	defaultValue json.RawMessage,
 	isRequired bool,
 ) (*ResolvedArgument, error) {
@@ -669,7 +671,7 @@ func ResolveBinding(
 		}, nil
 
 	case BindingSlot:
-		slotKey := capUrn + ":" + binding.SlotName
+		slotKey := nodeID + ":" + binding.SlotName
 
 		// Priority 1: slot_values
 		if ctx.SlotValues != nil {

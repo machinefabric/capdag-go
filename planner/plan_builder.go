@@ -58,7 +58,6 @@ type PathArgumentRequirements struct {
 	SourceSpec              string                      `json:"source_spec"`
 	TargetSpec              string                      `json:"target_spec"`
 	Steps                   []*StepArgumentRequirements `json:"steps"`
-	AllSlots                []*ArgumentInfo             `json:"all_slots"`
 	CanExecuteWithoutInput  bool                        `json:"can_execute_without_input"`
 }
 
@@ -361,7 +360,6 @@ func (b *CapPlanBuilder) AnalyzePathArguments(
 	caps := b.capRegistry.GetCachedCaps()
 
 	var stepRequirements []*StepArgumentRequirements
-	var allSlots []*ArgumentInfo
 	capStepIndex := 0
 
 	for i, step := range path.Steps {
@@ -396,7 +394,6 @@ func (b *CapPlanBuilder) AnalyzePathArguments(
 			isIOArg := resolution == ResolutionFromInputFile || resolution == ResolutionFromPreviousOutput
 			if !isIOArg {
 				slots = append(slots, argInfo)
-				allSlots = append(allSlots, argInfo)
 			}
 			arguments = append(arguments, argInfo)
 		}
@@ -411,12 +408,19 @@ func (b *CapPlanBuilder) AnalyzePathArguments(
 		capStepIndex++
 	}
 
+	canExec := true
+	for _, s := range stepRequirements {
+		if len(s.Slots) > 0 {
+			canExec = false
+			break
+		}
+	}
+
 	return &PathArgumentRequirements{
 		SourceSpec:             path.SourceSpec.String(),
 		TargetSpec:             path.TargetSpec.String(),
 		Steps:                  stepRequirements,
-		AllSlots:               allSlots,
-		CanExecuteWithoutInput: len(allSlots) == 0,
+		CanExecuteWithoutInput: canExec,
 	}, nil
 }
 

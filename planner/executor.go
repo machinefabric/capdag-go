@@ -355,7 +355,7 @@ func (pe *PlanExecutor) executeCapNode(
 	if argBindings != nil {
 		for name, binding := range argBindings.Bindings {
 			isRequired := argRequired[name]
-			resolved, err := ResolveBinding(binding, ctx, capUrn, argDefaults[name], isRequired)
+			resolved, err := ResolveBinding(binding, ctx, capUrn, nodeID, argDefaults[name], isRequired)
 			if err != nil {
 				return nil, nil, NewInternalError(fmt.Sprintf(
 					"Failed to resolve argument '%s' for cap '%s': %s", name, capUrn, err.Error()))
