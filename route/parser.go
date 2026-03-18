@@ -10,12 +10,12 @@ import (
 	"github.com/machinefabric/capdag-go/urn"
 )
 
-// goPegGrammar is the go-peg equivalent of route.pest.
+// goPegGrammar is the go-peg equivalent of machine.pest.
 // go-peg uses ← for rule definition, < > for token capture,
 // and %whitespace for implicit whitespace handling.
 // pest uses @{} for atomic (= go-peg tokens), _{ } for silent.
 //
-// The pest grammar is shipped alongside this file as route.pest
+// The pest grammar is shipped alongside this file as machine.pest
 // for reference — this go-peg grammar is a faithful translation.
 const goPegGrammar = `
   program     <- stmt* !.
@@ -53,7 +53,7 @@ type parsedWiring struct {
 
 // ParseMachine parses machine notation into a Machine.
 //
-// Uses a PEG parser with a grammar equivalent to route.pest.
+// Uses a PEG parser with a grammar equivalent to machine.pest.
 // Fails hard — no fallbacks, no guessing, no recovery.
 func ParseMachine(input string) (*Machine, error) {
 	input = strings.TrimSpace(input)
