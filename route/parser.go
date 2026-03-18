@@ -51,11 +51,11 @@ type parsedWiring struct {
 	position int
 }
 
-// ParseRouteNotation parses route notation into a RouteGraph.
+// ParseMachine parses machine notation into a Machine.
 //
 // Uses a PEG parser with a grammar equivalent to route.pest.
 // Fails hard — no fallbacks, no guessing, no recovery.
-func ParseRouteNotation(input string) (*RouteGraph, error) {
+func ParseMachine(input string) (*Machine, error) {
 	input = strings.TrimSpace(input)
 	if input == "" {
 		return nil, emptyError()
@@ -131,8 +131,8 @@ func ParseRouteNotation(input string) (*RouteGraph, error) {
 			sources := parseSourceNode(sourceNode)
 
 			// contentNode.Nodes[1] = arrow (skip)
-			loopCapNode := contentNode.Nodes[2]
-			isLoop, capAlias := parseLoopCapNode(loopCapNode)
+			loopMachineNode := contentNode.Nodes[2]
+			isLoop, capAlias := parseLoopMachineNode(loopMachineNode)
 
 			// contentNode.Nodes[3] = arrow (skip)
 			target := contentNode.Nodes[4].Token
@@ -165,13 +165,13 @@ func ParseRouteNotation(input string) (*RouteGraph, error) {
 		aliasOrder = append(aliasOrder, h.alias)
 	}
 
-	// Phase 4: Resolve wirings into RouteEdges
+	// Phase 4: Resolve wirings into MachineEdges
 	if len(wirings) == 0 && len(headers) > 0 {
 		return nil, noEdgesError()
 	}
 
 	nodeMedia := make(map[string]*urn.MediaUrn)
-	var edges []*RouteEdge
+	var edges []*MachineEdge
 
 	for _, w := range wirings {
 		// Look up the cap alias
@@ -229,7 +229,7 @@ func ParseRouteNotation(input string) (*RouteGraph, error) {
 			return nil, err
 		}
 
-		edges = append(edges, &RouteEdge{
+		edges = append(edges, &MachineEdge{
 			Sources: sourceUrns,
 			CapUrn:  capUrnVal,
 			Target:  capOutMedia,
@@ -237,7 +237,7 @@ func ParseRouteNotation(input string) (*RouteGraph, error) {
 		})
 	}
 
-	return NewRouteGraph(edges), nil
+	return NewMachine(edges), nil
 }
 
 // parseSourceNode extracts source aliases from a source AST node.
@@ -264,8 +264,8 @@ func parseSourceNode(node *peg.Ast) []string {
 	return nil
 }
 
-// parseLoopCapNode extracts is_loop flag and cap alias from a loop_cap AST node.
-func parseLoopCapNode(node *peg.Ast) (bool, string) {
+// parseLoopMachineNode extracts is_loop flag and cap alias from a loop_cap AST node.
+func parseLoopMachineNode(node *peg.Ast) (bool, string) {
 	isLoop := false
 	capAlias := ""
 
@@ -308,8 +308,8 @@ func assignOrCheckNode(
 
 // --- Serializer methods ---
 
-// ToRouteNotation serializes this route graph to canonical one-line route notation.
-func (g *RouteGraph) ToRouteNotation() string {
+// ToMachineNotation serializes this route graph to canonical one-line machine notation.
+func (g *Machine) ToMachineNotation() string {
 	if g.IsEmpty() {
 		return ""
 	}
@@ -365,8 +365,8 @@ func (g *RouteGraph) ToRouteNotation() string {
 	return strings.Join(parts, "")
 }
 
-// ToRouteNotationMultiline serializes to multi-line route notation.
-func (g *RouteGraph) ToRouteNotationMultiline() string {
+// ToMachineNotationMultiline serializes to multi-line machine notation.
+func (g *Machine) ToMachineNotationMultiline() string {
 	if g.IsEmpty() {
 		return ""
 	}
@@ -426,7 +426,7 @@ type aliasInfo struct {
 }
 
 // buildSerializationMaps builds alias map, node name map, and edge ordering.
-func (g *RouteGraph) buildSerializationMaps() (map[string]aliasInfo, map[string]string, []int) {
+func (g *Machine) buildSerializationMaps() (map[string]aliasInfo, map[string]string, []int) {
 	// Step 1: Canonical edge ordering
 	edgeOrder := make([]int, len(g.edges))
 	for i := range edgeOrder {

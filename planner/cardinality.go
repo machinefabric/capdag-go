@@ -388,8 +388,8 @@ func (p CardinalityPattern) RequiresVector() bool {
 	return p == PatternManyToOne || p == PatternManyToMany
 }
 
-// ShapeChainAnalysis analyzes shape chain for a sequence of caps.
-type ShapeChainAnalysis struct {
+// StrandShapeAnalysis analyzes shape chain for a sequence of caps.
+type StrandShapeAnalysis struct {
 	CapInfos     []CapShapeInfo
 	FanOutPoints []int
 	FanInPoints  []int
@@ -398,9 +398,9 @@ type ShapeChainAnalysis struct {
 }
 
 // AnalyzeShapeChain analyzes a chain of caps for shape transitions.
-func AnalyzeShapeChain(capInfos []CapShapeInfo) ShapeChainAnalysis {
+func AnalyzeShapeChain(capInfos []CapShapeInfo) StrandShapeAnalysis {
 	if len(capInfos) == 0 {
-		return ShapeChainAnalysis{
+		return StrandShapeAnalysis{
 			CapInfos: nil,
 			IsValid:  true,
 		}
@@ -438,7 +438,7 @@ func AnalyzeShapeChain(capInfos []CapShapeInfo) ShapeChainAnalysis {
 	}
 
 	if errorMsg != "" {
-		return ShapeChainAnalysis{
+		return StrandShapeAnalysis{
 			CapInfos:     capInfos,
 			FanOutPoints: fanOutPoints,
 			FanInPoints:  fanInPoints,
@@ -451,7 +451,7 @@ func AnalyzeShapeChain(capInfos []CapShapeInfo) ShapeChainAnalysis {
 		fanInPoints = append(fanInPoints, len(capInfos))
 	}
 
-	return ShapeChainAnalysis{
+	return StrandShapeAnalysis{
 		CapInfos:     capInfos,
 		FanOutPoints: fanOutPoints,
 		FanInPoints:  fanInPoints,
@@ -460,12 +460,12 @@ func AnalyzeShapeChain(capInfos []CapShapeInfo) ShapeChainAnalysis {
 }
 
 // RequiresTransformation checks if this chain requires any cardinality transformations.
-func (a ShapeChainAnalysis) RequiresTransformation() bool {
+func (a StrandShapeAnalysis) RequiresTransformation() bool {
 	return len(a.FanOutPoints) > 0 || len(a.FanInPoints) > 0
 }
 
 // FinalOutputShape gets the final output shape of the chain.
-func (a ShapeChainAnalysis) FinalOutputShape() *MediaShape {
+func (a StrandShapeAnalysis) FinalOutputShape() *MediaShape {
 	if len(a.CapInfos) == 0 {
 		return nil
 	}

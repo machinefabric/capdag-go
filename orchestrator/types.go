@@ -1,4 +1,4 @@
-// Package orchestrator provides route notation parsing, DAG validation,
+// Package orchestrator provides machine notation parsing, DAG validation,
 // plan conversion, and CBOR utilities for cap execution orchestration.
 //
 // Mirrors Rust's orchestrator module.
@@ -18,7 +18,7 @@ import (
 type ParseOrchestrationErrorKind int
 
 const (
-	ErrRouteNotationParseFailed ParseOrchestrationErrorKind = iota
+	ErrMachineSyntaxParseFailed ParseOrchestrationErrorKind = iota
 	ErrCapNotFound
 	ErrNodeMediaConflict
 	ErrNotADag
@@ -44,7 +44,7 @@ type ParseOrchestrationError struct {
 
 func (e *ParseOrchestrationError) Error() string {
 	switch e.Kind {
-	case ErrRouteNotationParseFailed:
+	case ErrMachineSyntaxParseFailed:
 		return fmt.Sprintf("Route notation parse failed: %s", e.Message)
 	case ErrCapNotFound:
 		return fmt.Sprintf("Cap URN '%s' not found in registry", e.CapUrn)
@@ -71,8 +71,8 @@ func (e *ParseOrchestrationError) Error() string {
 
 // Error constructors
 
-func routeNotationParseFailedError(message string) *ParseOrchestrationError {
-	return &ParseOrchestrationError{Kind: ErrRouteNotationParseFailed, Message: message}
+func machineNotationParseFailedError(message string) *ParseOrchestrationError {
+	return &ParseOrchestrationError{Kind: ErrMachineSyntaxParseFailed, Message: message}
 }
 
 func capNotFoundError(capUrn string) *ParseOrchestrationError {

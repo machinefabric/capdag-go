@@ -8,21 +8,21 @@ import (
 	"github.com/machinefabric/capdag-go/urn"
 )
 
-// LiveCapEdgeType identifies the type of edge in the capability graph.
-type LiveCapEdgeType int
+// LiveMachinePlanEdgeType identifies the type of edge in the capability graph.
+type LiveMachinePlanEdgeType int
 
 const (
-	EdgeTypeCap LiveCapEdgeType = iota
+	EdgeTypeCap LiveMachinePlanEdgeType = iota
 	EdgeTypeForEach
 	EdgeTypeCollect
 	EdgeTypeWrapInList
 )
 
-// LiveCapEdge represents an edge in the live capability graph.
-type LiveCapEdge struct {
+// LiveMachinePlanEdge represents an edge in the live capability graph.
+type LiveMachinePlanEdge struct {
 	FromSpec          *urn.MediaUrn
 	ToSpec            *urn.MediaUrn
-	Type              LiveCapEdgeType
+	Type              LiveMachinePlanEdgeType
 	CapUrnVal         *urn.CapUrn
 	CapTitle          string
 	SpecificityVal    int
@@ -31,7 +31,7 @@ type LiveCapEdge struct {
 }
 
 // Title returns a human-readable title for this edge.
-func (e *LiveCapEdge) Title() string {
+func (e *LiveMachinePlanEdge) Title() string {
 	switch e.Type {
 	case EdgeTypeCap:
 		return e.CapTitle
@@ -46,7 +46,7 @@ func (e *LiveCapEdge) Title() string {
 }
 
 // Specificity returns the specificity of this edge.
-func (e *LiveCapEdge) Specificity() int {
+func (e *LiveMachinePlanEdge) Specificity() int {
 	if e.Type == EdgeTypeCap {
 		return e.SpecificityVal
 	}
@@ -54,31 +54,31 @@ func (e *LiveCapEdge) Specificity() int {
 }
 
 // IsCap checks if this is a cap edge.
-func (e *LiveCapEdge) IsCap() bool {
+func (e *LiveMachinePlanEdge) IsCap() bool {
 	return e.Type == EdgeTypeCap
 }
 
 // GetCapUrn returns the cap URN if this is a cap edge.
-func (e *LiveCapEdge) GetCapUrn() *urn.CapUrn {
+func (e *LiveMachinePlanEdge) GetCapUrn() *urn.CapUrn {
 	if e.Type == EdgeTypeCap {
 		return e.CapUrnVal
 	}
 	return nil
 }
 
-// CapChainStepType identifies the type of step in a capability chain path.
-type CapChainStepType int
+// StrandStepType identifies the type of step in a capability chain path.
+type StrandStepType int
 
 const (
-	StepTypeCap CapChainStepType = iota
+	StepTypeCap StrandStepType = iota
 	StepTypeForEach
 	StepTypeCollect
 	StepTypeWrapInList
 )
 
-// CapChainStepInfo contains information about a single step in a path.
-type CapChainStepInfo struct {
-	StepType       CapChainStepType
+// StrandStep contains information about a single step in a path.
+type StrandStep struct {
+	StepType       StrandStepType
 	FromSpec       *urn.MediaUrn
 	ToSpec         *urn.MediaUrn
 	CapUrnVal      *urn.CapUrn
@@ -89,7 +89,7 @@ type CapChainStepInfo struct {
 }
 
 // Title returns the title for this step.
-func (s *CapChainStepInfo) Title() string {
+func (s *StrandStep) Title() string {
 	switch s.StepType {
 	case StepTypeCap:
 		return s.StepTitle
@@ -104,7 +104,7 @@ func (s *CapChainStepInfo) Title() string {
 }
 
 // Specificity returns the specificity of this step.
-func (s *CapChainStepInfo) Specificity() int {
+func (s *StrandStep) Specificity() int {
 	if s.StepType == StepTypeCap {
 		return s.SpecificityVal
 	}
@@ -112,7 +112,7 @@ func (s *CapChainStepInfo) Specificity() int {
 }
 
 // GetCapUrn returns the cap URN if this is a cap step.
-func (s *CapChainStepInfo) GetCapUrn() *urn.CapUrn {
+func (s *StrandStep) GetCapUrn() *urn.CapUrn {
 	if s.StepType == StepTypeCap {
 		return s.CapUrnVal
 	}
@@ -120,13 +120,13 @@ func (s *CapChainStepInfo) GetCapUrn() *urn.CapUrn {
 }
 
 // IsCap checks if this is a cap step.
-func (s *CapChainStepInfo) IsCap() bool {
+func (s *StrandStep) IsCap() bool {
 	return s.StepType == StepTypeCap
 }
 
-// CapChainPathInfo contains information about a complete capability chain path.
-type CapChainPathInfo struct {
-	Steps        []*CapChainStepInfo
+// Strand contains information about a complete capability chain path.
+type Strand struct {
+	Steps        []*StrandStep
 	SourceSpec   *urn.MediaUrn
 	TargetSpec   *urn.MediaUrn
 	TotalSteps   int
@@ -144,7 +144,7 @@ type ReachableTargetInfo struct {
 
 // LiveCapGraph is a precomputed graph of capabilities for path finding.
 type LiveCapGraph struct {
-	edges      []*LiveCapEdge
+	edges      []*LiveMachinePlanEdge
 	outgoing   map[string][]int
 	incoming   map[string][]int
 	nodes      map[string]bool
@@ -211,7 +211,7 @@ func (g *LiveCapGraph) AddCap(c *cap.Cap) {
 	outputCard := CardinalityFromMediaUrn(toCanonical)
 
 	edgeIdx := len(g.edges)
-	edge := &LiveCapEdge{
+	edge := &LiveMachinePlanEdge{
 		FromSpec:          fromSpec,
 		ToSpec:            toSpec,
 		Type:              EdgeTypeCap,
@@ -249,7 +249,7 @@ func (g *LiveCapGraph) insertCardinalityTransitions() {
 
 		// ForEach: list → item
 		foreachIdx := len(g.edges)
-		g.edges = append(g.edges, &LiveCapEdge{
+		g.edges = append(g.edges, &LiveMachinePlanEdge{
 			FromSpec:          listUrn,
 			ToSpec:            itemUrn,
 			Type:              EdgeTypeForEach,
@@ -262,7 +262,7 @@ func (g *LiveCapGraph) insertCardinalityTransitions() {
 
 		// Collect: item → list
 		collectIdx := len(g.edges)
-		g.edges = append(g.edges, &LiveCapEdge{
+		g.edges = append(g.edges, &LiveMachinePlanEdge{
 			FromSpec:          itemUrn,
 			ToSpec:            listUrn,
 			Type:              EdgeTypeCollect,
@@ -290,7 +290,7 @@ func (g *LiveCapGraph) insertCardinalityTransitions() {
 
 		if g.nodes[listCanonical] {
 			wrapIdx := len(g.edges)
-			g.edges = append(g.edges, &LiveCapEdge{
+			g.edges = append(g.edges, &LiveMachinePlanEdge{
 				FromSpec:          itemUrn,
 				ToSpec:            listUrn,
 				Type:              EdgeTypeWrapInList,
@@ -364,19 +364,19 @@ func (g *LiveCapGraph) GetReachableTargets(source *urn.MediaUrn, maxDepth int) [
 func (g *LiveCapGraph) FindPathsToExactTarget(
 	source, target *urn.MediaUrn,
 	maxDepth, maxPaths int,
-) []*CapChainPathInfo {
-	var results []*CapChainPathInfo
+) []*Strand {
+	var results []*Strand
 	visitedEdges := make(map[int]bool)
 
-	var dfs func(current *urn.MediaUrn, path []*LiveCapEdge, depth int)
-	dfs = func(current *urn.MediaUrn, path []*LiveCapEdge, depth int) {
+	var dfs func(current *urn.MediaUrn, path []*LiveMachinePlanEdge, depth int)
+	dfs = func(current *urn.MediaUrn, path []*LiveMachinePlanEdge, depth int) {
 		if len(results) >= maxPaths || depth > maxDepth {
 			return
 		}
 
 		if current.IsEquivalent(target) {
 			// Build path info
-			var steps []*CapChainStepInfo
+			var steps []*StrandStep
 			capCount := 0
 			for _, edge := range path {
 				step := edgeToStep(edge)
@@ -392,7 +392,7 @@ func (g *LiveCapGraph) FindPathsToExactTarget(
 						titles = append(titles, s.Title())
 					}
 				}
-				results = append(results, &CapChainPathInfo{
+				results = append(results, &Strand{
 					Steps:        steps,
 					SourceSpec:   source,
 					TargetSpec:   target,
@@ -461,8 +461,8 @@ func (g *LiveCapGraph) FindPathsToExactTarget(
 	return results
 }
 
-func (g *LiveCapGraph) getOutgoingEdges(source *urn.MediaUrn) []*LiveCapEdge {
-	var results []*LiveCapEdge
+func (g *LiveCapGraph) getOutgoingEdges(source *urn.MediaUrn) []*LiveMachinePlanEdge {
+	var results []*LiveMachinePlanEdge
 	sourceIsList := source.IsList()
 
 	for _, edge := range g.edges {
@@ -490,10 +490,10 @@ func (g *LiveCapGraph) getOutgoingEdges(source *urn.MediaUrn) []*LiveCapEdge {
 	return results
 }
 
-func edgeToStep(edge *LiveCapEdge) *CapChainStepInfo {
+func edgeToStep(edge *LiveMachinePlanEdge) *StrandStep {
 	switch edge.Type {
 	case EdgeTypeCap:
-		return &CapChainStepInfo{
+		return &StrandStep{
 			StepType:       StepTypeCap,
 			FromSpec:       edge.FromSpec,
 			ToSpec:         edge.ToSpec,
@@ -502,7 +502,7 @@ func edgeToStep(edge *LiveCapEdge) *CapChainStepInfo {
 			SpecificityVal: edge.SpecificityVal,
 		}
 	case EdgeTypeForEach:
-		return &CapChainStepInfo{
+		return &StrandStep{
 			StepType: StepTypeForEach,
 			FromSpec: edge.FromSpec,
 			ToSpec:   edge.ToSpec,
@@ -510,7 +510,7 @@ func edgeToStep(edge *LiveCapEdge) *CapChainStepInfo {
 			ItemSpec: edge.ToSpec,
 		}
 	case EdgeTypeCollect:
-		return &CapChainStepInfo{
+		return &StrandStep{
 			StepType: StepTypeCollect,
 			FromSpec: edge.FromSpec,
 			ToSpec:   edge.ToSpec,
@@ -518,7 +518,7 @@ func edgeToStep(edge *LiveCapEdge) *CapChainStepInfo {
 			ListSpec: edge.ToSpec,
 		}
 	case EdgeTypeWrapInList:
-		return &CapChainStepInfo{
+		return &StrandStep{
 			StepType: StepTypeWrapInList,
 			FromSpec: edge.FromSpec,
 			ToSpec:   edge.ToSpec,

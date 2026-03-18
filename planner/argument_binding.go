@@ -513,25 +513,25 @@ func (ab *ArgumentBindings) ResolveAll(
 	return results, nil
 }
 
-// CapChainInput is the input specification for a cap chain at execution start.
-type CapChainInput struct {
+// StrandInput is the input specification for a cap chain at execution start.
+type StrandInput struct {
 	Files            []*CapInputFile  `json:"files"`
 	ExpectedMediaUrn string           `json:"expected_media_urn"`
 	Cardinality      InputCardinality `json:"cardinality"`
 }
 
-// NewSingleCapChainInput creates a CapChainInput for a single file.
-func NewSingleCapChainInput(file *CapInputFile) *CapChainInput {
-	return &CapChainInput{
+// NewSingleStrandInput creates a StrandInput for a single file.
+func NewSingleStrandInput(file *CapInputFile) *StrandInput {
+	return &StrandInput{
 		Files:            []*CapInputFile{file},
 		ExpectedMediaUrn: file.MediaUrn,
 		Cardinality:      CardinalitySingle,
 	}
 }
 
-// NewSequenceCapChainInput creates a CapChainInput for a sequence of files.
-func NewSequenceCapChainInput(files []*CapInputFile, mediaUrn string) *CapChainInput {
-	return &CapChainInput{
+// NewSequenceStrandInput creates a StrandInput for a sequence of files.
+func NewSequenceStrandInput(files []*CapInputFile, mediaUrn string) *StrandInput {
+	return &StrandInput{
 		Files:            files,
 		ExpectedMediaUrn: mediaUrn,
 		Cardinality:      CardinalitySequence,
@@ -539,7 +539,7 @@ func NewSequenceCapChainInput(files []*CapInputFile, mediaUrn string) *CapChainI
 }
 
 // IsValid checks if the input satisfies its cardinality constraint.
-func (ci *CapChainInput) IsValid() bool {
+func (ci *StrandInput) IsValid() bool {
 	if ci.Cardinality == CardinalitySingle {
 		return len(ci.Files) == 1
 	}

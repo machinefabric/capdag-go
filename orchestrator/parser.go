@@ -61,36 +61,36 @@ func checkStructureCompatibility(source, target *urn.MediaUrn, nodeName string) 
 	return nil
 }
 
-// ParseRouteToCapDag parses route notation and produces a validated orchestration graph.
+// ParseMachineToCapDag parses machine notation and produces a validated orchestration graph.
 //
 // Each cap URN is resolved via the registry. Node media URNs are derived
 // from the cap's in=/out= specs. Media type consistency and structure
 // compatibility (record vs opaque) are validated at each node.
-func ParseRouteToCapDag(routeStr string, registry CapRegistryTrait) (*ResolvedGraph, error) {
-	// Step 1: Parse route notation into a RouteGraph.
-	routeGraph, err := route.ParseRouteNotation(routeStr)
+func ParseMachineToCapDag(machineStr string, registry CapRegistryTrait) (*ResolvedGraph, error) {
+	// Step 1: Parse machine notation into a Machine.
+	machine, err := route.ParseMachine(machineStr)
 	if err != nil {
-		return nil, routeNotationParseFailedError(err.Error())
+		return nil, machineNotationParseFailedError(err.Error())
 	}
 
-	// Step 2: Extract node names from the route notation.
-	wirings, err := extractWiringInfo(routeStr)
+	// Step 2: Extract node names from the machine notation.
+	wirings, err := extractWiringInfo(machineStr)
 	if err != nil {
 		return nil, err
 	}
 
 	// Validate that wiring count matches edge count.
-	if len(wirings) != routeGraph.EdgeCount() {
-		return nil, routeNotationParseFailedError(fmt.Sprintf(
+	if len(wirings) != machine.EdgeCount() {
+		return nil, machineNotationParseFailedError(fmt.Sprintf(
 			"internal error: %d wirings but %d edges — route parser edge ordering invariant violated",
-			len(wirings), routeGraph.EdgeCount()))
+			len(wirings), machine.EdgeCount()))
 	}
 
 	// Step 3: For each edge, resolve cap via registry and build ResolvedEdge entries.
 	nodeMedia := make(map[string]*urn.MediaUrn)
 	var resolvedEdges []*ResolvedEdge
 
-	edges := routeGraph.Edges()
+	edges := machine.Edges()
 	for edgeIdx, edge := range edges {
 		capUrnStr := edge.CapUrn.String()
 		capDef, err := registry.Lookup(capUrnStr)
@@ -135,7 +135,7 @@ func ParseRouteToCapDag(routeStr string, registry CapRegistryTrait) (*ResolvedGr
 						}
 					}
 					if edgeInMedia == nil {
-						return nil, routeNotationParseFailedError(fmt.Sprintf(
+						return nil, machineNotationParseFailedError(fmt.Sprintf(
 							"fan-in secondary source '%s' (index %d) has no media type and cap '%s' has no matching arg at index %d",
 							srcName, i, capUrnStr, argIdx))
 					}
@@ -195,20 +195,20 @@ func ParseRouteToCapDag(routeStr string, registry CapRegistryTrait) (*ResolvedGr
 	}, nil
 }
 
-// extractWiringInfo extracts wiring node names from route notation via the PEG parser.
+// extractWiringInfo extracts wiring node names from machine notation via the PEG parser.
 //
-// The RouteGraph model discards alias/node names. This function extracts
+// The Machine model discards alias/node names. This function extracts
 // them from wiring statements in order.
-func extractWiringInfo(routeStr string) ([]wiringInfo, error) {
+func extractWiringInfo(machineStr string) ([]wiringInfo, error) {
 	parser, err := peg.NewParser(orchestratorPegGrammar)
 	if err != nil {
-		return nil, routeNotationParseFailedError(fmt.Sprintf("grammar compilation failed: %s", err))
+		return nil, machineNotationParseFailedError(fmt.Sprintf("grammar compilation failed: %s", err))
 	}
 	parser.EnableAst()
 
-	ast, err := parser.ParseAndGetAst(strings.TrimSpace(routeStr), nil)
+	ast, err := parser.ParseAndGetAst(strings.TrimSpace(machineStr), nil)
 	if err != nil {
-		return nil, routeNotationParseFailedError(err.Error())
+		return nil, machineNotationParseFailedError(err.Error())
 	}
 
 	var wirings []wiringInfo

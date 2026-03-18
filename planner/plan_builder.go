@@ -61,14 +61,14 @@ type PathArgumentRequirements struct {
 	CanExecuteWithoutInput  bool                        `json:"can_execute_without_input"`
 }
 
-// CapPlanBuilder builds execution plans from resolved paths.
-type CapPlanBuilder struct {
+// MachinePlanBuilder builds execution plans from resolved paths.
+type MachinePlanBuilder struct {
 	capRegistry   *cap.CapRegistry
 }
 
-// NewCapPlanBuilder creates a new plan builder.
-func NewCapPlanBuilder(capRegistry *cap.CapRegistry) *CapPlanBuilder {
-	return &CapPlanBuilder{
+// NewMachinePlanBuilder creates a new plan builder.
+func NewMachinePlanBuilder(capRegistry *cap.CapRegistry) *MachinePlanBuilder {
+	return &MachinePlanBuilder{
 		capRegistry:   capRegistry,
 	}
 }
@@ -111,12 +111,12 @@ func isFilePathStdinChainable(c *cap.Cap) bool {
 }
 
 // BuildPlanFromPath builds an execution plan from a resolved path.
-func (b *CapPlanBuilder) BuildPlanFromPath(
+func (b *MachinePlanBuilder) BuildPlanFromPath(
 	name string,
-	path *CapChainPathInfo,
+	path *Strand,
 	inputCardinality InputCardinality,
-) (*CapExecutionPlan, error) {
-	plan := NewCapExecutionPlan(name)
+) (*MachinePlan, error) {
+	plan := NewMachinePlan(name)
 
 	caps := b.capRegistry.GetCachedCaps()
 
@@ -200,7 +200,7 @@ func (b *CapPlanBuilder) BuildPlanFromPath(
 				}
 			}
 
-			plan.AddNode(NewCapNodeWithBindings(nodeID, capUrnStr, bindings))
+			plan.AddNode(NewMachineNodeWithBindings(nodeID, capUrnStr, bindings))
 			plan.AddEdge(NewDirectEdge(prevNodeID, nodeID))
 
 			if isInsideBody {
@@ -354,8 +354,8 @@ func (b *CapPlanBuilder) BuildPlanFromPath(
 }
 
 // AnalyzePathArguments analyzes all argument requirements for a path.
-func (b *CapPlanBuilder) AnalyzePathArguments(
-	path *CapChainPathInfo,
+func (b *MachinePlanBuilder) AnalyzePathArguments(
+	path *Strand,
 ) (*PathArgumentRequirements, error) {
 	caps := b.capRegistry.GetCachedCaps()
 

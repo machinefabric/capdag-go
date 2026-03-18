@@ -1,4 +1,4 @@
-// Bracket-delimited route notation grammar for pest.
+// Bracket-delimited machine notation grammar for pest.
 //
 // Examples:
 //   [extract cap:in="media:pdf";op=extract;out="media:txt;textable"]

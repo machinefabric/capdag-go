@@ -6,14 +6,14 @@ import (
 	"github.com/machinefabric/capdag-go/planner"
 )
 
-// PlanToResolvedGraph converts a CapExecutionPlan to a ResolvedGraph for execution.
+// PlanToResolvedGraph converts a MachinePlan to a ResolvedGraph for execution.
 //
 // This transforms the node-centric plan (where caps are nodes) into the
 // edge-centric graph (where caps are edge labels) that execute_dag expects.
 //
 // ForEach/Collect/Merge/Split nodes are rejected — the caller must decompose
 // first using ExtractPrefixTo/ExtractForEachBody/ExtractSuffixFrom.
-func PlanToResolvedGraph(plan *planner.CapExecutionPlan, registry CapRegistryTrait) (*ResolvedGraph, error) {
+func PlanToResolvedGraph(plan *planner.MachinePlan, registry CapRegistryTrait) (*ResolvedGraph, error) {
 	nodes := make(map[string]string)
 	var resolvedEdges []*ResolvedEdge
 

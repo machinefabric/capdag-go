@@ -27,22 +27,22 @@ type CapSettingsProviderInterface interface {
 	GetSettings(capUrn string) (map[string]json.RawMessage, error)
 }
 
-// PlanExecutor executes a CapExecutionPlan node-by-node in topological order.
-type PlanExecutor struct {
+// MachineExecutor executes a MachinePlan node-by-node in topological order.
+type MachineExecutor struct {
 	executor         CapExecutorInterface
-	plan             *CapExecutionPlan
+	plan             *MachinePlan
 	inputFiles       []*CapInputFile
 	slotValues       map[string][]byte
 	settingsProvider CapSettingsProviderInterface
 }
 
-// NewPlanExecutor creates a new plan executor.
-func NewPlanExecutor(
+// NewMachineExecutor creates a new plan executor.
+func NewMachineExecutor(
 	executor CapExecutorInterface,
-	plan *CapExecutionPlan,
+	plan *MachinePlan,
 	inputFiles []*CapInputFile,
-) *PlanExecutor {
-	return &PlanExecutor{
+) *MachineExecutor {
+	return &MachineExecutor{
 		executor:   executor,
 		plan:       plan,
 		inputFiles: inputFiles,
@@ -51,19 +51,19 @@ func NewPlanExecutor(
 }
 
 // WithSlotValues sets raw bytes for named slots (builder pattern).
-func (pe *PlanExecutor) WithSlotValues(slotValues map[string][]byte) *PlanExecutor {
+func (pe *MachineExecutor) WithSlotValues(slotValues map[string][]byte) *MachineExecutor {
 	pe.slotValues = slotValues
 	return pe
 }
 
 // WithSettingsProvider sets the settings provider (builder pattern).
-func (pe *PlanExecutor) WithSettingsProvider(provider CapSettingsProviderInterface) *PlanExecutor {
+func (pe *MachineExecutor) WithSettingsProvider(provider CapSettingsProviderInterface) *MachineExecutor {
 	pe.settingsProvider = provider
 	return pe
 }
 
 // Execute runs the plan and returns results.
-func (pe *PlanExecutor) Execute() (*CapChainExecutionResult, error) {
+func (pe *MachineExecutor) Execute() (*MachineResult, error) {
 	start := time.Now()
 
 	if err := pe.plan.Validate(); err != nil {
@@ -82,7 +82,7 @@ func (pe *PlanExecutor) Execute() (*CapChainExecutionResult, error) {
 		execResult, outputVal, err := pe.executeNode(node, nodeResults, nodeOutputs)
 		if err != nil {
 			elapsedMs := uint64(time.Since(start).Milliseconds())
-			return &CapChainExecutionResult{
+			return &MachineResult{
 				Success:         false,
 				NodeResults:     nodeResults,
 				Outputs:         make(map[string]any),
@@ -98,7 +98,7 @@ func (pe *PlanExecutor) Execute() (*CapChainExecutionResult, error) {
 
 		if !execResult.Success {
 			elapsedMs := uint64(time.Since(start).Milliseconds())
-			return &CapChainExecutionResult{
+			return &MachineResult{
 				Success:         false,
 				NodeResults:     nodeResults,
 				Outputs:         make(map[string]any),
@@ -121,7 +121,7 @@ func (pe *PlanExecutor) Execute() (*CapChainExecutionResult, error) {
 	}
 
 	elapsedMs := uint64(time.Since(start).Milliseconds())
-	return &CapChainExecutionResult{
+	return &MachineResult{
 		Success:         true,
 		NodeResults:     nodeResults,
 		Outputs:         outputs,
@@ -129,8 +129,8 @@ func (pe *PlanExecutor) Execute() (*CapChainExecutionResult, error) {
 	}, nil
 }
 
-func (pe *PlanExecutor) executeNode(
-	node *CapNode,
+func (pe *MachineExecutor) executeNode(
+	node *MachineNode,
 	_ map[string]*NodeExecutionResult,
 	nodeOutputs map[string]any,
 ) (*NodeExecutionResult, any, error) {
@@ -138,7 +138,7 @@ func (pe *PlanExecutor) executeNode(
 
 	switch node.NodeType.Kind {
 	case NodeKindCap:
-		return pe.executeCapNode(
+		return pe.executeMachineNode(
 			node.ID,
 			node.NodeType.CapUrn,
 			node.NodeType.ArgBindings,
@@ -283,7 +283,7 @@ func (pe *PlanExecutor) executeNode(
 	}
 }
 
-func (pe *PlanExecutor) executeCapNode(
+func (pe *MachineExecutor) executeMachineNode(
 	nodeID, capUrn string,
 	argBindings *ArgumentBindings,
 	preferredCap *string,

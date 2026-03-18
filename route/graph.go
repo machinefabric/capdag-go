@@ -7,12 +7,12 @@ import (
 	"github.com/machinefabric/capdag-go/urn"
 )
 
-// RouteEdge represents a single edge in the route graph.
+// MachineEdge represents a single edge in the route graph.
 //
 // Each edge represents a capability that transforms one or more source
 // media types into a target media type. The IsLoop flag indicates
 // ForEach semantics (the capability is applied to each item in a list).
-type RouteEdge struct {
+type MachineEdge struct {
 	// Input media URN(s) — from connected cap's in-spec.
 	// Multiple sources represent fan-in.
 	Sources []*urn.MediaUrn
@@ -27,7 +27,7 @@ type RouteEdge struct {
 // IsEquivalent checks if two edges are semantically equivalent.
 //
 // Source order does not matter — fan-in sources are compared as sets.
-func (e *RouteEdge) IsEquivalent(other *RouteEdge) bool {
+func (e *MachineEdge) IsEquivalent(other *MachineEdge) bool {
 	if e.IsLoop != other.IsLoop {
 		return false
 	}
@@ -68,7 +68,7 @@ func (e *RouteEdge) IsEquivalent(other *RouteEdge) bool {
 }
 
 // String returns a human-readable representation of the edge.
-func (e *RouteEdge) String() string {
+func (e *MachineEdge) String() string {
 	sources := make([]string, len(e.Sources))
 	for i, s := range e.Sources {
 		sources[i] = s.String()
@@ -85,44 +85,44 @@ func (e *RouteEdge) String() string {
 	)
 }
 
-// RouteGraph is the semantic model behind route notation.
+// Machine is the semantic model behind machine notation.
 //
 // The graph is a collection of directed edges where each edge is a capability
 // that transforms source media types into a target media type.
 //
 // Two graphs are equivalent if they have the same set of edges, regardless
 // of ordering.
-type RouteGraph struct {
-	edges []*RouteEdge
+type Machine struct {
+	edges []*MachineEdge
 }
 
-// NewRouteGraph creates a new route graph from a slice of edges.
-func NewRouteGraph(edges []*RouteEdge) *RouteGraph {
-	return &RouteGraph{edges: edges}
+// NewMachine creates a new route graph from a slice of edges.
+func NewMachine(edges []*MachineEdge) *Machine {
+	return &Machine{edges: edges}
 }
 
-// EmptyRouteGraph creates an empty route graph.
-func EmptyRouteGraph() *RouteGraph {
-	return &RouteGraph{edges: nil}
+// EmptyMachine creates an empty route graph.
+func EmptyMachine() *Machine {
+	return &Machine{edges: nil}
 }
 
 // Edges returns the edges of this graph.
-func (g *RouteGraph) Edges() []*RouteEdge {
+func (g *Machine) Edges() []*MachineEdge {
 	return g.edges
 }
 
 // EdgeCount returns the number of edges.
-func (g *RouteGraph) EdgeCount() int {
+func (g *Machine) EdgeCount() int {
 	return len(g.edges)
 }
 
 // IsEmpty checks if the graph has no edges.
-func (g *RouteGraph) IsEmpty() bool {
+func (g *Machine) IsEmpty() bool {
 	return len(g.edges) == 0
 }
 
 // IsEquivalent checks if two route graphs are semantically equivalent.
-func (g *RouteGraph) IsEquivalent(other *RouteGraph) bool {
+func (g *Machine) IsEquivalent(other *Machine) bool {
 	if len(g.edges) != len(other.edges) {
 		return false
 	}
@@ -150,7 +150,7 @@ func (g *RouteGraph) IsEquivalent(other *RouteGraph) bool {
 
 // RootSources collects all unique source media URNs that are not
 // produced as targets by any other edge.
-func (g *RouteGraph) RootSources() []*urn.MediaUrn {
+func (g *Machine) RootSources() []*urn.MediaUrn {
 	var roots []*urn.MediaUrn
 	for _, edge := range g.edges {
 		for _, src := range edge.Sources {
@@ -180,7 +180,7 @@ func (g *RouteGraph) RootSources() []*urn.MediaUrn {
 
 // LeafTargets collects all unique target media URNs that are not
 // consumed as sources by any other edge.
-func (g *RouteGraph) LeafTargets() []*urn.MediaUrn {
+func (g *Machine) LeafTargets() []*urn.MediaUrn {
 	var leaves []*urn.MediaUrn
 	for _, edge := range g.edges {
 		isConsumed := false
@@ -211,15 +211,15 @@ func (g *RouteGraph) LeafTargets() []*urn.MediaUrn {
 	return leaves
 }
 
-// FromString parses route notation into a RouteGraph.
-func FromString(input string) (*RouteGraph, error) {
-	return ParseRouteNotation(input)
+// FromString parses machine notation into a Machine.
+func FromString(input string) (*Machine, error) {
+	return ParseMachine(input)
 }
 
 // String returns a human-readable representation.
-func (g *RouteGraph) String() string {
+func (g *Machine) String() string {
 	if len(g.edges) == 0 {
-		return "RouteGraph(empty)"
+		return "Machine(empty)"
 	}
-	return fmt.Sprintf("RouteGraph(%d edges)", len(g.edges))
+	return fmt.Sprintf("Machine(%d edges)", len(g.edges))
 }

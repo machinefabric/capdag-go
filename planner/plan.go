@@ -112,8 +112,8 @@ type ExecutionNodeType struct {
 	SourceNode string
 }
 
-// NewCapNodeType creates a Cap execution node type.
-func NewCapNodeType(capUrn string, bindings *ArgumentBindings, preferredCap *string) *ExecutionNodeType {
+// NewMachineNodeType creates a Cap execution node type.
+func NewMachineNodeType(capUrn string, bindings *ArgumentBindings, preferredCap *string) *ExecutionNodeType {
 	if bindings == nil {
 		bindings = NewArgumentBindings()
 	}
@@ -190,41 +190,41 @@ func NewOutputNodeType(outputName, sourceNode string) *ExecutionNodeType {
 	}
 }
 
-// CapNode is a node in the execution plan.
-type CapNode struct {
+// MachineNode is a node in the execution plan.
+type MachineNode struct {
 	ID          string
 	NodeType    *ExecutionNodeType
 	Description *string
 }
 
-// NewCapNode creates a Cap node with empty bindings.
-func NewCapNode(id, capUrn string) *CapNode {
-	return &CapNode{
+// NewMachineNode creates a Cap node with empty bindings.
+func NewMachineNode(id, capUrn string) *MachineNode {
+	return &MachineNode{
 		ID:       id,
-		NodeType: NewCapNodeType(capUrn, nil, nil),
+		NodeType: NewMachineNodeType(capUrn, nil, nil),
 	}
 }
 
-// NewCapNodeWithBindings creates a Cap node with bindings.
-func NewCapNodeWithBindings(id, capUrn string, bindings *ArgumentBindings) *CapNode {
-	return &CapNode{
+// NewMachineNodeWithBindings creates a Cap node with bindings.
+func NewMachineNodeWithBindings(id, capUrn string, bindings *ArgumentBindings) *MachineNode {
+	return &MachineNode{
 		ID:       id,
-		NodeType: NewCapNodeType(capUrn, bindings, nil),
+		NodeType: NewMachineNodeType(capUrn, bindings, nil),
 	}
 }
 
-// NewCapNodeWithPreference creates a Cap node with bindings and preferred cap.
-func NewCapNodeWithPreference(id, capUrn string, bindings *ArgumentBindings, preferredCap *string) *CapNode {
-	return &CapNode{
+// NewMachineNodeWithPreference creates a Cap node with bindings and preferred cap.
+func NewMachineNodeWithPreference(id, capUrn string, bindings *ArgumentBindings, preferredCap *string) *MachineNode {
+	return &MachineNode{
 		ID:       id,
-		NodeType: NewCapNodeType(capUrn, bindings, preferredCap),
+		NodeType: NewMachineNodeType(capUrn, bindings, preferredCap),
 	}
 }
 
 // NewForEachNode creates a ForEach node.
-func NewForEachNode(id, inputNode, bodyEntry, bodyExit string) *CapNode {
+func NewForEachNode(id, inputNode, bodyEntry, bodyExit string) *MachineNode {
 	desc := "Fan-out: process each item in vector"
-	return &CapNode{
+	return &MachineNode{
 		ID:          id,
 		NodeType:    NewForEachNodeType(inputNode, bodyEntry, bodyExit),
 		Description: &desc,
@@ -232,9 +232,9 @@ func NewForEachNode(id, inputNode, bodyEntry, bodyExit string) *CapNode {
 }
 
 // NewCollectNode creates a Collect node.
-func NewCollectNode(id string, inputNodes []string) *CapNode {
+func NewCollectNode(id string, inputNodes []string) *MachineNode {
 	desc := "Fan-in: collect results into vector"
-	return &CapNode{
+	return &MachineNode{
 		ID:          id,
 		NodeType:    NewCollectNodeType(inputNodes, nil),
 		Description: &desc,
@@ -242,9 +242,9 @@ func NewCollectNode(id string, inputNodes []string) *CapNode {
 }
 
 // NewWrapInListNode creates a WrapInList node.
-func NewWrapInListNode(id, itemMediaUrn, listMediaUrn string) *CapNode {
+func NewWrapInListNode(id, itemMediaUrn, listMediaUrn string) *MachineNode {
 	desc := "WrapInList: wrap scalar in list-of-one"
-	return &CapNode{
+	return &MachineNode{
 		ID:          id,
 		NodeType:    NewWrapInListNodeType(itemMediaUrn, listMediaUrn),
 		Description: &desc,
@@ -252,9 +252,9 @@ func NewWrapInListNode(id, itemMediaUrn, listMediaUrn string) *CapNode {
 }
 
 // NewInputSlotNode creates an InputSlot node.
-func NewInputSlotNode(id, slotName, mediaUrn string, cardinality InputCardinality) *CapNode {
+func NewInputSlotNode(id, slotName, mediaUrn string, cardinality InputCardinality) *MachineNode {
 	desc := fmt.Sprintf("Input: %s", slotName)
-	return &CapNode{
+	return &MachineNode{
 		ID:          id,
 		NodeType:    NewInputSlotNodeType(slotName, mediaUrn, cardinality),
 		Description: &desc,
@@ -262,9 +262,9 @@ func NewInputSlotNode(id, slotName, mediaUrn string, cardinality InputCardinalit
 }
 
 // NewOutputNode creates an Output node.
-func NewOutputNode(id, outputName, sourceNode string) *CapNode {
+func NewOutputNode(id, outputName, sourceNode string) *MachineNode {
 	desc := fmt.Sprintf("Output: %s", outputName)
-	return &CapNode{
+	return &MachineNode{
 		ID:          id,
 		NodeType:    NewOutputNodeType(outputName, sourceNode),
 		Description: &desc,
@@ -272,16 +272,16 @@ func NewOutputNode(id, outputName, sourceNode string) *CapNode {
 }
 
 // IsCap returns true if this is a Cap node.
-func (n *CapNode) IsCap() bool { return n.NodeType.Kind == NodeKindCap }
+func (n *MachineNode) IsCap() bool { return n.NodeType.Kind == NodeKindCap }
 
 // IsFanOut returns true if this is a ForEach node.
-func (n *CapNode) IsFanOut() bool { return n.NodeType.Kind == NodeKindForEach }
+func (n *MachineNode) IsFanOut() bool { return n.NodeType.Kind == NodeKindForEach }
 
 // IsFanIn returns true if this is a Collect node.
-func (n *CapNode) IsFanIn() bool { return n.NodeType.Kind == NodeKindCollect }
+func (n *MachineNode) IsFanIn() bool { return n.NodeType.Kind == NodeKindCollect }
 
 // GetCapUrn returns the cap URN if this is a Cap node.
-func (n *CapNode) GetCapUrn() *string {
+func (n *MachineNode) GetCapUrn() *string {
 	if n.NodeType.Kind == NodeKindCap {
 		return &n.NodeType.CapUrn
 	}
@@ -289,7 +289,7 @@ func (n *CapNode) GetCapUrn() *string {
 }
 
 // GetPreferredCap returns the preferred cap if this is a Cap node with one set.
-func (n *CapNode) GetPreferredCap() *string {
+func (n *MachineNode) GetPreferredCap() *string {
 	if n.NodeType.Kind == NodeKindCap {
 		return n.NodeType.PreferredCap
 	}
@@ -333,59 +333,59 @@ func JsonPathEdgeType(path string) *EdgeType {
 	return &EdgeType{Kind: EdgeKindJsonPath, Path: path}
 }
 
-// CapEdge is a directed edge in the execution plan.
-type CapEdge struct {
+// MachinePlanEdge is a directed edge in the execution plan.
+type MachinePlanEdge struct {
 	FromNode string
 	ToNode   string
 	Type     *EdgeType
 }
 
 // NewDirectEdge creates a direct edge.
-func NewDirectEdge(from, to string) *CapEdge {
-	return &CapEdge{FromNode: from, ToNode: to, Type: DirectEdgeType()}
+func NewDirectEdge(from, to string) *MachinePlanEdge {
+	return &MachinePlanEdge{FromNode: from, ToNode: to, Type: DirectEdgeType()}
 }
 
 // NewIterationEdge creates an iteration edge.
-func NewIterationEdge(from, to string) *CapEdge {
-	return &CapEdge{FromNode: from, ToNode: to, Type: IterationEdgeType()}
+func NewIterationEdge(from, to string) *MachinePlanEdge {
+	return &MachinePlanEdge{FromNode: from, ToNode: to, Type: IterationEdgeType()}
 }
 
 // NewCollectionEdge creates a collection edge.
-func NewCollectionEdge(from, to string) *CapEdge {
-	return &CapEdge{FromNode: from, ToNode: to, Type: CollectionEdgeType()}
+func NewCollectionEdge(from, to string) *MachinePlanEdge {
+	return &MachinePlanEdge{FromNode: from, ToNode: to, Type: CollectionEdgeType()}
 }
 
 // NewJsonFieldEdge creates a JSON field edge.
-func NewJsonFieldEdge(from, to, field string) *CapEdge {
-	return &CapEdge{FromNode: from, ToNode: to, Type: JsonFieldEdgeType(field)}
+func NewJsonFieldEdge(from, to, field string) *MachinePlanEdge {
+	return &MachinePlanEdge{FromNode: from, ToNode: to, Type: JsonFieldEdgeType(field)}
 }
 
 // NewJsonPathEdge creates a JSON path edge.
-func NewJsonPathEdge(from, to, path string) *CapEdge {
-	return &CapEdge{FromNode: from, ToNode: to, Type: JsonPathEdgeType(path)}
+func NewJsonPathEdge(from, to, path string) *MachinePlanEdge {
+	return &MachinePlanEdge{FromNode: from, ToNode: to, Type: JsonPathEdgeType(path)}
 }
 
-// CapExecutionPlan is the complete execution plan DAG.
-type CapExecutionPlan struct {
+// MachinePlan is the complete execution plan DAG.
+type MachinePlan struct {
 	Name        string
-	Nodes       map[string]*CapNode
-	Edges       []*CapEdge
+	Nodes       map[string]*MachineNode
+	Edges       []*MachinePlanEdge
 	EntryNodes  []string
 	OutputNodes []string
 	Metadata    map[string]any
 }
 
-// NewCapExecutionPlan creates an empty plan.
-func NewCapExecutionPlan(name string) *CapExecutionPlan {
-	return &CapExecutionPlan{
+// NewMachinePlan creates an empty plan.
+func NewMachinePlan(name string) *MachinePlan {
+	return &MachinePlan{
 		Name:  name,
-		Nodes: make(map[string]*CapNode),
+		Nodes: make(map[string]*MachineNode),
 	}
 }
 
 // AddNode adds a node. InputSlot nodes are auto-registered as entry nodes,
 // Output nodes as output nodes.
-func (p *CapExecutionPlan) AddNode(node *CapNode) {
+func (p *MachinePlan) AddNode(node *MachineNode) {
 	p.Nodes[node.ID] = node
 	switch node.NodeType.Kind {
 	case NodeKindInputSlot:
@@ -396,17 +396,17 @@ func (p *CapExecutionPlan) AddNode(node *CapNode) {
 }
 
 // AddEdge adds an edge to the plan.
-func (p *CapExecutionPlan) AddEdge(edge *CapEdge) {
+func (p *MachinePlan) AddEdge(edge *MachinePlanEdge) {
 	p.Edges = append(p.Edges, edge)
 }
 
 // GetNode returns a node by ID.
-func (p *CapExecutionPlan) GetNode(id string) *CapNode {
+func (p *MachinePlan) GetNode(id string) *MachineNode {
 	return p.Nodes[id]
 }
 
 // Validate checks plan structure. Returns error on invalid references.
-func (p *CapExecutionPlan) Validate() error {
+func (p *MachinePlan) Validate() error {
 	for _, edge := range p.Edges {
 		if _, ok := p.Nodes[edge.FromNode]; !ok {
 			return NewInternalError(fmt.Sprintf("Edge from_node '%s' not found in plan", edge.FromNode))
@@ -429,7 +429,7 @@ func (p *CapExecutionPlan) Validate() error {
 }
 
 // TopologicalOrder returns nodes in topological order using Kahn's algorithm.
-func (p *CapExecutionPlan) TopologicalOrder() ([]*CapNode, error) {
+func (p *MachinePlan) TopologicalOrder() ([]*MachineNode, error) {
 	inDegree := make(map[string]int)
 	adj := make(map[string][]string)
 
@@ -454,7 +454,7 @@ func (p *CapExecutionPlan) TopologicalOrder() ([]*CapNode, error) {
 		}
 	}
 
-	var result []*CapNode
+	var result []*MachineNode
 	for len(queue) > 0 {
 		id := queue[0]
 		queue = queue[1:]
@@ -476,13 +476,13 @@ func (p *CapExecutionPlan) TopologicalOrder() ([]*CapNode, error) {
 }
 
 // SingleCap creates a simple 3-node plan: input → cap → output.
-func SingleCap(capUrn, inputMedia, _ string, filePathArgName string) *CapExecutionPlan {
-	plan := NewCapExecutionPlan(fmt.Sprintf("single_%s", capUrn))
+func SingleCap(capUrn, inputMedia, _ string, filePathArgName string) *MachinePlan {
+	plan := NewMachinePlan(fmt.Sprintf("single_%s", capUrn))
 	plan.AddNode(NewInputSlotNode("input_slot", "input", inputMedia, CardinalitySingle))
 
 	bindings := NewArgumentBindings()
 	bindings.AddFilePath(filePathArgName)
-	plan.AddNode(NewCapNodeWithBindings("cap_0", capUrn, bindings))
+	plan.AddNode(NewMachineNodeWithBindings("cap_0", capUrn, bindings))
 	plan.AddNode(NewOutputNode("output", "result", "cap_0"))
 
 	plan.AddEdge(NewDirectEdge("input_slot", "cap_0"))
@@ -491,8 +491,8 @@ func SingleCap(capUrn, inputMedia, _ string, filePathArgName string) *CapExecuti
 }
 
 // LinearChain creates a linear chain plan: input → cap_0 → ... → output.
-func LinearChain(capUrns []string, inputMedia, _ string, filePathArgNames []string) *CapExecutionPlan {
-	plan := NewCapExecutionPlan("linear_chain")
+func LinearChain(capUrns []string, inputMedia, _ string, filePathArgNames []string) *MachinePlan {
+	plan := NewMachinePlan("linear_chain")
 	if len(capUrns) == 0 {
 		return plan
 	}
@@ -506,7 +506,7 @@ func LinearChain(capUrns []string, inputMedia, _ string, filePathArgNames []stri
 		if i < len(filePathArgNames) {
 			bindings.AddFilePath(filePathArgNames[i])
 		}
-		plan.AddNode(NewCapNodeWithBindings(nodeID, urn, bindings))
+		plan.AddNode(NewMachineNodeWithBindings(nodeID, urn, bindings))
 		plan.AddEdge(NewDirectEdge(prevID, nodeID))
 		prevID = nodeID
 	}
@@ -517,7 +517,7 @@ func LinearChain(capUrns []string, inputMedia, _ string, filePathArgNames []stri
 }
 
 // FindFirstForEach finds the first ForEach node in topological order.
-func (p *CapExecutionPlan) FindFirstForEach() *string {
+func (p *MachinePlan) FindFirstForEach() *string {
 	order, err := p.TopologicalOrder()
 	if err != nil {
 		return nil
@@ -531,7 +531,7 @@ func (p *CapExecutionPlan) FindFirstForEach() *string {
 }
 
 // HasForEachOrCollect returns true if any node is ForEach or Collect.
-func (p *CapExecutionPlan) HasForEachOrCollect() bool {
+func (p *MachinePlan) HasForEachOrCollect() bool {
 	for _, node := range p.Nodes {
 		if node.NodeType.Kind == NodeKindForEach || node.NodeType.Kind == NodeKindCollect {
 			return true
@@ -541,7 +541,7 @@ func (p *CapExecutionPlan) HasForEachOrCollect() bool {
 }
 
 // ExtractPrefixTo extracts ancestor subgraph up to and including targetNodeID.
-func (p *CapExecutionPlan) ExtractPrefixTo(targetNodeID string) (*CapExecutionPlan, error) {
+func (p *MachinePlan) ExtractPrefixTo(targetNodeID string) (*MachinePlan, error) {
 	if _, ok := p.Nodes[targetNodeID]; !ok {
 		return nil, NewInternalError(fmt.Sprintf("Target node '%s' not found in plan", targetNodeID))
 	}
@@ -572,7 +572,7 @@ func (p *CapExecutionPlan) ExtractPrefixTo(targetNodeID string) (*CapExecutionPl
 		}
 	}
 
-	subPlan := NewCapExecutionPlan(p.Name + "_prefix")
+	subPlan := NewMachinePlan(p.Name + "_prefix")
 	for id := range ancestors {
 		node := p.Nodes[id]
 		if node.NodeType.Kind == NodeKindOutput {
@@ -602,7 +602,7 @@ func (p *CapExecutionPlan) ExtractPrefixTo(targetNodeID string) (*CapExecutionPl
 }
 
 // ExtractForEachBody extracts the body of a ForEach node as a standalone plan.
-func (p *CapExecutionPlan) ExtractForEachBody(foreachNodeID, itemMediaUrn string) (*CapExecutionPlan, error) {
+func (p *MachinePlan) ExtractForEachBody(foreachNodeID, itemMediaUrn string) (*MachinePlan, error) {
 	node, ok := p.Nodes[foreachNodeID]
 	if !ok {
 		return nil, NewInternalError(fmt.Sprintf("ForEach node '%s' not found in plan", foreachNodeID))
@@ -647,7 +647,7 @@ func (p *CapExecutionPlan) ExtractForEachBody(foreachNodeID, itemMediaUrn string
 	}
 	bodyNodes[bodyExit] = true
 
-	bodyPlan := NewCapExecutionPlan(p.Name + "_foreach_body")
+	bodyPlan := NewMachinePlan(p.Name + "_foreach_body")
 
 	inputID := foreachNodeID + "_body_input"
 	bodyPlan.AddNode(NewInputSlotNode(inputID, "item_input", itemMediaUrn, CardinalitySingle))
@@ -680,7 +680,7 @@ func (p *CapExecutionPlan) ExtractForEachBody(foreachNodeID, itemMediaUrn string
 }
 
 // ExtractSuffixFrom extracts all descendants of sourceNodeID as a standalone plan.
-func (p *CapExecutionPlan) ExtractSuffixFrom(sourceNodeID, sourceMediaUrn string) (*CapExecutionPlan, error) {
+func (p *MachinePlan) ExtractSuffixFrom(sourceNodeID, sourceMediaUrn string) (*MachinePlan, error) {
 	if _, ok := p.Nodes[sourceNodeID]; !ok {
 		return nil, NewInternalError(fmt.Sprintf("Source node '%s' not found in plan", sourceNodeID))
 	}
@@ -710,7 +710,7 @@ func (p *CapExecutionPlan) ExtractSuffixFrom(sourceNodeID, sourceMediaUrn string
 		}
 	}
 
-	subPlan := NewCapExecutionPlan(p.Name + "_suffix")
+	subPlan := NewMachinePlan(p.Name + "_suffix")
 
 	inputID := sourceNodeID + "_suffix_input"
 	subPlan.AddNode(NewInputSlotNode(inputID, "collected_input", sourceMediaUrn, CardinalitySingle))
@@ -749,8 +749,8 @@ type NodeExecutionResult struct {
 	DurationMs   uint64 `json:"duration_ms"`
 }
 
-// CapChainExecutionResult holds the result of executing a complete plan.
-type CapChainExecutionResult struct {
+// MachineResult holds the result of executing a complete plan.
+type MachineResult struct {
 	Success         bool                          `json:"success"`
 	NodeResults     map[string]*NodeExecutionResult `json:"node_results"`
 	Outputs         map[string]any                `json:"outputs"`
@@ -759,7 +759,7 @@ type CapChainExecutionResult struct {
 }
 
 // PrimaryOutput returns the first output value (non-deterministic).
-func (r *CapChainExecutionResult) PrimaryOutput() any {
+func (r *MachineResult) PrimaryOutput() any {
 	for _, v := range r.Outputs {
 		return v
 	}
