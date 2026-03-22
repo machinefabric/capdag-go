@@ -848,8 +848,8 @@ func Test390_stream_end_roundtrip(t *testing.T) {
 	}
 }
 
-// TEST399a: RelayNotify encode/decode roundtrip preserves manifest and limits
-func Test399a_relay_notify_roundtrip(t *testing.T) {
+// TEST848: RelayNotify encode/decode roundtrip preserves manifest and limits
+func Test848_relay_notify_roundtrip(t *testing.T) {
 	manifest := []byte(`{"caps":["cap:op=relay-test"]}`)
 	maxFrame := 2_000_000
 	maxChunk := 128_000
@@ -889,8 +889,8 @@ func Test399a_relay_notify_roundtrip(t *testing.T) {
 	}
 }
 
-// TEST400a: RelayState encode/decode roundtrip preserves resource payload
-func Test400a_relay_state_roundtrip(t *testing.T) {
+// TEST849: RelayState encode/decode roundtrip preserves resource payload
+func Test849_relay_state_roundtrip(t *testing.T) {
 	resources := []byte(`{"gpu_memory":8192,"cpu_cores":16}`)
 
 	original := NewRelayState(resources)
@@ -1014,5 +1014,102 @@ func Test497_chunk_corrupted_payload_rejected(t *testing.T) {
 	}
 	if *decoded.Checksum != checksum {
 		t.Error("Frame still has original checksum")
+	}
+}
+
+// TEST846: Test progress LOG frame encode/decode roundtrip preserves progress float
+func Test846_progress_frame_roundtrip(t *testing.T) {
+	id := NewMessageIdRandom()
+
+	testValues := []struct {
+		progress float32
+		label    string
+	}{
+		{0.0, "zero"},
+		{0.03333333, "1/30"},
+		{0.06666667, "2/30"},
+		{0.13333334, "4/30"},
+		{0.25, "quarter"},
+		{0.5, "half"},
+		{0.75, "three-quarter"},
+		{1.0, "one"},
+	}
+
+	for _, tv := range testValues {
+		original := NewProgress(id, tv.progress, "test phase")
+		encoded, err := EncodeFrame(original)
+		if err != nil {
+			t.Fatalf("[%s] Encode failed: %v", tv.label, err)
+		}
+		decoded, err := DecodeFrame(encoded)
+		if err != nil {
+			t.Fatalf("[%s] Decode failed: %v", tv.label, err)
+		}
+
+		if decoded.FrameType != FrameTypeLog {
+			t.Fatalf("[%s] Expected LOG frame type", tv.label)
+		}
+		if decoded.LogLevel() != "progress" {
+			t.Fatalf("[%s] Expected level 'progress', got %q", tv.label, decoded.LogLevel())
+		}
+		if decoded.LogMessage() != "test phase" {
+			t.Fatalf("[%s] Expected message 'test phase', got %q", tv.label, decoded.LogMessage())
+		}
+
+		p, ok := decoded.LogProgress()
+		if !ok {
+			t.Fatalf("[%s] log_progress() must return value for progress=%f", tv.label, tv.progress)
+		}
+		diff := p - tv.progress
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff > 0.001 {
+			t.Fatalf("[%s] progress roundtrip: expected %f, got %f", tv.label, tv.progress, p)
+		}
+	}
+}
+
+// TEST847: Double roundtrip (modelcartridge → relay → candlecartridge)
+func Test847_progress_double_roundtrip(t *testing.T) {
+	id := NewMessageIdRandom()
+
+	for _, progress := range []float32{0.0, 0.03333333, 0.06666667, 0.13333334, 0.5, 1.0} {
+		original := NewProgress(id, progress, "test")
+
+		// First roundtrip
+		bytes1, err := EncodeFrame(original)
+		if err != nil {
+			t.Fatalf("Encode 1 failed for progress=%f: %v", progress, err)
+		}
+		decoded1, err := DecodeFrame(bytes1)
+		if err != nil {
+			t.Fatalf("Decode 1 failed for progress=%f: %v", progress, err)
+		}
+
+		// Relay switch modifies seq
+		decoded1.Seq = 42
+
+		// Second roundtrip
+		bytes2, err := EncodeFrame(decoded1)
+		if err != nil {
+			t.Fatalf("Encode 2 failed for progress=%f: %v", progress, err)
+		}
+		decoded2, err := DecodeFrame(bytes2)
+		if err != nil {
+			t.Fatalf("Decode 2 failed for progress=%f: %v", progress, err)
+		}
+
+		p, ok := decoded2.LogProgress()
+		if !ok {
+			t.Fatalf("progress=%f: log_progress() returned false", progress)
+		}
+		diff := p - progress
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff > 0.001 {
+			t.Fatalf("progress=%f: expected %f, got %f", progress, progress, p)
+		}
 	}
 }

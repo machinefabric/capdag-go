@@ -147,7 +147,7 @@ const MediaModelSpecGGUFEmbeddings = "media:model-spec;gguf;textable;embeddings"
 
 // MLX backend
 
-// MediaModelSpecMLXVision is the MLX vision model spec (e.g. Qwen2.5-VL)
+// MediaModelSpecMLXVision is the MLX vision model spec (e.g. Qwen3-VL)
 const MediaModelSpecMLXVision = "media:model-spec;mlx;textable;vision"
 
 // MediaModelSpecMLXLLM is the MLX LLM model spec (e.g. Llama-3.2-3B)

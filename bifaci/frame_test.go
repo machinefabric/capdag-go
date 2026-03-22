@@ -961,8 +961,8 @@ func Test445_seq_assigner_remove_by_flow_key(t *testing.T) {
 	}
 }
 
-// TEST445a: Same RID different XIDs are independent flows
-func Test445a_seq_assigner_same_rid_different_xids_independent(t *testing.T) {
+// TEST860: Same RID different XIDs are independent flows
+func Test860_seq_assigner_same_rid_different_xids_independent(t *testing.T) {
 	assigner := NewSeqAssigner()
 	rid := NewMessageIdRandom()
 	xidA := NewMessageIdRandom()

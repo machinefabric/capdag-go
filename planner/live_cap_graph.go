@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/machinefabric/capdag-go/cap"
+	"github.com/machinefabric/capdag-go/standard"
 	"github.com/machinefabric/capdag-go/urn"
 )
 
@@ -190,6 +191,12 @@ func (g *LiveCapGraph) AddCap(c *cap.Cap) {
 	outSpecStr := c.Urn.OutSpec()
 
 	if inSpecStr == "" || outSpecStr == "" {
+		return
+	}
+
+	// Skip identity caps (passthrough caps that don't transform anything)
+	identityUrn, err := urn.NewCapUrnFromString(standard.CapIdentity)
+	if err == nil && c.Urn.IsEquivalent(identityUrn) {
 		return
 	}
 

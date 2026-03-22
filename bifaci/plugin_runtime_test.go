@@ -7,7 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -2325,5 +2327,482 @@ func Test398BuildPayloadIOError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "simulated read error") {
 		t.Errorf("Expected error to contain 'simulated read error', got: %s", err.Error())
+	}
+}
+
+// =============================================================================
+// PeerResponse / DemuxPeerResponse Tests
+// =============================================================================
+
+// TEST544: PeerCall finish sends END frame
+// In Go, PeerInvokerImpl.Invoke() sends END after all args.
+func Test544_peer_invoker_sends_end_frame(t *testing.T) {
+	var buf bytes.Buffer
+	writer := NewFrameWriter(&buf)
+	syncWriter := &syncFrameWriter{writer: writer, seqAssigner: NewSeqAssigner()}
+	pendingRequests := &sync.Map{}
+
+	peer := newPeerInvokerImpl(syncWriter, pendingRequests, DefaultLimits().MaxChunk)
+	args := []cap.CapArgumentValue{
+		cap.NewCapArgumentValueFromStr("media:test", "hello"),
+	}
+	_, err := peer.Invoke(`cap:in="media:void";op=test;out="media:void"`, args)
+	if err != nil {
+		t.Fatalf("Invoke failed: %v", err)
+	}
+
+	// Read all frames back from the buffer
+	reader := NewFrameReader(bytes.NewReader(buf.Bytes()))
+	var endCount int
+	for {
+		frame, err := reader.ReadFrame()
+		if err != nil {
+			break
+		}
+		if frame.FrameType == FrameTypeEnd {
+			endCount++
+		}
+	}
+	if endCount != 1 {
+		t.Fatalf("Expected 1 END frame, got %d", endCount)
+	}
+}
+
+// TEST545: DemuxPeerResponse yields data items from peer response frames
+func Test545_demux_peer_response_returns_data(t *testing.T) {
+	reqId := NewMessageIdRandom()
+	rawCh := make(chan Frame, 10)
+
+	// STREAM_START
+	rawCh <- *NewStreamStart(reqId, "s1", "media:binary")
+
+	// CHUNK with CBOR-encoded bytes
+	data := []byte("response data")
+	cborPayload, _ := cborlib.Marshal(data)
+	checksum := ComputeChecksum(cborPayload)
+	rawCh <- *NewChunk(reqId, "s1", 0, cborPayload, 0, checksum)
+
+	// STREAM_END + close
+	rawCh <- *NewStreamEnd(reqId, "s1", 1)
+	close(rawCh)
+
+	response := DemuxPeerResponse(rawCh)
+	result, err := response.CollectBytes()
+	if err != nil {
+		t.Fatalf("CollectBytes failed: %v", err)
+	}
+	if !bytes.Equal(result, []byte("response data")) {
+		t.Fatalf("Expected 'response data', got %q", result)
+	}
+}
+
+// TEST839: LOG frames arriving BEFORE StreamStart are delivered immediately
+func Test839_peer_response_delivers_logs_before_stream_start(t *testing.T) {
+	reqId := NewMessageIdRandom()
+	rawCh := make(chan Frame, 20)
+
+	// Send LOG frames BEFORE any StreamStart
+	rawCh <- *NewProgress(reqId, 0.1, "downloading file 1/10")
+	rawCh <- *NewProgress(reqId, 0.5, "downloading file 5/10")
+	rawCh <- *NewLog(reqId, "status", "large file in progress")
+
+	// Now send the actual data
+	rawCh <- *NewStreamStart(reqId, "s1", "media:binary")
+	data := []byte("model output")
+	cborPayload, _ := cborlib.Marshal(data)
+	checksum := ComputeChecksum(cborPayload)
+	rawCh <- *NewChunk(reqId, "s1", 0, cborPayload, 0, checksum)
+	rawCh <- *NewStreamEnd(reqId, "s1", 1)
+	close(rawCh)
+
+	response := DemuxPeerResponse(rawCh)
+
+	// Must receive LOG frames first
+	item1, ok := response.Recv()
+	if !ok {
+		t.Fatal("expected first LOG")
+	}
+	if item1.LogFrame == nil {
+		t.Fatal("expected LOG frame, got Data")
+	}
+	p1, ok1 := item1.LogFrame.LogProgress()
+	if !ok1 || p1-0.1 > 0.01 {
+		t.Fatalf("expected progress ~0.1, got %v (ok=%v)", p1, ok1)
+	}
+
+	item2, ok := response.Recv()
+	if !ok {
+		t.Fatal("expected second LOG")
+	}
+	if item2.LogFrame == nil {
+		t.Fatal("expected LOG frame, got Data")
+	}
+
+	item3, ok := response.Recv()
+	if !ok {
+		t.Fatal("expected third LOG")
+	}
+	if item3.LogFrame == nil {
+		t.Fatal("expected LOG frame, got Data")
+	}
+	if item3.LogFrame.LogMessage() != "large file in progress" {
+		t.Fatalf("expected 'large file in progress', got %q", item3.LogFrame.LogMessage())
+	}
+
+	// Data must arrive after the LOGs
+	item4, ok := response.Recv()
+	if !ok {
+		t.Fatal("expected data item")
+	}
+	if !item4.IsDataItem {
+		t.Fatal("expected Data, got LOG")
+	}
+
+	_, ok = response.Recv()
+	if ok {
+		t.Fatal("stream must end after STREAM_END")
+	}
+}
+
+// TEST840: PeerResponse.CollectBytes discards LOG frames
+func Test840_peer_response_collect_bytes_discards_logs(t *testing.T) {
+	reqId := NewMessageIdRandom()
+	rawCh := make(chan Frame, 20)
+
+	rawCh <- *NewStreamStart(reqId, "s1", "media:binary")
+	rawCh <- *NewProgress(reqId, 0.25, "working")
+	rawCh <- *NewProgress(reqId, 0.75, "almost")
+
+	data := []byte("hello")
+	cborPayload, _ := cborlib.Marshal(data)
+	checksum := ComputeChecksum(cborPayload)
+	rawCh <- *NewChunk(reqId, "s1", 0, cborPayload, 0, checksum)
+
+	rawCh <- *NewLog(reqId, "info", "done")
+	rawCh <- *NewStreamEnd(reqId, "s1", 1)
+	close(rawCh)
+
+	response := DemuxPeerResponse(rawCh)
+	result, err := response.CollectBytes()
+	if err != nil {
+		t.Fatalf("CollectBytes failed: %v", err)
+	}
+	if !bytes.Equal(result, []byte("hello")) {
+		t.Fatalf("Expected 'hello', got %q (LOG frames must be discarded)", result)
+	}
+}
+
+// TEST841: PeerResponse.CollectValue discards LOG frames
+func Test841_peer_response_collect_value_discards_logs(t *testing.T) {
+	reqId := NewMessageIdRandom()
+	rawCh := make(chan Frame, 20)
+
+	rawCh <- *NewStreamStart(reqId, "s1", "media:binary")
+	rawCh <- *NewProgress(reqId, 0.5, "half")
+	rawCh <- *NewLog(reqId, "debug", "processing")
+
+	cborPayload, _ := cborlib.Marshal(42)
+	checksum := ComputeChecksum(cborPayload)
+	rawCh <- *NewChunk(reqId, "s1", 0, cborPayload, 0, checksum)
+
+	rawCh <- *NewStreamEnd(reqId, "s1", 1)
+	close(rawCh)
+
+	response := DemuxPeerResponse(rawCh)
+	value, err := response.CollectValue()
+	if err != nil {
+		t.Fatalf("CollectValue failed: %v", err)
+	}
+	// CBOR unsigned integers decode as uint64 in Go
+	if value != uint64(42) {
+		t.Fatalf("Expected 42, got %v (type %T)", value, value)
+	}
+}
+
+// =============================================================================
+// FindStream / RequireStream Tests
+// =============================================================================
+
+type testStream struct {
+	MediaUrn string
+	Data     []byte
+}
+
+func streamsToSlice(streams []testStream) []struct {
+	MediaUrn string
+	Data     []byte
+} {
+	result := make([]struct {
+		MediaUrn string
+		Data     []byte
+	}, len(streams))
+	for i, s := range streams {
+		result[i].MediaUrn = s.MediaUrn
+		result[i].Data = s.Data
+	}
+	return result
+}
+
+// TEST678: FindStream with exact equivalent URN (same tags, different order) succeeds
+func Test678_find_stream_equivalent_urn(t *testing.T) {
+	streams := streamsToSlice([]testStream{
+		{"media:textable;txt", []byte("hello world")},
+	})
+	result, err := FindStream(streams, "media:txt;textable")
+	if err != nil {
+		t.Fatalf("FindStream error: %v", err)
+	}
+	if result == nil {
+		t.Fatal("Expected to find stream")
+	}
+	if !bytes.Equal(result, []byte("hello world")) {
+		t.Fatalf("Expected 'hello world', got %q", result)
+	}
+}
+
+// TEST679: FindStream with base URN vs full URN fails — is_equivalent is strict
+func Test679_find_stream_base_vs_full_fails(t *testing.T) {
+	streams := streamsToSlice([]testStream{
+		{"media:textable;txt", []byte("hello")},
+	})
+	result, _ := FindStream(streams, "media:textable")
+	if result != nil {
+		t.Fatal("Base URN must not match more specific URN (is_equivalent is strict)")
+	}
+}
+
+// TEST680: RequireStream with missing URN returns hard error
+func Test680_require_stream_missing_fails(t *testing.T) {
+	streams := streamsToSlice([]testStream{
+		{"media:textable;txt", []byte("hello")},
+	})
+	_, err := RequireStream(streams, "media:binary")
+	if err == nil {
+		t.Fatal("Expected error for missing stream")
+	}
+	if !strings.Contains(err.Error(), "missing required arg") {
+		t.Fatalf("Expected 'missing required arg' error, got: %s", err.Error())
+	}
+}
+
+// TEST681: FindStream with multiple streams returns the correct one
+func Test681_find_stream_multiple(t *testing.T) {
+	streams := streamsToSlice([]testStream{
+		{"media:textable;txt", []byte("text data")},
+		{"media:png", []byte("image data")},
+		{"media:json;textable", []byte("json data")},
+	})
+	result, err := FindStream(streams, "media:png")
+	if err != nil {
+		t.Fatalf("FindStream error: %v", err)
+	}
+	if !bytes.Equal(result, []byte("image data")) {
+		t.Fatalf("Expected 'image data', got %q", result)
+	}
+}
+
+// TEST682: RequireStream returns data for matching URN
+func Test682_require_stream_returns_data(t *testing.T) {
+	streams := streamsToSlice([]testStream{
+		{"media:textable;txt", []byte("hello text")},
+	})
+	result, err := RequireStream(streams, "media:txt;textable")
+	if err != nil {
+		t.Fatalf("RequireStream failed: %v", err)
+	}
+	if !bytes.Equal(result, []byte("hello text")) {
+		t.Fatalf("Expected 'hello text', got %q", result)
+	}
+}
+
+// TEST683: FindStream returns nil for invalid media URN string
+func Test683_find_stream_invalid_urn_returns_nil(t *testing.T) {
+	streams := streamsToSlice([]testStream{
+		{"media:textable;txt", []byte("data")},
+	})
+	found, _ := FindStream(streams, "")
+	if found != nil {
+		t.Fatal("Invalid URN must return nil, not panic")
+	}
+}
+
+// =============================================================================
+// ProgressSender Tests
+// =============================================================================
+
+// mockFrameWriter captures frames for testing
+type mockFrameWriter struct {
+	frames []Frame
+}
+
+func (m *mockFrameWriter) WriteFrame(frame *Frame) error {
+	m.frames = append(m.frames, *frame)
+	return nil
+}
+
+// TEST842: ProgressSender emits progress and log frames
+func Test842_progress_sender_emits_frames(t *testing.T) {
+	var buf bytes.Buffer
+	writer := NewFrameWriter(&buf)
+	syncWriter := &syncFrameWriter{writer: writer, seqAssigner: NewSeqAssigner()}
+	reqId := NewMessageIdRandom()
+	ps := &ProgressSender{
+		writer:    syncWriter,
+		requestID: reqId,
+		routingId: nil,
+	}
+
+	ps.Progress(0.5, "halfway there")
+	ps.Log("info", "loading complete")
+
+	// Read the frames back from the buffer
+	reader := NewFrameReader(bytes.NewReader(buf.Bytes()))
+	var logFrames []*Frame
+	for {
+		frame, err := reader.ReadFrame()
+		if err != nil {
+			break
+		}
+		if frame.FrameType == FrameTypeLog {
+			logFrames = append(logFrames, frame)
+		}
+	}
+
+	if len(logFrames) != 2 {
+		t.Fatalf("Expected 2 LOG frames, got %d", len(logFrames))
+	}
+	pv, pok := logFrames[0].LogProgress()
+	if !pok || pv-0.5 > 0.01 {
+		t.Fatalf("Expected progress ~0.5, got %v (ok=%v)", pv, pok)
+	}
+	if logFrames[0].LogMessage() != "halfway there" {
+		t.Fatalf("Expected 'halfway there', got %q", logFrames[0].LogMessage())
+	}
+	if logFrames[1].LogLevel() != "info" {
+		t.Fatalf("Expected level 'info', got %q", logFrames[1].LogLevel())
+	}
+	if logFrames[1].LogMessage() != "loading complete" {
+		t.Fatalf("Expected 'loading complete', got %q", logFrames[1].LogMessage())
+	}
+}
+
+// TEST843: ProgressSender from goroutine emits correctly
+func Test843_progress_sender_from_goroutine(t *testing.T) {
+	var buf bytes.Buffer
+	writer := NewFrameWriter(&buf)
+	syncWriter := &syncFrameWriter{writer: writer, seqAssigner: NewSeqAssigner()}
+	reqId := NewMessageIdRandom()
+	ps := &ProgressSender{
+		writer:    syncWriter,
+		requestID: reqId,
+		routingId: nil,
+	}
+
+	done := make(chan struct{})
+	go func() {
+		ps.Progress(0.25, "quarter")
+		close(done)
+	}()
+	<-done
+
+	reader := NewFrameReader(bytes.NewReader(buf.Bytes()))
+	frame, err := reader.ReadFrame()
+	if err != nil {
+		t.Fatalf("ReadFrame failed: %v", err)
+	}
+	if frame.FrameType != FrameTypeLog {
+		t.Fatalf("Expected LOG frame, got %v", frame.FrameType)
+	}
+	pv, pok := frame.LogProgress()
+	if !pok || pv-0.25 > 0.01 {
+		t.Fatalf("Expected progress ~0.25, got %v (ok=%v)", pv, pok)
+	}
+}
+
+// TEST844: ProgressSender from multiple goroutines emits all frames
+func Test844_progress_sender_multiple_goroutines(t *testing.T) {
+	var buf bytes.Buffer
+	writer := NewFrameWriter(&buf)
+	syncWriter := &syncFrameWriter{writer: writer, seqAssigner: NewSeqAssigner()}
+	reqId := NewMessageIdRandom()
+	ps := &ProgressSender{
+		writer:    syncWriter,
+		requestID: reqId,
+		routingId: nil,
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		ps.Progress(0.25, "t1")
+	}()
+	go func() {
+		defer wg.Done()
+		ps.Progress(0.75, "t2")
+	}()
+	wg.Wait()
+
+	reader := NewFrameReader(bytes.NewReader(buf.Bytes()))
+	var messages []string
+	for {
+		frame, err := reader.ReadFrame()
+		if err != nil {
+			break
+		}
+		if frame.FrameType == FrameTypeLog {
+			messages = append(messages, frame.LogMessage())
+		}
+	}
+
+	if len(messages) != 2 {
+		t.Fatalf("Expected 2 frames from 2 goroutines, got %d", len(messages))
+	}
+	sort.Strings(messages)
+	if messages[0] != "t1" || messages[1] != "t2" {
+		t.Fatalf("Expected messages [t1, t2], got %v", messages)
+	}
+}
+
+// TEST845: ProgressSender emits progress and log frames independently of StreamEmitter
+func Test845_progress_sender_independent_of_emitter(t *testing.T) {
+	var buf bytes.Buffer
+	writer := NewFrameWriter(&buf)
+	syncWriter := &syncFrameWriter{writer: writer, seqAssigner: NewSeqAssigner()}
+	reqId := NewMessageIdRandom()
+	ps := &ProgressSender{
+		writer:    syncWriter,
+		requestID: reqId,
+		routingId: nil,
+	}
+
+	ps.Progress(0.5, "halfway there")
+	ps.Log("info", "loading complete")
+
+	reader := NewFrameReader(bytes.NewReader(buf.Bytes()))
+	var logFrames []*Frame
+	for {
+		frame, err := reader.ReadFrame()
+		if err != nil {
+			break
+		}
+		logFrames = append(logFrames, frame)
+	}
+
+	if len(logFrames) != 2 {
+		t.Fatalf("Expected 2 frames, got %d", len(logFrames))
+	}
+	pv, pok := logFrames[0].LogProgress()
+	if !pok || pv-0.5 > 0.01 {
+		t.Fatalf("Expected progress ~0.5, got %v (ok=%v)", pv, pok)
+	}
+	if logFrames[0].LogMessage() != "halfway there" {
+		t.Fatalf("Expected 'halfway there', got %q", logFrames[0].LogMessage())
+	}
+	if logFrames[1].LogLevel() != "info" {
+		t.Fatalf("Expected 'info', got %q", logFrames[1].LogLevel())
+	}
+	if logFrames[1].LogMessage() != "loading complete" {
+		t.Fatalf("Expected 'loading complete', got %q", logFrames[1].LogMessage())
 	}
 }

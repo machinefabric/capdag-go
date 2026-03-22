@@ -55,6 +55,170 @@ type PeerInvoker interface {
 	Invoke(capUrn string, arguments []cap.CapArgumentValue) (<-chan Frame, error)
 }
 
+// PeerResponseItem is a single item from a peer response — either decoded data or a LOG frame.
+//
+// PeerResponse.Recv() yields these interleaved in arrival order. Handlers
+// match on each variant to decide how to react (e.g., forward progress, accumulate data).
+type PeerResponseItem struct {
+	// DataValue holds the decoded CBOR value (nil if this is a LOG item or error)
+	DataValue interface{}
+	// DataErr holds an error if this is a Data(Err) item
+	DataErr error
+	// LogFrame holds the LOG frame if this is a Log item (nil for Data items)
+	LogFrame *Frame
+	// IsDataItem is true if this is a Data item, false for Log
+	IsDataItem bool
+}
+
+// PeerResponse yields both data items and LOG frames from a peer call.
+//
+// LOG frames are delivered in real-time as they arrive (not buffered until data starts).
+// For callers that don't care about LOG frames, CollectBytes() and CollectValue()
+// silently discard them and return only data.
+type PeerResponse struct {
+	ch <-chan PeerResponseItem
+}
+
+// Recv receives the next item (data or LOG) from the peer response.
+// Returns the item and true, or zero-value and false when the stream ends.
+func (pr *PeerResponse) Recv() (PeerResponseItem, bool) {
+	item, ok := <-pr.ch
+	return item, ok
+}
+
+// CollectBytes collects all data chunks into a single byte slice, discarding LOG frames.
+func (pr *PeerResponse) CollectBytes() ([]byte, error) {
+	var result []byte
+	for item := range pr.ch {
+		if item.LogFrame != nil {
+			continue // Discard LOG frames
+		}
+		if item.DataErr != nil {
+			return nil, item.DataErr
+		}
+		switch v := item.DataValue.(type) {
+		case []byte:
+			result = append(result, v...)
+		case string:
+			result = append(result, []byte(v)...)
+		default:
+			encoded, err := cborlib.Marshal(v)
+			if err != nil {
+				return nil, fmt.Errorf("failed to encode CBOR: %w", err)
+			}
+			result = append(result, encoded...)
+		}
+	}
+	return result, nil
+}
+
+// CollectValue collects a single CBOR data value (expects exactly one data chunk), discarding LOG frames.
+func (pr *PeerResponse) CollectValue() (interface{}, error) {
+	for item := range pr.ch {
+		if item.LogFrame != nil {
+			continue // Discard LOG frames
+		}
+		if item.DataErr != nil {
+			return nil, item.DataErr
+		}
+		return item.DataValue, nil
+	}
+	return nil, errors.New("peer response ended without data")
+}
+
+// DemuxPeerResponse converts a raw Frame channel into a PeerResponse that yields
+// PeerResponseItems (Data or Log). Returns immediately so LOG frames can be consumed
+// before data arrives (critical for keeping the engine's activity timer alive).
+func DemuxPeerResponse(rawFrames <-chan Frame) *PeerResponse {
+	itemCh := make(chan PeerResponseItem, 256)
+
+	go func() {
+		defer close(itemCh)
+		for frame := range rawFrames {
+			switch frame.FrameType {
+			case FrameTypeStreamStart:
+				// Structural frame — no item to deliver
+			case FrameTypeChunk:
+				if frame.Payload != nil {
+					// Verify checksum
+					if frame.Checksum == nil {
+						itemCh <- PeerResponseItem{
+							IsDataItem: true,
+							DataErr:    errors.New("CHUNK frame missing required checksum field"),
+						}
+						continue
+					}
+					actual := ComputeChecksum(frame.Payload)
+					if actual != *frame.Checksum {
+						itemCh <- PeerResponseItem{
+							IsDataItem: true,
+							DataErr:    fmt.Errorf("checksum mismatch: expected=%d, actual=%d", *frame.Checksum, actual),
+						}
+						continue
+					}
+					var value interface{}
+					if err := cborlib.Unmarshal(frame.Payload, &value); err != nil {
+						itemCh <- PeerResponseItem{
+							IsDataItem: true,
+							DataErr:    fmt.Errorf("CBOR decode error: %w", err),
+						}
+					} else {
+						itemCh <- PeerResponseItem{
+							IsDataItem: true,
+							DataValue:  value,
+						}
+					}
+				}
+			case FrameTypeLog:
+				f := frame // copy
+				itemCh <- PeerResponseItem{LogFrame: &f}
+			case FrameTypeStreamEnd, FrameTypeEnd:
+				return
+			case FrameTypeErr:
+				code := "UNKNOWN"
+				message := "Unknown error"
+				if c := frame.ErrorCode(); c != "" {
+					code = c
+				}
+				if m := frame.ErrorMessage(); m != "" {
+					message = m
+				}
+				itemCh <- PeerResponseItem{
+					IsDataItem: true,
+					DataErr:    fmt.Errorf("remote error: [%s] %s", code, message),
+				}
+				return
+			}
+		}
+	}()
+
+	return &PeerResponse{ch: itemCh}
+}
+
+// ProgressSender is a detached progress/log emitter that can be used from goroutines.
+//
+// Holds a *syncFrameWriter and the request routing info needed to construct LOG frames.
+// Thread-safe by construction (delegates to syncFrameWriter which has a mutex).
+type ProgressSender struct {
+	writer    *syncFrameWriter
+	requestID MessageId
+	routingId *MessageId
+}
+
+// Progress emits a progress update (0.0–1.0) with a human-readable status message.
+func (ps *ProgressSender) Progress(progress float32, message string) {
+	frame := NewProgress(ps.requestID, progress, message)
+	frame.RoutingId = ps.routingId
+	ps.writer.WriteFrame(frame)
+}
+
+// Log emits a log message.
+func (ps *ProgressSender) Log(level, message string) {
+	frame := NewLog(ps.requestID, level, message)
+	frame.RoutingId = ps.routingId
+	ps.writer.WriteFrame(frame)
+}
+
 // StreamChunk removed - handlers now receive bare CBOR Frame objects directly
 
 // HandlerFunc is the function signature for cap handlers.
@@ -633,8 +797,15 @@ func (pr *PluginRuntime) runCBORMode() error {
 			}
 
 		case FrameTypeLog:
-			// Log frames from host - shouldn't normally receive these, ignore
-			continue
+			// Route LOG frames to peer response channels.
+			// During peer calls, the peer sends LOG frames (progress, status)
+			// that the handler needs to receive in real-time for activity
+			// timeout prevention and progress forwarding.
+			idKey := frame.Id.ToString()
+			if pending, ok := pendingPeerRequests.Load(idKey); ok {
+				pendingReq := pending.(*pendingPeerRequest)
+				pendingReq.sender <- *frame
+			}
 
 		case FrameTypeStreamStart:
 			// Protocol v2: A new stream is starting for a request
@@ -1416,6 +1587,18 @@ func (e *threadSafeEmitter) Progress(progress float32, message string) {
 	frame.RoutingId = e.routingId
 	if err := e.writer.WriteFrame(frame); err != nil {
 		fmt.Fprintf(os.Stderr, "[PluginRuntime] Failed to write progress: %v\n", err)
+	}
+}
+
+// NewProgressSender creates a detached progress sender that can be used from goroutines.
+//
+// The returned ProgressSender is safe for concurrent use and can emit progress
+// and log frames from any goroutine without holding a reference to this emitter.
+func (e *threadSafeEmitter) NewProgressSender() *ProgressSender {
+	return &ProgressSender{
+		writer:    e.writer,
+		requestID: e.requestID,
+		routingId: e.routingId,
 	}
 }
 
