@@ -1,4 +1,4 @@
-// Package planner provides execution plan construction and shape analysis for cap chains.
+// Package planner provides execution plan construction and shape analysis for machines.
 package planner
 
 import (

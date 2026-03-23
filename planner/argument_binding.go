@@ -513,7 +513,7 @@ func (ab *ArgumentBindings) ResolveAll(
 	return results, nil
 }
 
-// StrandInput is the input specification for a cap chain at execution start.
+// StrandInput is the input specification for a machine at execution start.
 type StrandInput struct {
 	Files            []*CapInputFile  `json:"files"`
 	ExpectedMediaUrn string           `json:"expected_media_urn"`
