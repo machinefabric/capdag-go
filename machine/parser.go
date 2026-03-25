@@ -1,4 +1,4 @@
-package route
+package machine
 
 import (
 	"fmt"
@@ -308,7 +308,7 @@ func assignOrCheckNode(
 
 // --- Serializer methods ---
 
-// ToMachineNotation serializes this route graph to canonical one-line machine notation.
+// ToMachineNotation serializes this machine graph to canonical one-line machine notation.
 func (g *Machine) ToMachineNotation() string {
 	if g.IsEmpty() {
 		return ""

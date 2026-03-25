@@ -45,7 +45,7 @@ type ParseOrchestrationError struct {
 func (e *ParseOrchestrationError) Error() string {
 	switch e.Kind {
 	case ErrMachineSyntaxParseFailed:
-		return fmt.Sprintf("Route notation parse failed: %s", e.Message)
+		return fmt.Sprintf("Machine notation parse failed: %s", e.Message)
 	case ErrCapNotFound:
 		return fmt.Sprintf("Cap URN '%s' not found in registry", e.CapUrn)
 	case ErrNodeMediaConflict:

@@ -1,4 +1,4 @@
-package route
+package machine
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	"github.com/machinefabric/capdag-go/urn"
 )
 
-// MachineEdge represents a single edge in the route graph.
+// MachineEdge represents a single edge in the machine graph.
 //
 // Each edge represents a capability that transforms one or more source
 // media types into a target media type. The IsLoop flag indicates
@@ -96,12 +96,12 @@ type Machine struct {
 	edges []*MachineEdge
 }
 
-// NewMachine creates a new route graph from a slice of edges.
+// NewMachine creates a new machine graph from a slice of edges.
 func NewMachine(edges []*MachineEdge) *Machine {
 	return &Machine{edges: edges}
 }
 
-// EmptyMachine creates an empty route graph.
+// EmptyMachine creates an empty machine graph.
 func EmptyMachine() *Machine {
 	return &Machine{edges: nil}
 }
@@ -121,7 +121,7 @@ func (g *Machine) IsEmpty() bool {
 	return len(g.edges) == 0
 }
 
-// IsEquivalent checks if two route graphs are semantically equivalent.
+// IsEquivalent checks if two machine graphs are semantically equivalent.
 func (g *Machine) IsEquivalent(other *Machine) bool {
 	if len(g.edges) != len(other.edges) {
 		return false

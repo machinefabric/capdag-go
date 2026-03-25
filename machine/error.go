@@ -1,10 +1,10 @@
-// Package route implements machine notation — compact, round-trippable DAG path identifiers.
+// Package machine implements machine notation — compact, round-trippable DAG path identifiers.
 //
-// Route notation replaces the DOT file format for describing capability
+// Machine notation replaces the DOT file format for describing capability
 // transformation paths. It provides a typed graph model (Machine, MachineEdge)
 // with semantic equivalence, a compact textual format, and conversion from
 // resolved paths.
-package route
+package machine
 
 import "fmt"
 
@@ -95,7 +95,7 @@ func invalidMediaUrnError(alias, details string) *MachineSyntaxError {
 func noEdgesError() *MachineSyntaxError {
 	return &MachineSyntaxError{
 		Kind:    ErrNoEdges,
-		Message: "route has headers but no wirings — define at least one edge",
+		Message: "machine has headers but no wirings — define at least one edge",
 	}
 }
 

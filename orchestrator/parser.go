@@ -7,12 +7,12 @@ import (
 	peg "github.com/yhirose/go-peg"
 
 	"github.com/machinefabric/capdag-go/planner"
-	"github.com/machinefabric/capdag-go/route"
+	"github.com/machinefabric/capdag-go/machine"
 	"github.com/machinefabric/capdag-go/urn"
 )
 
-// goPegGrammar is the same grammar used by the route parser.
-// Duplicated here because the route parser doesn't export it.
+// orchestratorPegGrammar is the same grammar used by the machine parser.
+// Duplicated here because the machine parser doesn't export it.
 const orchestratorPegGrammar = `
   program     <- stmt* !.
   stmt        <- '[' inner ']'
@@ -68,7 +68,7 @@ func checkStructureCompatibility(source, target *urn.MediaUrn, nodeName string) 
 // compatibility (record vs opaque) are validated at each node.
 func ParseMachineToCapDag(machineStr string, registry CapRegistryTrait) (*ResolvedGraph, error) {
 	// Step 1: Parse machine notation into a Machine.
-	machine, err := route.ParseMachine(machineStr)
+	machine, err := machine.ParseMachine(machineStr)
 	if err != nil {
 		return nil, machineNotationParseFailedError(err.Error())
 	}
@@ -82,7 +82,7 @@ func ParseMachineToCapDag(machineStr string, registry CapRegistryTrait) (*Resolv
 	// Validate that wiring count matches edge count.
 	if len(wirings) != machine.EdgeCount() {
 		return nil, machineNotationParseFailedError(fmt.Sprintf(
-			"internal error: %d wirings but %d edges — route parser edge ordering invariant violated",
+			"internal error: %d wirings but %d edges — machine parser edge ordering invariant violated",
 			len(wirings), machine.EdgeCount()))
 	}
 
