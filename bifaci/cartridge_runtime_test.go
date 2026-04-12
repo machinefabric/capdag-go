@@ -18,7 +18,7 @@ import (
 	cborlib "github.com/fxamacker/cbor/v2"
 )
 
-const testManifest = `{"name":"TestPlugin","version":"1.0.0","description":"Test plugin","caps":[{"urn":"cap:in=\"media:void\";op=test;out=\"media:void\"","title":"Test","command":"test"}]}`
+const testManifest = `{"name":"TestCartridge","version":"1.0.0","description":"Test cartridge","caps":[{"urn":"cap:in=\"media:void\";op=test;out=\"media:void\"","title":"Test","command":"test"}]}`
 
 // Mock emitter that captures emitted data for testing
 type mockStreamEmitter struct {
@@ -97,7 +97,7 @@ func bytesToFrameChannel(payload []byte) <-chan Frame {
 
 // TEST248: Test register handler by exact cap URN and find it by the same URN
 func Test248_register_and_find_handler(t *testing.T) {
-	runtime, err := NewPluginRuntime([]byte(testManifest))
+	runtime, err := NewCartridgeRuntime([]byte(testManifest))
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -115,7 +115,7 @@ func Test248_register_and_find_handler(t *testing.T) {
 
 // TEST249: Test register_raw handler works with bytes directly without deserialization
 func Test249_raw_handler(t *testing.T) {
-	runtime, err := NewPluginRuntime([]byte(testManifest))
+	runtime, err := NewCartridgeRuntime([]byte(testManifest))
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -153,7 +153,7 @@ func Test249_raw_handler(t *testing.T) {
 
 // TEST250: Test register typed handler deserializes JSON and executes correctly
 func Test250_typed_handler_deserialization(t *testing.T) {
-	runtime, err := NewPluginRuntime([]byte(testManifest))
+	runtime, err := NewCartridgeRuntime([]byte(testManifest))
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -193,7 +193,7 @@ func Test250_typed_handler_deserialization(t *testing.T) {
 
 // TEST251: Test typed handler returns error for invalid JSON input
 func Test251_typed_handler_rejects_invalid_json(t *testing.T) {
-	runtime, err := NewPluginRuntime([]byte(testManifest))
+	runtime, err := NewCartridgeRuntime([]byte(testManifest))
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -222,7 +222,7 @@ func Test251_typed_handler_rejects_invalid_json(t *testing.T) {
 
 // TEST252: Test find_handler returns None for unregistered cap URNs
 func Test252_find_handler_unknown_cap(t *testing.T) {
-	runtime, err := NewPluginRuntime([]byte(testManifest))
+	runtime, err := NewCartridgeRuntime([]byte(testManifest))
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -235,7 +235,7 @@ func Test252_find_handler_unknown_cap(t *testing.T) {
 
 // TEST253: Test handler function can be cloned via Arc and sent across threads (Send + Sync)
 func Test253_handler_is_send_sync(t *testing.T) {
-	runtime, err := NewPluginRuntime([]byte(testManifest))
+	runtime, err := NewCartridgeRuntime([]byte(testManifest))
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -295,9 +295,9 @@ func Test255_no_peer_invoker_with_arguments(t *testing.T) {
 	}
 }
 
-// TEST256: Test NewPluginRuntime stores manifest data and parses when valid
-func Test256_new_plugin_runtime_with_valid_json(t *testing.T) {
-	runtime, err := NewPluginRuntime([]byte(testManifest))
+// TEST256: Test NewCartridgeRuntime stores manifest data and parses when valid
+func Test256_new_cartridge_runtime_with_valid_json(t *testing.T) {
+	runtime, err := NewCartridgeRuntime([]byte(testManifest))
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -310,9 +310,9 @@ func Test256_new_plugin_runtime_with_valid_json(t *testing.T) {
 	}
 }
 
-// TEST257: Test NewPluginRuntime with invalid JSON still creates runtime (manifest is None)
-func Test257_new_plugin_runtime_with_invalid_json(t *testing.T) {
-	runtime, err := NewPluginRuntime([]byte("not json"))
+// TEST257: Test NewCartridgeRuntime with invalid JSON still creates runtime (manifest is None)
+func Test257_new_cartridge_runtime_with_invalid_json(t *testing.T) {
+	runtime, err := NewCartridgeRuntime([]byte("not json"))
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -325,14 +325,14 @@ func Test257_new_plugin_runtime_with_invalid_json(t *testing.T) {
 	}
 }
 
-// TEST258: Test NewPluginRuntimeWithManifest creates runtime with valid manifest data
-func Test258_new_plugin_runtime_with_manifest_struct(t *testing.T) {
+// TEST258: Test NewCartridgeRuntimeWithManifest creates runtime with valid manifest data
+func Test258_new_cartridge_runtime_with_manifest_struct(t *testing.T) {
 	var manifest CapManifest
 	if err := json.Unmarshal([]byte(testManifest), &manifest); err != nil {
 		t.Fatalf("Failed to parse test manifest: %v", err)
 	}
 
-	runtime, err := NewPluginRuntimeWithManifest(&manifest)
+	runtime, err := NewCartridgeRuntimeWithManifest(&manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -429,7 +429,7 @@ func Test265_extract_effective_payload_invalid_cap_urn(t *testing.T) {
 
 // TEST270: Test registering multiple handlers for different caps and finding each independently
 func Test270_multiple_handlers(t *testing.T) {
-	runtime, err := NewPluginRuntime([]byte(testManifest))
+	runtime, err := NewCartridgeRuntime([]byte(testManifest))
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -479,7 +479,7 @@ func Test270_multiple_handlers(t *testing.T) {
 
 // TEST271: Test handler replacing an existing registration for the same cap URN
 func Test271_handler_replacement(t *testing.T) {
-	runtime, err := NewPluginRuntime([]byte(testManifest))
+	runtime, err := NewCartridgeRuntime([]byte(testManifest))
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -536,19 +536,19 @@ func TestExtractEffectivePayloadBinaryValue(t *testing.T) {
 }
 
 // Helper function to create runtime errors (for TEST268)
-func NewPluginRuntimeError(errorType, message string) error {
-	return &PluginRuntimeError{
+func NewCartridgeRuntimeError(errorType, message string) error {
+	return &CartridgeRuntimeError{
 		Type:    errorType,
 		Message: message,
 	}
 }
 
-type PluginRuntimeError struct {
+type CartridgeRuntimeError struct {
 	Type    string
 	Message string
 }
 
-func (e *PluginRuntimeError) Error() string {
+func (e *CartridgeRuntimeError) Error() string {
 	return e.Type + ": " + e.Message
 }
 
@@ -618,8 +618,8 @@ func Test336FilePathReadsFilePassesBytes(t *testing.T) {
 		},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -692,8 +692,8 @@ func Test337FilePathWithoutStdinPassesString(t *testing.T) {
 		},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -734,8 +734,8 @@ func Test338FilePathViaCliFlag(t *testing.T) {
 		},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -783,8 +783,8 @@ func Test339FilePathArrayGlobExpansion(t *testing.T) {
 		},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -837,8 +837,8 @@ func Test340FileNotFoundClearError(t *testing.T) {
 		},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -882,8 +882,8 @@ func Test341StdinPrecedenceOverFilePath(t *testing.T) {
 		},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -924,8 +924,8 @@ func Test342FilePathPositionZeroReadsFirstArg(t *testing.T) {
 		},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -959,8 +959,8 @@ func Test343NonFilePathArgsUnaffected(t *testing.T) {
 		},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -995,8 +995,8 @@ func Test344FilePathArrayInvalidJSONFails(t *testing.T) {
 		},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -1041,8 +1041,8 @@ func Test345FilePathArrayOneFileMissingFailsHard(t *testing.T) {
 		},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -1091,8 +1091,8 @@ func Test346LargeFileReadsSuccessfully(t *testing.T) {
 		},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -1131,8 +1131,8 @@ func Test347EmptyFileReadsAsEmptyBytes(t *testing.T) {
 		},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -1172,8 +1172,8 @@ func Test348FilePathConversionRespectsSourceOrder(t *testing.T) {
 		},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -1215,8 +1215,8 @@ func Test349FilePathMultipleSourcesFallback(t *testing.T) {
 		},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -1257,8 +1257,8 @@ func Test350FullCLIModeWithFilePathIntegration(t *testing.T) {
 		},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -1327,8 +1327,8 @@ func Test351FilePathArrayEmptyArray(t *testing.T) {
 		},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -1383,8 +1383,8 @@ func Test352FilePermissionDeniedClearError(t *testing.T) {
 		},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -1418,8 +1418,8 @@ func Test353CBORPayloadFormatConsistency(t *testing.T) {
 		},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -1478,8 +1478,8 @@ func Test354GlobPatternNoMatchesEmptyArray(t *testing.T) {
 		},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -1538,8 +1538,8 @@ func Test355GlobPatternSkipsDirectories(t *testing.T) {
 		},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -1602,8 +1602,8 @@ func Test356MultipleGlobPatternsCombined(t *testing.T) {
 		},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -1676,8 +1676,8 @@ func Test357SymlinksFollowed(t *testing.T) {
 		},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -1717,8 +1717,8 @@ func Test358BinaryFileNonUTF8(t *testing.T) {
 		},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -1757,8 +1757,8 @@ func Test359InvalidGlobPatternFails(t *testing.T) {
 		},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -1801,8 +1801,8 @@ func Test360ExtractEffectivePayloadWithFileData(t *testing.T) {
 		},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -1852,8 +1852,8 @@ func Test361CLIModeFilePath(t *testing.T) {
 		},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -1907,8 +1907,8 @@ func Test362CLIModePipedBinary(t *testing.T) {
 		},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -2029,8 +2029,8 @@ func Test363CBORModeChunkedContent(t *testing.T) {
 		},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -2177,8 +2177,8 @@ func Test395BuildPayloadSmall(t *testing.T) {
 		[]cap.CapArg{},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -2226,8 +2226,8 @@ func Test396BuildPayloadLarge(t *testing.T) {
 		[]cap.CapArg{},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -2270,8 +2270,8 @@ func Test397BuildPayloadEmpty(t *testing.T) {
 		[]cap.CapArg{},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
@@ -2313,8 +2313,8 @@ func Test398BuildPayloadIOError(t *testing.T) {
 		[]cap.CapArg{},
 	)
 
-	manifest := createTestManifest("TestPlugin", "1.0.0", "Test", []*cap.Cap{capDef})
-	runtime, err := NewPluginRuntimeWithManifest(manifest)
+	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{capDef})
+	runtime, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}

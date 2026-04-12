@@ -42,7 +42,7 @@ type MessageId = bifaci.MessageId
 type Limits = bifaci.Limits
 type FrameReader = bifaci.FrameReader
 type FrameWriter = bifaci.FrameWriter
-type PluginRuntime = bifaci.PluginRuntime
+type CartridgeRuntime = bifaci.CartridgeRuntime
 type StreamEmitter = bifaci.StreamEmitter
 type PeerInvoker = bifaci.PeerInvoker
 type HandlerFunc = bifaci.HandlerFunc
@@ -53,7 +53,7 @@ var NewMessageIdFromUint = bifaci.NewMessageIdFromUint
 var NewMessageIdRandom = bifaci.NewMessageIdRandom
 var NewFrameReader = bifaci.NewFrameReader
 var NewFrameWriter = bifaci.NewFrameWriter
-var NewPluginRuntime = bifaci.NewPluginRuntime
+var NewCartridgeRuntime = bifaci.NewCartridgeRuntime
 var NewCapManifest = bifaci.NewCapManifest
 var DecodeChunkPayload = bifaci.DecodeChunkPayload
 

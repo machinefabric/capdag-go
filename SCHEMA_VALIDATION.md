@@ -1,4 +1,4 @@
-# JSON Schema Validation for capdag-go and machfab-plugin-sdk-go
+# JSON Schema Validation for capdag-go and machfab-cartridge-sdk-go
 
 This document describes the comprehensive JSON Schema validation system implemented for the Go SDKs to match the capabilities of the Rust implementation.
 
@@ -56,22 +56,22 @@ Updated validation infrastructure:
 New validation error type:
 - `SchemaValidationFailed` - Added to existing `ValidationError` types
 
-### 4. Plugin SDK Integration
+### 4. Cartridge SDK Integration
 
-**File: `machfab-plugin-sdk-go/sdk.go`**
+**File: `machfab-cartridge-sdk-go/sdk.go`**
 
 Re-exported all new types and constructors:
 - Schema validation types (`SchemaValidator`, `SchemaValidationError`, etc.)
 - Schema-enabled constructors
 - Argument and output type constants
-- Full compatibility with existing plugin development workflows
+- Full compatibility with existing cartridge development workflows
 
 ## Usage Examples
 
 ### Basic Schema Validation
 
 ```go
-import sdk "github.com/machinefabric/machfab-plugin-sdk-go"
+import sdk "github.com/machinefabric/machfab-cartridge-sdk-go"
 
 // Create capability with embedded schema
 schema := map[string]interface{}{
@@ -176,7 +176,7 @@ Comprehensive test coverage includes:
 
 **Example files:**
 - `examples/example_schema_usage.go` - Basic usage examples
-- `examples/plugin_sdk_example.go` - Complete plugin SDK integration example
+- `examples/cartridge_sdk_example.go` - Complete cartridge SDK integration example
 
 ## Dependencies
 
@@ -189,7 +189,7 @@ The implementation is fully backward compatible:
 - Existing capabilities without schemas continue to work unchanged
 - New schema features are opt-in
 - All existing validation continues to work as before
-- Plugin SDK maintains all existing APIs
+- Cartridge SDK maintains all existing APIs
 
 ## Expected Functionality
 

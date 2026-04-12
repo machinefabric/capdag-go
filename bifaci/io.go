@@ -155,7 +155,7 @@ func (fw *FrameWriter) WriteResponseWithChunking(requestId MessageId, streamId s
 	return nil
 }
 
-// HandshakeAccept performs handshake from plugin side
+// HandshakeAccept performs handshake from cartridge side
 func HandshakeAccept(reader *FrameReader, writer *FrameWriter, manifestData []byte) (Limits, error) {
 	// 1. Read HELLO from host
 	helloFrame, err := reader.ReadFrame()
@@ -219,22 +219,22 @@ func HandshakeInitiate(reader *FrameReader, writer *FrameWriter) ([]byte, Limits
 		}
 	}
 
-	// 4. Extract plugin limits from Meta map
-	var pluginLimits Limits
+	// 4. Extract cartridge limits from Meta map
+	var cartridgeLimits Limits
 	if responseFrame.Meta != nil {
-		pluginLimits.MaxFrame = extractIntFromMeta(responseFrame.Meta, "max_frame")
-		pluginLimits.MaxChunk = extractIntFromMeta(responseFrame.Meta, "max_chunk")
-		pluginLimits.MaxReorderBuffer = extractIntFromMeta(responseFrame.Meta, "max_reorder_buffer")
+		cartridgeLimits.MaxFrame = extractIntFromMeta(responseFrame.Meta, "max_frame")
+		cartridgeLimits.MaxChunk = extractIntFromMeta(responseFrame.Meta, "max_chunk")
+		cartridgeLimits.MaxReorderBuffer = extractIntFromMeta(responseFrame.Meta, "max_reorder_buffer")
 	}
-	if pluginLimits.MaxFrame == 0 || pluginLimits.MaxChunk == 0 {
-		pluginLimits = DefaultLimits()
+	if cartridgeLimits.MaxFrame == 0 || cartridgeLimits.MaxChunk == 0 {
+		cartridgeLimits = DefaultLimits()
 	}
-	if pluginLimits.MaxReorderBuffer == 0 {
-		pluginLimits.MaxReorderBuffer = DefaultMaxReorderBuffer
+	if cartridgeLimits.MaxReorderBuffer == 0 {
+		cartridgeLimits.MaxReorderBuffer = DefaultMaxReorderBuffer
 	}
 
 	// 5. Negotiate limits
-	negotiated := NegotiateLimits(DefaultLimits(), pluginLimits)
+	negotiated := NegotiateLimits(DefaultLimits(), cartridgeLimits)
 
 	return manifestData, negotiated, nil
 }

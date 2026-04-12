@@ -305,11 +305,11 @@ func TestCapManifestCompatibility(t *testing.T) {
 	require.NoError(t, err)
 	capDef := cap.NewCap(id, "Data Processor", "process")
 
-	// Create manifest similar to what a plugin would have
-	pluginStyleManifest := NewCapManifest(
-		"PluginComponent",
+	// Create manifest similar to what a cartridge would have
+	cartridgeStyleManifest := NewCapManifest(
+		"CartridgeComponent",
 		"0.1.0",
-		"Plugin-style component",
+		"Cartridge-style component",
 		[]cap.Cap{*capDef},
 	)
 
@@ -322,34 +322,34 @@ func TestCapManifestCompatibility(t *testing.T) {
 	)
 
 	// Both should serialize to the same structure
-	pluginJSON, err := json.Marshal(pluginStyleManifest)
+	cartridgeJSON, err := json.Marshal(cartridgeStyleManifest)
 	require.NoError(t, err)
 
 	providerJSON, err := json.Marshal(providerStyleManifest)
 	require.NoError(t, err)
 
 	// Structure should be identical (except for name/description)
-	var pluginMap map[string]interface{}
+	var cartridgeMap map[string]interface{}
 	var providerMap map[string]interface{}
 
-	err = json.Unmarshal(pluginJSON, &pluginMap)
+	err = json.Unmarshal(cartridgeJSON, &cartridgeMap)
 	require.NoError(t, err)
 
 	err = json.Unmarshal(providerJSON, &providerMap)
 	require.NoError(t, err)
 
 	// Same structure
-	assert.Equal(t, len(pluginMap), len(providerMap))
-	assert.Contains(t, pluginMap, "name")
-	assert.Contains(t, pluginMap, "version")
-	assert.Contains(t, pluginMap, "description")
-	assert.Contains(t, pluginMap, "caps")
+	assert.Equal(t, len(cartridgeMap), len(providerMap))
+	assert.Contains(t, cartridgeMap, "name")
+	assert.Contains(t, cartridgeMap, "version")
+	assert.Contains(t, cartridgeMap, "description")
+	assert.Contains(t, cartridgeMap, "caps")
 
 	// Same field types
-	assert.IsType(t, providerMap["name"], pluginMap["name"])
-	assert.IsType(t, providerMap["version"], pluginMap["version"])
-	assert.IsType(t, providerMap["description"], pluginMap["description"])
-	assert.IsType(t, providerMap["caps"], pluginMap["caps"])
+	assert.IsType(t, providerMap["name"], cartridgeMap["name"])
+	assert.IsType(t, providerMap["version"], cartridgeMap["version"])
+	assert.IsType(t, providerMap["description"], cartridgeMap["description"])
+	assert.IsType(t, providerMap["caps"], cartridgeMap["caps"])
 }
 
 // TEST475: CapManifest.Validate() passes when CAP_IDENTITY is present
@@ -358,7 +358,7 @@ func Test475_validate_passes_with_identity(t *testing.T) {
 	require.NoError(t, err)
 	identityCap := cap.NewCap(identityUrn, "Identity", "identity")
 
-	manifest := NewCapManifest("TestPlugin", "1.0.0", "Test", []cap.Cap{*identityCap})
+	manifest := NewCapManifest("TestCartridge", "1.0.0", "Test", []cap.Cap{*identityCap})
 	err = manifest.Validate()
 	assert.NoError(t, err, "Manifest with CAP_IDENTITY must validate")
 }
@@ -369,7 +369,7 @@ func Test476_validate_fails_without_identity(t *testing.T) {
 	require.NoError(t, err)
 	specificCap := cap.NewCap(specificUrn, "Convert", "convert")
 
-	manifest := NewCapManifest("TestPlugin", "1.0.0", "Test", []cap.Cap{*specificCap})
+	manifest := NewCapManifest("TestCartridge", "1.0.0", "Test", []cap.Cap{*specificCap})
 	err = manifest.Validate()
 	require.Error(t, err, "Manifest without CAP_IDENTITY must fail validation")
 	assert.Contains(t, err.Error(), "CAP_IDENTITY")

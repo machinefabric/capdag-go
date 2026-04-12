@@ -11,9 +11,9 @@ import (
 func main() {
 	// Create manifest
 	manifest := capdag.NewCapManifest(
-		"testplugin",
+		"testcartridge",
 		"1.0.0",
-		"Test plugin for Go",
+		"Test cartridge for Go",
 		[]capdag.Cap{
 			{
 				Urn:     mustParseCapUrn(capdag.CapIdentity),
@@ -29,7 +29,7 @@ func main() {
 	)
 
 	// Create runtime
-	runtime, err := capdag.NewPluginRuntimeWithManifest(manifest)
+	runtime, err := capdag.NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create runtime: %v\n", err)
 		os.Exit(1)

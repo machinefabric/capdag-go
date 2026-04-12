@@ -37,8 +37,8 @@ func (e *RelayError) Error() string {
 }
 
 // RelaySlave is the slave endpoint of the CBOR frame relay.
-// Sits inside the plugin host process. Bridges between a socket connection
-// (to the RelayMaster in the engine) and local I/O (to/from the plugin host runtime).
+// Sits inside the cartridge host process. Bridges between a socket connection
+// (to the RelayMaster in the engine) and local I/O (to/from the cartridge host runtime).
 //
 // Two relay-specific frame types are intercepted and never leaked through:
 // - RelayNotify (slave -> master): Capability advertisement
@@ -52,7 +52,7 @@ type RelaySlave struct {
 	resourceStateMu sync.Mutex
 }
 
-// NewRelaySlave creates a new relay slave with local I/O streams (to/from PluginHostRuntime).
+// NewRelaySlave creates a new relay slave with local I/O streams (to/from CartridgeHostRuntime).
 func NewRelaySlave(localRead io.Reader, localWrite io.Writer) *RelaySlave {
 	return &RelaySlave{
 		localReader:   NewFrameReader(localRead),
@@ -173,7 +173,7 @@ type RelayNotifyParams struct {
 }
 
 // SendNotify sends a RelayNotify frame to the socket writer.
-// Used when capabilities change (plugin discovered, plugin died).
+// Used when capabilities change (cartridge discovered, cartridge died).
 func SendNotify(socketWriter *FrameWriter, manifest []byte, limits Limits) error {
 	frame := NewRelayNotify(manifest, limits.MaxFrame, limits.MaxChunk, limits.MaxReorderBuffer)
 	return socketWriter.WriteFrame(frame)

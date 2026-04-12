@@ -52,7 +52,7 @@ type capSetEntry struct {
 	capabilities []*cap.Cap
 }
 
-// CapMatrix provides unified registry for cap sets (providers and plugins)
+// CapMatrix provides unified registry for cap sets (providers and cartridges)
 type CapMatrix struct {
 	sets map[string]*capSetEntry
 }

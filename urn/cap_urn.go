@@ -1,5 +1,5 @@
 // Package capdag provides the fundamental cap URN system used across
-// all MACINA plugins and providers. It defines the formal structure for cap
+// all MACINA cartridges and providers. It defines the formal structure for cap
 // identifiers with flat tag-based naming, pattern matching, and graded specificity.
 //
 // Cap URN matching semantics:

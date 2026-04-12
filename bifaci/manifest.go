@@ -26,7 +26,7 @@ type CapManifest struct {
 	// Component author/maintainer
 	Author *string `json:"author,omitempty"`
 
-	// Human-readable page URL for the plugin (e.g., repository page, documentation)
+	// Human-readable page URL for the cartridge (e.g., repository page, documentation)
 	PageUrl *string `json:"page_url,omitempty"`
 }
 
@@ -46,7 +46,7 @@ func (cm *CapManifest) WithAuthor(author string) *CapManifest {
 	return cm
 }
 
-// WithPageUrl sets the page URL for the plugin (human-readable page, e.g., repository)
+// WithPageUrl sets the page URL for the cartridge (human-readable page, e.g., repository)
 func (cm *CapManifest) WithPageUrl(pageUrl string) *CapManifest {
 	cm.PageUrl = &pageUrl
 	return cm

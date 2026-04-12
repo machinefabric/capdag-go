@@ -4,23 +4,23 @@ import (
 	"testing"
 )
 
-// TEST320: Construct PluginInfo and verify fields
-func Test320_plugin_info_construction(t *testing.T) {
-	// TEST320: Construct PluginInfo and verify fields
-	plugin := PluginInfo{
-		Id:                "testplugin",
-		Name:              "Test Plugin",
+// TEST320: Construct CartridgeInfo and verify fields
+func Test320_cartridge_info_construction(t *testing.T) {
+	// TEST320: Construct CartridgeInfo and verify fields
+	cartridge := CartridgeInfo{
+		Id:                "testcartridge",
+		Name:              "Test Cartridge",
 		Version:           "1.0.0",
-		Description:       "A test plugin",
+		Description:       "A test cartridge",
 		Author:            "Test Author",
 		Homepage:          "https://example.com",
 		TeamId:            "TEAM123",
 		SignedAt:          "2026-02-07T00:00:00Z",
 		MinAppVersion:     "1.0.0",
-		PageUrl:           "https://example.com/plugin",
+		PageUrl:           "https://example.com/cartridge",
 		Categories:        []string{"test"},
 		Tags:              []string{"testing"},
-		Caps:              []PluginCapSummary{},
+		Caps:              []CartridgeCapSummary{},
 		Platform:          "darwin-arm64",
 		PackageName:       "test-1.0.0.pkg",
 		PackageSha256:     "abc123",
@@ -32,22 +32,22 @@ func Test320_plugin_info_construction(t *testing.T) {
 		AvailableVersions: []string{"1.0.0"},
 	}
 
-	if plugin.Id != "testplugin" {
-		t.Errorf("Expected id 'testplugin', got '%s'", plugin.Id)
+	if cartridge.Id != "testcartridge" {
+		t.Errorf("Expected id 'testcartridge', got '%s'", cartridge.Id)
 	}
-	if plugin.Name != "Test Plugin" {
-		t.Errorf("Expected name 'Test Plugin', got '%s'", plugin.Name)
+	if cartridge.Name != "Test Cartridge" {
+		t.Errorf("Expected name 'Test Cartridge', got '%s'", cartridge.Name)
 	}
-	if plugin.Version != "1.0.0" {
-		t.Errorf("Expected version '1.0.0', got '%s'", plugin.Version)
+	if cartridge.Version != "1.0.0" {
+		t.Errorf("Expected version '1.0.0', got '%s'", cartridge.Version)
 	}
 }
 
 // TEST321: Verify IsSigned() method
-func Test321_plugin_info_is_signed(t *testing.T) {
+func Test321_cartridge_info_is_signed(t *testing.T) {
 	// TEST321: Verify IsSigned() method
-	plugin := PluginInfo{
-		Id:                "testplugin",
+	cartridge := CartridgeInfo{
+		Id:                "testcartridge",
 		Name:              "Test",
 		Version:           "1.0.0",
 		Description:       "",
@@ -59,7 +59,7 @@ func Test321_plugin_info_is_signed(t *testing.T) {
 		PageUrl:           "",
 		Categories:        []string{},
 		Tags:              []string{},
-		Caps:              []PluginCapSummary{},
+		Caps:              []CartridgeCapSummary{},
 		Platform:          "",
 		PackageName:       "",
 		PackageSha256:     "",
@@ -71,27 +71,27 @@ func Test321_plugin_info_is_signed(t *testing.T) {
 		AvailableVersions: []string{},
 	}
 
-	if !plugin.IsSigned() {
-		t.Error("Expected plugin to be signed")
+	if !cartridge.IsSigned() {
+		t.Error("Expected cartridge to be signed")
 	}
 
-	plugin.TeamId = ""
-	if plugin.IsSigned() {
-		t.Error("Expected plugin not to be signed when team_id is empty")
+	cartridge.TeamId = ""
+	if cartridge.IsSigned() {
+		t.Error("Expected cartridge not to be signed when team_id is empty")
 	}
 
-	plugin.TeamId = "TEAM123"
-	plugin.SignedAt = ""
-	if plugin.IsSigned() {
-		t.Error("Expected plugin not to be signed when signed_at is empty")
+	cartridge.TeamId = "TEAM123"
+	cartridge.SignedAt = ""
+	if cartridge.IsSigned() {
+		t.Error("Expected cartridge not to be signed when signed_at is empty")
 	}
 }
 
 // TEST322: Verify HasBinary() method
-func Test322_plugin_info_has_binary(t *testing.T) {
+func Test322_cartridge_info_has_binary(t *testing.T) {
 	// TEST322: Verify HasBinary() method
-	plugin := PluginInfo{
-		Id:                "testplugin",
+	cartridge := CartridgeInfo{
+		Id:                "testcartridge",
 		Name:              "Test",
 		Version:           "1.0.0",
 		Description:       "",
@@ -103,7 +103,7 @@ func Test322_plugin_info_has_binary(t *testing.T) {
 		PageUrl:           "",
 		Categories:        []string{},
 		Tags:              []string{},
-		Caps:              []PluginCapSummary{},
+		Caps:              []CartridgeCapSummary{},
 		Platform:          "",
 		PackageName:       "",
 		PackageSha256:     "",
@@ -115,32 +115,32 @@ func Test322_plugin_info_has_binary(t *testing.T) {
 		AvailableVersions: []string{},
 	}
 
-	if !plugin.HasBinary() {
-		t.Error("Expected plugin to have binary")
+	if !cartridge.HasBinary() {
+		t.Error("Expected cartridge to have binary")
 	}
 
-	plugin.BinaryName = ""
-	if plugin.HasBinary() {
-		t.Error("Expected plugin not to have binary when binary_name is empty")
+	cartridge.BinaryName = ""
+	if cartridge.HasBinary() {
+		t.Error("Expected cartridge not to have binary when binary_name is empty")
 	}
 
-	plugin.BinaryName = "test-1.0.0"
-	plugin.BinarySha256 = ""
-	if plugin.HasBinary() {
-		t.Error("Expected plugin not to have binary when binary_sha256 is empty")
+	cartridge.BinaryName = "test-1.0.0"
+	cartridge.BinarySha256 = ""
+	if cartridge.HasBinary() {
+		t.Error("Expected cartridge not to have binary when binary_sha256 is empty")
 	}
 }
 
 // TEST323: Validate registry schema version
-func Test323_plugin_repo_server_validate_registry(t *testing.T) {
+func Test323_cartridge_repo_server_validate_registry(t *testing.T) {
 	// TEST323: Validate registry schema version
-	registry := PluginRegistryV3{
+	registry := CartridgeRegistryV3{
 		SchemaVersion: "3.0",
 		LastUpdated:   "2026-02-07",
-		Plugins:       make(map[string]PluginRegistryEntry),
+		Cartridges:    make(map[string]CartridgeRegistryEntry),
 	}
 
-	server, err := NewPluginRepoServer(registry)
+	server, err := NewCartridgeRepoServer(registry)
 	if err != nil {
 		t.Errorf("Expected no error for v3.0, got %v", err)
 	}
@@ -149,13 +149,13 @@ func Test323_plugin_repo_server_validate_registry(t *testing.T) {
 	}
 
 	// Test v2.0 schema rejection
-	oldRegistry := PluginRegistryV3{
+	oldRegistry := CartridgeRegistryV3{
 		SchemaVersion: "2.0",
 		LastUpdated:   "2026-02-07",
-		Plugins:       make(map[string]PluginRegistryEntry),
+		Cartridges:    make(map[string]CartridgeRegistryEntry),
 	}
 
-	server, err = NewPluginRepoServer(oldRegistry)
+	server, err = NewCartridgeRepoServer(oldRegistry)
 	if err == nil {
 		t.Error("Expected error for v2.0 schema")
 	}
@@ -164,358 +164,358 @@ func Test323_plugin_repo_server_validate_registry(t *testing.T) {
 	}
 }
 
-// TEST324: Transform v3 registry to flat plugin array
-func Test324_plugin_repo_server_transform_to_array(t *testing.T) {
-	// TEST324: Transform v3 registry to flat plugin array
-	plugins := make(map[string]PluginRegistryEntry)
-	versions := make(map[string]PluginVersionData)
+// TEST324: Transform v3 registry to flat cartridge array
+func Test324_cartridge_repo_server_transform_to_array(t *testing.T) {
+	// TEST324: Transform v3 registry to flat cartridge array
+	cartridges := make(map[string]CartridgeRegistryEntry)
+	versions := make(map[string]CartridgeVersionData)
 
-	versions["1.0.0"] = PluginVersionData{
+	versions["1.0.0"] = CartridgeVersionData{
 		ReleaseDate:   "2026-02-07",
 		Changelog:     []string{"Initial release"},
 		MinAppVersion: "1.0.0",
 		Platform:      "darwin-arm64",
-		Package: PluginDistributionInfo{
+		Package: CartridgeDistributionInfo{
 			Name:   "test-1.0.0.pkg",
 			Sha256: "abc123",
 			Size:   1000,
 		},
-		Binary: PluginDistributionInfo{
+		Binary: CartridgeDistributionInfo{
 			Name:   "test-1.0.0-darwin-arm64",
 			Sha256: "def456",
 			Size:   2000,
 		},
 	}
 
-	plugins["testplugin"] = PluginRegistryEntry{
-		Name:          "Test Plugin",
-		Description:   "A test plugin",
+	cartridges["testcartridge"] = CartridgeRegistryEntry{
+		Name:          "Test Cartridge",
+		Description:   "A test cartridge",
 		Author:        "Test Author",
 		PageUrl:       "https://example.com",
 		TeamId:        "TEAM123",
 		MinAppVersion: "1.0.0",
-		Caps:          []PluginCapSummary{},
+		Caps:          []CartridgeCapSummary{},
 		Categories:    []string{"test"},
 		Tags:          []string{"testing"},
 		LatestVersion: "1.0.0",
 		Versions:      versions,
 	}
 
-	registry := PluginRegistryV3{
+	registry := CartridgeRegistryV3{
 		SchemaVersion: "3.0",
 		LastUpdated:   "2026-02-07",
-		Plugins:       plugins,
+		Cartridges:    cartridges,
 	}
 
-	server, err := NewPluginRepoServer(registry)
+	server, err := NewCartridgeRepoServer(registry)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
 
-	pluginsArray, err := server.TransformToPluginArray()
+	cartridgesArray, err := server.TransformToCartridgeArray()
 	if err != nil {
 		t.Fatalf("Failed to transform: %v", err)
 	}
 
-	if len(pluginsArray) != 1 {
-		t.Fatalf("Expected 1 plugin, got %d", len(pluginsArray))
+	if len(cartridgesArray) != 1 {
+		t.Fatalf("Expected 1 cartridge, got %d", len(cartridgesArray))
 	}
-	if pluginsArray[0].Id != "testplugin" {
-		t.Errorf("Expected id 'testplugin', got '%s'", pluginsArray[0].Id)
+	if cartridgesArray[0].Id != "testcartridge" {
+		t.Errorf("Expected id 'testcartridge', got '%s'", cartridgesArray[0].Id)
 	}
-	if pluginsArray[0].Name != "Test Plugin" {
-		t.Errorf("Expected name 'Test Plugin', got '%s'", pluginsArray[0].Name)
+	if cartridgesArray[0].Name != "Test Cartridge" {
+		t.Errorf("Expected name 'Test Cartridge', got '%s'", cartridgesArray[0].Name)
 	}
-	if pluginsArray[0].Version != "1.0.0" {
-		t.Errorf("Expected version '1.0.0', got '%s'", pluginsArray[0].Version)
+	if cartridgesArray[0].Version != "1.0.0" {
+		t.Errorf("Expected version '1.0.0', got '%s'", cartridgesArray[0].Version)
 	}
-	if pluginsArray[0].BinaryName != "test-1.0.0-darwin-arm64" {
-		t.Errorf("Expected binary_name 'test-1.0.0-darwin-arm64', got '%s'", pluginsArray[0].BinaryName)
+	if cartridgesArray[0].BinaryName != "test-1.0.0-darwin-arm64" {
+		t.Errorf("Expected binary_name 'test-1.0.0-darwin-arm64', got '%s'", cartridgesArray[0].BinaryName)
 	}
 }
 
-// TEST325: Get all plugins via GetPlugins()
-func Test325_plugin_repo_server_get_plugins(t *testing.T) {
-	// TEST325: Get all plugins via GetPlugins()
-	plugins := make(map[string]PluginRegistryEntry)
-	versions := make(map[string]PluginVersionData)
+// TEST325: Get all cartridges via GetCartridges()
+func Test325_cartridge_repo_server_get_cartridges(t *testing.T) {
+	// TEST325: Get all cartridges via GetCartridges()
+	cartridges := make(map[string]CartridgeRegistryEntry)
+	versions := make(map[string]CartridgeVersionData)
 
-	versions["1.0.0"] = PluginVersionData{
+	versions["1.0.0"] = CartridgeVersionData{
 		ReleaseDate:   "2026-02-07",
 		Changelog:     []string{},
 		MinAppVersion: "",
 		Platform:      "darwin-arm64",
-		Package: PluginDistributionInfo{
+		Package: CartridgeDistributionInfo{
 			Name:   "test-1.0.0.pkg",
 			Sha256: "abc123",
 			Size:   1000,
 		},
-		Binary: PluginDistributionInfo{
+		Binary: CartridgeDistributionInfo{
 			Name:   "test-1.0.0-darwin-arm64",
 			Sha256: "def456",
 			Size:   2000,
 		},
 	}
 
-	plugins["testplugin"] = PluginRegistryEntry{
-		Name:          "Test Plugin",
-		Description:   "A test plugin",
+	cartridges["testcartridge"] = CartridgeRegistryEntry{
+		Name:          "Test Cartridge",
+		Description:   "A test cartridge",
 		Author:        "Test Author",
 		PageUrl:       "",
 		TeamId:        "TEAM123",
 		MinAppVersion: "",
-		Caps:          []PluginCapSummary{},
+		Caps:          []CartridgeCapSummary{},
 		Categories:    []string{},
 		Tags:          []string{},
 		LatestVersion: "1.0.0",
 		Versions:      versions,
 	}
 
-	registry := PluginRegistryV3{
+	registry := CartridgeRegistryV3{
 		SchemaVersion: "3.0",
 		LastUpdated:   "2026-02-07",
-		Plugins:       plugins,
+		Cartridges:    cartridges,
 	}
 
-	server, err := NewPluginRepoServer(registry)
+	server, err := NewCartridgeRepoServer(registry)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
 
-	response, err := server.GetPlugins()
+	response, err := server.GetCartridges()
 	if err != nil {
-		t.Fatalf("Failed to get plugins: %v", err)
+		t.Fatalf("Failed to get cartridges: %v", err)
 	}
 
-	if len(response.Plugins) != 1 {
-		t.Fatalf("Expected 1 plugin, got %d", len(response.Plugins))
+	if len(response.Cartridges) != 1 {
+		t.Fatalf("Expected 1 cartridge, got %d", len(response.Cartridges))
 	}
-	if response.Plugins[0].Id != "testplugin" {
-		t.Errorf("Expected id 'testplugin', got '%s'", response.Plugins[0].Id)
+	if response.Cartridges[0].Id != "testcartridge" {
+		t.Errorf("Expected id 'testcartridge', got '%s'", response.Cartridges[0].Id)
 	}
 }
 
-// TEST326: Get plugin by ID
-func Test326_plugin_repo_server_get_plugin_by_id(t *testing.T) {
-	// TEST326: Get plugin by ID
-	plugins := make(map[string]PluginRegistryEntry)
-	versions := make(map[string]PluginVersionData)
+// TEST326: Get cartridge by ID
+func Test326_cartridge_repo_server_get_cartridge_by_id(t *testing.T) {
+	// TEST326: Get cartridge by ID
+	cartridges := make(map[string]CartridgeRegistryEntry)
+	versions := make(map[string]CartridgeVersionData)
 
-	versions["1.0.0"] = PluginVersionData{
+	versions["1.0.0"] = CartridgeVersionData{
 		ReleaseDate:   "2026-02-07",
 		Changelog:     []string{},
 		MinAppVersion: "",
 		Platform:      "darwin-arm64",
-		Package: PluginDistributionInfo{
+		Package: CartridgeDistributionInfo{
 			Name:   "test-1.0.0.pkg",
 			Sha256: "abc123",
 			Size:   1000,
 		},
-		Binary: PluginDistributionInfo{
+		Binary: CartridgeDistributionInfo{
 			Name:   "test-1.0.0-darwin-arm64",
 			Sha256: "def456",
 			Size:   2000,
 		},
 	}
 
-	plugins["testplugin"] = PluginRegistryEntry{
-		Name:          "Test Plugin",
-		Description:   "A test plugin",
+	cartridges["testcartridge"] = CartridgeRegistryEntry{
+		Name:          "Test Cartridge",
+		Description:   "A test cartridge",
 		Author:        "Test Author",
 		PageUrl:       "",
 		TeamId:        "TEAM123",
 		MinAppVersion: "",
-		Caps:          []PluginCapSummary{},
+		Caps:          []CartridgeCapSummary{},
 		Categories:    []string{},
 		Tags:          []string{},
 		LatestVersion: "1.0.0",
 		Versions:      versions,
 	}
 
-	registry := PluginRegistryV3{
+	registry := CartridgeRegistryV3{
 		SchemaVersion: "3.0",
 		LastUpdated:   "2026-02-07",
-		Plugins:       plugins,
+		Cartridges:    cartridges,
 	}
 
-	server, err := NewPluginRepoServer(registry)
+	server, err := NewCartridgeRepoServer(registry)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
 
-	result, err := server.GetPluginById("testplugin")
+	result, err := server.GetCartridgeById("testcartridge")
 	if err != nil {
-		t.Fatalf("Failed to get plugin: %v", err)
+		t.Fatalf("Failed to get cartridge: %v", err)
 	}
 	if result == nil {
-		t.Fatal("Expected plugin to be found")
+		t.Fatal("Expected cartridge to be found")
 	}
-	if result.Id != "testplugin" {
-		t.Errorf("Expected id 'testplugin', got '%s'", result.Id)
+	if result.Id != "testcartridge" {
+		t.Errorf("Expected id 'testcartridge', got '%s'", result.Id)
 	}
 
-	notFound, err := server.GetPluginById("nonexistent")
+	notFound, err := server.GetCartridgeById("nonexistent")
 	if err != nil {
-		t.Fatalf("Failed to get plugin: %v", err)
+		t.Fatalf("Failed to get cartridge: %v", err)
 	}
 	if notFound != nil {
-		t.Error("Expected plugin not to be found")
+		t.Error("Expected cartridge not to be found")
 	}
 }
 
-// TEST327: Search plugins by text query
-func Test327_plugin_repo_server_search_plugins(t *testing.T) {
-	// TEST327: Search plugins by text query
-	plugins := make(map[string]PluginRegistryEntry)
-	versions := make(map[string]PluginVersionData)
+// TEST327: Search cartridges by text query
+func Test327_cartridge_repo_server_search_cartridges(t *testing.T) {
+	// TEST327: Search cartridges by text query
+	cartridges := make(map[string]CartridgeRegistryEntry)
+	versions := make(map[string]CartridgeVersionData)
 
-	versions["1.0.0"] = PluginVersionData{
+	versions["1.0.0"] = CartridgeVersionData{
 		ReleaseDate:   "2026-02-07",
 		Changelog:     []string{},
 		MinAppVersion: "",
 		Platform:      "darwin-arm64",
-		Package: PluginDistributionInfo{
+		Package: CartridgeDistributionInfo{
 			Name:   "pdf-1.0.0.pkg",
 			Sha256: "abc123",
 			Size:   1000,
 		},
-		Binary: PluginDistributionInfo{
+		Binary: CartridgeDistributionInfo{
 			Name:   "pdf-1.0.0-darwin-arm64",
 			Sha256: "def456",
 			Size:   2000,
 		},
 	}
 
-	plugins["pdfplugin"] = PluginRegistryEntry{
-		Name:          "PDF Plugin",
+	cartridges["pdfcartridge"] = CartridgeRegistryEntry{
+		Name:          "PDF Cartridge",
 		Description:   "Process PDF documents",
 		Author:        "Test Author",
 		PageUrl:       "",
 		TeamId:        "TEAM123",
 		MinAppVersion: "",
-		Caps:          []PluginCapSummary{},
+		Caps:          []CartridgeCapSummary{},
 		Categories:    []string{},
 		Tags:          []string{"document"},
 		LatestVersion: "1.0.0",
 		Versions:      versions,
 	}
 
-	registry := PluginRegistryV3{
+	registry := CartridgeRegistryV3{
 		SchemaVersion: "3.0",
 		LastUpdated:   "2026-02-07",
-		Plugins:       plugins,
+		Cartridges:    cartridges,
 	}
 
-	server, err := NewPluginRepoServer(registry)
+	server, err := NewCartridgeRepoServer(registry)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
 
-	results, err := server.SearchPlugins("pdf")
+	results, err := server.SearchCartridges("pdf")
 	if err != nil {
-		t.Fatalf("Failed to search plugins: %v", err)
+		t.Fatalf("Failed to search cartridges: %v", err)
 	}
 	if len(results) != 1 {
 		t.Fatalf("Expected 1 result, got %d", len(results))
 	}
-	if results[0].Id != "pdfplugin" {
-		t.Errorf("Expected id 'pdfplugin', got '%s'", results[0].Id)
+	if results[0].Id != "pdfcartridge" {
+		t.Errorf("Expected id 'pdfcartridge', got '%s'", results[0].Id)
 	}
 
-	noMatch, err := server.SearchPlugins("nonexistent")
+	noMatch, err := server.SearchCartridges("nonexistent")
 	if err != nil {
-		t.Fatalf("Failed to search plugins: %v", err)
+		t.Fatalf("Failed to search cartridges: %v", err)
 	}
 	if len(noMatch) != 0 {
 		t.Errorf("Expected 0 results, got %d", len(noMatch))
 	}
 }
 
-// TEST328: Filter plugins by category
-func Test328_plugin_repo_server_get_by_category(t *testing.T) {
-	// TEST328: Filter plugins by category
-	plugins := make(map[string]PluginRegistryEntry)
-	versions := make(map[string]PluginVersionData)
+// TEST328: Filter cartridges by category
+func Test328_cartridge_repo_server_get_by_category(t *testing.T) {
+	// TEST328: Filter cartridges by category
+	cartridges := make(map[string]CartridgeRegistryEntry)
+	versions := make(map[string]CartridgeVersionData)
 
-	versions["1.0.0"] = PluginVersionData{
+	versions["1.0.0"] = CartridgeVersionData{
 		ReleaseDate:   "2026-02-07",
 		Changelog:     []string{},
 		MinAppVersion: "",
 		Platform:      "darwin-arm64",
-		Package: PluginDistributionInfo{
+		Package: CartridgeDistributionInfo{
 			Name:   "test-1.0.0.pkg",
 			Sha256: "abc123",
 			Size:   1000,
 		},
-		Binary: PluginDistributionInfo{
+		Binary: CartridgeDistributionInfo{
 			Name:   "test-1.0.0-darwin-arm64",
 			Sha256: "def456",
 			Size:   2000,
 		},
 	}
 
-	plugins["docplugin"] = PluginRegistryEntry{
-		Name:          "Doc Plugin",
+	cartridges["doccartridge"] = CartridgeRegistryEntry{
+		Name:          "Doc Cartridge",
 		Description:   "Process documents",
 		Author:        "Test Author",
 		PageUrl:       "",
 		TeamId:        "TEAM123",
 		MinAppVersion: "",
-		Caps:          []PluginCapSummary{},
+		Caps:          []CartridgeCapSummary{},
 		Categories:    []string{"document"},
 		Tags:          []string{},
 		LatestVersion: "1.0.0",
 		Versions:      versions,
 	}
 
-	registry := PluginRegistryV3{
+	registry := CartridgeRegistryV3{
 		SchemaVersion: "3.0",
 		LastUpdated:   "2026-02-07",
-		Plugins:       plugins,
+		Cartridges:    cartridges,
 	}
 
-	server, err := NewPluginRepoServer(registry)
+	server, err := NewCartridgeRepoServer(registry)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
 
-	results, err := server.GetPluginsByCategory("document")
+	results, err := server.GetCartridgesByCategory("document")
 	if err != nil {
-		t.Fatalf("Failed to get plugins by category: %v", err)
+		t.Fatalf("Failed to get cartridges by category: %v", err)
 	}
 	if len(results) != 1 {
 		t.Fatalf("Expected 1 result, got %d", len(results))
 	}
-	if results[0].Id != "docplugin" {
-		t.Errorf("Expected id 'docplugin', got '%s'", results[0].Id)
+	if results[0].Id != "doccartridge" {
+		t.Errorf("Expected id 'doccartridge', got '%s'", results[0].Id)
 	}
 
-	noMatch, err := server.GetPluginsByCategory("nonexistent")
+	noMatch, err := server.GetCartridgesByCategory("nonexistent")
 	if err != nil {
-		t.Fatalf("Failed to get plugins by category: %v", err)
+		t.Fatalf("Failed to get cartridges by category: %v", err)
 	}
 	if len(noMatch) != 0 {
 		t.Errorf("Expected 0 results, got %d", len(noMatch))
 	}
 }
 
-// TEST329: Find plugins by cap URN
-func Test329_plugin_repo_server_get_by_cap(t *testing.T) {
-	// TEST329: Find plugins by cap URN
-	plugins := make(map[string]PluginRegistryEntry)
-	versions := make(map[string]PluginVersionData)
+// TEST329: Find cartridges by cap URN
+func Test329_cartridge_repo_server_get_by_cap(t *testing.T) {
+	// TEST329: Find cartridges by cap URN
+	cartridges := make(map[string]CartridgeRegistryEntry)
+	versions := make(map[string]CartridgeVersionData)
 
-	versions["1.0.0"] = PluginVersionData{
+	versions["1.0.0"] = CartridgeVersionData{
 		ReleaseDate:   "2026-02-07",
 		Changelog:     []string{},
 		MinAppVersion: "",
 		Platform:      "darwin-arm64",
-		Package: PluginDistributionInfo{
+		Package: CartridgeDistributionInfo{
 			Name:   "test-1.0.0.pkg",
 			Sha256: "abc123",
 			Size:   1000,
 		},
-		Binary: PluginDistributionInfo{
+		Binary: CartridgeDistributionInfo{
 			Name:   "test-1.0.0-darwin-arm64",
 			Sha256: "def456",
 			Size:   2000,
@@ -523,14 +523,14 @@ func Test329_plugin_repo_server_get_by_cap(t *testing.T) {
 	}
 
 	capUrn := `cap:in="media:pdf";op=disbind;out="media:disbound-page;textable;list"`
-	plugins["pdfplugin"] = PluginRegistryEntry{
-		Name:          "PDF Plugin",
+	cartridges["pdfcartridge"] = CartridgeRegistryEntry{
+		Name:          "PDF Cartridge",
 		Description:   "Process PDFs",
 		Author:        "Test Author",
 		PageUrl:       "",
 		TeamId:        "TEAM123",
 		MinAppVersion: "",
-		Caps: []PluginCapSummary{
+		Caps: []CartridgeCapSummary{
 			{
 				Urn:         capUrn,
 				Title:       "Disbind PDF",
@@ -543,48 +543,48 @@ func Test329_plugin_repo_server_get_by_cap(t *testing.T) {
 		Versions:      versions,
 	}
 
-	registry := PluginRegistryV3{
+	registry := CartridgeRegistryV3{
 		SchemaVersion: "3.0",
 		LastUpdated:   "2026-02-07",
-		Plugins:       plugins,
+		Cartridges:    cartridges,
 	}
 
-	server, err := NewPluginRepoServer(registry)
+	server, err := NewCartridgeRepoServer(registry)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
 
-	results, err := server.GetPluginsByCap(capUrn)
+	results, err := server.GetCartridgesByCap(capUrn)
 	if err != nil {
-		t.Fatalf("Failed to get plugins by cap: %v", err)
+		t.Fatalf("Failed to get cartridges by cap: %v", err)
 	}
 	if len(results) != 1 {
 		t.Fatalf("Expected 1 result, got %d", len(results))
 	}
-	if results[0].Id != "pdfplugin" {
-		t.Errorf("Expected id 'pdfplugin', got '%s'", results[0].Id)
+	if results[0].Id != "pdfcartridge" {
+		t.Errorf("Expected id 'pdfcartridge', got '%s'", results[0].Id)
 	}
 
-	noMatch, err := server.GetPluginsByCap("cap:nonexistent")
+	noMatch, err := server.GetCartridgesByCap("cap:nonexistent")
 	if err != nil {
-		t.Fatalf("Failed to get plugins by cap: %v", err)
+		t.Fatalf("Failed to get cartridges by cap: %v", err)
 	}
 	if len(noMatch) != 0 {
 		t.Errorf("Expected 0 results, got %d", len(noMatch))
 	}
 }
 
-// TEST330: PluginRepoClient cache update
-func Test330_plugin_repo_client_update_cache(t *testing.T) {
-	// TEST330: PluginRepoClient cache update
-	repo := NewPluginRepo(3600)
+// TEST330: CartridgeRepoClient cache update
+func Test330_cartridge_repo_client_update_cache(t *testing.T) {
+	// TEST330: CartridgeRepoClient cache update
+	repo := NewCartridgeRepo(3600)
 
 	// Create a mock registry response
-	registry := &PluginRegistryResponse{
-		Plugins: []PluginInfo{
+	registry := &CartridgeRegistryResponse{
+		Cartridges: []CartridgeInfo{
 			{
-				Id:                "testplugin",
-				Name:              "Test Plugin",
+				Id:                "testcartridge",
+				Name:              "Test Cartridge",
 				Version:           "1.0.0",
 				Description:       "",
 				Author:            "",
@@ -595,7 +595,7 @@ func Test330_plugin_repo_client_update_cache(t *testing.T) {
 				PageUrl:           "",
 				Categories:        []string{},
 				Tags:              []string{},
-				Caps:              []PluginCapSummary{},
+				Caps:              []CartridgeCapSummary{},
 				Platform:          "",
 				PackageName:       "",
 				PackageSha256:     "",
@@ -610,29 +610,29 @@ func Test330_plugin_repo_client_update_cache(t *testing.T) {
 	}
 
 	// Update cache directly (simulating a fetch)
-	repo.updateCache("https://example.com/plugins", registry)
+	repo.updateCache("https://example.com/cartridges", registry)
 
 	// Verify cache was updated
-	plugin := repo.GetPlugin("testplugin")
-	if plugin == nil {
-		t.Fatal("Expected plugin to be found")
+	cartridge := repo.GetCartridge("testcartridge")
+	if cartridge == nil {
+		t.Fatal("Expected cartridge to be found")
 	}
-	if plugin.Id != "testplugin" {
-		t.Errorf("Expected id 'testplugin', got '%s'", plugin.Id)
+	if cartridge.Id != "testcartridge" {
+		t.Errorf("Expected id 'testcartridge', got '%s'", cartridge.Id)
 	}
 }
 
 // TEST331: Get suggestions for missing cap
-func Test331_plugin_repo_client_get_suggestions(t *testing.T) {
+func Test331_cartridge_repo_client_get_suggestions(t *testing.T) {
 	// TEST331: Get suggestions for missing cap
-	repo := NewPluginRepo(3600)
+	repo := NewCartridgeRepo(3600)
 
 	capUrn := `cap:in="media:pdf";op=disbind;out="media:disbound-page;textable;list"`
-	registry := &PluginRegistryResponse{
-		Plugins: []PluginInfo{
+	registry := &CartridgeRegistryResponse{
+		Cartridges: []CartridgeInfo{
 			{
-				Id:            "pdfplugin",
-				Name:          "PDF Plugin",
+				Id:            "pdfcartridge",
+				Name:          "PDF Cartridge",
 				Version:       "1.0.0",
 				Description:   "Process PDFs",
 				Author:        "",
@@ -643,7 +643,7 @@ func Test331_plugin_repo_client_get_suggestions(t *testing.T) {
 				PageUrl:       "https://example.com/pdf",
 				Categories:    []string{},
 				Tags:          []string{},
-				Caps: []PluginCapSummary{
+				Caps: []CartridgeCapSummary{
 					{
 						Urn:         capUrn,
 						Title:       "Disbind PDF",
@@ -663,30 +663,30 @@ func Test331_plugin_repo_client_get_suggestions(t *testing.T) {
 		},
 	}
 
-	repo.updateCache("https://example.com/plugins", registry)
+	repo.updateCache("https://example.com/cartridges", registry)
 
 	suggestions := repo.GetSuggestionsForCap(capUrn)
 	if len(suggestions) != 1 {
 		t.Fatalf("Expected 1 suggestion, got %d", len(suggestions))
 	}
-	if suggestions[0].PluginId != "pdfplugin" {
-		t.Errorf("Expected plugin_id 'pdfplugin', got '%s'", suggestions[0].PluginId)
+	if suggestions[0].CartridgeId != "pdfcartridge" {
+		t.Errorf("Expected cartridge_id 'pdfcartridge', got '%s'", suggestions[0].CartridgeId)
 	}
 	if suggestions[0].CapUrn != capUrn {
 		t.Errorf("Expected cap_urn '%s', got '%s'", capUrn, suggestions[0].CapUrn)
 	}
 }
 
-// TEST332: Get plugin by ID from client
-func Test332_plugin_repo_client_get_plugin(t *testing.T) {
-	// TEST332: Get plugin by ID from client
-	repo := NewPluginRepo(3600)
+// TEST332: Get cartridge by ID from client
+func Test332_cartridge_repo_client_get_cartridge(t *testing.T) {
+	// TEST332: Get cartridge by ID from client
+	repo := NewCartridgeRepo(3600)
 
-	registry := &PluginRegistryResponse{
-		Plugins: []PluginInfo{
+	registry := &CartridgeRegistryResponse{
+		Cartridges: []CartridgeInfo{
 			{
-				Id:                "testplugin",
-				Name:              "Test Plugin",
+				Id:                "testcartridge",
+				Name:              "Test Cartridge",
 				Version:           "1.0.0",
 				Description:       "",
 				Author:            "",
@@ -697,7 +697,7 @@ func Test332_plugin_repo_client_get_plugin(t *testing.T) {
 				PageUrl:           "",
 				Categories:        []string{},
 				Tags:              []string{},
-				Caps:              []PluginCapSummary{},
+				Caps:              []CartridgeCapSummary{},
 				Platform:          "",
 				PackageName:       "",
 				PackageSha256:     "",
@@ -711,35 +711,35 @@ func Test332_plugin_repo_client_get_plugin(t *testing.T) {
 		},
 	}
 
-	repo.updateCache("https://example.com/plugins", registry)
+	repo.updateCache("https://example.com/cartridges", registry)
 
-	plugin := repo.GetPlugin("testplugin")
-	if plugin == nil {
-		t.Fatal("Expected plugin to be found")
+	cartridge := repo.GetCartridge("testcartridge")
+	if cartridge == nil {
+		t.Fatal("Expected cartridge to be found")
 	}
-	if plugin.Id != "testplugin" {
-		t.Errorf("Expected id 'testplugin', got '%s'", plugin.Id)
+	if cartridge.Id != "testcartridge" {
+		t.Errorf("Expected id 'testcartridge', got '%s'", cartridge.Id)
 	}
 
-	notFound := repo.GetPlugin("nonexistent")
+	notFound := repo.GetCartridge("nonexistent")
 	if notFound != nil {
-		t.Error("Expected plugin not to be found")
+		t.Error("Expected cartridge not to be found")
 	}
 }
 
 // TEST333: Get all available caps
-func Test333_plugin_repo_client_get_all_caps(t *testing.T) {
+func Test333_cartridge_repo_client_get_all_caps(t *testing.T) {
 	// TEST333: Get all available caps
-	repo := NewPluginRepo(3600)
+	repo := NewCartridgeRepo(3600)
 
 	cap1 := `cap:in="media:pdf";op=disbind;out="media:disbound-page;textable;list"`
 	cap2 := `cap:in="media:txt;textable";op=disbind;out="media:disbound-page;textable;list"`
 
-	registry := &PluginRegistryResponse{
-		Plugins: []PluginInfo{
+	registry := &CartridgeRegistryResponse{
+		Cartridges: []CartridgeInfo{
 			{
-				Id:            "plugin1",
-				Name:          "Plugin 1",
+				Id:            "cartridge1",
+				Name:          "Cartridge 1",
 				Version:       "1.0.0",
 				Description:   "",
 				Author:        "",
@@ -750,7 +750,7 @@ func Test333_plugin_repo_client_get_all_caps(t *testing.T) {
 				PageUrl:       "",
 				Categories:    []string{},
 				Tags:          []string{},
-				Caps: []PluginCapSummary{
+				Caps: []CartridgeCapSummary{
 					{
 						Urn:         cap1,
 						Title:       "cap.Cap 1",
@@ -768,8 +768,8 @@ func Test333_plugin_repo_client_get_all_caps(t *testing.T) {
 				AvailableVersions: []string{},
 			},
 			{
-				Id:            "plugin2",
-				Name:          "Plugin 2",
+				Id:            "cartridge2",
+				Name:          "Cartridge 2",
 				Version:       "1.0.0",
 				Description:   "",
 				Author:        "",
@@ -780,7 +780,7 @@ func Test333_plugin_repo_client_get_all_caps(t *testing.T) {
 				PageUrl:       "",
 				Categories:    []string{},
 				Tags:          []string{},
-				Caps: []PluginCapSummary{
+				Caps: []CartridgeCapSummary{
 					{
 						Urn:         cap2,
 						Title:       "cap.Cap 2",
@@ -800,7 +800,7 @@ func Test333_plugin_repo_client_get_all_caps(t *testing.T) {
 		},
 	}
 
-	repo.updateCache("https://example.com/plugins", registry)
+	repo.updateCache("https://example.com/cartridges", registry)
 
 	caps := repo.GetAllAvailableCaps()
 	if len(caps) != 2 {
@@ -827,11 +827,11 @@ func Test333_plugin_repo_client_get_all_caps(t *testing.T) {
 }
 
 // TEST334: Check if client needs sync
-func Test334_plugin_repo_client_needs_sync(t *testing.T) {
+func Test334_cartridge_repo_client_needs_sync(t *testing.T) {
 	// TEST334: Check if client needs sync
-	repo := NewPluginRepo(3600)
+	repo := NewCartridgeRepo(3600)
 
-	urls := []string{"https://example.com/plugins"}
+	urls := []string{"https://example.com/cartridges"}
 
 	// Empty cache should need sync
 	if !repo.NeedsSync(urls) {
@@ -839,8 +839,8 @@ func Test334_plugin_repo_client_needs_sync(t *testing.T) {
 	}
 
 	// After update, should not need sync
-	registry := &PluginRegistryResponse{Plugins: []PluginInfo{}}
-	repo.updateCache("https://example.com/plugins", registry)
+	registry := &CartridgeRegistryResponse{Cartridges: []CartridgeInfo{}}
+	repo.updateCache("https://example.com/cartridges", registry)
 
 	if repo.NeedsSync(urls) {
 		t.Error("Expected not to need sync after update")
@@ -848,22 +848,22 @@ func Test334_plugin_repo_client_needs_sync(t *testing.T) {
 }
 
 // TEST335: Server creates response, client consumes it
-func Test335_plugin_repo_server_client_integration(t *testing.T) {
+func Test335_cartridge_repo_server_client_integration(t *testing.T) {
 	// TEST335: Server creates response, client consumes it
-	plugins := make(map[string]PluginRegistryEntry)
-	versions := make(map[string]PluginVersionData)
+	cartridges := make(map[string]CartridgeRegistryEntry)
+	versions := make(map[string]CartridgeVersionData)
 
-	versions["1.0.0"] = PluginVersionData{
+	versions["1.0.0"] = CartridgeVersionData{
 		ReleaseDate:   "2026-02-07",
 		Changelog:     []string{},
 		MinAppVersion: "",
 		Platform:      "darwin-arm64",
-		Package: PluginDistributionInfo{
+		Package: CartridgeDistributionInfo{
 			Name:   "test-1.0.0.pkg",
 			Sha256: "abc123",
 			Size:   1000,
 		},
-		Binary: PluginDistributionInfo{
+		Binary: CartridgeDistributionInfo{
 			Name:   "test-1.0.0-darwin-arm64",
 			Sha256: "def456",
 			Size:   2000,
@@ -871,14 +871,14 @@ func Test335_plugin_repo_server_client_integration(t *testing.T) {
 	}
 
 	capUrn := `cap:in="media:test";op=test;out="media:result"`
-	plugins["testplugin"] = PluginRegistryEntry{
-		Name:          "Test Plugin",
-		Description:   "A test plugin",
+	cartridges["testcartridge"] = CartridgeRegistryEntry{
+		Name:          "Test Cartridge",
+		Description:   "A test cartridge",
 		Author:        "Test Author",
 		PageUrl:       "https://example.com",
 		TeamId:        "TEAM123",
 		MinAppVersion: "",
-		Caps: []PluginCapSummary{
+		Caps: []CartridgeCapSummary{
 			{
 				Urn:         capUrn,
 				Title:       "Test cap.Cap",
@@ -891,53 +891,53 @@ func Test335_plugin_repo_server_client_integration(t *testing.T) {
 		Versions:      versions,
 	}
 
-	registry := PluginRegistryV3{
+	registry := CartridgeRegistryV3{
 		SchemaVersion: "3.0",
 		LastUpdated:   "2026-02-07",
-		Plugins:       plugins,
+		Cartridges:    cartridges,
 	}
 
 	// Server transforms registry
-	server, err := NewPluginRepoServer(registry)
+	server, err := NewCartridgeRepoServer(registry)
 	if err != nil {
 		t.Fatalf("Failed to create server: %v", err)
 	}
 
-	response, err := server.GetPlugins()
+	response, err := server.GetCartridges()
 	if err != nil {
-		t.Fatalf("Failed to get plugins: %v", err)
+		t.Fatalf("Failed to get cartridges: %v", err)
 	}
 
 	// Verify response structure
-	if len(response.Plugins) != 1 {
-		t.Fatalf("Expected 1 plugin, got %d", len(response.Plugins))
+	if len(response.Cartridges) != 1 {
+		t.Fatalf("Expected 1 cartridge, got %d", len(response.Cartridges))
 	}
 
-	plugin := &response.Plugins[0]
-	if plugin.Id != "testplugin" {
-		t.Errorf("Expected id 'testplugin', got '%s'", plugin.Id)
+	cartridge := &response.Cartridges[0]
+	if cartridge.Id != "testcartridge" {
+		t.Errorf("Expected id 'testcartridge', got '%s'", cartridge.Id)
 	}
-	if plugin.Name != "Test Plugin" {
-		t.Errorf("Expected name 'Test Plugin', got '%s'", plugin.Name)
+	if cartridge.Name != "Test Cartridge" {
+		t.Errorf("Expected name 'Test Cartridge', got '%s'", cartridge.Name)
 	}
-	if !plugin.IsSigned() {
-		t.Error("Expected plugin to be signed")
+	if !cartridge.IsSigned() {
+		t.Error("Expected cartridge to be signed")
 	}
-	if !plugin.HasBinary() {
-		t.Error("Expected plugin to have binary")
+	if !cartridge.HasBinary() {
+		t.Error("Expected cartridge to have binary")
 	}
-	if len(plugin.Caps) != 1 {
-		t.Fatalf("Expected 1 cap, got %d", len(plugin.Caps))
+	if len(cartridge.Caps) != 1 {
+		t.Fatalf("Expected 1 cap, got %d", len(cartridge.Caps))
 	}
-	if plugin.Caps[0].Urn != capUrn {
-		t.Errorf("Expected cap URN '%s', got '%s'", capUrn, plugin.Caps[0].Urn)
+	if cartridge.Caps[0].Urn != capUrn {
+		t.Errorf("Expected cap URN '%s', got '%s'", capUrn, cartridge.Caps[0].Urn)
 	}
 
 	// Simulate client consuming this response
-	if plugin.BinaryName != "test-1.0.0-darwin-arm64" {
-		t.Errorf("Expected binary_name 'test-1.0.0-darwin-arm64', got '%s'", plugin.BinaryName)
+	if cartridge.BinaryName != "test-1.0.0-darwin-arm64" {
+		t.Errorf("Expected binary_name 'test-1.0.0-darwin-arm64', got '%s'", cartridge.BinaryName)
 	}
-	if plugin.BinarySha256 != "def456" {
-		t.Errorf("Expected binary_sha256 'def456', got '%s'", plugin.BinarySha256)
+	if cartridge.BinarySha256 != "def456" {
+		t.Errorf("Expected binary_sha256 'def456', got '%s'", cartridge.BinarySha256)
 	}
 }

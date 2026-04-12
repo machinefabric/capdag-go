@@ -12,79 +12,79 @@ import (
 	"time"
 )
 
-// PluginRepoError represents errors from plugin repository operations
-type PluginRepoError struct {
+// CartridgeRepoError represents errors from cartridge repository operations
+type CartridgeRepoError struct {
 	Kind    string
 	Message string
 }
 
-func (e *PluginRepoError) Error() string {
+func (e *CartridgeRepoError) Error() string {
 	return fmt.Sprintf("%s: %s", e.Kind, e.Message)
 }
 
 // NewHttpError creates an HTTP error
-func NewHttpError(msg string) *PluginRepoError {
-	return &PluginRepoError{Kind: "HttpError", Message: msg}
+func NewHttpError(msg string) *CartridgeRepoError {
+	return &CartridgeRepoError{Kind: "HttpError", Message: msg}
 }
 
 // NewParseError creates a parse error
-func NewParseError(msg string) *PluginRepoError {
-	return &PluginRepoError{Kind: "ParseError", Message: msg}
+func NewParseError(msg string) *CartridgeRepoError {
+	return &CartridgeRepoError{Kind: "ParseError", Message: msg}
 }
 
 // NewStatusError creates a status error
-func NewStatusError(status int) *PluginRepoError {
-	return &PluginRepoError{Kind: "StatusError", Message: fmt.Sprintf("Registry request failed with status %d", status)}
+func NewStatusError(status int) *CartridgeRepoError {
+	return &CartridgeRepoError{Kind: "StatusError", Message: fmt.Sprintf("Registry request failed with status %d", status)}
 }
 
-// PluginCapSummary represents a plugin's capability summary
-type PluginCapSummary struct {
+// CartridgeCapSummary represents a cartridge's capability summary
+type CartridgeCapSummary struct {
 	Urn         string `json:"urn"`
 	Title       string `json:"title"`
 	Description string `json:"description,omitempty"`
 }
 
-// PluginDistributionInfo represents package or binary distribution data
-type PluginDistributionInfo struct {
+// CartridgeDistributionInfo represents package or binary distribution data
+type CartridgeDistributionInfo struct {
 	Name   string `json:"name"`
 	Sha256 string `json:"sha256"`
 	Size   uint64 `json:"size"`
 }
 
-// PluginVersionData represents a plugin version's distribution data (v3.0 schema)
-type PluginVersionData struct {
+// CartridgeVersionData represents a cartridge version's distribution data (v3.0 schema)
+type CartridgeVersionData struct {
 	ReleaseDate   string                 `json:"releaseDate"`
 	Changelog     []string               `json:"changelog,omitempty"`
 	MinAppVersion string                 `json:"minAppVersion,omitempty"`
 	Platform      string                 `json:"platform"`
-	Package       PluginDistributionInfo `json:"package"`
-	Binary        PluginDistributionInfo `json:"binary"`
+	Package       CartridgeDistributionInfo `json:"package"`
+	Binary        CartridgeDistributionInfo `json:"binary"`
 }
 
-// PluginRegistryEntry represents a plugin entry in the v3.0 registry (nested format)
-type PluginRegistryEntry struct {
+// CartridgeRegistryEntry represents a cartridge entry in the v3.0 registry (nested format)
+type CartridgeRegistryEntry struct {
 	Name          string                       `json:"name"`
 	Description   string                       `json:"description"`
 	Author        string                       `json:"author"`
 	PageUrl       string                       `json:"pageUrl,omitempty"`
 	TeamId        string                       `json:"teamId"`
 	MinAppVersion string                       `json:"minAppVersion,omitempty"`
-	Caps          []PluginCapSummary           `json:"caps,omitempty"`
+	Caps          []CartridgeCapSummary           `json:"caps,omitempty"`
 	Categories    []string                     `json:"categories,omitempty"`
 	Tags          []string                     `json:"tags,omitempty"`
 	LatestVersion string                       `json:"latestVersion"`
-	Versions      map[string]PluginVersionData `json:"versions"`
+	Versions      map[string]CartridgeVersionData `json:"versions"`
 }
 
-// PluginRegistryV3 represents the v3.0 plugin registry (nested schema)
-type PluginRegistryV3 struct {
+// CartridgeRegistryV3 represents the v3.0 cartridge registry (nested schema)
+type CartridgeRegistryV3 struct {
 	SchemaVersion string                         `json:"schemaVersion"`
 	LastUpdated   string                         `json:"lastUpdated"`
-	Plugins       map[string]PluginRegistryEntry `json:"plugins"`
+	Cartridges    map[string]CartridgeRegistryEntry `json:"cartridges"`
 }
 
-// PluginInfo represents a plugin in the flat API response format
-type PluginInfo struct {
+// CartridgeInfo represents a cartridge in the flat API response format
+type CartridgeInfo struct {
 	Id                string              `json:"id"`
 	Name              string              `json:"name"`
 	Version           string              `json:"version"`
@@ -97,7 +97,7 @@ type PluginInfo struct {
 	PageUrl           string              `json:"pageUrl"`
 	Categories        []string            `json:"categories,omitempty"`
 	Tags              []string            `json:"tags,omitempty"`
-	Caps              []PluginCapSummary  `json:"caps"`
+	Caps              []CartridgeCapSummary  `json:"caps"`
 	Platform          string              `json:"platform"`
 	PackageName       string              `json:"packageName"`
 	PackageSha256     string              `json:"packageSha256"`
@@ -109,26 +109,26 @@ type PluginInfo struct {
 	AvailableVersions []string            `json:"availableVersions,omitempty"`
 }
 
-// IsSigned checks if plugin is signed (has team_id and signed_at)
-func (p *PluginInfo) IsSigned() bool {
+// IsSigned checks if cartridge is signed (has team_id and signed_at)
+func (p *CartridgeInfo) IsSigned() bool {
 	return p.TeamId != "" && p.SignedAt != ""
 }
 
 // HasBinary checks if binary download info is available
-func (p *PluginInfo) HasBinary() bool {
+func (p *CartridgeInfo) HasBinary() bool {
 	return p.BinaryName != "" && p.BinarySha256 != ""
 }
 
-// PluginRegistryResponse represents the plugin registry response (flat format)
-type PluginRegistryResponse struct {
-	Plugins []PluginInfo `json:"plugins"`
+// CartridgeRegistryResponse represents the cartridge registry response (flat format)
+type CartridgeRegistryResponse struct {
+	Cartridges []CartridgeInfo `json:"cartridges"`
 }
 
-// PluginSuggestion represents a plugin suggestion for a missing cap
-type PluginSuggestion struct {
-	PluginId          string `json:"pluginId"`
-	PluginName        string `json:"pluginName"`
-	PluginDescription string `json:"pluginDescription"`
+// CartridgeSuggestion represents a cartridge suggestion for a missing cap
+type CartridgeSuggestion struct {
+	CartridgeId          string `json:"cartridgeId"`
+	CartridgeName        string `json:"cartridgeName"`
+	CartridgeDescription string `json:"cartridgeDescription"`
 	CapUrn            string `json:"capUrn"`
 	CapTitle          string `json:"capTitle"`
 	LatestVersion     string `json:"latestVersion"`
@@ -136,14 +136,14 @@ type PluginSuggestion struct {
 	PageUrl           string `json:"pageUrl"`
 }
 
-// PluginRepoServer serves registry data with queries
+// CartridgeRepoServer serves registry data with queries
 // Transforms v3.0 nested registry schema to flat API response format
-type PluginRepoServer struct {
-	registry PluginRegistryV3
+type CartridgeRepoServer struct {
+	registry CartridgeRegistryV3
 }
 
-// NewPluginRepoServer creates a new server instance from v3.0 registry
-func NewPluginRepoServer(registry PluginRegistryV3) (*PluginRepoServer, error) {
+// NewCartridgeRepoServer creates a new server instance from v3.0 registry
+func NewCartridgeRepoServer(registry CartridgeRegistryV3) (*CartridgeRepoServer, error) {
 	// Validate schema version - fail hard
 	if registry.SchemaVersion != "3.0" {
 		return nil, NewParseError(fmt.Sprintf(
@@ -152,26 +152,26 @@ func NewPluginRepoServer(registry PluginRegistryV3) (*PluginRepoServer, error) {
 		))
 	}
 
-	return &PluginRepoServer{registry: registry}, nil
+	return &CartridgeRepoServer{registry: registry}, nil
 }
 
 // validateVersionData validates that version data has all required fields
-func validateVersionData(id, version string, versionData *PluginVersionData) error {
+func validateVersionData(id, version string, versionData *CartridgeVersionData) error {
 	if versionData.Platform == "" {
 		return NewParseError(fmt.Sprintf(
-			"Plugin %s v%s: missing required field 'platform'",
+			"Cartridge %s v%s: missing required field 'platform'",
 			id, version,
 		))
 	}
 	if versionData.Package.Name == "" {
 		return NewParseError(fmt.Sprintf(
-			"Plugin %s v%s: missing required field 'package.name'",
+			"Cartridge %s v%s: missing required field 'package.name'",
 			id, version,
 		))
 	}
 	if versionData.Binary.Name == "" {
 		return NewParseError(fmt.Sprintf(
-			"Plugin %s v%s: missing required field 'binary.name'",
+			"Cartridge %s v%s: missing required field 'binary.name'",
 			id, version,
 		))
 	}
@@ -224,7 +224,7 @@ func parseVersion(v string) []uint32 {
 }
 
 // buildChangelogMap builds changelog map from versions
-func buildChangelogMap(versions map[string]PluginVersionData) map[string][]string {
+func buildChangelogMap(versions map[string]CartridgeVersionData) map[string][]string {
 	changelog := make(map[string][]string)
 	for version, data := range versions {
 		if len(data.Changelog) > 0 {
@@ -234,16 +234,16 @@ func buildChangelogMap(versions map[string]PluginVersionData) map[string][]strin
 	return changelog
 }
 
-// TransformToPluginArray transforms registry to flat plugin array
-func (s *PluginRepoServer) TransformToPluginArray() ([]PluginInfo, error) {
-	plugins := make([]PluginInfo, 0, len(s.registry.Plugins))
+// TransformToCartridgeArray transforms registry to flat cartridge array
+func (s *CartridgeRepoServer) TransformToCartridgeArray() ([]CartridgeInfo, error) {
+	cartridges := make([]CartridgeInfo, 0, len(s.registry.Cartridges))
 
-	for id, plugin := range s.registry.Plugins {
-		latestVersion := plugin.LatestVersion
-		versionData, ok := plugin.Versions[latestVersion]
+	for id, cartridge := range s.registry.Cartridges {
+		latestVersion := cartridge.LatestVersion
+		versionData, ok := cartridge.Versions[latestVersion]
 		if !ok {
 			return nil, NewParseError(fmt.Sprintf(
-				"Plugin %s: latest version %s not found in versions",
+				"Cartridge %s: latest version %s not found in versions",
 				id, latestVersion,
 			))
 		}
@@ -254,49 +254,49 @@ func (s *PluginRepoServer) TransformToPluginArray() ([]PluginInfo, error) {
 		}
 
 		// Get all versions sorted descending
-		availableVersions := make([]string, 0, len(plugin.Versions))
-		for version := range plugin.Versions {
+		availableVersions := make([]string, 0, len(cartridge.Versions))
+		for version := range cartridge.Versions {
 			availableVersions = append(availableVersions, version)
 		}
 		sort.Slice(availableVersions, func(i, j int) bool {
 			return compareVersions(availableVersions[i], availableVersions[j]) > 0
 		})
 
-		// Build flat plugin object
-		packageUrl := fmt.Sprintf("https://machinefabric.com/plugins/packages/%s", versionData.Package.Name)
-		pageUrl := plugin.PageUrl
+		// Build flat cartridge object
+		packageUrl := fmt.Sprintf("https://machinefabric.com/cartridges/packages/%s", versionData.Package.Name)
+		pageUrl := cartridge.PageUrl
 		if pageUrl == "" {
 			pageUrl = packageUrl
 		}
 
 		minAppVersion := versionData.MinAppVersion
 		if minAppVersion == "" {
-			minAppVersion = plugin.MinAppVersion
+			minAppVersion = cartridge.MinAppVersion
 		}
 
-		caps := plugin.Caps
+		caps := cartridge.Caps
 		if caps == nil {
-			caps = []PluginCapSummary{}
+			caps = []CartridgeCapSummary{}
 		}
 
-		categories := plugin.Categories
+		categories := cartridge.Categories
 		if categories == nil {
 			categories = []string{}
 		}
 
-		tags := plugin.Tags
+		tags := cartridge.Tags
 		if tags == nil {
 			tags = []string{}
 		}
 
-		pluginInfo := PluginInfo{
+		cartridgeInfo := CartridgeInfo{
 			Id:                id,
-			Name:              plugin.Name,
+			Name:              cartridge.Name,
 			Version:           latestVersion,
-			Description:       plugin.Description,
-			Author:            plugin.Author,
+			Description:       cartridge.Description,
+			Author:            cartridge.Author,
 			Homepage:          "",
-			TeamId:            plugin.TeamId,
+			TeamId:            cartridge.TeamId,
 			SignedAt:          versionData.ReleaseDate,
 			MinAppVersion:     minAppVersion,
 			PageUrl:           pageUrl,
@@ -310,79 +310,79 @@ func (s *PluginRepoServer) TransformToPluginArray() ([]PluginInfo, error) {
 			BinaryName:        versionData.Binary.Name,
 			BinarySha256:      versionData.Binary.Sha256,
 			BinarySize:        versionData.Binary.Size,
-			Changelog:         buildChangelogMap(plugin.Versions),
+			Changelog:         buildChangelogMap(cartridge.Versions),
 			AvailableVersions: availableVersions,
 		}
 
-		plugins = append(plugins, pluginInfo)
+		cartridges = append(cartridges, cartridgeInfo)
 	}
 
-	return plugins, nil
+	return cartridges, nil
 }
 
-// GetPlugins returns all plugins (API response format)
-func (s *PluginRepoServer) GetPlugins() (*PluginRegistryResponse, error) {
-	plugins, err := s.TransformToPluginArray()
+// GetCartridges returns all cartridges (API response format)
+func (s *CartridgeRepoServer) GetCartridges() (*CartridgeRegistryResponse, error) {
+	cartridges, err := s.TransformToCartridgeArray()
 	if err != nil {
 		return nil, err
 	}
-	return &PluginRegistryResponse{Plugins: plugins}, nil
+	return &CartridgeRegistryResponse{Cartridges: cartridges}, nil
 }
 
-// GetPluginById returns a plugin by ID
-func (s *PluginRepoServer) GetPluginById(id string) (*PluginInfo, error) {
-	plugins, err := s.TransformToPluginArray()
+// GetCartridgeById returns a cartridge by ID
+func (s *CartridgeRepoServer) GetCartridgeById(id string) (*CartridgeInfo, error) {
+	cartridges, err := s.TransformToCartridgeArray()
 	if err != nil {
 		return nil, err
 	}
 
-	for _, plugin := range plugins {
-		if plugin.Id == id {
-			return &plugin, nil
+	for _, cartridge := range cartridges {
+		if cartridge.Id == id {
+			return &cartridge, nil
 		}
 	}
 
 	return nil, nil
 }
 
-// SearchPlugins searches plugins by query
-func (s *PluginRepoServer) SearchPlugins(query string) ([]PluginInfo, error) {
-	plugins, err := s.TransformToPluginArray()
+// SearchCartridges searches cartridges by query
+func (s *CartridgeRepoServer) SearchCartridges(query string) ([]CartridgeInfo, error) {
+	cartridges, err := s.TransformToCartridgeArray()
 	if err != nil {
 		return nil, err
 	}
 
 	lowerQuery := strings.ToLower(query)
-	results := make([]PluginInfo, 0)
+	results := make([]CartridgeInfo, 0)
 
-	for _, plugin := range plugins {
+	for _, cartridge := range cartridges {
 		// Search in name
-		if strings.Contains(strings.ToLower(plugin.Name), lowerQuery) {
-			results = append(results, plugin)
+		if strings.Contains(strings.ToLower(cartridge.Name), lowerQuery) {
+			results = append(results, cartridge)
 			continue
 		}
 
 		// Search in description
-		if strings.Contains(strings.ToLower(plugin.Description), lowerQuery) {
-			results = append(results, plugin)
+		if strings.Contains(strings.ToLower(cartridge.Description), lowerQuery) {
+			results = append(results, cartridge)
 			continue
 		}
 
 		// Search in tags
 		found := false
-		for _, tag := range plugin.Tags {
+		for _, tag := range cartridge.Tags {
 			if strings.Contains(strings.ToLower(tag), lowerQuery) {
 				found = true
 				break
 			}
 		}
 		if found {
-			results = append(results, plugin)
+			results = append(results, cartridge)
 			continue
 		}
 
 		// Search in caps
-		for _, cap := range plugin.Caps {
+		for _, cap := range cartridge.Caps {
 			if strings.Contains(strings.ToLower(cap.Urn), lowerQuery) ||
 				strings.Contains(strings.ToLower(cap.Title), lowerQuery) {
 				found = true
@@ -390,25 +390,25 @@ func (s *PluginRepoServer) SearchPlugins(query string) ([]PluginInfo, error) {
 			}
 		}
 		if found {
-			results = append(results, plugin)
+			results = append(results, cartridge)
 		}
 	}
 
 	return results, nil
 }
 
-// GetPluginsByCategory returns plugins by category
-func (s *PluginRepoServer) GetPluginsByCategory(category string) ([]PluginInfo, error) {
-	plugins, err := s.TransformToPluginArray()
+// GetCartridgesByCategory returns cartridges by category
+func (s *CartridgeRepoServer) GetCartridgesByCategory(category string) ([]CartridgeInfo, error) {
+	cartridges, err := s.TransformToCartridgeArray()
 	if err != nil {
 		return nil, err
 	}
 
-	results := make([]PluginInfo, 0)
-	for _, plugin := range plugins {
-		for _, cat := range plugin.Categories {
+	results := make([]CartridgeInfo, 0)
+	for _, cartridge := range cartridges {
+		for _, cat := range cartridge.Categories {
 			if cat == category {
-				results = append(results, plugin)
+				results = append(results, cartridge)
 				break
 			}
 		}
@@ -417,18 +417,18 @@ func (s *PluginRepoServer) GetPluginsByCategory(category string) ([]PluginInfo, 
 	return results, nil
 }
 
-// GetPluginsByCap returns plugins that provide a specific cap
-func (s *PluginRepoServer) GetPluginsByCap(capUrn string) ([]PluginInfo, error) {
-	plugins, err := s.TransformToPluginArray()
+// GetCartridgesByCap returns cartridges that provide a specific cap
+func (s *CartridgeRepoServer) GetCartridgesByCap(capUrn string) ([]CartridgeInfo, error) {
+	cartridges, err := s.TransformToCartridgeArray()
 	if err != nil {
 		return nil, err
 	}
 
-	results := make([]PluginInfo, 0)
-	for _, plugin := range plugins {
-		for _, cap := range plugin.Caps {
+	results := make([]CartridgeInfo, 0)
+	for _, cartridge := range cartridges {
+		for _, cap := range cartridge.Caps {
 			if cap.Urn == capUrn {
-				results = append(results, plugin)
+				results = append(results, cartridge)
 				break
 			}
 		}
@@ -437,35 +437,35 @@ func (s *PluginRepoServer) GetPluginsByCap(capUrn string) ([]PluginInfo, error) 
 	return results, nil
 }
 
-// PluginRepoCache holds cached plugin repository data
-type PluginRepoCache struct {
-	plugins      map[string]PluginInfo
-	capToPlugins map[string][]string
-	lastUpdated  time.Time
-	repoUrl      string
+// CartridgeRepoCache holds cached cartridge repository data
+type CartridgeRepoCache struct {
+	cartridges      map[string]CartridgeInfo
+	capToCartridges map[string][]string
+	lastUpdated     time.Time
+	repoUrl         string
 }
 
-// PluginRepo is a service for fetching and caching plugin repository data
-type PluginRepo struct {
+// CartridgeRepo is a service for fetching and caching cartridge repository data
+type CartridgeRepo struct {
 	httpClient *http.Client
-	caches     map[string]*PluginRepoCache
+	caches     map[string]*CartridgeRepoCache
 	cacheTTL   time.Duration
 	mu         sync.RWMutex
 }
 
-// NewPluginRepo creates a new plugin repo service
-func NewPluginRepo(cacheTTLSeconds uint64) *PluginRepo {
-	return &PluginRepo{
+// NewCartridgeRepo creates a new cartridge repo service
+func NewCartridgeRepo(cacheTTLSeconds uint64) *CartridgeRepo {
+	return &CartridgeRepo{
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-		caches:   make(map[string]*PluginRepoCache),
+		caches:   make(map[string]*CartridgeRepoCache),
 		cacheTTL: time.Duration(cacheTTLSeconds) * time.Second,
 	}
 }
 
-// fetchRegistry fetches plugin registry from a URL
-func (r *PluginRepo) fetchRegistry(repoUrl string) (*PluginRegistryResponse, error) {
+// fetchRegistry fetches cartridge registry from a URL
+func (r *CartridgeRepo) fetchRegistry(repoUrl string) (*CartridgeRegistryResponse, error) {
 	resp, err := r.httpClient.Get(repoUrl)
 	if err != nil {
 		return nil, NewHttpError(fmt.Sprintf("Failed to fetch from %s: %v", repoUrl, err))
@@ -481,7 +481,7 @@ func (r *PluginRepo) fetchRegistry(repoUrl string) (*PluginRegistryResponse, err
 		return nil, NewHttpError(fmt.Sprintf("Failed to read response from %s: %v", repoUrl, err))
 	}
 
-	var registry PluginRegistryResponse
+	var registry CartridgeRegistryResponse
 	if err := json.Unmarshal(body, &registry); err != nil {
 		return nil, NewParseError(fmt.Sprintf("Failed to parse from %s: %v", repoUrl, err))
 	}
@@ -490,30 +490,30 @@ func (r *PluginRepo) fetchRegistry(repoUrl string) (*PluginRegistryResponse, err
 }
 
 // updateCache updates cache from a registry response
-func (r *PluginRepo) updateCache(repoUrl string, registry *PluginRegistryResponse) {
-	plugins := make(map[string]PluginInfo)
-	capToPlugins := make(map[string][]string)
+func (r *CartridgeRepo) updateCache(repoUrl string, registry *CartridgeRegistryResponse) {
+	cartridges := make(map[string]CartridgeInfo)
+	capToCartridges := make(map[string][]string)
 
-	for _, pluginInfo := range registry.Plugins {
-		pluginId := pluginInfo.Id
-		for _, cap := range pluginInfo.Caps {
-			capToPlugins[cap.Urn] = append(capToPlugins[cap.Urn], pluginId)
+	for _, cartridgeInfo := range registry.Cartridges {
+		cartridgeId := cartridgeInfo.Id
+		for _, cap := range cartridgeInfo.Caps {
+			capToCartridges[cap.Urn] = append(capToCartridges[cap.Urn], cartridgeId)
 		}
-		plugins[pluginId] = pluginInfo
+		cartridges[cartridgeId] = cartridgeInfo
 	}
 
 	r.mu.Lock()
-	r.caches[repoUrl] = &PluginRepoCache{
-		plugins:      plugins,
-		capToPlugins: capToPlugins,
-		lastUpdated:  time.Now(),
-		repoUrl:      repoUrl,
+	r.caches[repoUrl] = &CartridgeRepoCache{
+		cartridges:      cartridges,
+		capToCartridges: capToCartridges,
+		lastUpdated:     time.Now(),
+		repoUrl:         repoUrl,
 	}
 	r.mu.Unlock()
 }
 
-// SyncRepos syncs plugin data from the given repository URLs
-func (r *PluginRepo) SyncRepos(repoUrls []string) {
+// SyncRepos syncs cartridge data from the given repository URLs
+func (r *CartridgeRepo) SyncRepos(repoUrls []string) {
 	for _, repoUrl := range repoUrls {
 		registry, err := r.fetchRegistry(repoUrl)
 		if err != nil {
@@ -525,46 +525,46 @@ func (r *PluginRepo) SyncRepos(repoUrls []string) {
 }
 
 // isCacheStale checks if a cache is stale
-func (r *PluginRepo) isCacheStale(cache *PluginRepoCache) bool {
+func (r *CartridgeRepo) isCacheStale(cache *CartridgeRepoCache) bool {
 	return time.Since(cache.lastUpdated) > r.cacheTTL
 }
 
-// GetSuggestionsForCap gets plugin suggestions for a cap URN
-func (r *PluginRepo) GetSuggestionsForCap(capUrn string) []PluginSuggestion {
+// GetSuggestionsForCap gets cartridge suggestions for a cap URN
+func (r *CartridgeRepo) GetSuggestionsForCap(capUrn string) []CartridgeSuggestion {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	suggestions := make([]PluginSuggestion, 0)
+	suggestions := make([]CartridgeSuggestion, 0)
 
 	for _, cache := range r.caches {
-		pluginIds, ok := cache.capToPlugins[capUrn]
+		cartridgeIds, ok := cache.capToCartridges[capUrn]
 		if !ok {
 			continue
 		}
 
-		for _, pluginId := range pluginIds {
-			plugin, ok := cache.plugins[pluginId]
+		for _, cartridgeId := range cartridgeIds {
+			cartridge, ok := cache.cartridges[cartridgeId]
 			if !ok {
 				continue
 			}
 
 			// Find the matching cap info
-			for _, capInfo := range plugin.Caps {
+			for _, capInfo := range cartridge.Caps {
 				if capInfo.Urn == capUrn {
-					pageUrl := plugin.PageUrl
+					pageUrl := cartridge.PageUrl
 					if pageUrl == "" {
 						pageUrl = cache.repoUrl
 					}
 
-					suggestions = append(suggestions, PluginSuggestion{
-						PluginId:          pluginId,
-						PluginName:        plugin.Name,
-						PluginDescription: plugin.Description,
-						CapUrn:            capUrn,
-						CapTitle:          capInfo.Title,
-						LatestVersion:     plugin.Version,
-						RepoUrl:           cache.repoUrl,
-						PageUrl:           pageUrl,
+					suggestions = append(suggestions, CartridgeSuggestion{
+						CartridgeId:          cartridgeId,
+						CartridgeName:        cartridge.Name,
+						CartridgeDescription: cartridge.Description,
+						CapUrn:               capUrn,
+						CapTitle:             capInfo.Title,
+						LatestVersion:        cartridge.Version,
+						RepoUrl:              cache.repoUrl,
+						PageUrl:              pageUrl,
 					})
 					break
 				}
@@ -575,29 +575,29 @@ func (r *PluginRepo) GetSuggestionsForCap(capUrn string) []PluginSuggestion {
 	return suggestions
 }
 
-// GetAllPlugins gets all available plugins from all repos
-func (r *PluginRepo) GetAllPlugins() []PluginInfo {
+// GetAllCartridges gets all available cartridges from all repos
+func (r *CartridgeRepo) GetAllCartridges() []CartridgeInfo {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	plugins := make([]PluginInfo, 0)
+	cartridges := make([]CartridgeInfo, 0)
 	for _, cache := range r.caches {
-		for _, plugin := range cache.plugins {
-			plugins = append(plugins, plugin)
+		for _, cartridge := range cache.cartridges {
+			cartridges = append(cartridges, cartridge)
 		}
 	}
 
-	return plugins
+	return cartridges
 }
 
-// GetAllAvailableCaps gets all caps available from plugins
-func (r *PluginRepo) GetAllAvailableCaps() []string {
+// GetAllAvailableCaps gets all caps available from cartridges
+func (r *CartridgeRepo) GetAllAvailableCaps() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	capsSet := make(map[string]bool)
 	for _, cache := range r.caches {
-		for cap := range cache.capToPlugins {
+		for cap := range cache.capToCartridges {
 			capsSet[cap] = true
 		}
 	}
@@ -612,7 +612,7 @@ func (r *PluginRepo) GetAllAvailableCaps() []string {
 }
 
 // NeedsSync checks if any repo needs syncing
-func (r *PluginRepo) NeedsSync(repoUrls []string) bool {
+func (r *CartridgeRepo) NeedsSync(repoUrls []string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -629,14 +629,14 @@ func (r *PluginRepo) NeedsSync(repoUrls []string) bool {
 	return false
 }
 
-// GetPlugin gets plugin info by ID
-func (r *PluginRepo) GetPlugin(pluginId string) *PluginInfo {
+// GetCartridge gets cartridge info by ID
+func (r *CartridgeRepo) GetCartridge(cartridgeId string) *CartridgeInfo {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	for _, cache := range r.caches {
-		if plugin, ok := cache.plugins[pluginId]; ok {
-			return &plugin
+		if cartridge, ok := cache.cartridges[cartridgeId]; ok {
+			return &cartridge
 		}
 	}
 

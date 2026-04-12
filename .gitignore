@@ -1,6 +1,6 @@
 # Typical Go project .gitignore
 
-# Binaries for programs and plugins
+# Binaries for programs and cartridges
 *.exe
 *.dll
 *.so
@@ -53,5 +53,5 @@ temp/
 # bindata.go
 .wsb/
 .scrap/
-examples/testplugin/testplugin
+examples/testcartridge/testcartridge
 diffs/

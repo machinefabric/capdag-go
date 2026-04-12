@@ -209,7 +209,7 @@ func Test181_frame_hello_with_manifest(t *testing.T) {
 	if frame.FrameType != FrameTypeHello {
 		t.Errorf("Expected HELLO frame type, got %v", frame.FrameType)
 	}
-	// Plugin-side HELLO has limits AND manifest in Meta
+	// Cartridge-side HELLO has limits AND manifest in Meta
 	if frame.Meta == nil {
 		t.Error("Expected Meta map")
 	}

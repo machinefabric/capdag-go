@@ -226,8 +226,8 @@ func (ps *ProgressSender) Log(level, message string) {
 // Handler has full streaming control - decides when to consume frames and when to produce output.
 type HandlerFunc func(frames <-chan Frame, emitter StreamEmitter, peer PeerInvoker) error
 
-// PluginRuntime handles all I/O for plugin binaries
-type PluginRuntime struct {
+// CartridgeRuntime handles all I/O for cartridge binaries
+type CartridgeRuntime struct {
 	handlers     map[string]HandlerFunc
 	manifestData []byte
 	manifest     *CapManifest
@@ -235,13 +235,13 @@ type PluginRuntime struct {
 	mu           sync.RWMutex
 }
 
-// NewPluginRuntime creates a new plugin runtime with the required manifest JSON
-func NewPluginRuntime(manifestJSON []byte) (*PluginRuntime, error) {
+// NewCartridgeRuntime creates a new cartridge runtime with the required manifest JSON
+func NewCartridgeRuntime(manifestJSON []byte) (*CartridgeRuntime, error) {
 	// Try to parse the manifest for CLI mode support
 	var manifest CapManifest
 	parseErr := json.Unmarshal(manifestJSON, &manifest)
 
-	runtime := &PluginRuntime{
+	runtime := &CartridgeRuntime{
 		handlers:     make(map[string]HandlerFunc),
 		manifestData: manifestJSON,
 		limits:       DefaultLimits(),
@@ -254,9 +254,9 @@ func NewPluginRuntime(manifestJSON []byte) (*PluginRuntime, error) {
 	return runtime, nil
 }
 
-// NewPluginRuntimeWithManifest creates a new plugin runtime with a pre-built CapManifest
+// NewCartridgeRuntimeWithManifest creates a new cartridge runtime with a pre-built CapManifest
 // IMPORTANT: Manifest MUST declare CAP_IDENTITY - fails hard if missing
-func NewPluginRuntimeWithManifest(manifest *CapManifest) (*PluginRuntime, error) {
+func NewCartridgeRuntimeWithManifest(manifest *CapManifest) (*CartridgeRuntime, error) {
 	// Validate manifest - FAIL HARD if CAP_IDENTITY not declared
 	identityUrn, err := urn.NewCapUrnFromString("cap:")
 	if err != nil {
@@ -273,8 +273,8 @@ func NewPluginRuntimeWithManifest(manifest *CapManifest) (*PluginRuntime, error)
 
 	if !hasIdentity {
 		return nil, fmt.Errorf(
-			"manifest validation failed - plugin MUST declare CAP_IDENTITY (cap:). " +
-			"All plugins must explicitly declare capabilities, no implicit fallbacks allowed",
+			"manifest validation failed - cartridge MUST declare CAP_IDENTITY (cap:). " +
+			"All cartridges must explicitly declare capabilities, no implicit fallbacks allowed",
 		)
 	}
 
@@ -283,7 +283,7 @@ func NewPluginRuntimeWithManifest(manifest *CapManifest) (*PluginRuntime, error)
 		return nil, fmt.Errorf("failed to marshal manifest: %w", err)
 	}
 
-	runtime := &PluginRuntime{
+	runtime := &CartridgeRuntime{
 		handlers:     make(map[string]HandlerFunc),
 		manifestData: manifestData,
 		manifest:     manifest,
@@ -297,7 +297,7 @@ func NewPluginRuntimeWithManifest(manifest *CapManifest) (*PluginRuntime, error)
 }
 
 // autoRegisterIdentity registers a default identity handler if none exists
-func (pr *PluginRuntime) autoRegisterIdentity() {
+func (pr *CartridgeRuntime) autoRegisterIdentity() {
 	pr.mu.Lock()
 	defer pr.mu.Unlock()
 
@@ -360,7 +360,7 @@ func (pr *PluginRuntime) autoRegisterIdentity() {
 }
 
 // Register registers a handler for a cap URN
-func (pr *PluginRuntime) Register(capUrn string, handler HandlerFunc) {
+func (pr *CartridgeRuntime) Register(capUrn string, handler HandlerFunc) {
 	pr.mu.Lock()
 	defer pr.mu.Unlock()
 	pr.handlers[capUrn] = handler
@@ -385,7 +385,7 @@ func (r *Request) Output() StreamEmitter { return r.emitter }
 // Peer returns the PeerInvoker for calling capabilities on the host.
 func (r *Request) Peer() PeerInvoker { return r.peer }
 
-// CapOp is the interface for struct-based plugin cap handlers. Implement Perform to handle
+// CapOp is the interface for struct-based cartridge cap handlers. Implement Perform to handle
 // a capability invocation. Mirrors the Rust Op<()> pattern: input/output/peer are accessed
 // through *Request rather than as separate parameters.
 type CapOp interface {
@@ -394,7 +394,7 @@ type CapOp interface {
 
 // RegisterOp registers a CapOp for a cap URN.
 // Bridges the struct-based CapOp interface to the function-based HandlerFunc.
-func (pr *PluginRuntime) RegisterOp(capUrn string, op CapOp) {
+func (pr *CartridgeRuntime) RegisterOp(capUrn string, op CapOp) {
 	pr.Register(capUrn, func(frames <-chan Frame, emitter StreamEmitter, peer PeerInvoker) error {
 		return op.Perform(&Request{frames: frames, emitter: emitter, peer: peer})
 	})
@@ -410,7 +410,7 @@ func (pr *PluginRuntime) RegisterOp(capUrn string, op CapOp) {
 // Ranks by: non-negative signed distance (refinement/exact) first,
 // then by smallest absolute distance. This prevents identity handlers
 // from stealing routes from specific handlers.
-func (pr *PluginRuntime) FindHandler(capUrn string) HandlerFunc {
+func (pr *CartridgeRuntime) FindHandler(capUrn string) HandlerFunc {
 	pr.mu.RLock()
 	defer pr.mu.RUnlock()
 
@@ -478,11 +478,11 @@ func (pr *PluginRuntime) FindHandler(capUrn string) HandlerFunc {
 	return matches[0].handler
 }
 
-// Run runs the plugin runtime (automatic mode detection)
-func (pr *PluginRuntime) Run() error {
+// Run runs the cartridge runtime (automatic mode detection)
+func (pr *CartridgeRuntime) Run() error {
 	args := os.Args
 
-	// No CLI arguments at all → Plugin CBOR mode
+	// No CLI arguments at all → Cartridge CBOR mode
 	if len(args) == 1 {
 		return pr.runCBORMode()
 	}
@@ -491,8 +491,8 @@ func (pr *PluginRuntime) Run() error {
 	return pr.runCLIMode(args)
 }
 
-// runCBORMode runs in Plugin CBOR mode - binary frame protocol via stdin/stdout
-func (pr *PluginRuntime) runCBORMode() error {
+// runCBORMode runs in Cartridge CBOR mode - binary frame protocol via stdin/stdout
+func (pr *CartridgeRuntime) runCBORMode() error {
 	reader := NewFrameReader(os.Stdin)
 	rawWriter := NewFrameWriter(os.Stdout)
 
@@ -513,7 +513,7 @@ func (pr *PluginRuntime) runCBORMode() error {
 	pr.limits = negotiatedLimits
 	pr.mu.Unlock()
 
-	// Track pending peer requests (plugin invoking host caps)
+	// Track pending peer requests (cartridge invoking host caps)
 	// Key is MessageId.ToString() because MessageId contains []byte which is not comparable
 	pendingPeerRequests := &sync.Map{} // map[string]*pendingPeerRequest
 
@@ -562,7 +562,7 @@ func (pr *PluginRuntime) runCBORMode() error {
 				errFrame := NewErr(frame.Id, "INVALID_REQUEST", "Request missing cap URN")
 				errFrame.RoutingId = routingId
 				if writeErr := writer.WriteFrame(errFrame); writeErr != nil {
-					fmt.Fprintf(os.Stderr, "[PluginRuntime] Failed to write error: %v\n", writeErr)
+					fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", writeErr)
 				}
 				continue
 			}
@@ -575,7 +575,7 @@ func (pr *PluginRuntime) runCBORMode() error {
 				errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", "REQ frame must have empty payload - use STREAM_START for arguments")
 				errFrame.RoutingId = routingId
 				if err := writer.WriteFrame(errFrame); err != nil {
-					fmt.Fprintf(os.Stderr, "[PluginRuntime] Failed to write PROTOCOL_ERROR: %v\n", err)
+					fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write PROTOCOL_ERROR: %v\n", err)
 				}
 				continue
 			}
@@ -586,7 +586,7 @@ func (pr *PluginRuntime) runCBORMode() error {
 				errFrame := NewErr(frame.Id, "NO_HANDLER", fmt.Sprintf("No handler registered for cap: %s", capUrn))
 				errFrame.RoutingId = routingId
 				if writeErr := writer.WriteFrame(errFrame); writeErr != nil {
-					fmt.Fprintf(os.Stderr, "[PluginRuntime] Failed to write error: %v\n", writeErr)
+					fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", writeErr)
 				}
 				continue
 			}
@@ -601,7 +601,7 @@ func (pr *PluginRuntime) runCBORMode() error {
 				ended:     false,
 			}
 			pendingIncomingMu.Unlock()
-			fmt.Fprintf(os.Stderr, "[PluginRuntime] REQ: req_id=%s cap=%s - waiting for streams\n", frame.Id.ToString(), capUrn)
+			fmt.Fprintf(os.Stderr, "[CartridgeRuntime] REQ: req_id=%s cap=%s - waiting for streams\n", frame.Id.ToString(), capUrn)
 			continue // Wait for STREAM_START/CHUNK/STREAM_END/END frames
 
 		case FrameTypeHeartbeat:
@@ -623,7 +623,7 @@ func (pr *PluginRuntime) runCBORMode() error {
 			if frame.StreamId == nil {
 				errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", "CHUNK frame missing stream_id")
 				if err := writer.WriteFrame(errFrame); err != nil {
-					fmt.Fprintf(os.Stderr, "[PluginRuntime] Failed to write error: %v\n", err)
+					fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", err)
 				}
 				continue
 			}
@@ -632,7 +632,7 @@ func (pr *PluginRuntime) runCBORMode() error {
 			if err := VerifyChunkChecksum(frame); err != nil {
 				errFrame := NewErr(frame.Id, "CORRUPTED_DATA", err.Error())
 				if err := writer.WriteFrame(errFrame); err != nil {
-					fmt.Fprintf(os.Stderr, "[PluginRuntime] Failed to write error: %v\n", err)
+					fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", err)
 				}
 				continue
 			}
@@ -648,7 +648,7 @@ func (pr *PluginRuntime) runCBORMode() error {
 					pendingIncomingMu.Unlock()
 					errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", "CHUNK after request END")
 					if err := writer.WriteFrame(errFrame); err != nil {
-						fmt.Fprintf(os.Stderr, "[PluginRuntime] Failed to write error: %v\n", err)
+						fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", err)
 					}
 					continue
 				}
@@ -667,7 +667,7 @@ func (pr *PluginRuntime) runCBORMode() error {
 					pendingIncomingMu.Unlock()
 					errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", fmt.Sprintf("CHUNK for unknown stream_id: %s", streamID))
 					if err := writer.WriteFrame(errFrame); err != nil {
-						fmt.Fprintf(os.Stderr, "[PluginRuntime] Failed to write error: %v\n", err)
+						fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", err)
 					}
 					continue
 				}
@@ -677,7 +677,7 @@ func (pr *PluginRuntime) runCBORMode() error {
 					pendingIncomingMu.Unlock()
 					errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", fmt.Sprintf("CHUNK for ended stream: %s", streamID))
 					if err := writer.WriteFrame(errFrame); err != nil {
-						fmt.Fprintf(os.Stderr, "[PluginRuntime] Failed to write error: %v\n", err)
+						fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", err)
 					}
 					continue
 				}
@@ -732,7 +732,7 @@ func (pr *PluginRuntime) runCBORMode() error {
 					emitter := newThreadSafeEmitter(writer, requestID, pendingReq.routingId, streamID, mediaUrn, negotiatedLimits.MaxChunk)
 					peerInvoker := newPeerInvokerImpl(writer, pendingPeerRequests, negotiatedLimits.MaxChunk)
 
-					fmt.Fprintf(os.Stderr, "[PluginRuntime] END: Invoking handler for cap=%s with %d streams\n", capUrn, len(pendingReq.streams))
+					fmt.Fprintf(os.Stderr, "[CartridgeRuntime] END: Invoking handler for cap=%s with %d streams\n", capUrn, len(pendingReq.streams))
 
 					// Send all frames to channel: STREAM_START → CHUNK(s) → STREAM_END per stream, then END
 					go func() {
@@ -763,7 +763,7 @@ func (pr *PluginRuntime) runCBORMode() error {
 						errFrame := NewErr(requestID, "HANDLER_ERROR", err.Error())
 						errFrame.RoutingId = pendingReq.routingId
 						if writeErr := writer.WriteFrame(errFrame); writeErr != nil {
-							fmt.Fprintf(os.Stderr, "[PluginRuntime] Failed to write error: %v\n", writeErr)
+							fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", writeErr)
 						}
 						return
 					}
@@ -812,7 +812,7 @@ func (pr *PluginRuntime) runCBORMode() error {
 			if frame.StreamId == nil {
 				errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", "STREAM_START missing stream_id")
 				if err := writer.WriteFrame(errFrame); err != nil {
-					fmt.Fprintf(os.Stderr, "[PluginRuntime] Failed to write error: %v\n", err)
+					fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", err)
 				}
 				continue
 			}
@@ -820,7 +820,7 @@ func (pr *PluginRuntime) runCBORMode() error {
 			if frame.MediaUrn == nil {
 				errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", "STREAM_START missing media_urn")
 				if err := writer.WriteFrame(errFrame); err != nil {
-					fmt.Fprintf(os.Stderr, "[PluginRuntime] Failed to write error: %v\n", err)
+					fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", err)
 				}
 				continue
 			}
@@ -828,7 +828,7 @@ func (pr *PluginRuntime) runCBORMode() error {
 			streamID := *frame.StreamId
 			mediaUrn := *frame.MediaUrn
 
-			fmt.Fprintf(os.Stderr, "[PluginRuntime] STREAM_START: req_id=%s stream_id=%s media_urn=%s\n",
+			fmt.Fprintf(os.Stderr, "[CartridgeRuntime] STREAM_START: req_id=%s stream_id=%s media_urn=%s\n",
 				frame.Id.ToString(), streamID, mediaUrn)
 
 			// STRICT: Add stream with validation
@@ -840,7 +840,7 @@ func (pr *PluginRuntime) runCBORMode() error {
 					pendingIncomingMu.Unlock()
 					errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", "STREAM_START after request END")
 					if err := writer.WriteFrame(errFrame); err != nil {
-						fmt.Fprintf(os.Stderr, "[PluginRuntime] Failed to write error: %v\n", err)
+						fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", err)
 					}
 					continue
 				}
@@ -852,7 +852,7 @@ func (pr *PluginRuntime) runCBORMode() error {
 						pendingIncomingMu.Unlock()
 						errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", fmt.Sprintf("Duplicate stream_id: %s", streamID))
 						if err := writer.WriteFrame(errFrame); err != nil {
-							fmt.Fprintf(os.Stderr, "[PluginRuntime] Failed to write error: %v\n", err)
+							fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", err)
 						}
 						continue
 					}
@@ -868,7 +868,7 @@ func (pr *PluginRuntime) runCBORMode() error {
 					},
 				})
 				pendingIncomingMu.Unlock()
-				fmt.Fprintf(os.Stderr, "[PluginRuntime] Incoming stream started: %s\n", streamID)
+				fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Incoming stream started: %s\n", streamID)
 				continue
 			}
 			pendingIncomingMu.Unlock()
@@ -881,7 +881,7 @@ func (pr *PluginRuntime) runCBORMode() error {
 				// Forward bare STREAM_START frame to handler
 				pendingReq.sender <- *frame
 			} else {
-				fmt.Fprintf(os.Stderr, "[PluginRuntime] STREAM_START for unknown request_id: %s\n", frame.Id.ToString())
+				fmt.Fprintf(os.Stderr, "[CartridgeRuntime] STREAM_START for unknown request_id: %s\n", frame.Id.ToString())
 			}
 
 		case FrameTypeStreamEnd:
@@ -889,13 +889,13 @@ func (pr *PluginRuntime) runCBORMode() error {
 			if frame.StreamId == nil {
 				errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", "STREAM_END missing stream_id")
 				if err := writer.WriteFrame(errFrame); err != nil {
-					fmt.Fprintf(os.Stderr, "[PluginRuntime] Failed to write error: %v\n", err)
+					fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", err)
 				}
 				continue
 			}
 
 			streamID := *frame.StreamId
-			fmt.Fprintf(os.Stderr, "[PluginRuntime] STREAM_END: stream_id=%s\n", streamID)
+			fmt.Fprintf(os.Stderr, "[CartridgeRuntime] STREAM_END: stream_id=%s\n", streamID)
 
 			// STRICT: Mark stream as complete with validation
 			pendingIncomingMu.Lock()
@@ -906,7 +906,7 @@ func (pr *PluginRuntime) runCBORMode() error {
 					if pendingReq.streams[i].streamID == streamID {
 						pendingReq.streams[i].stream.complete = true
 						found = true
-						fmt.Fprintf(os.Stderr, "[PluginRuntime] Incoming stream marked complete: %s\n", streamID)
+						fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Incoming stream marked complete: %s\n", streamID)
 						break
 					}
 				}
@@ -917,7 +917,7 @@ func (pr *PluginRuntime) runCBORMode() error {
 					pendingIncomingMu.Unlock()
 					errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", fmt.Sprintf("STREAM_END for unknown stream_id: %s", streamID))
 					if err := writer.WriteFrame(errFrame); err != nil {
-						fmt.Fprintf(os.Stderr, "[PluginRuntime] Failed to write error: %v\n", err)
+						fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", err)
 					}
 					continue
 				}
@@ -933,13 +933,13 @@ func (pr *PluginRuntime) runCBORMode() error {
 				// Forward bare STREAM_END frame to handler
 				pendingReq.sender <- *frame
 			} else {
-				fmt.Fprintf(os.Stderr, "[PluginRuntime] STREAM_END for unknown request_id: %s\n", frame.Id.ToString())
+				fmt.Fprintf(os.Stderr, "[CartridgeRuntime] STREAM_END for unknown request_id: %s\n", frame.Id.ToString())
 			}
 
 		case FrameTypeRelayNotify, FrameTypeRelayState:
-			// Relay-level frames must never reach a plugin runtime.
+			// Relay-level frames must never reach a cartridge runtime.
 			// If they do, it's a bug in the relay layer — fail hard.
-			return fmt.Errorf("relay frame %v must not reach plugin runtime", frame.FrameType)
+			return fmt.Errorf("relay frame %v must not reach cartridge runtime", frame.FrameType)
 		}
 	}
 
@@ -950,7 +950,7 @@ func (pr *PluginRuntime) runCBORMode() error {
 }
 
 // runCLIMode runs in CLI mode - parse arguments and invoke handler
-func (pr *PluginRuntime) runCLIMode(args []string) error {
+func (pr *CartridgeRuntime) runCLIMode(args []string) error {
 	if pr.manifest == nil {
 		return errors.New("failed to parse manifest for CLI mode")
 	}
@@ -1093,7 +1093,7 @@ func (pr *PluginRuntime) runCLIMode(args []string) error {
 }
 
 // findCapByCommand finds a cap by its command name
-func (pr *PluginRuntime) findCapByCommand(commandName string) *cap.Cap {
+func (pr *CartridgeRuntime) findCapByCommand(commandName string) *cap.Cap {
 	if pr.manifest == nil {
 		return nil
 	}
@@ -1106,7 +1106,7 @@ func (pr *PluginRuntime) findCapByCommand(commandName string) *cap.Cap {
 }
 
 // printHelp prints help message showing all available subcommands
-func (pr *PluginRuntime) printHelp() {
+func (pr *CartridgeRuntime) printHelp() {
 	if pr.manifest == nil {
 		return
 	}
@@ -1116,7 +1116,7 @@ func (pr *PluginRuntime) printHelp() {
 	fmt.Fprintf(os.Stderr, "USAGE:\n")
 	fmt.Fprintf(os.Stderr, "    %s <COMMAND> [OPTIONS]\n\n", pr.manifest.Name)
 	fmt.Fprintf(os.Stderr, "COMMANDS:\n")
-	fmt.Fprintf(os.Stderr, "    manifest    Output the plugin manifest as JSON\n")
+	fmt.Fprintf(os.Stderr, "    manifest    Output the cartridge manifest as JSON\n")
 
 	for i := range pr.manifest.Caps {
 		cap := &pr.manifest.Caps[i]
@@ -1131,13 +1131,13 @@ func (pr *PluginRuntime) printHelp() {
 }
 
 // printCapHelp prints help for a specific cap
-func (pr *PluginRuntime) printCapHelp(capDef *cap.Cap) {
+func (pr *CartridgeRuntime) printCapHelp(capDef *cap.Cap) {
 	fmt.Fprintf(os.Stderr, "%s\n", capDef.Title)
 	if capDef.CapDescription != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", *capDef.CapDescription)
 	}
 	fmt.Fprintf(os.Stderr, "\nUSAGE:\n")
-	fmt.Fprintf(os.Stderr, "    plugin %s [OPTIONS]\n\n", capDef.Command)
+	fmt.Fprintf(os.Stderr, "    cartridge %s [OPTIONS]\n\n", capDef.Command)
 }
 
 // extractEffectivePayload extracts the effective payload from a REQ frame.
@@ -1236,7 +1236,7 @@ func toBytes(v interface{}) []byte {
 // syncFrameWriter wraps FrameWriter with a mutex for concurrent access and
 // centralized seq assignment. All frames pass through the SeqAssigner before
 // writing, ensuring monotonically increasing seq per flow (RID + XID).
-// (matches Rust PluginRuntime writer thread with SeqAssigner)
+// (matches Rust CartridgeRuntime writer thread with SeqAssigner)
 type syncFrameWriter struct {
 	mu          sync.Mutex
 	writer      *FrameWriter
@@ -1470,7 +1470,7 @@ func (e *threadSafeEmitter) Finalize() {
 		startFrame := NewStreamStart(e.requestID, e.streamID, e.mediaUrn)
 		startFrame.RoutingId = e.routingId
 		if err := e.writer.WriteFrame(startFrame); err != nil {
-			fmt.Fprintf(os.Stderr, "[PluginRuntime] Failed to write STREAM_START: %v\n", err)
+			fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write STREAM_START: %v\n", err)
 			return
 		}
 	}
@@ -1479,7 +1479,7 @@ func (e *threadSafeEmitter) Finalize() {
 	streamEndFrame := NewStreamEnd(e.requestID, e.streamID, e.chunkIndex)
 	streamEndFrame.RoutingId = e.routingId
 	if err := e.writer.WriteFrame(streamEndFrame); err != nil {
-		fmt.Fprintf(os.Stderr, "[PluginRuntime] Failed to write STREAM_END: %v\n", err)
+		fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write STREAM_END: %v\n", err)
 		return
 	}
 
@@ -1487,7 +1487,7 @@ func (e *threadSafeEmitter) Finalize() {
 	endFrame := NewEnd(e.requestID, nil)
 	endFrame.RoutingId = e.routingId
 	if err := e.writer.WriteFrame(endFrame); err != nil {
-		fmt.Fprintf(os.Stderr, "[PluginRuntime] Failed to write END: %v\n", err)
+		fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write END: %v\n", err)
 	}
 }
 
@@ -1578,7 +1578,7 @@ func (e *threadSafeEmitter) EmitLog(level, message string) {
 	frame := NewLog(e.requestID, level, message)
 	frame.RoutingId = e.routingId
 	if err := e.writer.WriteFrame(frame); err != nil {
-		fmt.Fprintf(os.Stderr, "[PluginRuntime] Failed to write log: %v\n", err)
+		fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write log: %v\n", err)
 	}
 }
 
@@ -1586,7 +1586,7 @@ func (e *threadSafeEmitter) Progress(progress float32, message string) {
 	frame := NewProgress(e.requestID, progress, message)
 	frame.RoutingId = e.routingId
 	if err := e.writer.WriteFrame(frame); err != nil {
-		fmt.Fprintf(os.Stderr, "[PluginRuntime] Failed to write progress: %v\n", err)
+		fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write progress: %v\n", err)
 	}
 }
 
@@ -1762,7 +1762,7 @@ func (n *noPeerInvoker) Invoke(capUrn string, arguments []cap.CapArgumentValue) 
 }
 
 // Limits returns the current protocol limits
-func (pr *PluginRuntime) Limits() Limits {
+func (pr *CartridgeRuntime) Limits() Limits {
 	pr.mu.RLock()
 	defer pr.mu.RUnlock()
 	return pr.limits
@@ -1780,7 +1780,7 @@ func (pr *PluginRuntime) Limits() Limits {
 // - CLI piped binary → chunk reader → payload
 // - CBOR chunked → payload
 // - CBOR file path → auto-convert → payload
-func (pr *PluginRuntime) buildPayloadFromStreamingReader(capDef *cap.Cap, reader io.Reader, maxChunk int) ([]byte, error) {
+func (pr *CartridgeRuntime) buildPayloadFromStreamingReader(capDef *cap.Cap, reader io.Reader, maxChunk int) ([]byte, error) {
 	// Accumulate chunks
 	var chunks [][]byte
 	totalBytes := 0
@@ -1837,7 +1837,7 @@ func (pr *PluginRuntime) buildPayloadFromStreamingReader(capDef *cap.Cap, reader
 
 // buildPayloadFromCLI builds CBOR payload from CLI arguments based on cap's arg definitions.
 // Returns CBOR-encoded array of cap.CapArgumentValue objects.
-func (pr *PluginRuntime) buildPayloadFromCLI(capDef *cap.Cap, cliArgs []string) ([]byte, error) {
+func (pr *CartridgeRuntime) buildPayloadFromCLI(capDef *cap.Cap, cliArgs []string) ([]byte, error) {
 	// Read stdin if available (non-blocking check)
 	stdinData, err := pr.readStdinIfAvailable()
 	if err != nil {
@@ -1928,7 +1928,7 @@ func (pr *PluginRuntime) buildPayloadFromCLI(capDef *cap.Cap, cliArgs []string) 
 
 // extractArgValue extracts a single argument value from CLI args or stdin.
 // Handles automatic file-path to bytes conversion when appropriate.
-func (pr *PluginRuntime) extractArgValue(argDef *cap.CapArg, cliArgs []string, stdinData []byte) ([]byte, error) {
+func (pr *CartridgeRuntime) extractArgValue(argDef *cap.CapArg, cliArgs []string, stdinData []byte) ([]byte, error) {
 	// Check if this arg requires file-path to bytes conversion using pattern matching
 	argMediaUrn, err := urn.NewMediaUrnFromString(argDef.MediaUrn)
 	if err != nil {
@@ -2006,7 +2006,7 @@ func (pr *PluginRuntime) extractArgValue(argDef *cap.CapArg, cliArgs []string, s
 }
 
 // getCliFlagValue gets the value for a CLI flag (e.g., --model "value")
-func (pr *PluginRuntime) getCliFlagValue(args []string, flag string) (string, bool) {
+func (pr *CartridgeRuntime) getCliFlagValue(args []string, flag string) (string, bool) {
 	for i := 0; i < len(args); i++ {
 		if args[i] == flag {
 			if i+1 < len(args) {
@@ -2023,7 +2023,7 @@ func (pr *PluginRuntime) getCliFlagValue(args []string, flag string) (string, bo
 }
 
 // getPositionalArgs gets positional arguments (non-flag arguments)
-func (pr *PluginRuntime) getPositionalArgs(args []string) []string {
+func (pr *CartridgeRuntime) getPositionalArgs(args []string) []string {
 	var positional []string
 	skipNext := false
 
@@ -2056,7 +2056,7 @@ func contains(s string, c byte) bool {
 
 // readStdinIfAvailable reads stdin if data is available (non-blocking check).
 // Returns nil immediately if stdin is a terminal or no data is ready.
-func (pr *PluginRuntime) readStdinIfAvailable() ([]byte, error) {
+func (pr *CartridgeRuntime) readStdinIfAvailable() ([]byte, error) {
 	// Check if stdin is a terminal (interactive)
 	stat, err := os.Stdin.Stat()
 	if err != nil {
@@ -2113,7 +2113,7 @@ func (pr *PluginRuntime) readStdinIfAvailable() ([]byte, error) {
 //
 // # Errors
 // Returns error if file cannot be read with clear error message.
-func (pr *PluginRuntime) readFilePathToBytes(pathValue string, isArray bool) ([]byte, error) {
+func (pr *CartridgeRuntime) readFilePathToBytes(pathValue string, isArray bool) ([]byte, error) {
 	if isArray {
 		// Parse JSON array of path patterns
 		var pathPatterns []string

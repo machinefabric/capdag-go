@@ -52,11 +52,11 @@ func Test236_response_chunk_all_fields_populated(t *testing.T) {
 	assert.True(t, chunk.IsEof)
 }
 
-// TEST237: Test PluginResponse::Single final_payload returns the single payload slice
-func Test237_plugin_response_single_final_payload(t *testing.T) {
+// TEST237: Test CartridgeResponse::Single final_payload returns the single payload slice
+func Test237_cartridge_response_single_final_payload(t *testing.T) {
 	payload := []byte("single response")
-	response := &PluginResponse{
-		Type:   PluginResponseTypeSingle,
+	response := &CartridgeResponse{
+		Type:   CartridgeResponseTypeSingle,
 		Single: payload,
 	}
 
@@ -64,10 +64,10 @@ func Test237_plugin_response_single_final_payload(t *testing.T) {
 	assert.Equal(t, payload, finalPayload)
 }
 
-// TEST238: Test PluginResponse::Single with empty payload returns empty slice and empty vec
-func Test238_plugin_response_single_empty_payload(t *testing.T) {
-	response := &PluginResponse{
-		Type:   PluginResponseTypeSingle,
+// TEST238: Test CartridgeResponse::Single with empty payload returns empty slice and empty vec
+func Test238_cartridge_response_single_empty_payload(t *testing.T) {
+	response := &CartridgeResponse{
+		Type:   CartridgeResponseTypeSingle,
 		Single: []byte{},
 	}
 
@@ -75,16 +75,16 @@ func Test238_plugin_response_single_empty_payload(t *testing.T) {
 	assert.Empty(t, response.FinalPayload())
 }
 
-// TEST239: Test PluginResponse::Streaming concatenated joins all chunk payloads in order
-func Test239_plugin_response_streaming_concatenated(t *testing.T) {
+// TEST239: Test CartridgeResponse::Streaming concatenated joins all chunk payloads in order
+func Test239_cartridge_response_streaming_concatenated(t *testing.T) {
 	chunks := []*ResponseChunk{
 		{Payload: []byte("Hello "), Seq: 0, IsEof: false},
 		{Payload: []byte("World"), Seq: 1, IsEof: false},
 		{Payload: []byte("!"), Seq: 2, IsEof: true},
 	}
 
-	response := &PluginResponse{
-		Type:      PluginResponseTypeStreaming,
+	response := &CartridgeResponse{
+		Type:      CartridgeResponseTypeStreaming,
 		Streaming: chunks,
 	}
 
@@ -92,16 +92,16 @@ func Test239_plugin_response_streaming_concatenated(t *testing.T) {
 	assert.Equal(t, "Hello World!", string(concatenated))
 }
 
-// TEST240: Test PluginResponse::Streaming final_payload returns the last chunk's payload
-func Test240_plugin_response_streaming_final_payload(t *testing.T) {
+// TEST240: Test CartridgeResponse::Streaming final_payload returns the last chunk's payload
+func Test240_cartridge_response_streaming_final_payload(t *testing.T) {
 	chunks := []*ResponseChunk{
 		{Payload: []byte("first"), Seq: 0, IsEof: false},
 		{Payload: []byte("second"), Seq: 1, IsEof: false},
 		{Payload: []byte("third"), Seq: 2, IsEof: true},
 	}
 
-	response := &PluginResponse{
-		Type:      PluginResponseTypeStreaming,
+	response := &CartridgeResponse{
+		Type:      CartridgeResponseTypeStreaming,
 		Streaming: chunks,
 	}
 
@@ -109,10 +109,10 @@ func Test240_plugin_response_streaming_final_payload(t *testing.T) {
 	assert.Equal(t, "third", string(finalPayload))
 }
 
-// TEST241: Test PluginResponse::Streaming with empty chunks vec returns empty concatenation
-func Test241_plugin_response_streaming_empty_chunks(t *testing.T) {
-	response := &PluginResponse{
-		Type:      PluginResponseTypeStreaming,
+// TEST241: Test CartridgeResponse::Streaming with empty chunks vec returns empty concatenation
+func Test241_cartridge_response_streaming_empty_chunks(t *testing.T) {
+	response := &CartridgeResponse{
+		Type:      CartridgeResponseTypeStreaming,
 		Streaming: []*ResponseChunk{},
 	}
 
@@ -123,15 +123,15 @@ func Test241_plugin_response_streaming_empty_chunks(t *testing.T) {
 	assert.Nil(t, finalPayload)
 }
 
-// TEST242: Test PluginResponse::Streaming concatenated capacity is pre-allocated correctly for large payloads
-func Test242_plugin_response_streaming_preallocation(t *testing.T) {
+// TEST242: Test CartridgeResponse::Streaming concatenated capacity is pre-allocated correctly for large payloads
+func Test242_cartridge_response_streaming_preallocation(t *testing.T) {
 	// Create chunks with known sizes
 	chunk1 := &ResponseChunk{Payload: make([]byte, 1000), Seq: 0, IsEof: false}
 	chunk2 := &ResponseChunk{Payload: make([]byte, 2000), Seq: 1, IsEof: false}
 	chunk3 := &ResponseChunk{Payload: make([]byte, 500), Seq: 2, IsEof: true}
 
-	response := &PluginResponse{
-		Type:      PluginResponseTypeStreaming,
+	response := &CartridgeResponse{
+		Type:      CartridgeResponseTypeStreaming,
 		Streaming: []*ResponseChunk{chunk1, chunk2, chunk3},
 	}
 
@@ -154,15 +154,15 @@ func Test243_host_error_variants(t *testing.T) {
 	assert.Contains(t, ioErr.Error(), "I/O error")
 	assert.Contains(t, ioErr.Error(), "connection closed")
 
-	// Test PluginError
-	pluginErr := &HostError{
-		Type:    HostErrorTypePluginError,
+	// Test CartridgeError
+	cartridgeErr := &HostError{
+		Type:    HostErrorTypeCartridgeError,
 		Code:    "HANDLER_ERROR",
 		Message: "something went wrong",
 	}
-	assert.Contains(t, pluginErr.Error(), "Plugin returned error")
-	assert.Contains(t, pluginErr.Error(), "HANDLER_ERROR")
-	assert.Contains(t, pluginErr.Error(), "something went wrong")
+	assert.Contains(t, cartridgeErr.Error(), "Cartridge returned error")
+	assert.Contains(t, cartridgeErr.Error(), "HANDLER_ERROR")
+	assert.Contains(t, cartridgeErr.Error(), "something went wrong")
 
 	// Test UnexpectedFrameType
 	frameErr := &HostError{Type: HostErrorTypeUnexpectedFrameType, Message: "HEARTBEAT"}
@@ -171,7 +171,7 @@ func Test243_host_error_variants(t *testing.T) {
 
 	// Test ProcessExited
 	exitedErr := &HostError{Type: HostErrorTypeProcessExited}
-	assert.Contains(t, exitedErr.Error(), "Plugin process exited")
+	assert.Contains(t, exitedErr.Error(), "Cartridge process exited")
 
 	// Test Handshake
 	handshakeErr := &HostError{Type: HostErrorTypeHandshake, Message: "timeout"}

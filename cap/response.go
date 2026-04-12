@@ -1,4 +1,4 @@
-// Package capdag provides unified response wrapper for plugin output handling with validation
+// Package capdag provides unified response wrapper for cartridge output handling with validation
 package cap
 
 import (
@@ -10,8 +10,8 @@ import (
 	"github.com/machinefabric/capdag-go/media"
 )
 
-// ResponseWrapper provides unified response wrapper for all plugin operations
-// Provides type-safe deserialization of plugin output
+// ResponseWrapper provides unified response wrapper for all cartridge operations
+// Provides type-safe deserialization of cartridge output
 type ResponseWrapper struct {
 	rawBytes    []byte
 	contentType ResponseContentType

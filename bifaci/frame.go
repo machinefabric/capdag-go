@@ -311,7 +311,7 @@ func NewHello(maxFrame, maxChunk, maxReorderBuffer int) *Frame {
 	return frame
 }
 
-// NewHelloWithManifest creates a HELLO frame with manifest (plugin side)
+// NewHelloWithManifest creates a HELLO frame with manifest (cartridge side)
 // Matches Rust Frame::hello_with_manifest
 func NewHelloWithManifest(maxFrame, maxChunk, maxReorderBuffer int, manifest []byte) *Frame {
 	frame := newFrame(FrameTypeHello, MessageId{uintValue: new(uint64)})

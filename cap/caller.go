@@ -18,12 +18,12 @@ const (
 	// StdinSourceKindData represents raw byte data for stdin
 	StdinSourceKindData StdinSourceKind = iota
 	// StdinSourceKindFileReference represents a file reference for stdin
-	// Used for plugins to read files locally instead of sending bytes over the wire
+	// Used for cartridges to read files locally instead of sending bytes over the wire
 	StdinSourceKindFileReference
 )
 
 // StdinSource represents the source for stdin data.
-// For plugins (via gRPC/XPC), using FileReference avoids size limits
+// For cartridges (via gRPC/XPC), using FileReference avoids size limits
 // by letting the receiving side read the file locally.
 type StdinSource struct {
 	Kind StdinSourceKind

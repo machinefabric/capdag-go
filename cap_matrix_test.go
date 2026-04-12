@@ -225,11 +225,11 @@ func makeCap(urn string, title string) *Cap {
 
 // TEST121: Test CapBlock selects more specific cap over less specific regardless of registry order
 func Test121_cap_block_more_specific_wins(t *testing.T) {
-	// This is the key test: provider has less specific cap, plugin has more specific
+	// This is the key test: provider has less specific cap, cartridge has more specific
 	// The more specific one should win regardless of registry order
 
 	providerRegistry := NewCapMatrix()
-	pluginRegistry := NewCapMatrix()
+	cartridgeRegistry := NewCapMatrix()
 
 	// Provider: less specific cap (no ext tag)
 	providerHost := &MockCapSetForRegistry{name: "provider"}
@@ -239,37 +239,37 @@ func Test121_cap_block_more_specific_wins(t *testing.T) {
 	)
 	providerRegistry.RegisterCapSet("provider", providerHost, []*Cap{providerCap})
 
-	// Plugin: more specific cap (has ext=pdf)
-	pluginHost := &MockCapSetForRegistry{name: "plugin"}
-	pluginCap := makeCap(
+	// Cartridge: more specific cap (has ext=pdf)
+	cartridgeHost := &MockCapSetForRegistry{name: "cartridge"}
+	cartridgeCap := makeCap(
 		`cap:ext=pdf;in="media:binary";op=generate_thumbnail;out="media:binary"`,
-		"Plugin PDF Thumbnail Generator (specific)",
+		"Cartridge PDF Thumbnail Generator (specific)",
 	)
-	pluginRegistry.RegisterCapSet("plugin", pluginHost, []*Cap{pluginCap})
+	cartridgeRegistry.RegisterCapSet("cartridge", cartridgeHost, []*Cap{cartridgeCap})
 
 	// Create composite with provider first (normally would have priority on ties)
 	composite := NewCapBlock()
 	composite.AddRegistry("providers", providerRegistry)
-	composite.AddRegistry("plugins", pluginRegistry)
+	composite.AddRegistry("cartridges", cartridgeRegistry)
 
-	// Request for PDF thumbnails - plugin's more specific cap should win
+	// Request for PDF thumbnails - cartridge's more specific cap should win
 	request := `cap:ext=pdf;in="media:binary";op=generate_thumbnail;out="media:binary"`
 	best, err := composite.FindBestCapSet(request)
 	if err != nil {
 		t.Fatalf("Failed to find best cap set: %v", err)
 	}
 
-	// Plugin: in=binary(1) + out=binary(1) + ext=pdf(3) + op=generate_thumbnail(3) = 8
+	// Cartridge: in=binary(1) + out=binary(1) + ext=pdf(3) + op=generate_thumbnail(3) = 8
 	// Provider: in=binary(1) + out=binary(1) + op=generate_thumbnail(3) = 5
-	// Plugin should win even though providers were added first
-	if best.RegistryName != "plugins" {
-		t.Errorf("Expected plugins registry to win, got %s", best.RegistryName)
+	// Cartridge should win even though providers were added first
+	if best.RegistryName != "cartridges" {
+		t.Errorf("Expected cartridges registry to win, got %s", best.RegistryName)
 	}
 	if best.Specificity != 4 {
 		t.Errorf("Expected specificity 4, got %d", best.Specificity)
 	}
-	if best.Cap.Title != "Plugin PDF Thumbnail Generator (specific)" {
-		t.Errorf("Expected plugin cap title, got %s", best.Cap.Title)
+	if best.Cap.Title != "Cartridge PDF Thumbnail Generator (specific)" {
+		t.Errorf("Expected cartridge cap title, got %s", best.Cap.Title)
 	}
 }
 
@@ -366,16 +366,16 @@ func Test124_cap_block_no_match(t *testing.T) {
 	}
 }
 
-// TEST125: Test CapBlock prefers specific plugin over generic provider fallback
+// TEST125: Test CapBlock prefers specific cartridge over generic provider fallback
 func Test125_cap_block_fallback_scenario(t *testing.T) {
 	// Test the exact scenario from the user's issue:
 	// Provider: generic fallback with ext=* (can handle any file type)
-	// Plugin:   PDF-specific handler
+	// Cartridge:   PDF-specific handler
 	// Request:  PDF thumbnail
-	// Expected: Plugin wins (more specific)
+	// Expected: Cartridge wins (more specific)
 
 	providerRegistry := NewCapMatrix()
-	pluginRegistry := NewCapMatrix()
+	cartridgeRegistry := NewCapMatrix()
 
 	// Provider with generic fallback - uses ext=* to accept any extension
 	providerHost := &MockCapSetForRegistry{name: "provider_fallback"}
@@ -385,18 +385,18 @@ func Test125_cap_block_fallback_scenario(t *testing.T) {
 	)
 	providerRegistry.RegisterCapSet("provider_fallback", providerHost, []*Cap{providerCap})
 
-	// Plugin with PDF-specific handler
-	pluginHost := &MockCapSetForRegistry{name: "pdf_plugin"}
-	pluginCap := makeCap(
+	// Cartridge with PDF-specific handler
+	cartridgeHost := &MockCapSetForRegistry{name: "pdf_cartridge"}
+	cartridgeCap := makeCap(
 		`cap:ext=pdf;in="media:binary";op=generate_thumbnail;out="media:binary"`,
-		"PDF Thumbnail Plugin",
+		"PDF Thumbnail Cartridge",
 	)
-	pluginRegistry.RegisterCapSet("pdf_plugin", pluginHost, []*Cap{pluginCap})
+	cartridgeRegistry.RegisterCapSet("pdf_cartridge", cartridgeHost, []*Cap{cartridgeCap})
 
 	// Providers first (would win on tie)
 	composite := NewCapBlock()
 	composite.AddRegistry("providers", providerRegistry)
-	composite.AddRegistry("plugins", pluginRegistry)
+	composite.AddRegistry("cartridges", cartridgeRegistry)
 
 	// Request for PDF thumbnail
 	request := `cap:ext=pdf;in="media:binary";op=generate_thumbnail;out="media:binary"`
@@ -405,26 +405,26 @@ func Test125_cap_block_fallback_scenario(t *testing.T) {
 		t.Fatalf("Failed to find best cap set: %v", err)
 	}
 
-	// Plugin: in=binary(1) + out=binary(1) + ext=pdf(3) + op=generate_thumbnail(3) = 8
+	// Cartridge: in=binary(1) + out=binary(1) + ext=pdf(3) + op=generate_thumbnail(3) = 8
 	// Provider: in=binary(1) + out=binary(1) + ext=*(2) + op=generate_thumbnail(3) = 7
-	if best.RegistryName != "plugins" {
-		t.Errorf("Expected plugins to win, got %s", best.RegistryName)
+	if best.RegistryName != "cartridges" {
+		t.Errorf("Expected cartridges to win, got %s", best.RegistryName)
 	}
-	if best.Cap.Title != "PDF Thumbnail Plugin" {
-		t.Errorf("Expected PDF Thumbnail Plugin, got %s", best.Cap.Title)
+	if best.Cap.Title != "PDF Thumbnail Cartridge" {
+		t.Errorf("Expected PDF Thumbnail Cartridge, got %s", best.Cap.Title)
 	}
 	if best.Specificity != 4 {
 		t.Errorf("Expected specificity 4, got %d", best.Specificity)
 	}
 
-	// Also test that for a different file type, provider wins (since plugin doesn't match ext=wav)
+	// Also test that for a different file type, provider wins (since cartridge doesn't match ext=wav)
 	requestWav := `cap:ext=wav;in="media:binary";op=generate_thumbnail;out="media:binary"`
 	bestWav, err := composite.FindBestCapSet(requestWav)
 	if err != nil {
 		t.Fatalf("Failed to find best cap set for wav: %v", err)
 	}
 
-	// Only provider matches (plugin has ext=pdf which doesn't match ext=wav)
+	// Only provider matches (cartridge has ext=pdf which doesn't match ext=wav)
 	// Provider has ext=* which matches any ext value
 	if bestWav.RegistryName != "providers" {
 		t.Errorf("Expected providers for wav request, got %s", bestWav.RegistryName)
@@ -830,22 +830,22 @@ func Test134_cap_graph_stats(t *testing.T) {
 func Test133_cap_graph_with_cap_block(t *testing.T) {
 	// Integration test: build graph from CapBlock
 	providerRegistry := NewCapMatrix()
-	pluginRegistry := NewCapMatrix()
+	cartridgeRegistry := NewCapMatrix()
 
 	providerHost := &MockCapSetForRegistry{name: "provider"}
-	pluginHost := &MockCapSetForRegistry{name: "plugin"}
+	cartridgeHost := &MockCapSetForRegistry{name: "cartridge"}
 
 	// Provider: binary -> str
 	providerCap := makeGraphCap(standard.MediaIdentity, standard.MediaString, "Provider Binary to String")
 	providerRegistry.RegisterCapSet("provider", providerHost, []*Cap{providerCap})
 
-	// Plugin: str -> obj
-	pluginCap := makeGraphCap(standard.MediaString, standard.MediaObject, "Plugin String to Object")
-	pluginRegistry.RegisterCapSet("plugin", pluginHost, []*Cap{pluginCap})
+	// Cartridge: str -> obj
+	cartridgeCap := makeGraphCap(standard.MediaString, standard.MediaObject, "Cartridge String to Object")
+	cartridgeRegistry.RegisterCapSet("cartridge", cartridgeHost, []*Cap{cartridgeCap})
 
 	cube := NewCapBlock()
 	cube.AddRegistry("providers", providerRegistry)
-	cube.AddRegistry("plugins", pluginRegistry)
+	cube.AddRegistry("cartridges", cartridgeRegistry)
 
 	graph := cube.Graph()
 
@@ -866,8 +866,8 @@ func Test133_cap_graph_with_cap_block(t *testing.T) {
 	if path[0].RegistryName != "providers" {
 		t.Errorf("First edge should be from providers, got %s", path[0].RegistryName)
 	}
-	if path[1].RegistryName != "plugins" {
-		t.Errorf("Second edge should be from plugins, got %s", path[1].RegistryName)
+	if path[1].RegistryName != "cartridges" {
+		t.Errorf("Second edge should be from cartridges, got %s", path[1].RegistryName)
 	}
 }
 

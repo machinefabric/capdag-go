@@ -84,7 +84,7 @@ capDef := &capdag.Cap{
 matrix := capdag.NewCapMatrix()
 
 // Register a capability with its handler
-matrix.RegisterCapSet("my-plugin", myHandler, []*capdag.Cap{capDef})
+matrix.RegisterCapSet("my-cartridge", myHandler, []*capdag.Cap{capDef})
 
 // Find matching capabilities
 caps, err := matrix.FindCapSets(`cap:in="media:binary";op=extract;out=*`)

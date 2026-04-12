@@ -598,15 +598,15 @@ func Test230_sync_handshake(t *testing.T) {
 	manifest := []byte(`{"name":"Test","version":"1.0","caps":[]}`)
 
 	// Create buffers for communication
-	var hostToPlugin bytes.Buffer
-	var pluginToHost bytes.Buffer
+	var hostToCartridge bytes.Buffer
+	var cartridgeToHost bytes.Buffer
 
-	// Plugin side writes HELLO response to pluginToHost buffer
-	pluginWriter := NewFrameWriter(&pluginToHost)
-	pluginReader := NewFrameReader(&hostToPlugin)
+	// Cartridge side writes HELLO response to cartridgeToHost buffer
+	cartridgeWriter := NewFrameWriter(&cartridgeToHost)
+	cartridgeReader := NewFrameReader(&hostToCartridge)
 
-	// Host side writes HELLO request to hostToPlugin buffer
-	hostWriter := NewFrameWriter(&hostToPlugin)
+	// Host side writes HELLO request to hostToCartridge buffer
+	hostWriter := NewFrameWriter(&hostToCartridge)
 
 	// Step 1: Host sends HELLO
 	helloFrame := NewHello(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer)
@@ -614,23 +614,23 @@ func Test230_sync_handshake(t *testing.T) {
 		t.Fatalf("Failed to write host HELLO: %v", err)
 	}
 
-	// Step 2: Plugin reads HELLO and responds
-	pluginHelloFrame, err := pluginReader.ReadFrame()
+	// Step 2: Cartridge reads HELLO and responds
+	cartridgeHelloFrame, err := cartridgeReader.ReadFrame()
 	if err != nil {
-		t.Fatalf("Plugin failed to read HELLO: %v", err)
+		t.Fatalf("Cartridge failed to read HELLO: %v", err)
 	}
-	if pluginHelloFrame.FrameType != FrameTypeHello {
+	if cartridgeHelloFrame.FrameType != FrameTypeHello {
 		t.Fatal("Expected HELLO frame")
 	}
 
-	// Plugin sends HELLO with manifest
+	// Cartridge sends HELLO with manifest
 	responseFrame := NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, manifest)
-	if err := pluginWriter.WriteFrame(responseFrame); err != nil {
-		t.Fatalf("Failed to write plugin HELLO: %v", err)
+	if err := cartridgeWriter.WriteFrame(responseFrame); err != nil {
+		t.Fatalf("Failed to write cartridge HELLO: %v", err)
 	}
 
 	// Step 3: Host reads response
-	hostReader := NewFrameReader(&pluginToHost)
+	hostReader := NewFrameReader(&cartridgeToHost)
 	helloResponseFrame, err := hostReader.ReadFrame()
 	if err != nil {
 		t.Fatalf("Host failed to read HELLO response: %v", err)
@@ -692,25 +692,25 @@ func Test230_sync_handshake(t *testing.T) {
 // TEST231: Test handshake fails when peer sends non-HELLO frame
 func Test231_handshake_rejects_non_hello(t *testing.T) {
 	// Use in-memory buffers
-	var hostToPlugin bytes.Buffer
-	var pluginToHost bytes.Buffer
+	var hostToCartridge bytes.Buffer
+	var cartridgeToHost bytes.Buffer
 
 	// Host sends HELLO
-	hostWriter := NewFrameWriter(&hostToPlugin)
+	hostWriter := NewFrameWriter(&hostToCartridge)
 	helloFrame := NewHello(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer)
 	if err := hostWriter.WriteFrame(helloFrame); err != nil {
 		t.Fatalf("Failed to write HELLO: %v", err)
 	}
 
-	// Plugin sends REQ instead of HELLO (bad!)
-	pluginWriter := NewFrameWriter(&pluginToHost)
+	// Cartridge sends REQ instead of HELLO (bad!)
+	cartridgeWriter := NewFrameWriter(&cartridgeToHost)
 	badFrame := NewReq(NewMessageIdFromUint(1), "cap:op=bad", []byte{}, "text/plain")
-	if err := pluginWriter.WriteFrame(badFrame); err != nil {
+	if err := cartridgeWriter.WriteFrame(badFrame); err != nil {
 		t.Fatalf("Failed to write bad frame: %v", err)
 	}
 
 	// Host tries to complete handshake
-	hostReader := NewFrameReader(&pluginToHost)
+	hostReader := NewFrameReader(&cartridgeToHost)
 	responseFrame, err := hostReader.ReadFrame()
 	if err != nil {
 		t.Fatalf("Failed to read frame: %v", err)
@@ -725,20 +725,20 @@ func Test231_handshake_rejects_non_hello(t *testing.T) {
 	}
 }
 
-// TEST232: Test handshake fails when plugin HELLO is missing required manifest
+// TEST232: Test handshake fails when cartridge HELLO is missing required manifest
 func Test232_handshake_rejects_missing_manifest(t *testing.T) {
 	// Use in-memory buffers
-	var pluginToHost bytes.Buffer
+	var cartridgeToHost bytes.Buffer
 
-	// Plugin sends HELLO without manifest
-	pluginWriter := NewFrameWriter(&pluginToHost)
+	// Cartridge sends HELLO without manifest
+	cartridgeWriter := NewFrameWriter(&cartridgeToHost)
 	noManifestHello := NewHello(1_000_000, 200_000, DefaultMaxReorderBuffer)
-	if err := pluginWriter.WriteFrame(noManifestHello); err != nil {
+	if err := cartridgeWriter.WriteFrame(noManifestHello); err != nil {
 		t.Fatalf("Failed to write HELLO: %v", err)
 	}
 
 	// Host reads the HELLO
-	hostReader := NewFrameReader(&pluginToHost)
+	hostReader := NewFrameReader(&cartridgeToHost)
 	helloFrame, err := hostReader.ReadFrame()
 	if err != nil {
 		t.Fatalf("Failed to read HELLO: %v", err)

@@ -1,4 +1,4 @@
-module testplugin
+module testcartridge
 
 go 1.21
 

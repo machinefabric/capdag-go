@@ -1,19 +1,19 @@
 // Cap Router - Pluggable routing for peer invoke requests
 //
-// When a plugin sends a peer invoke REQ (calling another cap), the host needs to route
+// When a cartridge sends a peer invoke REQ (calling another cap), the host needs to route
 // that request to an appropriate handler. This module provides interfaces for different
 // routing strategies.
 
 package bifaci
 
 // PeerRequestHandle is the handle for an active peer invoke request.
-// The PluginHostRuntime creates this by calling router.BeginRequest(), then forwards
+// The CartridgeHostRuntime creates this by calling router.BeginRequest(), then forwards
 // incoming frames (STREAM_START, CHUNK, STREAM_END, END) to the handle.
 type PeerRequestHandle interface {
 	// ForwardFrame sends a frame (STREAM_START, CHUNK, STREAM_END, or END) to the target.
 	ForwardFrame(frame Frame)
 
-	// ResponseChannel returns a channel that yields response chunks from the target plugin.
+	// ResponseChannel returns a channel that yields response chunks from the target cartridge.
 	ResponseChannel() <-chan ResponseChunkResult
 }
 
@@ -24,7 +24,7 @@ type ResponseChunkResult struct {
 }
 
 // CapRouter routes cap invocation requests to appropriate handlers.
-// When a plugin issues a peer invoke, the host receives a REQ frame and calls BeginRequest().
+// When a cartridge issues a peer invoke, the host receives a REQ frame and calls BeginRequest().
 // The router returns a handle that the host uses to forward incoming argument streams
 // and receive responses.
 type CapRouter interface {

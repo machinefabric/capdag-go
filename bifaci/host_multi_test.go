@@ -13,12 +13,12 @@ import (
 
 const testHostManifest = `{"name":"Test","version":"1.0","caps":[{"urn":"cap:in=media:;out=media:"}]}`
 
-// simulatePlugin runs a fake plugin: handshake + handler on the plugin side of a pipe.
+// simulateCartridge runs a fake cartridge: handshake + handler on the cartridge side of a pipe.
 // handler receives the FrameReader/FrameWriter after handshake and can read/write frames.
-func simulatePlugin(t *testing.T, pluginRead, pluginWrite net.Conn, manifest string, handler func(*FrameReader, *FrameWriter)) {
+func simulateCartridge(t *testing.T, cartridgeRead, cartridgeWrite net.Conn, manifest string, handler func(*FrameReader, *FrameWriter)) {
 	t.Helper()
-	reader := NewFrameReader(pluginRead)
-	writer := NewFrameWriter(pluginWrite)
+	reader := NewFrameReader(cartridgeRead)
+	writer := NewFrameWriter(cartridgeWrite)
 
 	limits, err := HandshakeAccept(reader, writer, []byte(manifest))
 	require.NoError(t, err)
@@ -30,39 +30,39 @@ func simulatePlugin(t *testing.T, pluginRead, pluginWrite net.Conn, manifest str
 	}
 }
 
-// TEST413: RegisterPlugin adds entries to capTable
-func Test413_register_plugin_adds_cap_table(t *testing.T) {
-	host := NewPluginHost()
-	host.RegisterPlugin("/path/to/converter", []string{"cap:op=convert", "cap:op=analyze"})
+// TEST413: RegisterCartridge adds entries to capTable
+func Test413_register_cartridge_adds_cap_table(t *testing.T) {
+	host := NewCartridgeHost()
+	host.RegisterCartridge("/path/to/converter", []string{"cap:op=convert", "cap:op=analyze"})
 
 	host.mu.Lock()
 	defer host.mu.Unlock()
 
 	assert.Equal(t, 2, len(host.capTable), "must have 2 cap table entries")
 	assert.Equal(t, "cap:op=convert", host.capTable[0].capUrn)
-	assert.Equal(t, 0, host.capTable[0].pluginIdx)
+	assert.Equal(t, 0, host.capTable[0].cartridgeIdx)
 	assert.Equal(t, "cap:op=analyze", host.capTable[1].capUrn)
-	assert.Equal(t, 0, host.capTable[1].pluginIdx)
+	assert.Equal(t, 0, host.capTable[1].cartridgeIdx)
 
-	assert.Equal(t, 1, len(host.plugins))
-	assert.False(t, host.plugins[0].running, "registered plugin must not be running")
+	assert.Equal(t, 1, len(host.cartridges))
+	assert.False(t, host.cartridges[0].running, "registered cartridge must not be running")
 }
 
-// TEST414: Capabilities() returns nil when no plugins are running
+// TEST414: Capabilities() returns nil when no cartridges are running
 func Test414_capabilities_empty_initially(t *testing.T) {
-	// Case 1: No plugins at all
-	host := NewPluginHost()
-	assert.Nil(t, host.Capabilities(), "no plugins → nil capabilities")
+	// Case 1: No cartridges at all
+	host := NewCartridgeHost()
+	assert.Nil(t, host.Capabilities(), "no cartridges → nil capabilities")
 
-	// Case 2: Plugin registered but not running
-	host.RegisterPlugin("/path/to/plugin", []string{"cap:op=test"})
+	// Case 2: Cartridge registered but not running
+	host.RegisterCartridge("/path/to/cartridge", []string{"cap:op=test"})
 	assert.Nil(t, host.Capabilities(), "registered but not running → nil capabilities")
 }
 
 // TEST415: REQ for known cap triggers spawn (expect error for non-existent binary)
 func Test415_req_triggers_spawn(t *testing.T) {
-	host := NewPluginHost()
-	host.RegisterPlugin("/nonexistent/plugin/binary", []string{"cap:op=test"})
+	host := NewCartridgeHost()
+	host.RegisterCartridge("/nonexistent/cartridge/binary", []string{"cap:op=test"})
 
 	// Set up relay pipes
 	relayRead, engineWrite := net.Pipe()
@@ -96,36 +96,36 @@ func Test415_req_triggers_spawn(t *testing.T) {
 	_ = err
 }
 
-// TEST416: AttachPlugin performs HELLO handshake, extracts manifest, updates capabilities
-func Test416_attach_plugin_handshake(t *testing.T) {
+// TEST416: AttachCartridge performs HELLO handshake, extracts manifest, updates capabilities
+func Test416_attach_cartridge_handshake(t *testing.T) {
 	manifest := `{"name":"Test","version":"1.0","caps":[{"urn":"cap:in=media:;out=media:"}]}`
 
-	hostRead, pluginWrite := net.Pipe()
-	pluginRead, hostWrite := net.Pipe()
+	hostRead, cartridgeWrite := net.Pipe()
+	cartridgeRead, hostWrite := net.Pipe()
 
 	var wg sync.WaitGroup
 	wg.Add(1)
 
 	go func() {
 		defer wg.Done()
-		simulatePlugin(t, pluginRead, pluginWrite, manifest, nil)
-		pluginRead.Close()
-		pluginWrite.Close()
+		simulateCartridge(t, cartridgeRead, cartridgeWrite, manifest, nil)
+		cartridgeRead.Close()
+		cartridgeWrite.Close()
 	}()
 
-	host := NewPluginHost()
-	idx, err := host.AttachPlugin(hostRead, hostWrite)
+	host := NewCartridgeHost()
+	idx, err := host.AttachCartridge(hostRead, hostWrite)
 	require.NoError(t, err)
 
-	assert.Equal(t, 0, idx, "first attached plugin is index 0")
+	assert.Equal(t, 0, idx, "first attached cartridge is index 0")
 
 	host.mu.Lock()
-	assert.True(t, host.plugins[0].running, "attached plugin must be running")
-	assert.Equal(t, []string{"cap:in=media:;out=media:"}, host.plugins[0].caps)
+	assert.True(t, host.cartridges[0].running, "attached cartridge must be running")
+	assert.Equal(t, []string{"cap:in=media:;out=media:"}, host.cartridges[0].caps)
 	host.mu.Unlock()
 
 	caps := host.Capabilities()
-	assert.NotNil(t, caps, "running plugin must produce capabilities")
+	assert.NotNil(t, caps, "running cartridge must produce capabilities")
 	assert.Contains(t, string(caps), "cap:in=media:;out=media:")
 
 	// Clean up
@@ -134,26 +134,26 @@ func Test416_attach_plugin_handshake(t *testing.T) {
 	wg.Wait()
 }
 
-// TEST417: Route REQ to correct plugin by cap_urn (two plugins)
+// TEST417: Route REQ to correct cartridge by cap_urn (two cartridges)
 func Test417_route_req_by_cap_urn(t *testing.T) {
-	manifestA := `{"name":"PluginA","version":"1.0","caps":[{"urn":"cap:op=convert"}]}`
-	manifestB := `{"name":"PluginB","version":"1.0","caps":[{"urn":"cap:op=analyze"}]}`
+	manifestA := `{"name":"CartridgeA","version":"1.0","caps":[{"urn":"cap:op=convert"}]}`
+	manifestB := `{"name":"CartridgeB","version":"1.0","caps":[{"urn":"cap:op=analyze"}]}`
 
-	// Plugin A pipes
-	hostReadA, pluginWriteA := net.Pipe()
-	pluginReadA, hostWriteA := net.Pipe()
+	// Cartridge A pipes
+	hostReadA, cartridgeWriteA := net.Pipe()
+	cartridgeReadA, hostWriteA := net.Pipe()
 
-	// Plugin B pipes
-	hostReadB, pluginWriteB := net.Pipe()
-	pluginReadB, hostWriteB := net.Pipe()
+	// Cartridge B pipes
+	hostReadB, cartridgeWriteB := net.Pipe()
+	cartridgeReadB, hostWriteB := net.Pipe()
 
 	var wg sync.WaitGroup
 
-	// Plugin A: reads REQ+stream, responds with "converted"
+	// Cartridge A: reads REQ+stream, responds with "converted"
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		simulatePlugin(t, pluginReadA, pluginWriteA, manifestA, func(r *FrameReader, w *FrameWriter) {
+		simulateCartridge(t, cartridgeReadA, cartridgeWriteA, manifestA, func(r *FrameReader, w *FrameWriter) {
 			// Read REQ
 			frame, err := r.ReadFrame()
 			require.NoError(t, err)
@@ -174,27 +174,27 @@ func Test417_route_req_by_cap_urn(t *testing.T) {
 			// Respond
 			w.WriteFrame(NewEnd(reqId, []byte("converted")))
 		})
-		pluginReadA.Close()
-		pluginWriteA.Close()
+		cartridgeReadA.Close()
+		cartridgeWriteA.Close()
 	}()
 
-	// Plugin B: just does handshake, expects no REQs, waits for close
+	// Cartridge B: just does handshake, expects no REQs, waits for close
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		simulatePlugin(t, pluginReadB, pluginWriteB, manifestB, func(r *FrameReader, w *FrameWriter) {
+		simulateCartridge(t, cartridgeReadB, cartridgeWriteB, manifestB, func(r *FrameReader, w *FrameWriter) {
 			// Should get EOF (no frames sent to B)
 			_, err := r.ReadFrame()
-			assert.Error(t, err, "plugin B must get EOF, not a frame")
+			assert.Error(t, err, "cartridge B must get EOF, not a frame")
 		})
-		pluginReadB.Close()
-		pluginWriteB.Close()
+		cartridgeReadB.Close()
+		cartridgeWriteB.Close()
 	}()
 
-	host := NewPluginHost()
-	_, err := host.AttachPlugin(hostReadA, hostWriteA)
+	host := NewCartridgeHost()
+	_, err := host.AttachCartridge(hostReadA, hostWriteA)
 	require.NoError(t, err)
-	_, err = host.AttachPlugin(hostReadB, hostWriteB)
+	_, err = host.AttachCartridge(hostReadB, hostWriteB)
 	require.NoError(t, err)
 
 	// Relay pipes
@@ -227,7 +227,7 @@ func Test417_route_req_by_cap_urn(t *testing.T) {
 	relayRead.Close()
 	relayWrite.Close()
 
-	// Close host connections to Plugin B to unblock its goroutine
+	// Close host connections to Cartridge B to unblock its goroutine
 	hostReadB.Close()
 	hostWriteB.Close()
 	hostReadA.Close()
@@ -240,15 +240,15 @@ func Test417_route_req_by_cap_urn(t *testing.T) {
 func Test418_route_continuation_by_req_id(t *testing.T) {
 	manifest := `{"name":"Test","version":"1.0","caps":[{"urn":"cap:op=cont"}]}`
 
-	hostReadP, pluginWriteP := net.Pipe()
-	pluginReadP, hostWriteP := net.Pipe()
+	hostReadP, cartridgeWriteP := net.Pipe()
+	cartridgeReadP, hostWriteP := net.Pipe()
 
 	var wg sync.WaitGroup
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		simulatePlugin(t, pluginReadP, pluginWriteP, manifest, func(r *FrameReader, w *FrameWriter) {
+		simulateCartridge(t, cartridgeReadP, cartridgeWriteP, manifest, func(r *FrameReader, w *FrameWriter) {
 			// Read REQ
 			req, err := r.ReadFrame()
 			require.NoError(t, err)
@@ -281,12 +281,12 @@ func Test418_route_continuation_by_req_id(t *testing.T) {
 			// Respond
 			w.WriteFrame(NewEnd(reqId, []byte("ok")))
 		})
-		pluginReadP.Close()
-		pluginWriteP.Close()
+		cartridgeReadP.Close()
+		cartridgeWriteP.Close()
 	}()
 
-	host := NewPluginHost()
-	_, err := host.AttachPlugin(hostReadP, hostWriteP)
+	host := NewCartridgeHost()
+	_, err := host.AttachCartridge(hostReadP, hostWriteP)
 	require.NoError(t, err)
 
 	relayRead, engineWrite := net.Pipe()
@@ -325,19 +325,19 @@ func Test418_route_continuation_by_req_id(t *testing.T) {
 	wg.Wait()
 }
 
-// TEST419: Plugin HEARTBEAT handled locally (not forwarded to relay)
+// TEST419: Cartridge HEARTBEAT handled locally (not forwarded to relay)
 func Test419_heartbeat_local_handling(t *testing.T) {
 	manifest := `{"name":"Test","version":"1.0","caps":[{"urn":"cap:op=hb"}]}`
 
-	hostReadP, pluginWriteP := net.Pipe()
-	pluginReadP, hostWriteP := net.Pipe()
+	hostReadP, cartridgeWriteP := net.Pipe()
+	cartridgeReadP, hostWriteP := net.Pipe()
 
 	var wg sync.WaitGroup
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		simulatePlugin(t, pluginReadP, pluginWriteP, manifest, func(r *FrameReader, w *FrameWriter) {
+		simulateCartridge(t, cartridgeReadP, cartridgeWriteP, manifest, func(r *FrameReader, w *FrameWriter) {
 			// Send heartbeat
 			hbId := NewMessageIdRandom()
 			w.WriteFrame(NewHeartbeat(hbId))
@@ -352,12 +352,12 @@ func Test419_heartbeat_local_handling(t *testing.T) {
 			logId := NewMessageIdRandom()
 			w.WriteFrame(NewLog(logId, "info", "heartbeat was answered"))
 		})
-		pluginReadP.Close()
-		pluginWriteP.Close()
+		cartridgeReadP.Close()
+		cartridgeWriteP.Close()
 	}()
 
-	host := NewPluginHost()
-	_, err := host.AttachPlugin(hostReadP, hostWriteP)
+	host := NewCartridgeHost()
+	_, err := host.AttachCartridge(hostReadP, hostWriteP)
 	require.NoError(t, err)
 
 	relayRead, engineWrite := net.Pipe()
@@ -406,19 +406,19 @@ func Test419_heartbeat_local_handling(t *testing.T) {
 	assert.True(t, found, "LOG must be forwarded to relay")
 }
 
-// TEST420: Plugin non-HELLO/non-HB frames forwarded to relay
-func Test420_plugin_frames_forwarded_to_relay(t *testing.T) {
+// TEST420: Cartridge non-HELLO/non-HB frames forwarded to relay
+func Test420_cartridge_frames_forwarded_to_relay(t *testing.T) {
 	manifest := `{"name":"Test","version":"1.0","caps":[{"urn":"cap:op=fwd"}]}`
 
-	hostReadP, pluginWriteP := net.Pipe()
-	pluginReadP, hostWriteP := net.Pipe()
+	hostReadP, cartridgeWriteP := net.Pipe()
+	cartridgeReadP, hostWriteP := net.Pipe()
 
 	var wg sync.WaitGroup
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		simulatePlugin(t, pluginReadP, pluginWriteP, manifest, func(r *FrameReader, w *FrameWriter) {
+		simulateCartridge(t, cartridgeReadP, cartridgeWriteP, manifest, func(r *FrameReader, w *FrameWriter) {
 			// Read REQ from host
 			req, err := r.ReadFrame()
 			if err != nil {
@@ -438,12 +438,12 @@ func Test420_plugin_frames_forwarded_to_relay(t *testing.T) {
 			w.WriteFrame(NewStreamEnd(reqId, "output", 1))
 			w.WriteFrame(NewEnd(reqId, nil))
 		})
-		pluginReadP.Close()
-		pluginWriteP.Close()
+		cartridgeReadP.Close()
+		cartridgeWriteP.Close()
 	}()
 
-	host := NewPluginHost()
-	_, err := host.AttachPlugin(hostReadP, hostWriteP)
+	host := NewCartridgeHost()
+	_, err := host.AttachCartridge(hostReadP, hostWriteP)
 	require.NoError(t, err)
 
 	relayRead, engineWrite := net.Pipe()
@@ -496,27 +496,27 @@ func Test420_plugin_frames_forwarded_to_relay(t *testing.T) {
 	assert.True(t, typeSet[FrameTypeEnd], "END must be forwarded")
 }
 
-// TEST421: Plugin death updates capability list (removes dead plugin's caps)
-func Test421_plugin_death_updates_caps(t *testing.T) {
+// TEST421: Cartridge death updates capability list (removes dead cartridge's caps)
+func Test421_cartridge_death_updates_caps(t *testing.T) {
 	manifest := `{"name":"Test","version":"1.0","caps":[{"urn":"cap:op=die"}]}`
 
-	hostReadP, pluginWriteP := net.Pipe()
-	pluginReadP, hostWriteP := net.Pipe()
+	hostReadP, cartridgeWriteP := net.Pipe()
+	cartridgeReadP, hostWriteP := net.Pipe()
 
 	var wg sync.WaitGroup
 
-	// Plugin: handshake then immediately die
+	// Cartridge: handshake then immediately die
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		simulatePlugin(t, pluginReadP, pluginWriteP, manifest, nil)
+		simulateCartridge(t, cartridgeReadP, cartridgeWriteP, manifest, nil)
 		// Die immediately after handshake
-		pluginReadP.Close()
-		pluginWriteP.Close()
+		cartridgeReadP.Close()
+		cartridgeWriteP.Close()
 	}()
 
-	host := NewPluginHost()
-	_, err := host.AttachPlugin(hostReadP, hostWriteP)
+	host := NewCartridgeHost()
+	_, err := host.AttachCartridge(hostReadP, hostWriteP)
 	require.NoError(t, err)
 
 	// Before death: caps must be present
@@ -541,7 +541,7 @@ func Test421_plugin_death_updates_caps(t *testing.T) {
 	if capsAfter != nil {
 		var parsed map[string][]string
 		json.Unmarshal(capsAfter, &parsed)
-		assert.Empty(t, parsed["caps"], "dead plugin caps must be removed")
+		assert.Empty(t, parsed["caps"], "dead cartridge caps must be removed")
 	}
 
 	relayRead.Close()
@@ -551,30 +551,30 @@ func Test421_plugin_death_updates_caps(t *testing.T) {
 	wg.Wait()
 }
 
-// TEST422: Plugin death sends ERR for all pending requests
-func Test422_plugin_death_sends_err(t *testing.T) {
+// TEST422: Cartridge death sends ERR for all pending requests
+func Test422_cartridge_death_sends_err(t *testing.T) {
 	manifest := `{"name":"Test","version":"1.0","caps":[{"urn":"cap:op=die"}]}`
 
-	hostReadP, pluginWriteP := net.Pipe()
-	pluginReadP, hostWriteP := net.Pipe()
+	hostReadP, cartridgeWriteP := net.Pipe()
+	cartridgeReadP, hostWriteP := net.Pipe()
 
 	var wg sync.WaitGroup
 
-	// Plugin: handshake, read REQ, then die
+	// Cartridge: handshake, read REQ, then die
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		simulatePlugin(t, pluginReadP, pluginWriteP, manifest, func(r *FrameReader, w *FrameWriter) {
+		simulateCartridge(t, cartridgeReadP, cartridgeWriteP, manifest, func(r *FrameReader, w *FrameWriter) {
 			// Read REQ
 			r.ReadFrame()
 			// Die immediately without responding
-			pluginReadP.Close()
-			pluginWriteP.Close()
+			cartridgeReadP.Close()
+			cartridgeWriteP.Close()
 		})
 	}()
 
-	host := NewPluginHost()
-	_, err := host.AttachPlugin(hostReadP, hostWriteP)
+	host := NewCartridgeHost()
+	_, err := host.AttachCartridge(hostReadP, hostWriteP)
 	require.NoError(t, err)
 
 	relayRead, engineWrite := net.Pipe()
@@ -616,29 +616,29 @@ func Test422_plugin_death_sends_err(t *testing.T) {
 	hostWriteP.Close()
 	wg.Wait()
 
-	require.NotNil(t, errFrame, "must receive ERR when plugin dies with pending request")
+	require.NotNil(t, errFrame, "must receive ERR when cartridge dies with pending request")
 	assert.Equal(t, "PLUGIN_DIED", errFrame.ErrorCode())
 }
 
-// TEST423: Multiple plugins with distinct caps route independently
-func Test423_multi_plugin_distinct_caps(t *testing.T) {
-	manifestA := `{"name":"PluginA","version":"1.0","caps":[{"urn":"cap:op=alpha"}]}`
-	manifestB := `{"name":"PluginB","version":"1.0","caps":[{"urn":"cap:op=beta"}]}`
+// TEST423: Multiple cartridges with distinct caps route independently
+func Test423_multi_cartridge_distinct_caps(t *testing.T) {
+	manifestA := `{"name":"CartridgeA","version":"1.0","caps":[{"urn":"cap:op=alpha"}]}`
+	manifestB := `{"name":"CartridgeB","version":"1.0","caps":[{"urn":"cap:op=beta"}]}`
 
-	// Plugin A pipes
-	hostReadA, pluginWriteA := net.Pipe()
-	pluginReadA, hostWriteA := net.Pipe()
+	// Cartridge A pipes
+	hostReadA, cartridgeWriteA := net.Pipe()
+	cartridgeReadA, hostWriteA := net.Pipe()
 
-	// Plugin B pipes
-	hostReadB, pluginWriteB := net.Pipe()
-	pluginReadB, hostWriteB := net.Pipe()
+	// Cartridge B pipes
+	hostReadB, cartridgeWriteB := net.Pipe()
+	cartridgeReadB, hostWriteB := net.Pipe()
 
 	var wg sync.WaitGroup
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		simulatePlugin(t, pluginReadA, pluginWriteA, manifestA, func(r *FrameReader, w *FrameWriter) {
+		simulateCartridge(t, cartridgeReadA, cartridgeWriteA, manifestA, func(r *FrameReader, w *FrameWriter) {
 			req, err := r.ReadFrame()
 			if err != nil {
 				return
@@ -652,14 +652,14 @@ func Test423_multi_plugin_distinct_caps(t *testing.T) {
 			}
 			w.WriteFrame(NewEnd(req.Id, []byte("from-A")))
 		})
-		pluginReadA.Close()
-		pluginWriteA.Close()
+		cartridgeReadA.Close()
+		cartridgeWriteA.Close()
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		simulatePlugin(t, pluginReadB, pluginWriteB, manifestB, func(r *FrameReader, w *FrameWriter) {
+		simulateCartridge(t, cartridgeReadB, cartridgeWriteB, manifestB, func(r *FrameReader, w *FrameWriter) {
 			req, err := r.ReadFrame()
 			if err != nil {
 				return
@@ -672,14 +672,14 @@ func Test423_multi_plugin_distinct_caps(t *testing.T) {
 			}
 			w.WriteFrame(NewEnd(req.Id, []byte("from-B")))
 		})
-		pluginReadB.Close()
-		pluginWriteB.Close()
+		cartridgeReadB.Close()
+		cartridgeWriteB.Close()
 	}()
 
-	host := NewPluginHost()
-	_, err := host.AttachPlugin(hostReadA, hostWriteA)
+	host := NewCartridgeHost()
+	_, err := host.AttachCartridge(hostReadA, hostWriteA)
 	require.NoError(t, err)
-	_, err = host.AttachPlugin(hostReadB, hostWriteB)
+	_, err = host.AttachCartridge(hostReadB, hostWriteB)
 	require.NoError(t, err)
 
 	relayRead, engineWrite := net.Pipe()
@@ -741,19 +741,19 @@ func Test423_multi_plugin_distinct_caps(t *testing.T) {
 	assert.Equal(t, []byte("from-B"), responses["beta"])
 }
 
-// TEST424: Concurrent requests to same plugin handled independently
-func Test424_concurrent_requests_same_plugin(t *testing.T) {
+// TEST424: Concurrent requests to same cartridge handled independently
+func Test424_concurrent_requests_same_cartridge(t *testing.T) {
 	manifest := `{"name":"Test","version":"1.0","caps":[{"urn":"cap:op=conc"}]}`
 
-	hostReadP, pluginWriteP := net.Pipe()
-	pluginReadP, hostWriteP := net.Pipe()
+	hostReadP, cartridgeWriteP := net.Pipe()
+	cartridgeReadP, hostWriteP := net.Pipe()
 
 	var wg sync.WaitGroup
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		simulatePlugin(t, pluginReadP, pluginWriteP, manifest, func(r *FrameReader, w *FrameWriter) {
+		simulateCartridge(t, cartridgeReadP, cartridgeWriteP, manifest, func(r *FrameReader, w *FrameWriter) {
 			// Read both REQs and ENDs, respond to each
 			var reqIds []MessageId
 
@@ -781,12 +781,12 @@ func Test424_concurrent_requests_same_plugin(t *testing.T) {
 			w.WriteFrame(NewEnd(reqIds[0], []byte("response-0")))
 			w.WriteFrame(NewEnd(reqIds[1], []byte("response-1")))
 		})
-		pluginReadP.Close()
-		pluginWriteP.Close()
+		cartridgeReadP.Close()
+		cartridgeWriteP.Close()
 	}()
 
-	host := NewPluginHost()
-	_, err := host.AttachPlugin(hostReadP, hostWriteP)
+	host := NewCartridgeHost()
+	_, err := host.AttachCartridge(hostReadP, hostWriteP)
 	require.NoError(t, err)
 
 	relayRead, engineWrite := net.Pipe()
@@ -846,15 +846,15 @@ func Test424_concurrent_requests_same_plugin(t *testing.T) {
 	assert.Equal(t, []byte("response-1"), responses["1"])
 }
 
-// TEST425: FindPluginForCap returns false for unknown cap
-func Test425_find_plugin_for_cap_unknown(t *testing.T) {
-	host := NewPluginHost()
-	host.RegisterPlugin("/path/to/plugin", []string{"cap:op=known"})
+// TEST425: FindCartridgeForCap returns false for unknown cap
+func Test425_find_cartridge_for_cap_unknown(t *testing.T) {
+	host := NewCartridgeHost()
+	host.RegisterCartridge("/path/to/cartridge", []string{"cap:op=known"})
 
-	idx, found := host.FindPluginForCap("cap:op=known")
+	idx, found := host.FindCartridgeForCap("cap:op=known")
 	assert.True(t, found, "known cap must be found")
 	assert.Equal(t, 0, idx)
 
-	_, found = host.FindPluginForCap("cap:op=unknown")
+	_, found = host.FindCartridgeForCap("cap:op=unknown")
 	assert.False(t, found, "unknown cap must not be found")
 }
