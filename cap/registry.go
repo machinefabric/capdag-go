@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/machinefabric/capdag-go/media"
 	"github.com/machinefabric/capdag-go/urn"
 )
 
@@ -262,6 +263,22 @@ func (r *CapRegistry) GetCachedCaps() []*Cap {
 	return caps
 }
 
+// GetCachedCap returns a cap from the in-memory cache synchronously.
+// Returns (*Cap, true) if found, (nil, false) otherwise.
+func (r *CapRegistry) GetCachedCap(capUrn string) (*Cap, bool) {
+	normalized := capUrn
+	if parsed, err := urn.NewCapUrnFromString(capUrn); err == nil {
+		normalized = parsed.String()
+	}
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+	cap, ok := r.cachedCaps[normalized]
+	if !ok {
+		return nil, false
+	}
+	return cap, true
+}
+
 // ClearCache removes all cached registry definitions
 func (r *CapRegistry) ClearCache() error {
 	// Clear in-memory cache
@@ -426,18 +443,88 @@ func ValidateCapCanonical(registry *CapRegistry, cap *Cap) error {
 	return registry.ValidateCap(cap)
 }
 
+// identityCap constructs the canonical identity Cap definition.
+// The identity cap accepts any media type as input and echoes it as output unchanged.
+// It is mandatory in every capability set so the resolver's source-to-cap-arg
+// matching can route through identity in any notation.
+func identityCap() *Cap {
+	identityUrn := "cap:"
+	u, err := urn.NewCapUrnFromString(identityUrn)
+	if err != nil {
+		// "cap:" is always valid — this is a programming error
+		panic("identityCap: failed to parse identity URN: " + err.Error())
+	}
+	desc := "The categorical identity morphism. Echoes input as output unchanged. Mandatory in every capability set."
+	c := &Cap{
+		Urn:            u,
+		Title:          "Identity",
+		Command:        "identity",
+		CapDescription: &desc,
+		Metadata:       make(map[string]string),
+		MediaSpecs:     []media.MediaSpecDef{},
+		Args: []CapArg{
+			NewCapArg("media:", true, []ArgSource{{Stdin: strPtr("media:")}}),
+		},
+	}
+	c.SetOutput(NewCapOutput("media:", "The input data, unchanged"))
+	return c
+}
+
+// strPtr returns a pointer to the given string (helper for ArgSource.Stdin).
+func strPtr(s string) *string { return &s }
+
+// EnsureIdentityCap installs the mandatory identity cap into the in-memory cache
+// if it is not already present. This is idempotent — calling it multiple times
+// is safe.
+func (r *CapRegistry) EnsureIdentityCap() {
+	identity := identityCap()
+	urnStr := identity.UrnString()
+	// Normalize via parsing, same as how GetCachedCap and GetCap key the cache
+	normalized := urnStr
+	if parsed, err := urn.NewCapUrnFromString(urnStr); err == nil {
+		normalized = parsed.String()
+	}
+
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	if _, exists := r.cachedCaps[normalized]; !exists {
+		r.cachedCaps[normalized] = identity
+	}
+}
+
+// NewCapRegistryForTest creates an empty registry for testing purposes.
+// The mandatory identity cap is auto-installed so the resolver's
+// source-to-cap-arg matching can route through identity in any notation,
+// matching the production CapRegistry invariant.
+func NewCapRegistryForTest() *CapRegistry {
+	client := &http.Client{
+		Timeout: HTTPTimeoutSeconds * time.Second,
+	}
+	registry := &CapRegistry{
+		client:     client,
+		cacheDir:   "/tmp/capdag-test-cache",
+		cachedCaps: make(map[string]*Cap),
+		config:     RegistryConfig{},
+	}
+	registry.EnsureIdentityCap()
+	return registry
+}
+
 // NewCapRegistryForTestWithConfig creates a registry for testing with a custom configuration.
 // This is a synchronous constructor that doesn't perform any initialization.
 // Intended for use in tests only - creates a registry with no network configuration.
+// The mandatory identity cap is auto-installed (see NewCapRegistryForTest).
 func NewCapRegistryForTestWithConfig(config RegistryConfig) *CapRegistry {
 	client := &http.Client{
 		Timeout: HTTPTimeoutSeconds * time.Second,
 	}
 
-	return &CapRegistry{
+	registry := &CapRegistry{
 		client:     client,
 		cacheDir:   "/tmp/capdag-test-cache",
 		cachedCaps: make(map[string]*Cap),
 		config:     config,
 	}
+	registry.EnsureIdentityCap()
+	return registry
 }

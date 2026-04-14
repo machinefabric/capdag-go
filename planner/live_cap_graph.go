@@ -3,6 +3,7 @@ package planner
 import (
 	"sort"
 	"strings"
+	"sync/atomic"
 
 	"github.com/machinefabric/capdag-go/cap"
 	"github.com/machinefabric/capdag-go/standard"
@@ -16,19 +17,18 @@ const (
 	EdgeTypeCap LiveMachinePlanEdgeType = iota
 	EdgeTypeForEach
 	EdgeTypeCollect
-	EdgeTypeWrapInList
 )
 
 // LiveMachinePlanEdge represents an edge in the live capability graph.
 type LiveMachinePlanEdge struct {
-	FromSpec          *urn.MediaUrn
-	ToSpec            *urn.MediaUrn
-	Type              LiveMachinePlanEdgeType
-	CapUrnVal         *urn.CapUrn
-	CapTitle          string
-	SpecificityVal    int
-	InputCardinality  InputCardinality
-	OutputCardinality InputCardinality
+	FromSpec        *urn.MediaUrn
+	ToSpec          *urn.MediaUrn
+	Type            LiveMachinePlanEdgeType
+	CapUrnVal       *urn.CapUrn
+	CapTitle        string
+	SpecificityVal  int
+	InputIsSequence  bool
+	OutputIsSequence bool
 }
 
 // Title returns a human-readable title for this edge.
@@ -40,8 +40,6 @@ func (e *LiveMachinePlanEdge) Title() string {
 		return "ForEach (iterate over list)"
 	case EdgeTypeCollect:
 		return "Collect (gather results)"
-	case EdgeTypeWrapInList:
-		return "WrapInList (create single-item list)"
 	}
 	return ""
 }
@@ -74,19 +72,19 @@ const (
 	StepTypeCap StrandStepType = iota
 	StepTypeForEach
 	StepTypeCollect
-	StepTypeWrapInList
 )
 
 // StrandStep contains information about a single step in a path.
 type StrandStep struct {
-	StepType       StrandStepType
-	FromSpec       *urn.MediaUrn
-	ToSpec         *urn.MediaUrn
-	CapUrnVal      *urn.CapUrn
-	StepTitle      string
-	SpecificityVal int
-	ListSpec       *urn.MediaUrn
-	ItemSpec       *urn.MediaUrn
+	StepType         StrandStepType
+	FromSpec         *urn.MediaUrn
+	ToSpec           *urn.MediaUrn
+	CapUrnVal        *urn.CapUrn
+	StepTitle        string
+	SpecificityVal   int
+	MediaSpec        *urn.MediaUrn
+	InputIsSequence  bool
+	OutputIsSequence bool
 }
 
 // Title returns the title for this step.
@@ -98,8 +96,6 @@ func (s *StrandStep) Title() string {
 		return "ForEach"
 	case StepTypeCollect:
 		return "Collect"
-	case StepTypeWrapInList:
-		return "WrapInList"
 	}
 	return ""
 }
@@ -143,6 +139,36 @@ type ReachableTargetInfo struct {
 	PathCount     int
 }
 
+// PathFindingEvent is an event emitted during streaming path finding.
+type PathFindingEvent interface {
+	isPathFindingEvent()
+}
+
+// PathFindingEventDepthComplete is emitted when one IDDFS depth is complete.
+type PathFindingEventDepthComplete struct {
+	Depth         int
+	MaxDepth      int
+	NodesExplored int
+	PathsFound    int
+}
+
+func (PathFindingEventDepthComplete) isPathFindingEvent() {}
+
+// PathFindingEventPathFound is emitted when a path is found.
+type PathFindingEventPathFound struct {
+	Path *Strand
+}
+
+func (PathFindingEventPathFound) isPathFindingEvent() {}
+
+// PathFindingEventComplete is emitted when path finding is fully done.
+type PathFindingEventComplete struct {
+	TotalPaths         int
+	TotalNodesExplored int
+}
+
+func (PathFindingEventComplete) isPathFindingEvent() {}
+
 // LiveCapGraph is a precomputed graph of capabilities for path finding.
 type LiveCapGraph struct {
 	edges      []*LiveMachinePlanEdge
@@ -182,7 +208,6 @@ func (g *LiveCapGraph) SyncFromCaps(caps []*cap.Cap) {
 	for _, c := range caps {
 		g.AddCap(c)
 	}
-	g.insertCardinalityTransitions()
 }
 
 // AddCap adds a capability as an edge in the graph.
@@ -214,19 +239,38 @@ func (g *LiveCapGraph) AddCap(c *cap.Cap) {
 	toCanonical := toSpec.String()
 	capCanonical := c.Urn.String()
 
-	inputCard := CardinalityFromMediaUrn(fromCanonical)
-	outputCard := CardinalityFromMediaUrn(toCanonical)
+	// Determine InputIsSequence from the stdin arg's IsSequence field.
+	inputIsSequence := false
+	for _, arg := range c.Args {
+		isStdin := false
+		for _, src := range arg.Sources {
+			if src.Stdin != nil {
+				isStdin = true
+				break
+			}
+		}
+		if isStdin {
+			inputIsSequence = arg.IsSequence
+			break
+		}
+	}
+
+	// Determine OutputIsSequence from the cap's Output field.
+	outputIsSequence := false
+	if c.Output != nil {
+		outputIsSequence = c.Output.IsSequence
+	}
 
 	edgeIdx := len(g.edges)
 	edge := &LiveMachinePlanEdge{
-		FromSpec:          fromSpec,
-		ToSpec:            toSpec,
-		Type:              EdgeTypeCap,
-		CapUrnVal:         c.Urn,
-		CapTitle:          c.Title,
-		SpecificityVal:    c.Urn.Specificity(),
-		InputCardinality:  inputCard,
-		OutputCardinality: outputCard,
+		FromSpec:         fromSpec,
+		ToSpec:           toSpec,
+		Type:             EdgeTypeCap,
+		CapUrnVal:        c.Urn,
+		CapTitle:         c.Title,
+		SpecificityVal:   c.Urn.Specificity(),
+		InputIsSequence:  inputIsSequence,
+		OutputIsSequence: outputIsSequence,
 	}
 	g.edges = append(g.edges, edge)
 
@@ -237,92 +281,71 @@ func (g *LiveCapGraph) AddCap(c *cap.Cap) {
 	g.capToEdges[capCanonical] = append(g.capToEdges[capCanonical], edgeIdx)
 }
 
-func (g *LiveCapGraph) insertCardinalityTransitions() {
-	// Collect existing list-type nodes
-	var listNodes []string
-	for n := range g.nodes {
-		if strings.Contains(n, "list") {
-			listNodes = append(listNodes, n)
-		}
-	}
+// getOutgoingEdges returns all edges reachable from source given isSequence context.
+// Returns parallel slices: edges and their outgoing is_sequence states.
+//
+// For Cap edges:
+//   - If isSequence && !edge.InputIsSequence: skip (sequence data needs ForEach first).
+//   - Otherwise: include with outIsSeq = edge.OutputIsSequence.
+//
+// Synthesizes a ForEach edge when isSequence=true and there is at least one Cap edge
+// with !InputIsSequence whose FromSpec source conforms to.
+func (g *LiveCapGraph) getOutgoingEdges(source *urn.MediaUrn, isSequence bool) ([]*LiveMachinePlanEdge, []bool) {
+	var edges []*LiveMachinePlanEdge
+	var outSeqs []bool
 
-	for _, listCanonical := range listNodes {
-		listUrn, err := urn.NewMediaUrnFromString(listCanonical)
-		if err != nil {
+	needsForEach := false
+
+	for _, edge := range g.edges {
+		if edge.Type != EdgeTypeCap {
 			continue
 		}
-		itemUrn := listUrn.WithoutList()
-		itemCanonical := itemUrn.String()
-
-		// ForEach: list → item
-		foreachIdx := len(g.edges)
-		g.edges = append(g.edges, &LiveMachinePlanEdge{
-			FromSpec:          listUrn,
-			ToSpec:            itemUrn,
-			Type:              EdgeTypeForEach,
-			InputCardinality:  CardinalitySequence,
-			OutputCardinality: CardinalitySingle,
-		})
-		g.outgoing[listCanonical] = append(g.outgoing[listCanonical], foreachIdx)
-		g.incoming[itemCanonical] = append(g.incoming[itemCanonical], foreachIdx)
-		g.nodes[itemCanonical] = true
-
-		// Collect: item → list
-		collectIdx := len(g.edges)
-		g.edges = append(g.edges, &LiveMachinePlanEdge{
-			FromSpec:          itemUrn,
-			ToSpec:            listUrn,
-			Type:              EdgeTypeCollect,
-			InputCardinality:  CardinalitySingle,
-			OutputCardinality: CardinalitySequence,
-		})
-		g.outgoing[itemCanonical] = append(g.outgoing[itemCanonical], collectIdx)
-		g.incoming[listCanonical] = append(g.incoming[listCanonical], collectIdx)
-	}
-
-	// WrapInList edges
-	var nonListNodes []string
-	for n := range g.nodes {
-		if !strings.Contains(n, "list") {
-			nonListNodes = append(nonListNodes, n)
-		}
-	}
-	for _, itemCanonical := range nonListNodes {
-		itemUrn, err := urn.NewMediaUrnFromString(itemCanonical)
-		if err != nil {
+		if !source.ConformsTo(edge.FromSpec) {
 			continue
 		}
-		listUrn := itemUrn.WithList()
-		listCanonical := listUrn.String()
-
-		if g.nodes[listCanonical] {
-			wrapIdx := len(g.edges)
-			g.edges = append(g.edges, &LiveMachinePlanEdge{
-				FromSpec:          itemUrn,
-				ToSpec:            listUrn,
-				Type:              EdgeTypeWrapInList,
-				InputCardinality:  CardinalitySingle,
-				OutputCardinality: CardinalitySequence,
-			})
-			g.outgoing[itemCanonical] = append(g.outgoing[itemCanonical], wrapIdx)
-			g.incoming[listCanonical] = append(g.incoming[listCanonical], wrapIdx)
+		if isSequence && !edge.InputIsSequence {
+			// Sequence data reaching a scalar cap — ForEach must be synthesized.
+			needsForEach = true
+			continue
 		}
+		edges = append(edges, edge)
+		outSeqs = append(outSeqs, edge.OutputIsSequence)
 	}
+
+	// Synthesize a ForEach edge so path finding can iterate into scalar caps.
+	if isSequence && needsForEach {
+		synthetic := &LiveMachinePlanEdge{
+			FromSpec: source,
+			ToSpec:   source,
+			Type:     EdgeTypeForEach,
+		}
+		edges = append(edges, synthetic)
+		outSeqs = append(outSeqs, false)
+	}
+
+	return edges, outSeqs
 }
 
 // GetReachableTargets performs BFS from source and returns reachable targets.
-func (g *LiveCapGraph) GetReachableTargets(source *urn.MediaUrn, maxDepth int) []ReachableTargetInfo {
+func (g *LiveCapGraph) GetReachableTargets(source *urn.MediaUrn, isSequence bool, maxDepth int) []ReachableTargetInfo {
+	type visitKey struct {
+		canonical  string
+		isSequence bool
+	}
 	type queueItem struct {
-		urn   *urn.MediaUrn
-		depth int
+		urn        *urn.MediaUrn
+		isSequence bool
+		depth      int
 	}
 
 	visited := make(map[string]*ReachableTargetInfo)
+	visitedNodes := make(map[visitKey]bool)
 	queue := []queueItem{}
 
 	// Seed
-	for _, edge := range g.getOutgoingEdges(source) {
-		queue = append(queue, queueItem{urn: edge.ToSpec, depth: 1})
+	edges, outSeqs := g.getOutgoingEdges(source, isSequence)
+	for i, edge := range edges {
+		queue = append(queue, queueItem{urn: edge.ToSpec, isSequence: outSeqs[i], depth: 1})
 	}
 
 	for len(queue) > 0 {
@@ -333,24 +356,38 @@ func (g *LiveCapGraph) GetReachableTargets(source *urn.MediaUrn, maxDepth int) [
 			continue
 		}
 
+		vk := visitKey{canonical: item.urn.String(), isSequence: item.isSequence}
+		if visitedNodes[vk] {
+			// Already visited this (urn, isSequence) pair; still update path count.
+			key := item.urn.String()
+			if info, ok := visited[key]; ok {
+				info.PathCount++
+				if item.depth < info.MinPathLength {
+					info.MinPathLength = item.depth
+				}
+			}
+			continue
+		}
+		visitedNodes[vk] = true
+
 		key := item.urn.String()
 		if info, ok := visited[key]; ok {
 			info.PathCount++
 			if item.depth < info.MinPathLength {
 				info.MinPathLength = item.depth
 			}
-			continue
+		} else {
+			visited[key] = &ReachableTargetInfo{
+				MediaSpec:     item.urn,
+				DisplayName:   key,
+				MinPathLength: item.depth,
+				PathCount:     1,
+			}
 		}
 
-		visited[key] = &ReachableTargetInfo{
-			MediaSpec:     item.urn,
-			DisplayName:   key,
-			MinPathLength: item.depth,
-			PathCount:     1,
-		}
-
-		for _, edge := range g.getOutgoingEdges(item.urn) {
-			queue = append(queue, queueItem{urn: edge.ToSpec, depth: item.depth + 1})
+		nextEdges, nextOutSeqs := g.getOutgoingEdges(item.urn, item.isSequence)
+		for i, edge := range nextEdges {
+			queue = append(queue, queueItem{urn: edge.ToSpec, isSequence: nextOutSeqs[i], depth: item.depth + 1})
 		}
 	}
 
@@ -367,86 +404,29 @@ func (g *LiveCapGraph) GetReachableTargets(source *urn.MediaUrn, maxDepth int) [
 	return results
 }
 
-// FindPathsToExactTarget performs DFS to find paths to an exact target (is_equivalent).
+// visitedKey is used to track (canonical_urn, isSequence) pairs during DFS.
+type visitedKey struct {
+	canonical  string
+	isSequence bool
+}
+
+// FindPathsToExactTarget performs iterative deepening DFS to find paths to an exact target.
 func (g *LiveCapGraph) FindPathsToExactTarget(
 	source, target *urn.MediaUrn,
+	isSequence bool,
 	maxDepth, maxPaths int,
 ) []*Strand {
 	var results []*Strand
-	visitedEdges := make(map[int]bool)
 
-	var dfs func(current *urn.MediaUrn, path []*LiveMachinePlanEdge, depth int)
-	dfs = func(current *urn.MediaUrn, path []*LiveMachinePlanEdge, depth int) {
-		if len(results) >= maxPaths || depth > maxDepth {
-			return
+	for depth := 1; depth <= maxDepth; depth++ {
+		if len(results) >= maxPaths {
+			break
 		}
-
-		if current.IsEquivalent(target) {
-			// Build path info
-			var steps []*StrandStep
-			capCount := 0
-			for _, edge := range path {
-				step := edgeToStep(edge)
-				steps = append(steps, step)
-				if step.IsCap() {
-					capCount++
-				}
-			}
-			if capCount > 0 {
-				var titles []string
-				for _, s := range steps {
-					if s.IsCap() {
-						titles = append(titles, s.Title())
-					}
-				}
-				results = append(results, &Strand{
-					Steps:        steps,
-					SourceSpec:   source,
-					TargetSpec:   target,
-					TotalSteps:   len(steps),
-					CapStepCount: capCount,
-					Description:  strings.Join(titles, " → "),
-				})
-			}
-			return
-		}
-
-		for i, edge := range g.edges {
-			if visitedEdges[i] {
-				continue
-			}
-
-			sourceIsList := current.IsList()
-			edgeExpectsList := edge.FromSpec.IsList()
-
-			switch edge.Type {
-			case EdgeTypeCap:
-				if edgeExpectsList != sourceIsList {
-					continue
-				}
-			case EdgeTypeForEach:
-				if !(sourceIsList && !edge.ToSpec.IsList()) {
-					continue
-				}
-			case EdgeTypeCollect, EdgeTypeWrapInList:
-				if !(!sourceIsList && edge.ToSpec.IsList()) {
-					continue
-				}
-			}
-
-			if !current.ConformsTo(edge.FromSpec) {
-				continue
-			}
-
-			visitedEdges[i] = true
-			dfs(edge.ToSpec, append(path, edge), depth+1)
-			delete(visitedEdges, i)
-		}
+		visited := make(map[visitedKey]bool)
+		g.iddfsFind(source, source, target, isSequence, nil, visited, depth, maxPaths, &results)
 	}
 
-	dfs(source, nil, 0)
-
-	// Sort: cap_step_count ascending, total_specificity descending, cap URNs lexicographic
+	// Sort: cap_step_count ascending, total_specificity descending, description lexicographic.
 	sort.Slice(results, func(i, j int) bool {
 		if results[i].CapStepCount != results[j].CapStepCount {
 			return results[i].CapStepCount < results[j].CapStepCount
@@ -468,69 +448,171 @@ func (g *LiveCapGraph) FindPathsToExactTarget(
 	return results
 }
 
-func (g *LiveCapGraph) getOutgoingEdges(source *urn.MediaUrn) []*LiveMachinePlanEdge {
-	var results []*LiveMachinePlanEdge
-	sourceIsList := source.IsList()
+// FindPathsStreaming performs iterative deepening DFS and streams events to onEvent.
+// cancelled is an *int32 that can be set to 1 via atomic store to cancel the search.
+func (g *LiveCapGraph) FindPathsStreaming(
+	source, target *urn.MediaUrn,
+	isSequence bool,
+	maxDepth, maxPaths int,
+	cancelled *int32,
+	onEvent func(PathFindingEvent),
+) []*Strand {
+	var results []*Strand
+	totalNodesExplored := 0
 
-	for _, edge := range g.edges {
-		edgeExpectsList := edge.FromSpec.IsList()
-
-		switch edge.Type {
-		case EdgeTypeCap:
-			if edgeExpectsList != sourceIsList {
-				continue
-			}
-		case EdgeTypeForEach:
-			if !(sourceIsList && !edge.ToSpec.IsList()) {
-				continue
-			}
-		case EdgeTypeCollect, EdgeTypeWrapInList:
-			if !(!sourceIsList && edge.ToSpec.IsList()) {
-				continue
-			}
+	for depth := 1; depth <= maxDepth; depth++ {
+		if len(results) >= maxPaths {
+			break
+		}
+		if cancelled != nil && atomic.LoadInt32(cancelled) != 0 {
+			break
 		}
 
-		if source.ConformsTo(edge.FromSpec) {
-			results = append(results, edge)
+		visited := make(map[visitedKey]bool)
+		pathsBefore := len(results)
+
+		g.iddfsFind(source, source, target, isSequence, nil, visited, depth, maxPaths, &results)
+
+		nodesThisDepth := len(visited)
+		totalNodesExplored += nodesThisDepth
+		pathsThisDepth := len(results) - pathsBefore
+
+		onEvent(PathFindingEventDepthComplete{
+			Depth:         depth,
+			MaxDepth:      maxDepth,
+			NodesExplored: nodesThisDepth,
+			PathsFound:    pathsThisDepth,
+		})
+	}
+
+	// Sort
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].CapStepCount != results[j].CapStepCount {
+			return results[i].CapStepCount < results[j].CapStepCount
+		}
+		specI := 0
+		for _, s := range results[i].Steps {
+			specI += s.Specificity()
+		}
+		specJ := 0
+		for _, s := range results[j].Steps {
+			specJ += s.Specificity()
+		}
+		if specI != specJ {
+			return specI > specJ
+		}
+		return results[i].Description < results[j].Description
+	})
+
+	onEvent(PathFindingEventComplete{
+		TotalPaths:         len(results),
+		TotalNodesExplored: totalNodesExplored,
+	})
+
+	for _, p := range results {
+		onEvent(PathFindingEventPathFound{Path: p})
+	}
+
+	return results
+}
+
+// iddfsFind performs depth-limited DFS from current toward target.
+// originalSource is the root source used to construct Strand.SourceSpec.
+func (g *LiveCapGraph) iddfsFind(
+	originalSource *urn.MediaUrn,
+	current *urn.MediaUrn,
+	target *urn.MediaUrn,
+	isSequence bool,
+	path []*LiveMachinePlanEdge,
+	visited map[visitedKey]bool,
+	depthLimit int,
+	maxPaths int,
+	results *[]*Strand,
+) {
+	if len(*results) >= maxPaths {
+		return
+	}
+
+	vk := visitedKey{canonical: current.String(), isSequence: isSequence}
+	if visited[vk] {
+		return
+	}
+	visited[vk] = true
+	defer func() { delete(visited, vk) }()
+
+	if current.IsEquivalent(target) {
+		// Build steps from edge path
+		var steps []*StrandStep
+		capCount := 0
+		for _, edge := range path {
+			step := edgeToStep(edge)
+			steps = append(steps, step)
+			if step.IsCap() {
+				capCount++
+			}
+		}
+		if capCount > 0 {
+			var titles []string
+			for _, s := range steps {
+				if s.IsCap() {
+					titles = append(titles, s.Title())
+				}
+			}
+			*results = append(*results, &Strand{
+				Steps:        steps,
+				SourceSpec:   originalSource,
+				TargetSpec:   target,
+				TotalSteps:   len(steps),
+				CapStepCount: capCount,
+				Description:  strings.Join(titles, " → "),
+			})
+		}
+		return
+	}
+
+	if depthLimit == 0 {
+		return
+	}
+
+	edges, outSeqs := g.getOutgoingEdges(current, isSequence)
+	for i, edge := range edges {
+		// Make a fresh slice to avoid aliasing between recursive branches.
+		newPath := make([]*LiveMachinePlanEdge, len(path)+1)
+		copy(newPath, path)
+		newPath[len(path)] = edge
+		g.iddfsFind(originalSource, edge.ToSpec, target, outSeqs[i], newPath, visited, depthLimit-1, maxPaths, results)
+		if len(*results) >= maxPaths {
+			return
 		}
 	}
-	return results
 }
 
 func edgeToStep(edge *LiveMachinePlanEdge) *StrandStep {
 	switch edge.Type {
 	case EdgeTypeCap:
 		return &StrandStep{
-			StepType:       StepTypeCap,
-			FromSpec:       edge.FromSpec,
-			ToSpec:         edge.ToSpec,
-			CapUrnVal:      edge.CapUrnVal,
-			StepTitle:      edge.CapTitle,
-			SpecificityVal: edge.SpecificityVal,
+			StepType:         StepTypeCap,
+			FromSpec:         edge.FromSpec,
+			ToSpec:           edge.ToSpec,
+			CapUrnVal:        edge.CapUrnVal,
+			StepTitle:        edge.CapTitle,
+			SpecificityVal:   edge.SpecificityVal,
+			InputIsSequence:  edge.InputIsSequence,
+			OutputIsSequence: edge.OutputIsSequence,
 		}
 	case EdgeTypeForEach:
 		return &StrandStep{
-			StepType: StepTypeForEach,
-			FromSpec: edge.FromSpec,
-			ToSpec:   edge.ToSpec,
-			ListSpec: edge.FromSpec,
-			ItemSpec: edge.ToSpec,
+			StepType:  StepTypeForEach,
+			FromSpec:  edge.FromSpec,
+			ToSpec:    edge.ToSpec,
+			MediaSpec: edge.FromSpec,
 		}
 	case EdgeTypeCollect:
 		return &StrandStep{
-			StepType: StepTypeCollect,
-			FromSpec: edge.FromSpec,
-			ToSpec:   edge.ToSpec,
-			ItemSpec: edge.FromSpec,
-			ListSpec: edge.ToSpec,
-		}
-	case EdgeTypeWrapInList:
-		return &StrandStep{
-			StepType: StepTypeWrapInList,
-			FromSpec: edge.FromSpec,
-			ToSpec:   edge.ToSpec,
-			ItemSpec: edge.FromSpec,
-			ListSpec: edge.ToSpec,
+			StepType:  StepTypeCollect,
+			FromSpec:  edge.FromSpec,
+			ToSpec:    edge.ToSpec,
+			MediaSpec: edge.FromSpec,
 		}
 	}
 	return nil

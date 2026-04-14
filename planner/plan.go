@@ -69,7 +69,6 @@ const (
 	NodeKindCollect
 	NodeKindMerge
 	NodeKindSplit
-	NodeKindWrapInList
 	NodeKindInputSlot
 	NodeKindOutput
 )
@@ -97,10 +96,6 @@ type ExecutionNodeType struct {
 
 	// Split fields
 	OutputCount int
-
-	// WrapInList fields
-	ItemMediaUrn string
-	ListMediaUrn string
 
 	// InputSlot fields
 	SlotName         string
@@ -159,15 +154,6 @@ func NewSplitNodeType(inputNode string, outputCount int) *ExecutionNodeType {
 		Kind:        NodeKindSplit,
 		InputNode:   inputNode,
 		OutputCount: outputCount,
-	}
-}
-
-// NewWrapInListNodeType creates a WrapInList execution node type.
-func NewWrapInListNodeType(itemMediaUrn, listMediaUrn string) *ExecutionNodeType {
-	return &ExecutionNodeType{
-		Kind:         NodeKindWrapInList,
-		ItemMediaUrn: itemMediaUrn,
-		ListMediaUrn: listMediaUrn,
 	}
 }
 
@@ -237,16 +223,6 @@ func NewCollectNode(id string, inputNodes []string) *MachineNode {
 	return &MachineNode{
 		ID:          id,
 		NodeType:    NewCollectNodeType(inputNodes, nil),
-		Description: &desc,
-	}
-}
-
-// NewWrapInListNode creates a WrapInList node.
-func NewWrapInListNode(id, itemMediaUrn, listMediaUrn string) *MachineNode {
-	desc := "WrapInList: wrap scalar in list-of-one"
-	return &MachineNode{
-		ID:          id,
-		NodeType:    NewWrapInListNodeType(itemMediaUrn, listMediaUrn),
 		Description: &desc,
 	}
 }
@@ -530,14 +506,37 @@ func (p *MachinePlan) FindFirstForEach() *string {
 	return nil
 }
 
-// HasForEachOrCollect returns true if any node is ForEach or Collect.
-func (p *MachinePlan) HasForEachOrCollect() bool {
+// HasForeach returns true if any node is a ForEach node (requiring decomposition).
+//
+// ForEach nodes require special handling: the plan is decomposed into
+// prefix/body/suffix, and the body is executed per-item. Standalone Collect
+// nodes (scalar→list without ForEach) are pass-throughs handled by
+// plan_converter and do NOT require decomposition.
+func (p *MachinePlan) HasForeach() bool {
 	for _, node := range p.Nodes {
-		if node.NodeType.Kind == NodeKindForEach || node.NodeType.Kind == NodeKindCollect {
+		if node.NodeType.Kind == NodeKindForEach {
 			return true
 		}
 	}
 	return false
+}
+
+// HasForeachCollectPair returns true if the plan has both a ForEach and a Collect node.
+//
+// A Collect node following a ForEach marks the re-assembly point.
+// Standalone Collect nodes (no ForEach) are pass-throughs.
+func (p *MachinePlan) HasForeachCollectPair() bool {
+	hasForeach := false
+	hasCollect := false
+	for _, node := range p.Nodes {
+		if node.NodeType.Kind == NodeKindForEach {
+			hasForeach = true
+		}
+		if node.NodeType.Kind == NodeKindCollect {
+			hasCollect = true
+		}
+	}
+	return hasForeach && hasCollect
 }
 
 // ExtractPrefixTo extracts ancestor subgraph up to and including targetNodeID.
@@ -741,21 +740,60 @@ func (p *MachinePlan) ExtractSuffixFrom(sourceNodeID, sourceMediaUrn string) (*M
 
 // NodeExecutionResult holds the result of executing a single node.
 type NodeExecutionResult struct {
-	NodeID       string `json:"node_id"`
-	Success      bool   `json:"success"`
-	BinaryOutput []byte `json:"-"`
-	TextOutput   string `json:"text_output,omitempty"`
-	Error        string `json:"error,omitempty"`
-	DurationMs   uint64 `json:"duration_ms"`
+	NodeID       string   `json:"node_id"`
+	Success      bool     `json:"success"`
+	BinaryOutput []byte   `json:"-"`
+	// BinaryItems holds individual output items when the terminal cap emitted a sequence (is_sequence=true).
+	// Used by the standalone executor. Pipeline executor uses SavedPaths.
+	BinaryItems  [][]byte `json:"-"`
+	// SavedPaths holds file paths of output already saved to disk by an IncrementalWriter.
+	// Populated by the pipeline executor. Empty for the standalone executor.
+	SavedPaths   []string `json:"saved_paths,omitempty"`
+	// IsSequenceOutput indicates whether the output is a sequence (from is_sequence on STREAM_START).
+	IsSequenceOutput bool   `json:"is_sequence_output,omitempty"`
+	// TotalBytes is the total bytes written to disk. 0 when BinaryOutput is used instead.
+	TotalBytes   uint64   `json:"total_bytes,omitempty"`
+	// MediaUrnOutput is the output media URN from the terminal cap's STREAM_START or plan derivation.
+	MediaUrnOutput string  `json:"media_urn_output,omitempty"`
+	Error        string   `json:"error,omitempty"`
+	DurationMs   uint64   `json:"duration_ms"`
+}
+
+// BodyOutcome tracks what happened during a single ForEach body execution.
+//
+// For linear (non-ForEach) pipelines, a single BodyOutcome with BodyIndex=0
+// represents the entire execution.
+type BodyOutcome struct {
+	// BodyIndex is the index of this body within the ForEach (0-based). 0 for linear pipelines.
+	BodyIndex  int      `json:"body_index"`
+	// Success indicates whether this body completed successfully.
+	Success    bool     `json:"success"`
+	// CapUrns are the cap URNs in the body's execution pathway (in execution order).
+	CapUrns    []string `json:"cap_urns"`
+	// FailedCap is the cap URN that was executing when the body failed. Nil if succeeded.
+	FailedCap  *string  `json:"failed_cap,omitempty"`
+	// Error is the error message if the body failed.
+	Error      *string  `json:"error,omitempty"`
+	// Title is the human-readable title for this body, from stream metadata.
+	Title      *string  `json:"title,omitempty"`
+	// SavedPaths are the file paths saved by this body's IncrementalWriter.
+	SavedPaths []string `json:"saved_paths"`
+	// TotalBytes is the total bytes written by this body.
+	TotalBytes uint64   `json:"total_bytes"`
+	// DurationMs is the execution duration in milliseconds.
+	DurationMs uint64   `json:"duration_ms"`
 }
 
 // MachineResult holds the result of executing a complete plan.
 type MachineResult struct {
-	Success         bool                          `json:"success"`
+	Success         bool                            `json:"success"`
 	NodeResults     map[string]*NodeExecutionResult `json:"node_results"`
-	Outputs         map[string]any                `json:"outputs"`
-	Error           string                        `json:"error,omitempty"`
-	TotalDurationMs uint64                        `json:"total_duration_ms"`
+	Outputs         map[string]any                  `json:"outputs"`
+	Error           string                          `json:"error,omitempty"`
+	TotalDurationMs uint64                          `json:"total_duration_ms"`
+	// BodyOutcomes holds per-body outcomes for ForEach pipelines, or a single entry for linear plans.
+	// Populated by the pipeline executor; empty for the standalone executor.
+	BodyOutcomes    []BodyOutcome                   `json:"body_outcomes,omitempty"`
 }
 
 // PrimaryOutput returns the first output value (non-deterministic).

@@ -69,6 +69,7 @@ func (s *ArgSource) GetCliFlag() *string {
 type CapArg struct {
 	MediaUrn       string      `json:"media_urn"`
 	Required       bool        `json:"required"`
+	IsSequence     bool        `json:"is_sequence,omitempty"`
 	Sources        []ArgSource `json:"sources"`
 	ArgDescription string      `json:"arg_description,omitempty"`
 	DefaultValue   any         `json:"default_value,omitempty"`
@@ -225,6 +226,7 @@ func (a *CapArg) GetMediaType(mediaSpecs []media.MediaSpecDef, registry *media.M
 type CapOutput struct {
 	MediaUrn          string `json:"media_urn"`
 	OutputDescription string `json:"output_description"`
+	IsSequence        bool   `json:"is_sequence,omitempty"`
 	Metadata          any    `json:"metadata,omitempty"`
 }
 
@@ -342,6 +344,7 @@ type Cap struct {
 	Urn            *urn.CapUrn          `json:"urn"`
 	Title          string               `json:"title"`
 	CapDescription *string              `json:"cap_description,omitempty"`
+	Documentation  *string              `json:"documentation,omitempty"`
 	Metadata       map[string]string    `json:"metadata,omitempty"`
 	Command        string               `json:"command"`
 	MediaSpecs     []media.MediaSpecDef `json:"media_specs,omitempty"`
@@ -592,6 +595,21 @@ func (c *Cap) ClearRegisteredBy() {
 	c.RegisteredBy = nil
 }
 
+// GetDocumentation returns the long-form markdown documentation, if any.
+func (c *Cap) GetDocumentation() *string {
+	return c.Documentation
+}
+
+// SetDocumentation sets the long-form markdown documentation.
+func (c *Cap) SetDocumentation(doc string) {
+	c.Documentation = &doc
+}
+
+// ClearDocumentation clears the long-form markdown documentation.
+func (c *Cap) ClearDocumentation() {
+	c.Documentation = nil
+}
+
 // GetStdinMediaUrn returns the stdin media URN from args (first stdin source found)
 func (c *Cap) GetStdinMediaUrn() *string {
 	for _, arg := range c.Args {
@@ -712,6 +730,14 @@ func (c *Cap) Equals(other *Cap) bool {
 		return false
 	}
 
+	if (c.Documentation == nil) != (other.Documentation == nil) {
+		return false
+	}
+
+	if c.Documentation != nil && *c.Documentation != *other.Documentation {
+		return false
+	}
+
 	if len(c.Metadata) != len(other.Metadata) {
 		return false
 	}
@@ -755,6 +781,10 @@ func (c *Cap) MarshalJSON() ([]byte, error) {
 
 	if c.CapDescription != nil {
 		capData["cap_description"] = *c.CapDescription
+	}
+
+	if c.Documentation != nil {
+		capData["documentation"] = *c.Documentation
 	}
 
 	if len(c.Metadata) > 0 {
@@ -824,6 +854,10 @@ func (c *Cap) UnmarshalJSON(data []byte) error {
 
 	if desc, ok := raw["cap_description"].(string); ok {
 		c.CapDescription = &desc
+	}
+
+	if doc, ok := raw["documentation"].(string); ok {
+		c.Documentation = &doc
 	}
 
 	if metadata, ok := raw["metadata"].(map[string]any); ok {

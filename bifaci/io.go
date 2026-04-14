@@ -114,7 +114,7 @@ func (fw *FrameWriter) WriteFrame(frame *Frame) error {
 // Uses stream multiplexing protocol: STREAM_START + CHUNK + STREAM_END + END
 func (fw *FrameWriter) WriteResponseWithChunking(requestId MessageId, streamId string, mediaUrn string, payload []byte) error {
 	// Send STREAM_START
-	startFrame := NewStreamStart(requestId, streamId, mediaUrn)
+	startFrame := NewStreamStart(requestId, streamId, mediaUrn, nil)
 	if err := fw.WriteFrame(startFrame); err != nil {
 		return err
 	}
@@ -151,8 +151,6 @@ func (fw *FrameWriter) WriteResponseWithChunking(requestId MessageId, streamId s
 	// Send END
 	endFrame := NewEnd(requestId, nil)
 	return fw.WriteFrame(endFrame)
-
-	return nil
 }
 
 // HandshakeAccept performs handshake from cartridge side

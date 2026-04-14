@@ -39,23 +39,29 @@ const MediaObject = "media:record"
 // MediaIdentity is the media URN for binary data - the most general media type (no constraints)
 const MediaIdentity = "media:"
 
-// Array types - URNs must match base.toml definitions
+// List types - URNs must match base.toml definitions
 
-// MediaStringArray is the media URN for string array type - textable with list marker
-const MediaStringArray = "media:list;textable"
+// MediaList is the media URN for untyped list - ordered sequence of opaque byte sequences
+const MediaList = "media:list"
 
-// MediaIntegerArray is the media URN for integer array type - textable, numeric with list marker
-const MediaIntegerArray = "media:integer;list;textable;numeric"
+// MediaTextableList is the media URN for textable list - ordered sequence of textable values
+const MediaTextableList = "media:list;textable"
 
-// MediaNumberArray is the media URN for number array type - textable, numeric with list marker
-const MediaNumberArray = "media:list;textable;numeric"
+// MediaStringList is the media URN for string list type - textable with list marker
+const MediaStringList = "media:list;textable"
 
-// MediaBooleanArray is the media URN for boolean array type - uses "bool" with list marker
-const MediaBooleanArray = "media:bool;list;textable"
+// MediaIntegerList is the media URN for integer list type - textable, numeric with list marker
+const MediaIntegerList = "media:integer;list;textable;numeric"
 
-// MediaObjectArray is the media URN for object array type - list of records (NOT textable)
-// Use a specific format like JSON array for textable object arrays.
-const MediaObjectArray = "media:list;record"
+// MediaNumberList is the media URN for number list type - textable, numeric with list marker
+const MediaNumberList = "media:list;numeric;textable"
+
+// MediaBooleanList is the media URN for boolean list type - uses "bool" with list marker
+const MediaBooleanList = "media:bool;list;textable"
+
+// MediaObjectList is the media URN for object list type - list of records (NOT textable)
+// Use a specific format like JSON array for textable object lists.
+const MediaObjectList = "media:list;record"
 
 // Semantic media types for specialized content
 
@@ -72,9 +78,6 @@ const MediaVideo = "media:video"
 
 // MediaAudioSpeech is the media URN for audio input containing speech for transcription (Whisper)
 const MediaAudioSpeech = "media:audio;wav;speech"
-
-// MediaImageThumbnail is the media URN for thumbnail image output
-const MediaImageThumbnail = "media:image;png;thumbnail"
 
 // Document types (PRIMARY naming - type IS the format)
 
@@ -113,6 +116,38 @@ const MediaJSONSchema = "media:json;json-schema;record;textable"
 // MediaYAML is the media URN for YAML data - has record marker (structured key-value)
 const MediaYAML = "media:record;textable;yaml"
 
+// Format-specific variants for JSON, YAML, CSV
+
+// MediaJSONValue is the media URN for a generic JSON value (scalar — string, number, boolean, null, or object)
+const MediaJSONValue = "media:json;textable"
+
+// MediaJSONRecord is the media URN for a JSON object (alias for MediaJSON)
+const MediaJSONRecord = "media:json;record;textable"
+
+// MediaJSONList is the media URN for a JSON array (list of values)
+const MediaJSONList = "media:json;list;textable"
+
+// MediaJSONListRecord is the media URN for a JSON array of objects (list of records)
+const MediaJSONListRecord = "media:json;list;record;textable"
+
+// MediaYAMLValue is the media URN for a generic YAML value (scalar — string, number, boolean, null, or mapping)
+const MediaYAMLValue = "media:textable;yaml"
+
+// MediaYAMLRecord is the media URN for a YAML mapping (alias for MediaYAML)
+const MediaYAMLRecord = "media:record;textable;yaml"
+
+// MediaYAMLList is the media URN for a YAML sequence (list of values)
+const MediaYAMLList = "media:list;textable;yaml"
+
+// MediaYAMLListRecord is the media URN for a YAML sequence of mappings (list of records)
+const MediaYAMLListRecord = "media:list;record;textable;yaml"
+
+// MediaCSV is the media URN for CSV data — by definition a list of records (header row + data rows)
+const MediaCSV = "media:csv;list;record;textable"
+
+// MediaCSVList is the media URN for single-column CSV — list of values without record structure
+const MediaCSVList = "media:csv;list;textable"
+
 // File path types - for arguments that represent filesystem paths
 
 // MediaFilePath is the media URN for a single file path - textable, scalar by default (no list marker)
@@ -123,11 +158,11 @@ const MediaFilePathArray = "media:file-path;list;textable"
 
 // Semantic text input types - distinguished by their purpose/context
 
-// MediaFrontmatterText is the media URN for frontmatter text (book metadata) - scalar by default
-const MediaFrontmatterText = "media:frontmatter;textable"
+// MediaTextablePage is the media URN for extracted page text
+const MediaTextablePage = "media:textable;page"
 
 // MediaModelSpec is the media URN for model spec (provider:model format, HuggingFace name, etc.) - scalar by default
-// Generic, backend-agnostic — used by modelcartridge for download/status/path operations.
+// Generic, backend-agnostic — used by inference caps for download/status/path operations.
 const MediaModelSpec = "media:model-spec;textable"
 
 // Backend + use-case specific model-spec variants.
@@ -205,15 +240,6 @@ const MediaEmbeddingVector = "media:embedding-vector;record;textable"
 // MediaLLMInferenceOutput is the media URN for LLM inference output - has record marker
 const MediaLLMInferenceOutput = "media:generated-text;record;textable"
 
-// MediaFileMetadata is the media URN for extracted metadata - has record marker
-const MediaFileMetadata = "media:file-metadata;record;textable"
-
-// MediaDocumentOutline is the media URN for extracted outline - has record marker
-const MediaDocumentOutline = "media:document-outline;record;textable"
-
-// MediaDisboundPage is the media URN for disbound page - has list marker (array of page objects)
-const MediaDisboundPage = "media:disbound-page;list;textable"
-
 // MediaImageDescription is the media URN for vision inference output - textable, scalar by default
 const MediaImageDescription = "media:image-description;textable"
 
@@ -221,7 +247,10 @@ const MediaImageDescription = "media:image-description;textable"
 const MediaTranscriptionOutput = "media:record;textable;transcription"
 
 // MediaDecision is the media URN for decision output (Make Decision) - scalar by default
-const MediaDecision = "media:bool;decision;textable"
+const MediaDecision = "media:decision;json;record;textable"
 
-// MediaDecisionArray is the media URN for decision array output (Make Multiple Decisions) - has list marker
-const MediaDecisionArray = "media:bool;decision;list;textable"
+// MediaCollection is the media URN for a collection (map/record form)
+const MediaCollection = "media:collection;record;textable"
+
+// MediaCollectionList is the media URN for a list of collections
+const MediaCollectionList = "media:collection;list;record;textable"

@@ -510,6 +510,74 @@ func TestCapWithMediaSpecs(t *testing.T) {
 	assert.NotNil(t, outResolved.Schema)
 }
 
+// TEST920: Cap documentation round-trips through JSON serialize/deserialize
+func Test920_cap_documentation_roundtrip(t *testing.T) {
+	u, err := urn.NewCapUrnFromString(defTestUrn("op=test"))
+	require.NoError(t, err)
+	c := NewCap(u, "Test", "cmd")
+	c.SetDocumentation("# My Cap\n\nThis cap does things.\n\n## Usage\n\nCall it.")
+
+	data, err := json.Marshal(c)
+	require.NoError(t, err)
+
+	var restored Cap
+	err = json.Unmarshal(data, &restored)
+	require.NoError(t, err)
+
+	require.NotNil(t, restored.GetDocumentation())
+	assert.Equal(t, "# My Cap\n\nThis cap does things.\n\n## Usage\n\nCall it.", *restored.GetDocumentation())
+}
+
+// TEST921: When documentation is nil, it is omitted from JSON
+func Test921_cap_documentation_omitted_when_nil(t *testing.T) {
+	u, err := urn.NewCapUrnFromString(defTestUrn("op=test"))
+	require.NoError(t, err)
+	c := NewCap(u, "Test", "cmd")
+
+	data, err := json.Marshal(c)
+	require.NoError(t, err)
+
+	assert.NotContains(t, string(data), "documentation")
+}
+
+// TEST922: Documentation parses from JSON with documentation field
+func Test922_cap_documentation_parses_from_json(t *testing.T) {
+	u, err := urn.NewCapUrnFromString(defTestUrn("op=test"))
+	require.NoError(t, err)
+
+	// Build JSON from a round-tripped cap so URN escaping is correct
+	c0 := NewCap(u, "Test", "cmd")
+	c0.SetDocumentation("Docs here.")
+	data, err := json.Marshal(c0)
+	require.NoError(t, err)
+
+	var c Cap
+	err = json.Unmarshal(data, &c)
+	require.NoError(t, err)
+
+	require.NotNil(t, c.GetDocumentation())
+	assert.Equal(t, "Docs here.", *c.GetDocumentation())
+}
+
+// TEST923: set/clear lifecycle for documentation
+func Test923_cap_documentation_lifecycle(t *testing.T) {
+	u, err := urn.NewCapUrnFromString(defTestUrn("op=test"))
+	require.NoError(t, err)
+	c := NewCap(u, "Test", "cmd")
+
+	// Initially nil
+	assert.Nil(t, c.GetDocumentation())
+
+	// Set
+	c.SetDocumentation("Some docs.")
+	require.NotNil(t, c.GetDocumentation())
+	assert.Equal(t, "Some docs.", *c.GetDocumentation())
+
+	// Clear
+	c.ClearDocumentation()
+	assert.Nil(t, c.GetDocumentation())
+}
+
 func TestCapJSONRoundTrip(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(capTestUrn("op=test"))
 	require.NoError(t, err)

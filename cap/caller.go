@@ -115,19 +115,51 @@ type CapCaller struct {
 	capDefinition *Cap
 }
 
+// CapResultKind identifies the variant of a CapResult.
+type CapResultKind int
+
+const (
+	// CapResultKindScalar represents raw materialized bytes (scalar output).
+	CapResultKindScalar CapResultKind = iota
+	// CapResultKindList represents individual CBOR values (list output).
+	CapResultKindList
+	// CapResultKindEmpty represents no output (void cap).
+	CapResultKindEmpty
+)
+
+// CapResult is the result from a cap execution.
+//
+// Scalar outputs carry raw materialized bytes (e.g. UTF-8 text, raw binary).
+// List outputs carry a CBOR sequence of values, one per list item.
+// Empty represents a void cap with no output.
+type CapResult struct {
+	Kind   CapResultKind
+	Scalar []byte
+	List   []byte // CBOR sequence of list items
+}
+
+// NewCapResultScalar creates a CapResult carrying raw bytes (scalar output).
+func NewCapResultScalar(data []byte) CapResult {
+	return CapResult{Kind: CapResultKindScalar, Scalar: data}
+}
+
+// NewCapResultList creates a CapResult carrying a CBOR sequence (list output).
+func NewCapResultList(cborSequence []byte) CapResult {
+	return CapResult{Kind: CapResultKindList, List: cborSequence}
+}
+
+// NewCapResultEmpty creates a CapResult for void caps.
+func NewCapResultEmpty() CapResult {
+	return CapResult{Kind: CapResultKindEmpty}
+}
+
 // CapSet defines the interface for cap host communication
 type CapSet interface {
 	ExecuteCap(
 		ctx context.Context,
 		capUrn string,
 		arguments []CapArgumentValue,
-	) (*HostResult, error)
-}
-
-// HostResult represents the result from cap execution
-type HostResult struct {
-	BinaryOutput []byte
-	TextOutput   string
+	) (CapResult, error)
 }
 
 // NewCapCaller creates a new cap caller with validation
@@ -167,27 +199,24 @@ func (cc *CapCaller) Call(
 		return nil, err
 	}
 
-	// Determine response type based on what was returned and resolved output spec
+	// Determine response type based on CapResult variant
 	var response *ResponseWrapper
-	if len(result.BinaryOutput) > 0 {
-		if !outputSpec.IsBinary() {
-			return nil, fmt.Errorf("cap %s returned binary data but output spec '%s' (media type: %s) is not binary",
-				cc.cap, outputSpec.SpecID, outputSpec.MediaType)
-		}
-		response = NewResponseWrapperFromBinary(result.BinaryOutput)
-	} else if result.TextOutput != "" {
+	switch result.Kind {
+	case CapResultKindScalar:
 		if outputSpec.IsBinary() {
-			return nil, fmt.Errorf("cap %s returned text data but output spec '%s' expects binary",
-				cc.cap, outputSpec.SpecID)
-		}
-		// Structured data (map/list) can be serialized as JSON
-		if outputSpec.IsStructured() {
-			response = NewResponseWrapperFromJSON([]byte(result.TextOutput))
+			response = NewResponseWrapperFromBinary(result.Scalar)
+		} else if outputSpec.IsStructured() {
+			response = NewResponseWrapperFromJSON(result.Scalar)
 		} else {
-			response = NewResponseWrapperFromText([]byte(result.TextOutput))
+			response = NewResponseWrapperFromText(result.Scalar)
 		}
-	} else {
+	case CapResultKindList:
+		// List output is a CBOR sequence — stored as raw binary
+		response = NewResponseWrapperFromBinary(result.List)
+	case CapResultKindEmpty:
 		return nil, fmt.Errorf("cap returned no output")
+	default:
+		return nil, fmt.Errorf("cap returned unknown result kind: %d", result.Kind)
 	}
 
 	// Validate output against cap definition

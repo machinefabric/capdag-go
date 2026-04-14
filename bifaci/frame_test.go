@@ -23,6 +23,7 @@ func Test171_frame_type_roundtrip(t *testing.T) {
 		FrameTypeHello,
 		FrameTypeStreamStart,
 		FrameTypeStreamEnd,
+		FrameTypeCancel,
 	}
 
 	for _, ft := range types {
@@ -49,9 +50,10 @@ func Test172_frame_type_valid_range(t *testing.T) {
 		9:  true,  // STREAM_END
 		10: true,  // RELAY_NOTIFY
 		11: true,  // RELAY_STATE
+		12: true,  // CANCEL
 	}
 
-	for i := uint8(0); i <= 11; i++ {
+	for i := uint8(0); i <= 12; i++ {
 		if expected, exists := validTypes[i]; exists && expected {
 			ft := FrameType(i)
 			if ft.String() == fmt.Sprintf("UNKNOWN(%d)", i) {
@@ -59,10 +61,10 @@ func Test172_frame_type_valid_range(t *testing.T) {
 			}
 		}
 	}
-	// 12 is one past RelayState — must be invalid
-	ft12 := FrameType(12)
-	if ft12.String() != "UNKNOWN(12)" {
-		t.Errorf("Expected 12 to be invalid, got %s", ft12.String())
+	// 13 is one past Cancel — must be invalid
+	ft13 := FrameType(13)
+	if ft13.String() != "UNKNOWN(13)" {
+		t.Errorf("Expected 13 to be invalid, got %s", ft13.String())
 	}
 }
 
@@ -95,6 +97,9 @@ func Test173_frame_type_wire_protocol_values(t *testing.T) {
 	}
 	if uint8(FrameTypeStreamEnd) != 9 {
 		t.Errorf("STREAM_END must be 9, got %d", FrameTypeStreamEnd)
+	}
+	if uint8(FrameTypeCancel) != 12 {
+		t.Errorf("CANCEL must be 12, got %d", FrameTypeCancel)
 	}
 }
 
@@ -611,7 +616,7 @@ func Test365_stream_start_frame(t *testing.T) {
 	streamId := "stream-abc-123"
 	mediaUrn := "media:"
 
-	frame := NewStreamStart(reqId, streamId, mediaUrn)
+	frame := NewStreamStart(reqId, streamId, mediaUrn, nil)
 
 	if frame.FrameType != FrameTypeStreamStart {
 		t.Errorf("Expected STREAM_START frame type, got %v", frame.FrameType)
@@ -654,7 +659,7 @@ func Test367_stream_start_with_empty_stream_id(t *testing.T) {
 	streamId := ""
 	mediaUrn := "media:json"
 
-	frame := NewStreamStart(reqId, streamId, mediaUrn)
+	frame := NewStreamStart(reqId, streamId, mediaUrn, nil)
 
 	if frame.FrameType != FrameTypeStreamStart {
 		t.Errorf("Expected STREAM_START frame type, got %v", frame.FrameType)
@@ -673,7 +678,7 @@ func Test368_stream_start_with_empty_media_urn(t *testing.T) {
 	streamId := "stream-test"
 	mediaUrn := ""
 
-	frame := NewStreamStart(reqId, streamId, mediaUrn)
+	frame := NewStreamStart(reqId, streamId, mediaUrn, nil)
 
 	if frame.FrameType != FrameTypeStreamStart {
 		t.Errorf("Expected STREAM_START frame type, got %v", frame.FrameType)
@@ -769,11 +774,11 @@ func Test402_relay_state_factory_and_payload(t *testing.T) {
 	}
 }
 
-// TEST403: FrameType from value 12 is invalid (one past RelayState)
-func Test403_frame_type_one_past_relay_state(t *testing.T) {
-	ft := FrameType(12)
-	if ft.String() != fmt.Sprintf("UNKNOWN(%d)", 12) {
-		t.Errorf("FrameType(12) must be unknown, got %s", ft.String())
+// TEST403: FrameType from value 13 is invalid (one past Cancel)
+func Test403_frame_type_one_past_cancel(t *testing.T) {
+	ft := FrameType(13)
+	if ft.String() != fmt.Sprintf("UNKNOWN(%d)", 13) {
+		t.Errorf("FrameType(13) must be unknown, got %s", ft.String())
 	}
 }
 
@@ -838,7 +843,7 @@ func Test442_seq_assigner_monotonic_same_rid(t *testing.T) {
 	rid := NewMessageIdRandom()
 
 	f0 := NewReq(rid, "cap:op=test", nil, "")
-	f1 := NewStreamStart(rid, "s1", "media:")
+	f1 := NewStreamStart(rid, "s1", "media:", nil)
 	f2 := NewChunk(rid, "s1", 0, []byte("data"), 0, 0)
 	f3 := NewEnd(rid, nil)
 

@@ -738,7 +738,7 @@ func (pr *CartridgeRuntime) runCBORMode() error {
 					go func() {
 						for _, entry := range pendingReq.streams {
 							// STREAM_START
-							startFrame := NewStreamStart(requestID, entry.streamID, entry.stream.mediaUrn)
+							startFrame := NewStreamStart(requestID, entry.streamID, entry.stream.mediaUrn, nil)
 							framesChan <- *startFrame
 
 							// CHUNKs
@@ -1049,7 +1049,7 @@ func (pr *CartridgeRuntime) runCLIMode(args []string) error {
 			streamID := fmt.Sprintf("arg-%d", i)
 
 			// STREAM_START
-			startFrame := NewStreamStart(requestID, streamID, mediaUrn)
+			startFrame := NewStreamStart(requestID, streamID, mediaUrn, nil)
 			framesChan <- *startFrame
 
 			// CHUNK: CBOR-encode the value before sending
@@ -1313,7 +1313,7 @@ func (e *threadSafeEmitter) EmitCbor(value interface{}) error {
 	// STREAM MULTIPLEXING: Send STREAM_START before first chunk
 	if !e.streamStarted {
 		e.streamStarted = true
-		startFrame := NewStreamStart(e.requestID, e.streamID, e.mediaUrn)
+		startFrame := NewStreamStart(e.requestID, e.streamID, e.mediaUrn, nil)
 		startFrame.RoutingId = e.routingId
 		if err := e.writer.WriteFrame(startFrame); err != nil {
 			return fmt.Errorf("failed to write STREAM_START: %w", err)
@@ -1467,7 +1467,7 @@ func (e *threadSafeEmitter) Finalize() {
 	// If no chunks were sent, still send STREAM_START to keep protocol consistent
 	if !e.streamStarted {
 		e.streamStarted = true
-		startFrame := NewStreamStart(e.requestID, e.streamID, e.mediaUrn)
+		startFrame := NewStreamStart(e.requestID, e.streamID, e.mediaUrn, nil)
 		startFrame.RoutingId = e.routingId
 		if err := e.writer.WriteFrame(startFrame); err != nil {
 			fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write STREAM_START: %v\n", err)
@@ -1497,7 +1497,7 @@ func (e *threadSafeEmitter) Write(data []byte) error {
 
 	if !e.streamStarted {
 		e.streamStarted = true
-		startFrame := NewStreamStart(e.requestID, e.streamID, e.mediaUrn)
+		startFrame := NewStreamStart(e.requestID, e.streamID, e.mediaUrn, nil)
 		startFrame.RoutingId = e.routingId
 		if err := e.writer.WriteFrame(startFrame); err != nil {
 			return fmt.Errorf("failed to write STREAM_START: %w", err)
@@ -1536,7 +1536,7 @@ func (e *threadSafeEmitter) EmitListItem(value interface{}) error {
 
 	if !e.streamStarted {
 		e.streamStarted = true
-		startFrame := NewStreamStart(e.requestID, e.streamID, e.mediaUrn)
+		startFrame := NewStreamStart(e.requestID, e.streamID, e.mediaUrn, nil)
 		startFrame.RoutingId = e.routingId
 		if err := e.writer.WriteFrame(startFrame); err != nil {
 			return fmt.Errorf("failed to write STREAM_START: %w", err)
@@ -1700,7 +1700,7 @@ func (p *peerInvokerImpl) Invoke(capUrn string, arguments []cap.CapArgumentValue
 		streamID := fmt.Sprintf("peer-%s", NewMessageIdRandom().ToString()[:8])
 
 		// STREAM_START
-		startFrame := NewStreamStart(requestID, streamID, arg.MediaUrn)
+		startFrame := NewStreamStart(requestID, streamID, arg.MediaUrn, nil)
 		if err := p.writer.WriteFrame(startFrame); err != nil {
 			p.pendingRequests.Delete(requestID.ToString())
 			return nil, fmt.Errorf("failed to send STREAM_START: %w", err)

@@ -31,21 +31,15 @@ func Test309_model_availability_and_path_are_distinct(t *testing.T) {
 		"availability and path must be distinct cap URNs")
 }
 
-// TEST310: Test LlmConversationUrn uses unconstrained tag (not constrained)
-func Test310_llm_conversation_urn_unconstrained(t *testing.T) {
-	urnStr := LlmConversationUrn("en")
-	assert.True(t, strings.Contains(urnStr, "unconstrained"), "LLM conversation URN must have 'unconstrained' tag")
-	assert.True(t, strings.Contains(urnStr, "op=conversation"), "must have op=conversation")
-	assert.True(t, strings.Contains(urnStr, "language=en"), "must have language=en")
-}
-
-// TEST311: Test LlmConversationUrn in/out specs match the expected media URNs semantically
-func Test311_llm_conversation_urn_specs(t *testing.T) {
-	urnStr := LlmConversationUrn("fr")
-
-	// Verify contains expected media types
-	assert.True(t, strings.Contains(urnStr, "in=media:string"), "must have string input")
-	assert.True(t, strings.Contains(urnStr, "out=media:llm-inference-output"), "must have llm-inference-output")
+// TEST310: Test LlmGenerateTextUrn builds a cap URN with llm, ml-model, and op=generate_text
+func Test310_llm_generate_text_urn_shape(t *testing.T) {
+	urnStr := LlmGenerateTextUrn()
+	assert.True(t, strings.HasPrefix(urnStr, "cap:"), "must be a cap URN")
+	assert.True(t, strings.Contains(urnStr, "op=generate_text"), "must have op=generate_text")
+	assert.True(t, strings.Contains(urnStr, "llm"), "must have llm tag")
+	assert.True(t, strings.Contains(urnStr, "ml-model"), "must have ml-model tag")
+	assert.True(t, strings.Contains(urnStr, "in="), "must have in spec")
+	assert.True(t, strings.Contains(urnStr, "out="), "must have out spec")
 }
 
 // TEST312: Test all URN builders produce parseable cap URNs
@@ -57,7 +51,7 @@ func Test312_all_urn_builders_produce_valid_urns(t *testing.T) {
 	pathStr := ModelPathUrn()
 	assert.True(t, strings.HasPrefix(pathStr, "cap:"), "must be a cap URN")
 
-	llmStr := LlmConversationUrn("en")
+	llmStr := LlmGenerateTextUrn()
 	assert.True(t, strings.HasPrefix(llmStr, "cap:"), "must be a cap URN")
 }
 
@@ -85,7 +79,7 @@ func Test474_cap_discard_structure(t *testing.T) {
 		"CAP_DISCARD output must be media:void")
 }
 
-// TEST605: all_coercion_paths builds valid URNs with op=coerce and target tag
+// TEST605: all_coercion_paths builds valid URNs with op=coerce
 func Test605_all_coercion_paths_build_valid_urns(t *testing.T) {
 	paths := AllCoercionPaths()
 	assert.True(t, len(paths) > 0, "Coercion paths must not be empty")
@@ -95,8 +89,6 @@ func Test605_all_coercion_paths_build_valid_urns(t *testing.T) {
 		urnStr := CoercionUrn(source, target)
 		assert.True(t, strings.Contains(urnStr, "op=coerce"),
 			"Coercion URN for %s→%s must have op=coerce", source, target)
-		assert.True(t, strings.Contains(urnStr, "target="+target),
-			"Coercion URN for %s→%s must have target=%s", source, target, target)
 
 		// Verify it starts with cap: (valid cap URN prefix)
 		assert.True(t, strings.HasPrefix(urnStr, "cap:"),
@@ -115,4 +107,27 @@ func Test606_coercion_urn_specs(t *testing.T) {
 	// out_spec should contain MEDIA_INTEGER
 	assert.True(t, strings.Contains(urnStr, MediaInteger),
 		"out_spec should contain '%s', got '%s'", MediaInteger, urnStr)
+}
+
+// TEST850: all_format_conversion_paths returns non-empty list with valid URNs
+func Test850_all_format_conversion_paths_build_valid_urns(t *testing.T) {
+	paths := AllFormatConversionPaths()
+	assert.True(t, len(paths) > 0, "Format conversion paths must not be empty")
+
+	for _, p := range paths {
+		urnStr := FormatConversionUrn(p.InMedia, p.OutMedia)
+		assert.True(t, strings.HasPrefix(urnStr, "cap:"),
+			"Format conversion URN must be a cap URN, got %s", urnStr)
+		assert.True(t, strings.Contains(urnStr, "op=convert_format"),
+			"Format conversion URN must have op=convert_format, got %s", urnStr)
+	}
+}
+
+// TEST851: format_conversion_urn in/out specs are set correctly
+func Test851_format_conversion_urn_specs(t *testing.T) {
+	urnStr := FormatConversionUrn(MediaJSONRecord, MediaYAMLRecord)
+	assert.True(t, strings.Contains(urnStr, "op=convert_format"), "must have op=convert_format")
+	assert.True(t, strings.Contains(urnStr, "in="), "must have in spec")
+	assert.True(t, strings.Contains(urnStr, "out="), "must have out spec")
+	assert.True(t, strings.HasPrefix(urnStr, "cap:"), "must be a cap URN")
 }

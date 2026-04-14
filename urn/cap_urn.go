@@ -714,6 +714,29 @@ func (c *CapUrn) IsMoreSpecificThan(other *CapUrn) bool {
 	return c.Specificity() > other.Specificity()
 }
 
+// Less returns true if this CapUrn is ordered before other.
+// Comparison is performed on the in/out MediaUrn values, then lexicographically on the full string.
+func (c *CapUrn) Less(other *CapUrn) bool {
+	if other == nil {
+		return false
+	}
+	selfIn, errA := NewMediaUrnFromString(c.inSpec)
+	otherIn, errB := NewMediaUrnFromString(other.inSpec)
+	if errA == nil && errB == nil {
+		if cmp := selfIn.Compare(otherIn); cmp != 0 {
+			return cmp < 0
+		}
+	}
+	selfOut, errC := NewMediaUrnFromString(c.outSpec)
+	otherOut, errD := NewMediaUrnFromString(other.outSpec)
+	if errC == nil && errD == nil {
+		if cmp := selfOut.Compare(otherOut); cmp != 0 {
+			return cmp < 0
+		}
+	}
+	return c.String() < other.String()
+}
+
 // WithWildcardTag returns a new cap with a specific tag set to wildcard
 // For 'in' or 'out', sets the corresponding direction spec to wildcard
 func (c *CapUrn) WithWildcardTag(key string) *CapUrn {

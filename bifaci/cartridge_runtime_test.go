@@ -77,7 +77,7 @@ func bytesToFrameChannel(payload []byte) <-chan Frame {
 		mediaUrn := "media:"
 
 		// STREAM_START
-		ch <- *NewStreamStart(requestID, streamID, mediaUrn)
+		ch <- *NewStreamStart(requestID, streamID, mediaUrn, nil)
 
 		// CHUNK (if payload is not empty)
 		if len(payload) > 0 {
@@ -2071,7 +2071,7 @@ func Test363CBORModeChunkedContent(t *testing.T) {
 	streamID := "test-stream"
 
 	// Send STREAM_START
-	frameChan <- *NewStreamStart(requestID, streamID, "media:")
+	frameChan <- *NewStreamStart(requestID, streamID, "media:", nil)
 
 	// Send CHUNK frames
 	offset := 0
@@ -2374,7 +2374,7 @@ func Test545_demux_peer_response_returns_data(t *testing.T) {
 	rawCh := make(chan Frame, 10)
 
 	// STREAM_START
-	rawCh <- *NewStreamStart(reqId, "s1", "media:binary")
+	rawCh <- *NewStreamStart(reqId, "s1", "media:binary", nil)
 
 	// CHUNK with CBOR-encoded bytes
 	data := []byte("response data")
@@ -2407,7 +2407,7 @@ func Test839_peer_response_delivers_logs_before_stream_start(t *testing.T) {
 	rawCh <- *NewLog(reqId, "status", "large file in progress")
 
 	// Now send the actual data
-	rawCh <- *NewStreamStart(reqId, "s1", "media:binary")
+	rawCh <- *NewStreamStart(reqId, "s1", "media:binary", nil)
 	data := []byte("model output")
 	cborPayload, _ := cborlib.Marshal(data)
 	checksum := ComputeChecksum(cborPayload)
@@ -2469,7 +2469,7 @@ func Test840_peer_response_collect_bytes_discards_logs(t *testing.T) {
 	reqId := NewMessageIdRandom()
 	rawCh := make(chan Frame, 20)
 
-	rawCh <- *NewStreamStart(reqId, "s1", "media:binary")
+	rawCh <- *NewStreamStart(reqId, "s1", "media:binary", nil)
 	rawCh <- *NewProgress(reqId, 0.25, "working")
 	rawCh <- *NewProgress(reqId, 0.75, "almost")
 
@@ -2497,7 +2497,7 @@ func Test841_peer_response_collect_value_discards_logs(t *testing.T) {
 	reqId := NewMessageIdRandom()
 	rawCh := make(chan Frame, 20)
 
-	rawCh <- *NewStreamStart(reqId, "s1", "media:binary")
+	rawCh <- *NewStreamStart(reqId, "s1", "media:binary", nil)
 	rawCh <- *NewProgress(reqId, 0.5, "half")
 	rawCh <- *NewLog(reqId, "debug", "processing")
 

@@ -287,17 +287,6 @@ func (b *MachinePlanBuilder) BuildPlanFromPath(
 				return nil, NewInvalidPathError("Collect step without matching ForEach")
 			}
 
-		case StepTypeWrapInList:
-			itemSpec := ""
-			listSpec := ""
-			if step.ItemSpec != nil {
-				itemSpec = step.ItemSpec.String()
-			}
-			if step.ListSpec != nil {
-				listSpec = step.ListSpec.String()
-			}
-			plan.AddNode(NewWrapInListNode(nodeID, itemSpec, listSpec))
-			plan.AddEdge(NewDirectEdge(prevNodeID, nodeID))
 		}
 
 		prevNodeID = nodeID

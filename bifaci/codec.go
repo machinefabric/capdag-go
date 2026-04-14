@@ -27,6 +27,8 @@ const (
 	keyChunkIndex  = 14 // chunk_index (u64, REQUIRED for CHUNK frames)
 	keyChunkCount  = 15 // chunk_count (u64, REQUIRED for STREAM_END frames)
 	keyChecksum    = 16 // checksum (u64, REQUIRED for CHUNK frames - FNV-1a hash)
+	keyIsSequence  = 17 // is_sequence (bool, optional - whether producer used emit_list_item)
+	keyForceKill   = 18 // force_kill (bool, optional - whether Cancel should force-kill)
 )
 
 // EncodeFrame encodes a Frame to CBOR bytes using integer keys (matches Rust)
@@ -121,6 +123,16 @@ func EncodeFrame(frame *Frame) ([]byte, error) {
 	// 16: checksum (REQUIRED for CHUNK frames)
 	if frame.Checksum != nil {
 		m[keyChecksum] = *frame.Checksum
+	}
+
+	// 17: is_sequence (optional - for STREAM_START frames)
+	if frame.IsSequence != nil {
+		m[keyIsSequence] = *frame.IsSequence
+	}
+
+	// 18: force_kill (optional - for CANCEL frames)
+	if frame.ForceKill != nil {
+		m[keyForceKill] = *frame.ForceKill
 	}
 
 	return cbor.Marshal(m)

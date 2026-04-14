@@ -22,25 +22,27 @@ import (
 
 // Built-in media URN constants with coercion tags
 const (
-	MediaVoid         = "media:void"
-	MediaString       = "media:textable"
-	MediaInteger      = "media:integer;textable;numeric"
-	MediaNumber       = "media:textable;numeric"
-	MediaBoolean      = "media:bool;textable"
-	MediaObject       = "media:record;textable"
-	MediaIdentity       = "media:"
-	MediaStringArray  = "media:textable;list"
-	MediaIntegerArray = "media:integer;textable;numeric;list"
-	MediaNumberArray  = "media:textable;numeric;list"
-	MediaBooleanArray = "media:bool;textable;list"
-	MediaObjectArray  = "media:list;textable"
+	MediaVoid     = "media:void"
+	MediaString   = "media:textable"
+	MediaInteger  = "media:integer;textable;numeric"
+	MediaNumber   = "media:textable;numeric"
+	MediaBoolean  = "media:bool;textable"
+	MediaObject   = "media:record;textable"
+	MediaIdentity = "media:"
+	// List types
+	MediaList         = "media:list"
+	MediaTextableList = "media:list;textable"
+	MediaStringList   = "media:list;textable"
+	MediaIntegerList  = "media:integer;list;textable;numeric"
+	MediaNumberList   = "media:list;numeric;textable"
+	MediaBooleanList  = "media:bool;list;textable"
+	MediaObjectList   = "media:list;record"
 	// Semantic content types
 	MediaImage = "media:image;png"
 	MediaAudio = "media:wav;audio"
 	MediaVideo = "media:video"
 	// Semantic AI input types
-	MediaAudioSpeech    = "media:audio;wav;speech"
-	MediaImageThumbnail = "media:image;png;thumbnail"
+	MediaAudioSpeech = "media:audio;wav;speech"
 	// Document types (PRIMARY naming - type IS the format)
 	MediaPdf  = "media:pdf"
 	MediaEpub = "media:epub"
@@ -61,9 +63,9 @@ const (
 	MediaFilePath      = "media:file-path;textable"
 	MediaFilePathArray = "media:file-path;textable;list"
 	// Semantic output types
-	MediaModelDim      = "media:model-dim;integer;textable;numeric"
-	MediaDecision      = "media:decision;bool;textable"
-	MediaDecisionArray = "media:decision;bool;textable;list"
+	MediaModelDim  = "media:model-dim;integer;textable;numeric"
+	MediaDecision  = "media:decision;json;record;textable"
+	MediaTextablePage = "media:textable;page"
 	// Semantic output types
 	MediaLlmInferenceOutput = "media:generated-text;textable;record"
 	// Semantic output types for model operations
@@ -132,15 +134,16 @@ func GetProfileURL(profileName string) string {
 // MediaSpecDef represents a media spec definition - always a structured object
 // The Urn field identifies the media spec within a cap's media_specs array
 type MediaSpecDef struct {
-	Urn         string                 `json:"urn"`
-	MediaType   string                 `json:"media_type"`
-	ProfileURI  string                 `json:"profile_uri,omitempty"`
-	Schema      interface{}            `json:"schema,omitempty"`
-	Title       string                 `json:"title,omitempty"`
-	Description string                 `json:"description,omitempty"`
-	Validation  *MediaValidation       `json:"validation,omitempty"`
-	Metadata    map[string]interface{} `json:"metadata,omitempty"`
-	Extensions  []string               `json:"extensions,omitempty"`
+	Urn           string                 `json:"urn"`
+	MediaType     string                 `json:"media_type"`
+	ProfileURI    string                 `json:"profile_uri,omitempty"`
+	Schema        interface{}            `json:"schema,omitempty"`
+	Title         string                 `json:"title,omitempty"`
+	Description   string                 `json:"description,omitempty"`
+	Documentation *string                `json:"documentation,omitempty"`
+	Validation    *MediaValidation       `json:"validation,omitempty"`
+	Metadata      map[string]interface{} `json:"metadata,omitempty"`
+	Extensions    []string               `json:"extensions,omitempty"`
 }
 
 // NewMediaSpecDef creates a media spec def with required fields
@@ -151,6 +154,15 @@ func NewMediaSpecDef(urn, mediaType, profileURI string) MediaSpecDef {
 		ProfileURI: profileURI,
 	}
 }
+
+// GetDocumentation returns the long-form markdown documentation, if any.
+func (m *MediaSpecDef) GetDocumentation() *string { return m.Documentation }
+
+// SetDocumentation sets the long-form markdown documentation.
+func (m *MediaSpecDef) SetDocumentation(doc string) { m.Documentation = &doc }
+
+// ClearDocumentation clears the long-form markdown documentation.
+func (m *MediaSpecDef) ClearDocumentation() { m.Documentation = nil }
 
 // NewMediaSpecDefWithTitle creates a media spec def with title
 func NewMediaSpecDefWithTitle(urn, mediaType, profileURI, title string) MediaSpecDef {
@@ -174,13 +186,14 @@ func NewMediaSpecDefWithSchema(urn, mediaType, profileURI string, schema interfa
 
 // ResolvedMediaSpec represents a fully resolved media spec with all fields populated
 type ResolvedMediaSpec struct {
-	SpecID      string
-	MediaType   string
-	ProfileURI  string
-	Schema      interface{}
-	Title       string
-	Description string
-	Validation  *MediaValidation
+	SpecID        string
+	MediaType     string
+	ProfileURI    string
+	Schema        interface{}
+	Title         string
+	Description   string
+	Documentation *string
+	Validation    *MediaValidation
 	// Metadata contains arbitrary key-value pairs for display/categorization
 	Metadata map[string]interface{}
 	// Extensions are the file extensions for storing this media type (e.g., ["pdf"], ["jpg", "jpeg"])
@@ -420,15 +433,16 @@ func ResolveMediaUrn(mediaUrn string, mediaSpecs []MediaSpecDef, registry *Media
 		storedSpec, err := registry.GetMediaSpec(mediaUrn)
 		if err == nil {
 			return &ResolvedMediaSpec{
-				SpecID:      mediaUrn,
-				MediaType:   storedSpec.MediaType,
-				ProfileURI:  storedSpec.ProfileURI,
-				Schema:      storedSpec.Schema,
-				Title:       storedSpec.Title,
-				Description: storedSpec.Description,
-				Validation:  storedSpec.Validation,
-				Metadata:    storedSpec.Metadata,
-				Extensions:  storedSpec.Extensions,
+				SpecID:        mediaUrn,
+				MediaType:     storedSpec.MediaType,
+				ProfileURI:    storedSpec.ProfileURI,
+				Schema:        storedSpec.Schema,
+				Title:         storedSpec.Title,
+				Description:   storedSpec.Description,
+				Documentation: storedSpec.Documentation,
+				Validation:    storedSpec.Validation,
+				Metadata:      storedSpec.Metadata,
+				Extensions:    storedSpec.Extensions,
 			}, nil
 		}
 		// Registry lookup failed - log warning and continue to error
@@ -446,15 +460,16 @@ func ResolveMediaUrn(mediaUrn string, mediaSpecs []MediaSpecDef, registry *Media
 // resolveMediaSpecDef resolves a MediaSpecDef to a ResolvedMediaSpec
 func resolveMediaSpecDef(def *MediaSpecDef) (*ResolvedMediaSpec, error) {
 	return &ResolvedMediaSpec{
-		SpecID:      def.Urn,
-		MediaType:   def.MediaType,
-		ProfileURI:  def.ProfileURI,
-		Schema:      def.Schema,
-		Title:       def.Title,
-		Description: def.Description,
-		Validation:  def.Validation,
-		Metadata:    def.Metadata,
-		Extensions:  def.Extensions,
+		SpecID:        def.Urn,
+		MediaType:     def.MediaType,
+		ProfileURI:    def.ProfileURI,
+		Schema:        def.Schema,
+		Title:         def.Title,
+		Description:   def.Description,
+		Documentation: def.Documentation,
+		Validation:    def.Validation,
+		Metadata:      def.Metadata,
+		Extensions:    def.Extensions,
 	}, nil
 }
 

@@ -10,6 +10,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.8.4
 	github.com/xeipuuv/gojsonschema v1.2.0
+	github.com/yhirose/go-peg v0.0.0-20210804202551-de25d6753cf1
 )
 
 replace github.com/machinefabric/tagged-urn-go => ../tagged-urn-go

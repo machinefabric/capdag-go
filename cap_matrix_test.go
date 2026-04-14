@@ -16,10 +16,8 @@ func (m *MockCapSetForRegistry) ExecuteCap(
 	ctx context.Context,
 	capUrn string,
 	arguments []CapArgumentValue,
-) (*HostResult, error) {
-	return &HostResult{
-		TextOutput: "Mock response from " + m.name,
-	}, nil
+) (CapResult, error) {
+	return NewCapResultScalar([]byte("Mock response from " + m.name)), nil
 }
 
 // Test helper for matrix tests

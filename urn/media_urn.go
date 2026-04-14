@@ -80,6 +80,16 @@ func (m *MediaUrn) IsJson() bool {
 	return m.HasTag("json")
 }
 
+// IsYaml returns true if this media URN describes YAML representation.
+func (m *MediaUrn) IsYaml() bool {
+	return m.HasMarkerTag("yaml")
+}
+
+// IsCsv returns true if this media URN describes CSV representation.
+func (m *MediaUrn) IsCsv() bool {
+	return m.HasMarkerTag("csv")
+}
+
 // Accepts checks if this MediaUrn (pattern/handler) accepts the given instance (request).
 // Uses TaggedUrn.Accepts semantics: pattern accepts instance if instance satisfies pattern's constraints.
 func (m *MediaUrn) Accepts(instance *MediaUrn) bool {
@@ -130,6 +140,19 @@ func (m *MediaUrn) Equals(other *MediaUrn) bool {
 		return m.inner == other.inner
 	}
 	return m.inner.Equals(other.inner)
+}
+
+// Compare returns -1, 0, or 1 for ordering two MediaUrns lexicographically by string.
+func (m *MediaUrn) Compare(other *MediaUrn) int {
+	a := m.String()
+	b := other.String()
+	if a < b {
+		return -1
+	}
+	if a > b {
+		return 1
+	}
+	return 0
 }
 
 // Specificity returns the specificity score (number of tags)
@@ -184,14 +207,17 @@ func (m *MediaUrn) UnmarshalJSON(data []byte) error {
 // CARDINALITY (list marker)
 // =========================================================================
 
-// IsList returns true if this media is a list (has `list` marker tag).
-// Returns false if scalar (no `list` marker = default).
+// IsList returns true if this media URN describes a list data format (has `list` marker tag).
+// This is a semantic check about the data format, NOT about input cardinality or shape.
+// A cap with a list output declares the data it produces is a list; it does not imply
+// the cap takes multiple inputs or processes items individually.
 func (m *MediaUrn) IsList() bool {
 	return m.hasMarkerTag("list")
 }
 
-// IsScalar returns true if this media is a scalar (no `list` marker).
-// Scalar is the default cardinality.
+// IsScalar returns true if this media URN describes a scalar data format (no `list` marker).
+// This is a semantic check about the data format, NOT about input cardinality or shape.
+// Scalar is the default cardinality — absence of the `list` marker means the data is a single value.
 func (m *MediaUrn) IsScalar() bool {
 	return !m.hasMarkerTag("list")
 }
@@ -232,20 +258,6 @@ func (m *MediaUrn) WithoutTag(key string) *MediaUrn {
 		return m
 	}
 	return &MediaUrn{inner: m.inner.WithoutTag(key)}
-}
-
-// WithList creates a new MediaUrn with the list marker tag added.
-// Returns a new URN representing a list of this media type.
-// Idempotent — adding list to an already-list URN is a no-op.
-func (m *MediaUrn) WithList() *MediaUrn {
-	return m.WithTag("list", "*")
-}
-
-// WithoutList creates a new MediaUrn with the list marker tag removed.
-// Returns a new URN representing a scalar of this media type.
-// No-op if list tag is absent.
-func (m *MediaUrn) WithoutList() *MediaUrn {
-	return m.WithoutTag("list")
 }
 
 // LeastUpperBound computes the least upper bound (most specific common type) of a set of MediaUrns.
@@ -302,6 +314,13 @@ func (m *MediaUrn) hasMarkerTag(tagName string) bool {
 	}
 	val, ok := m.inner.GetTag(tagName)
 	return ok && val == "*"
+}
+
+// HasMarkerTag checks if a marker tag (tag with wildcard/no value) is present.
+// A marker tag is stored as key="*" in the tagged URN.
+// This is the exported version of hasMarkerTag.
+func (m *MediaUrn) HasMarkerTag(tagName string) bool {
+	return m.hasMarkerTag(tagName)
 }
 
 // IsImage returns true if this has the "image" marker tag

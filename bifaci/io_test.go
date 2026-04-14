@@ -799,7 +799,7 @@ func Test389_stream_start_roundtrip(t *testing.T) {
 	streamId := "stream-roundtrip-123"
 	mediaUrn := "media:json"
 
-	original := NewStreamStart(reqId, streamId, mediaUrn)
+	original := NewStreamStart(reqId, streamId, mediaUrn, nil)
 	encoded, err := EncodeFrame(original)
 	if err != nil {
 		t.Fatalf("Encode failed: %v", err)

@@ -46,31 +46,53 @@ func (e *RelaySwitchError) Error() string {
 	}
 }
 
+// InstalledCartridgeIdentity represents the identity of an installed cartridge
+type InstalledCartridgeIdentity struct {
+	Id      string `json:"id"`
+	Version string `json:"version"`
+	Sha256  string `json:"sha256"`
+}
+
+// relayNotifyCapabilitiesPayload is the parsed payload from RelayNotify frames
+type relayNotifyCapabilitiesPayload struct {
+	Caps                 []string                     `json:"caps"`
+	InstalledCartridges  []InstalledCartridgeIdentity `json:"installed_cartridges"`
+}
+
 // RoutingEntry tracks request source and destination
 type RoutingEntry struct {
 	SourceMasterIdx      int
 	DestinationMasterIdx int
+	RequestId            MessageId // original MessageId for cancel frames
 }
 
 // MasterConnection represents a connection to a single RelayMaster
 type MasterConnection struct {
-	socketWriter *FrameWriter
-	manifest     []byte
-	limits       Limits
-	caps         []string
-	healthy      bool
+	socketWriter        *FrameWriter
+	manifest            []byte
+	limits              Limits
+	caps                []string
+	installedCartridges []InstalledCartridgeIdentity
+	healthy             bool
+}
+
+// peerCallChild stores a child peer-call routing key for cancel cascading
+type peerCallChild struct {
+	key string
 }
 
 // RelaySwitch is a cap-aware routing multiplexer for multiple RelayMasters
 type RelaySwitch struct {
-	masters          []*MasterConnection
-	capTable         []CapTableEntry
-	requestRouting   map[string]*RoutingEntry
-	peerRequests     map[string]bool
-	capabilities     []byte
-	negotiatedLimits Limits
-	frameRx          chan MasterFrame
-	mu               sync.Mutex
+	masters                      []*MasterConnection
+	capTable                     []CapTableEntry
+	requestRouting               map[string]*RoutingEntry
+	peerRequests                 map[string]bool
+	peerCallParents              map[string][]peerCallChild // parent key → list of child peer calls
+	capabilities                 []byte
+	aggregateInstalledCartridges []InstalledCartridgeIdentity
+	negotiatedLimits             Limits
+	frameRx                      chan MasterFrame
+	mu                           sync.Mutex
 }
 
 type CapTableEntry struct {
@@ -138,7 +160,7 @@ func NewRelaySwitch(sockets []SocketPair) (*RelaySwitch, error) {
 			}
 		}
 
-		caps, err := parseCapabilitiesFromManifest(manifest)
+		payload, err := parseRelayNotifyPayload(manifest)
 		if err != nil {
 			return nil, err
 		}
@@ -148,10 +170,12 @@ func NewRelaySwitch(sockets []SocketPair) (*RelaySwitch, error) {
 		go func() {
 			for {
 				frame, err := socketReader.ReadFrame()
-				if err != nil || frame == nil {
-					if err != nil {
-						frameRx <- MasterFrame{MasterIdx: idx, Frame: nil, Err: err}
-					}
+				if err != nil {
+					frameRx <- MasterFrame{MasterIdx: idx, Frame: nil, Err: err}
+					return
+				}
+				if frame == nil {
+					frameRx <- MasterFrame{MasterIdx: idx, Frame: nil, Err: fmt.Errorf("EOF")}
 					return
 				}
 
@@ -160,24 +184,28 @@ func NewRelaySwitch(sockets []SocketPair) (*RelaySwitch, error) {
 		}()
 
 		masters = append(masters, &MasterConnection{
-			socketWriter: socketWriter,
-			manifest:     manifest,
-			limits:       *limits,
-			caps:         caps,
-			healthy:      true,
+			socketWriter:        socketWriter,
+			manifest:            manifest,
+			limits:              *limits,
+			caps:                payload.Caps,
+			installedCartridges: payload.InstalledCartridges,
+			healthy:             true,
 		})
 	}
 
 	sw := &RelaySwitch{
-		masters:        masters,
-		capTable:       []CapTableEntry{},
-		requestRouting: make(map[string]*RoutingEntry),
-		peerRequests:   make(map[string]bool),
-		frameRx:        frameRx,
+		masters:                      masters,
+		capTable:                     []CapTableEntry{},
+		requestRouting:               make(map[string]*RoutingEntry),
+		peerRequests:                 make(map[string]bool),
+		peerCallParents:              make(map[string][]peerCallChild),
+		aggregateInstalledCartridges: []InstalledCartridgeIdentity{},
+		frameRx:                      frameRx,
 	}
 
 	sw.rebuildCapTable()
 	sw.rebuildCapabilities()
+	sw.rebuildInstalledCartridges()
 	sw.rebuildLimits()
 
 	return sw, nil
@@ -197,11 +225,88 @@ func (sw *RelaySwitch) Capabilities() []byte {
 	return result
 }
 
+// InstalledCartridges returns the aggregate installed cartridge identities of all healthy masters
+func (sw *RelaySwitch) InstalledCartridges() []InstalledCartridgeIdentity {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	result := make([]InstalledCartridgeIdentity, len(sw.aggregateInstalledCartridges))
+	copy(result, sw.aggregateInstalledCartridges)
+	return result
+}
+
 // Limits returns the negotiated limits (minimum across all masters)
 func (sw *RelaySwitch) Limits() Limits {
 	sw.mu.Lock()
 	defer sw.mu.Unlock()
 	return sw.negotiatedLimits
+}
+
+// CancelRequest cancels a specific in-flight request by request ID.
+//
+// Sends Cancel frame to the destination master, cascades to child peer calls,
+// and cleans up all routing maps.
+func (sw *RelaySwitch) CancelRequest(rid MessageId, forceKill bool) {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	sw.cancelRequestLocked(rid.ToString(), forceKill)
+}
+
+// cancelRequestLocked must be called with sw.mu held.
+// ridKey is the string form of rid for map lookups.
+func (sw *RelaySwitch) cancelRequestLocked(ridKey string, forceKill bool) {
+	entry, ok := sw.requestRouting[ridKey]
+	if !ok {
+		return
+	}
+
+	destIdx := entry.DestinationMasterIdx
+	rid := entry.RequestId
+
+	// Build and send cancel frame to destination
+	cancelFrame := NewCancelFrame(rid, forceKill)
+	_ = sw.masters[destIdx].socketWriter.WriteFrame(cancelFrame)
+
+	// Collect child peer calls for recursive cancel
+	children := sw.peerCallParents[ridKey]
+	delete(sw.peerCallParents, ridKey)
+
+	// Recursively cancel children
+	for _, child := range children {
+		sw.cancelRequestLocked(child.key, forceKill)
+	}
+
+	// Cleanup routing maps
+	delete(sw.requestRouting, ridKey)
+	delete(sw.peerRequests, ridKey)
+}
+
+// CancelAllRequests cancels all external-origin (engine-initiated) in-flight requests.
+// Returns the list of cancelled request IDs.
+func (sw *RelaySwitch) CancelAllRequests(forceKill bool) []MessageId {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+
+	// Snapshot all engine-origin entries before mutating
+	type entry struct {
+		key string
+		rid MessageId
+	}
+	var entries []entry
+	for key, e := range sw.requestRouting {
+		if e.SourceMasterIdx == ENGINE_SOURCE {
+			entries = append(entries, entry{key: key, rid: e.RequestId})
+		}
+	}
+
+	for _, e := range entries {
+		sw.cancelRequestLocked(e.key, forceKill)
+	}
+
+	rids := make([]MessageId, len(entries))
+	for i, e := range entries {
+		rids[i] = e.rid
+	}
+	return rids
 }
 
 // SendToMaster sends a frame to the appropriate master
@@ -230,6 +335,7 @@ func (sw *RelaySwitch) SendToMaster(frame *Frame, preferredCap *string) error {
 		sw.requestRouting[frame.Id.ToString()] = &RoutingEntry{
 			SourceMasterIdx:      ENGINE_SOURCE,
 			DestinationMasterIdx: destIdx,
+			RequestId:            frame.Id,
 		}
 
 		return sw.masters[destIdx].socketWriter.WriteFrame(frame)
@@ -421,6 +527,7 @@ func (sw *RelaySwitch) handleMasterFrame(sourceIdx int, frame *Frame) (*Frame, e
 		sw.requestRouting[frame.Id.ToString()] = &RoutingEntry{
 			SourceMasterIdx:      sourceIdx,
 			DestinationMasterIdx: destIdx,
+			RequestId:            frame.Id,
 		}
 		sw.peerRequests[frame.Id.ToString()] = true
 
@@ -469,14 +576,15 @@ func (sw *RelaySwitch) handleMasterFrame(sourceIdx int, frame *Frame) (*Frame, e
 			}
 		}
 
-		newCaps, err := parseCapabilitiesFromManifest(manifest)
+		payload, err := parseRelayNotifyPayload(manifest)
 		if err != nil {
 			return nil, err
 		}
 
-		// Update master's caps and limits
+		// Update master's caps, installed cartridges, and limits
 		if sourceIdx >= 0 && sourceIdx < len(sw.masters) {
-			sw.masters[sourceIdx].caps = newCaps
+			sw.masters[sourceIdx].caps = payload.Caps
+			sw.masters[sourceIdx].installedCartridges = payload.InstalledCartridges
 			sw.masters[sourceIdx].manifest = manifest
 			// Extract and update limits from RelayNotify
 			if limits := frame.RelayNotifyLimits(); limits != nil {
@@ -484,8 +592,9 @@ func (sw *RelaySwitch) handleMasterFrame(sourceIdx int, frame *Frame) (*Frame, e
 			}
 		}
 
-		// Rebuild aggregate capability table
+		// Rebuild aggregate capability table and installed cartridges
 		sw.rebuildCapTable()
+		sw.rebuildInstalledCartridges()
 
 		// RelayNotify is consumed internally, don't forward to engine
 		return nil, nil
@@ -513,6 +622,7 @@ func (sw *RelaySwitch) handleMasterDeath(masterIdx int) {
 
 	sw.rebuildCapTable()
 	sw.rebuildCapabilities()
+	sw.rebuildInstalledCartridges()
 	sw.rebuildLimits()
 }
 
@@ -529,6 +639,24 @@ func (sw *RelaySwitch) rebuildCapTable() {
 			}
 		}
 	}
+}
+
+// rebuildInstalledCartridges rebuilds aggregate installed cartridge identities
+func (sw *RelaySwitch) rebuildInstalledCartridges() {
+	seen := make(map[string]bool)
+	result := []InstalledCartridgeIdentity{}
+	for _, master := range sw.masters {
+		if master.healthy {
+			for _, ic := range master.installedCartridges {
+				key := ic.Id + "@" + ic.Version
+				if !seen[key] {
+					seen[key] = true
+					result = append(result, ic)
+				}
+			}
+		}
+	}
+	sw.aggregateInstalledCartridges = result
 }
 
 // rebuildCapabilities rebuilds aggregate capabilities
@@ -583,43 +711,61 @@ func (sw *RelaySwitch) rebuildLimits() {
 	}
 }
 
-// parseCapabilitiesFromManifest parses capability URNs from manifest JSON
-func parseCapabilitiesFromManifest(manifest []byte) ([]string, error) {
-	var parsed map[string]interface{}
-	if err := json.Unmarshal(manifest, &parsed); err != nil {
+// parseRelayNotifyPayload parses caps and installed_cartridges from a RelayNotify manifest payload.
+// The payload JSON may contain:
+//   - "caps": []string  (the capability URN list)
+//   - "installed_cartridges": []InstalledCartridgeIdentity (optional)
+//
+// For backward compatibility, if "caps" is absent but "capabilities" is present, it is used.
+func parseRelayNotifyPayload(manifest []byte) (*relayNotifyCapabilitiesPayload, error) {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(manifest, &raw); err != nil {
 		return nil, &RelaySwitchError{
 			Type:    RelaySwitchErrorTypeProtocol,
 			Message: fmt.Sprintf("invalid manifest JSON: %v", err),
 		}
 	}
 
-	capsIface, ok := parsed["capabilities"]
-	if !ok {
-		return nil, &RelaySwitchError{
-			Type:    RelaySwitchErrorTypeProtocol,
-			Message: "manifest missing capabilities array",
-		}
-	}
+	var caps []string
 
-	capsArray, ok := capsIface.([]interface{})
-	if !ok {
-		return nil, &RelaySwitchError{
-			Type:    RelaySwitchErrorTypeProtocol,
-			Message: "capabilities is not an array",
-		}
-	}
-
-	caps := []string{}
-	for _, capIface := range capsArray {
-		cap, ok := capIface.(string)
-		if !ok {
+	// Try "caps" first (new format), fall back to "capabilities" (old format)
+	if capsRaw, ok := raw["caps"]; ok {
+		if err := json.Unmarshal(capsRaw, &caps); err != nil {
 			return nil, &RelaySwitchError{
 				Type:    RelaySwitchErrorTypeProtocol,
-				Message: "non-string capability",
+				Message: fmt.Sprintf("invalid caps field: %v", err),
 			}
 		}
-		caps = append(caps, cap)
+	} else if capsRaw, ok := raw["capabilities"]; ok {
+		if err := json.Unmarshal(capsRaw, &caps); err != nil {
+			return nil, &RelaySwitchError{
+				Type:    RelaySwitchErrorTypeProtocol,
+				Message: fmt.Sprintf("invalid capabilities field: %v", err),
+			}
+		}
+	} else {
+		return nil, &RelaySwitchError{
+			Type:    RelaySwitchErrorTypeProtocol,
+			Message: "manifest missing caps/capabilities array",
+		}
 	}
 
-	return caps, nil
+	var installedCartridges []InstalledCartridgeIdentity
+	if icRaw, ok := raw["installed_cartridges"]; ok {
+		if err := json.Unmarshal(icRaw, &installedCartridges); err != nil {
+			return nil, &RelaySwitchError{
+				Type:    RelaySwitchErrorTypeProtocol,
+				Message: fmt.Sprintf("invalid installed_cartridges field: %v", err),
+			}
+		}
+	}
+
+	if installedCartridges == nil {
+		installedCartridges = []InstalledCartridgeIdentity{}
+	}
+
+	return &relayNotifyCapabilitiesPayload{
+		Caps:                caps,
+		InstalledCartridges: installedCartridges,
+	}, nil
 }

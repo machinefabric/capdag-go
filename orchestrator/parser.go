@@ -6,8 +6,9 @@ import (
 
 	peg "github.com/yhirose/go-peg"
 
-	"github.com/machinefabric/capdag-go/planner"
+	"github.com/machinefabric/capdag-go/cap"
 	"github.com/machinefabric/capdag-go/machine"
+	"github.com/machinefabric/capdag-go/planner"
 	"github.com/machinefabric/capdag-go/urn"
 )
 
@@ -63,10 +64,11 @@ func checkStructureCompatibility(source, target *urn.MediaUrn, nodeName string) 
 
 // ParseMachineToCapDag parses machine notation and produces a validated orchestration graph.
 //
-// Each cap URN is resolved via the registry. Node media URNs are derived
-// from the cap's in=/out= specs. Media type consistency and structure
+// Each cap URN is resolved via the registry's GetCachedCap. Node media URNs are
+// derived from the cap's in=/out= specs. Media type consistency and structure
 // compatibility (record vs opaque) are validated at each node.
-func ParseMachineToCapDag(machineStr string, registry CapRegistryTrait) (*ResolvedGraph, error) {
+// Caps must be pre-loaded into the registry cache before calling this function.
+func ParseMachineToCapDag(machineStr string, registry *cap.CapRegistry) (*ResolvedGraph, error) {
 	// Step 1: Parse machine notation into a Machine.
 	machine, err := machine.ParseMachine(machineStr)
 	if err != nil {
@@ -93,9 +95,9 @@ func ParseMachineToCapDag(machineStr string, registry CapRegistryTrait) (*Resolv
 	edges := machine.Edges()
 	for edgeIdx, edge := range edges {
 		capUrnStr := edge.CapUrn.String()
-		capDef, err := registry.Lookup(capUrnStr)
-		if err != nil {
-			return nil, err
+		capDef, ok := registry.GetCachedCap(capUrnStr)
+		if !ok {
+			return nil, capNotFoundError(capUrnStr)
 		}
 
 		capInMedia, err := edge.CapUrn.InMediaUrn()

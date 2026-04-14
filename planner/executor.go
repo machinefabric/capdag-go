@@ -163,12 +163,10 @@ func (pe *MachineExecutor) executeNode(
 			}
 			output = items
 		}
-		outputJSON, _ := json.Marshal(output)
 		durationMs := uint64(time.Since(start).Milliseconds())
 		return &NodeExecutionResult{
 			NodeID:     node.ID,
 			Success:    true,
-			TextOutput: string(outputJSON),
 			DurationMs: durationMs,
 		}, output, nil
 
@@ -261,22 +259,6 @@ func (pe *MachineExecutor) executeNode(
 			Success:    true,
 			DurationMs: durationMs,
 		}, output, nil
-
-	case NodeKindWrapInList:
-		// Find predecessor via incoming edge
-		var predecessorOutput any
-		for _, edge := range pe.plan.Edges {
-			if edge.ToNode == node.ID {
-				predecessorOutput = nodeOutputs[edge.FromNode]
-				break
-			}
-		}
-		durationMs := uint64(time.Since(start).Milliseconds())
-		return &NodeExecutionResult{
-			NodeID:     node.ID,
-			Success:    true,
-			DurationMs: durationMs,
-		}, predecessorOutput, nil
 
 	default:
 		return nil, nil, NewInternalError(fmt.Sprintf("Unknown node kind: %d", node.NodeType.Kind))
@@ -431,11 +413,11 @@ func (pe *MachineExecutor) executeMachineNode(
 	}
 
 	return &NodeExecutionResult{
-		NodeID:       nodeID,
-		Success:      true,
-		BinaryOutput: responseBytes,
-		TextOutput:   textOutput,
-		DurationMs:   durationMs,
+		NodeID:         nodeID,
+		Success:        true,
+		BinaryOutput:   responseBytes,
+		MediaUrnOutput: "", // populated by pipeline executor from STREAM_START metadata
+		DurationMs:     durationMs,
 	}, outputJSON, nil
 }
 

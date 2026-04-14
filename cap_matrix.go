@@ -381,11 +381,11 @@ func (cs *CompositeCapSet) ExecuteCap(
 	ctx context.Context,
 	capUrn string,
 	arguments []cap.CapArgumentValue,
-) (*cap.HostResult, error) {
+) (cap.CapResult, error) {
 	// Parse the request URN
 	request, err := urn.NewCapUrnFromString(capUrn)
 	if err != nil {
-		return nil, fmt.Errorf("invalid cap URN '%s': %w", capUrn, err)
+		return cap.NewCapResultEmpty(), fmt.Errorf("invalid cap URN '%s': %w", capUrn, err)
 	}
 
 	// Find the best matching CapSet across all registries
@@ -409,7 +409,7 @@ func (cs *CompositeCapSet) ExecuteCap(
 	}
 
 	if bestHost == nil {
-		return nil, fmt.Errorf("no capability host found for '%s'", capUrn)
+		return cap.NewCapResultEmpty(), fmt.Errorf("no capability host found for '%s'", capUrn)
 	}
 
 	// Delegate execution to the best matching host

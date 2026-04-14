@@ -33,18 +33,6 @@ func (c InputCardinality) String() string {
 	}
 }
 
-// CardinalityFromMediaUrn parses cardinality from a media URN string.
-func CardinalityFromMediaUrn(urnStr string) InputCardinality {
-	mediaUrn, err := urn.NewMediaUrnFromString(urnStr)
-	if err != nil {
-		panic(fmt.Sprintf("Invalid media URN in cardinality detection: %s", urnStr))
-	}
-	if mediaUrn.IsList() {
-		return CardinalitySequence
-	}
-	return CardinalitySingle
-}
-
 // IsMultiple checks if this cardinality accepts multiple items.
 func (c InputCardinality) IsMultiple() bool {
 	return c == CardinalitySequence || c == CardinalityAtLeastOne
@@ -87,28 +75,18 @@ func (c InputCardinality) IsCompatibleWith(source InputCardinality) CardinalityC
 	}
 }
 
-// ApplyToUrn creates a media URN with this cardinality from a base URN.
+// ApplyToUrn validates the URN is parseable and returns it unchanged.
+//
+// DEPRECATED: Cardinality is tracked by IsSequence on the wire protocol,
+// not by URN tags. This method is a no-op that returns the URN unchanged.
 func (c InputCardinality) ApplyToUrn(baseUrn string) string {
-	mediaUrn, err := urn.NewMediaUrnFromString(baseUrn)
+	// Validate the URN is parseable — fail hard on broken input
+	_, err := urn.NewMediaUrnFromString(baseUrn)
 	if err != nil {
 		panic(fmt.Sprintf("Invalid media URN in ApplyToUrn: %s - %s", baseUrn, err))
 	}
-	hasList := mediaUrn.IsList()
-
-	switch c {
-	case CardinalitySingle, CardinalityAtLeastOne:
-		if hasList {
-			return mediaUrn.WithoutList().String()
-		}
-		return baseUrn
-	case CardinalitySequence:
-		if hasList {
-			return baseUrn
-		}
-		return mediaUrn.WithList().String()
-	default:
-		return baseUrn
-	}
+	// Cardinality does not change the URN — shape is tracked by IsSequence
+	return baseUrn
 }
 
 // InputStructure represents the structure of media data.
@@ -208,10 +186,13 @@ type MediaShape struct {
 	Structure   InputStructure
 }
 
-// MediaShapeFromUrn parses complete shape from a media URN string.
+// MediaShapeFromUrn parses structure from a media URN string.
+//
+// Cardinality defaults to Single — it comes from context (IsSequence on the wire),
+// not from the URN. Only structure (Opaque vs Record) is derived from the URN.
 func MediaShapeFromUrn(urnStr string) MediaShape {
 	return MediaShape{
-		Cardinality: CardinalityFromMediaUrn(urnStr),
+		Cardinality: CardinalitySingle,
 		Structure:   StructureFromMediaUrn(urnStr),
 	}
 }

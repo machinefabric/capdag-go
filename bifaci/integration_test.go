@@ -37,7 +37,7 @@ func intTestUrn(tags string) string {
 // MockCapSet implements CapSet for testing
 type MockCapSet struct {
 	expectedCapUrn string
-	returnResult   *cap.HostResult
+	returnResult   cap.CapResult
 	returnError    error
 }
 
@@ -45,10 +45,10 @@ func (m *MockCapSet) ExecuteCap(
 	ctx context.Context,
 	capUrn string,
 	arguments []cap.CapArgumentValue,
-) (*cap.HostResult, error) {
+) (cap.CapResult, error) {
 	if m.expectedCapUrn != "" {
 		if capUrn != m.expectedCapUrn {
-			return nil, assert.AnError
+			return cap.NewCapResultEmpty(), assert.AnError
 		}
 	}
 	return m.returnResult, m.returnError
@@ -151,9 +151,7 @@ func TestIntegrationCallerAndResponseSystem(t *testing.T) {
 
 	// Mock host that returns JSON
 	mockHost := &MockCapSet{
-		returnResult: &cap.HostResult{
-			TextOutput: `{"title": "Test Document", "pages": 10}`,
-		},
+		returnResult: cap.NewCapResultScalar([]byte(`{"title": "Test Document", "pages": 10}`)),
 	}
 
 	// Create caller
@@ -203,9 +201,7 @@ func TestIntegrationBinaryCapHandling(t *testing.T) {
 	// Mock host that returns binary data
 	pngHeader := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
 	mockHost := &MockCapSet{
-		returnResult: &cap.HostResult{
-			BinaryOutput: pngHeader,
-		},
+		returnResult: cap.NewCapResultScalar(pngHeader),
 	}
 
 	caller := cap.NewCapCaller(`cap:in="media:void";op=generate;out="media:";target=thumbnail`, mockHost, capDef)
@@ -254,9 +250,7 @@ func TestIntegrationTextCapHandling(t *testing.T) {
 
 	// Mock host that returns text
 	mockHost := &MockCapSet{
-		returnResult: &cap.HostResult{
-			TextOutput: "Formatted output text",
-		},
+		returnResult: cap.NewCapResultScalar([]byte("Formatted output text")),
 	}
 
 	caller := cap.NewCapCaller(`cap:in="media:void";op=format;out="media:textable";target=text`, mockHost, capDef)
@@ -310,9 +304,7 @@ func TestIntegrationCapWithMediaSpecs(t *testing.T) {
 
 	// Mock host
 	mockHost := &MockCapSet{
-		returnResult: &cap.HostResult{
-			TextOutput: `{"items": ["a", "b", "c"], "count": 3}`,
-		},
+		returnResult: cap.NewCapResultScalar([]byte(`{"items": ["a", "b", "c"], "count": 3}`)),
 	}
 
 	caller := cap.NewCapCaller(`cap:in="media:void";op=query;out="media:result;textable;record";target=data`, mockHost, capDef)

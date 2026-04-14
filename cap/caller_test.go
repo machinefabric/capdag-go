@@ -23,7 +23,7 @@ func testRegistry(t *testing.T) *media.MediaUrnRegistry {
 // MockCapSet implements CapSet for testing
 type MockCapSet struct {
 	expectedCapUrn string
-	returnResult   *HostResult
+	returnResult   CapResult
 	returnError    error
 }
 
@@ -31,10 +31,10 @@ func (m *MockCapSet) ExecuteCap(
 	ctx context.Context,
 	capUrn string,
 	arguments []CapArgumentValue,
-) (*HostResult, error) {
+) (CapResult, error) {
 	if m.expectedCapUrn != "" {
 		if capUrn != m.expectedCapUrn {
-			return nil, assert.AnError
+			return NewCapResultEmpty(), assert.AnError
 		}
 	}
 	return m.returnResult, m.returnError
@@ -137,9 +137,7 @@ func TestCapCallerCall(t *testing.T) {
 
 	mockHost := &MockCapSet{
 		expectedCapUrn: capUrnStr,
-		returnResult: &HostResult{
-			TextOutput: "test result",
-		},
+		returnResult:   NewCapResultScalar([]byte("test result")),
 	}
 
 	caller := NewCapCaller(capUrnStr, mockHost, capDef)
@@ -181,9 +179,7 @@ func TestCapCallerWithArguments(t *testing.T) {
 	capDef.SetOutput(NewCapOutput(standard.MediaJSON, "Process output"))
 
 	mockHost := &MockCapSet{
-		returnResult: &HostResult{
-			TextOutput: `{"status": "ok"}`,
-		},
+		returnResult: NewCapResultScalar([]byte(`{"status": "ok"}`)),
 	}
 
 	caller := NewCapCaller(`cap:in="media:void";op=process;out="media:json;record;textable"`, mockHost, capDef)
@@ -216,9 +212,7 @@ func TestCapCallerBinaryResponse(t *testing.T) {
 
 	pngHeader := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
 	mockHost := &MockCapSet{
-		returnResult: &HostResult{
-			BinaryOutput: pngHeader,
-		},
+		returnResult: NewCapResultScalar(pngHeader),
 	}
 
 	caller := NewCapCaller(`cap:in="media:void";op=generate;out="media:"`, mockHost, capDef)

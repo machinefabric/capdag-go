@@ -173,10 +173,6 @@ func mermaidEscape(s string) string {
 	return s
 }
 
-// --- Cap Registry Interface ---
-
-// CapRegistryTrait is the interface for cap registry lookup.
-// Implementations provide lookup of caps by URN string.
-type CapRegistryTrait interface {
-	Lookup(urn string) (*cap.Cap, error)
-}
+// CapRegistryTrait is gone. The orchestrator parser and plan converter take
+// *cap.CapRegistry directly. Tests use CapRegistry.NewForTest() +
+// AddCapsToCache(...) instead of a hand-built mock.

@@ -101,9 +101,9 @@ func Test062_is_record(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, stringUrn.IsRecord()) // scalar, no record marker
 
-	arrayUrn, err := NewMediaUrnFromString(standard.MediaStringArray)
+	listUrn2, err := NewMediaUrnFromString(standard.MediaStringList)
 	require.NoError(t, err)
-	assert.False(t, arrayUrn.IsRecord()) // list, no record marker
+	assert.False(t, listUrn2.IsRecord()) // list, no record marker
 }
 
 // TEST063: Test is_scalar returns true when no list marker is present (scalar = default cardinality)
@@ -122,20 +122,20 @@ func Test063_is_scalar(t *testing.T) {
 	assert.True(t, recordUrn.IsScalar())
 
 	// list is NOT scalar
-	listUrn, err := NewMediaUrnFromString(standard.MediaStringArray)
+	listUrn, err := NewMediaUrnFromString(standard.MediaStringList)
 	require.NoError(t, err)
 	assert.False(t, listUrn.IsScalar())
 }
 
 // TEST064: Test is_list returns true when list tag is present indicating ordered collection
 func Test064_is_list(t *testing.T) {
-	strArray, err := NewMediaUrnFromString(standard.MediaStringArray)
+	strList, err := NewMediaUrnFromString(standard.MediaStringList)
 	require.NoError(t, err)
-	assert.True(t, strArray.IsList())
+	assert.True(t, strList.IsList())
 
-	intArray, err := NewMediaUrnFromString(standard.MediaIntegerArray)
+	intList, err := NewMediaUrnFromString(standard.MediaIntegerList)
 	require.NoError(t, err)
-	assert.True(t, intArray.IsList())
+	assert.True(t, intList.IsList())
 
 	scalar, err := NewMediaUrnFromString("media:string")
 	require.NoError(t, err)
@@ -153,9 +153,9 @@ func Test065_is_structured(t *testing.T) {
 	assert.True(t, jsonUrn.IsStructured())
 
 	// list of opaque items (no record marker) is NOT structured
-	strArray, err := NewMediaUrnFromString(standard.MediaStringArray)
+	strList, err := NewMediaUrnFromString(standard.MediaStringList)
 	require.NoError(t, err)
-	assert.False(t, strArray.IsStructured())
+	assert.False(t, strList.IsStructured())
 
 	// scalar opaque is NOT structured
 	scalar, err := NewMediaUrnFromString("media:string")
@@ -254,23 +254,24 @@ func Test072_constants_parse(t *testing.T) {
 		standard.MediaBoolean,
 		standard.MediaObject,
 		standard.MediaIdentity,
-		standard.MediaStringArray,
-		standard.MediaIntegerArray,
-		standard.MediaNumberArray,
-		standard.MediaBooleanArray,
-		standard.MediaObjectArray,
+		standard.MediaList,
+		standard.MediaTextableList,
+		standard.MediaStringList,
+		standard.MediaIntegerList,
+		standard.MediaNumberList,
+		standard.MediaBooleanList,
+		standard.MediaObjectList,
 		standard.MediaPNG,
 		standard.MediaAudio,
 		standard.MediaVideo,
 		standard.MediaAudioSpeech,
-		standard.MediaImageThumbnail,
+		standard.MediaTextablePage,
 		standard.MediaPDF,
 		standard.MediaEPUB,
 		standard.MediaJSON,
 		standard.MediaFilePath,
 		standard.MediaFilePathArray,
 		standard.MediaDecision,
-		standard.MediaDecisionArray,
 	}
 
 	for _, constant := range constants {
@@ -397,10 +398,6 @@ func Test546_is_image(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, pngUrn.IsImage())
 
-	thumbUrn, err := NewMediaUrnFromString(standard.MediaImageThumbnail)
-	require.NoError(t, err)
-	assert.True(t, thumbUrn.IsImage())
-
 	customImage, err := NewMediaUrnFromString("media:image;jpg")
 	require.NoError(t, err)
 	assert.True(t, customImage.IsImage())
@@ -485,13 +482,13 @@ func Test549_is_numeric(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, numUrn.IsNumeric())
 
-	intArrayUrn, err := NewMediaUrnFromString(standard.MediaIntegerArray)
+	intListUrn, err := NewMediaUrnFromString(standard.MediaIntegerList)
 	require.NoError(t, err)
-	assert.True(t, intArrayUrn.IsNumeric())
+	assert.True(t, intListUrn.IsNumeric())
 
-	numArrayUrn, err := NewMediaUrnFromString(standard.MediaNumberArray)
+	numListUrn, err := NewMediaUrnFromString(standard.MediaNumberList)
 	require.NoError(t, err)
-	assert.True(t, numArrayUrn.IsNumeric())
+	assert.True(t, numListUrn.IsNumeric())
 
 	// Non-numeric types
 	stringUrn, err := NewMediaUrnFromString(standard.MediaString)
@@ -513,17 +510,14 @@ func Test550_is_bool(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, boolUrn.IsBool())
 
-	boolArrayUrn, err := NewMediaUrnFromString(standard.MediaBooleanArray)
+	boolListUrn, err := NewMediaUrnFromString(standard.MediaBooleanList)
 	require.NoError(t, err)
-	assert.True(t, boolArrayUrn.IsBool())
+	assert.True(t, boolListUrn.IsBool())
 
+	// MediaDecision is now a JSON record, not a bool type
 	decisionUrn, err := NewMediaUrnFromString(standard.MediaDecision)
 	require.NoError(t, err)
-	assert.True(t, decisionUrn.IsBool())
-
-	decisionArrayUrn, err := NewMediaUrnFromString(standard.MediaDecisionArray)
-	require.NoError(t, err)
-	assert.True(t, decisionArrayUrn.IsBool())
+	assert.False(t, decisionUrn.IsBool())
 
 	// Non-bool types
 	stringUrn, err := NewMediaUrnFromString(standard.MediaString)
@@ -572,12 +566,12 @@ func Test552_is_file_path_array(t *testing.T) {
 	assert.False(t, fpUrn.IsFilePathArray())
 
 	// Non-file-path types
-	strArrayUrn, err := NewMediaUrnFromString(standard.MediaStringArray)
+	strListUrn, err := NewMediaUrnFromString(standard.MediaStringList)
 	require.NoError(t, err)
-	assert.False(t, strArrayUrn.IsFilePathArray())
+	assert.False(t, strListUrn.IsFilePathArray())
 }
 
-// TEST553: is_any_file_path returns true for both scalar and array file-path
+// TEST553: is_any_file_path returns true for both scalar and list file-path
 func Test553_is_any_file_path(t *testing.T) {
 	fpUrn, err := NewMediaUrnFromString(standard.MediaFilePath)
 	require.NoError(t, err)
@@ -592,9 +586,9 @@ func Test553_is_any_file_path(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, stringUrn.IsAnyFilePath())
 
-	strArrayUrn, err := NewMediaUrnFromString(standard.MediaStringArray)
+	strListUrn2, err := NewMediaUrnFromString(standard.MediaStringList)
 	require.NoError(t, err)
-	assert.False(t, strArrayUrn.IsAnyFilePath())
+	assert.False(t, strListUrn2.IsAnyFilePath())
 }
 
 
@@ -636,35 +630,6 @@ func Test558_predicate_constant_consistency(t *testing.T) {
 	assert.False(t, voidUrn.IsTextable())
 	assert.True(t, voidUrn.IsBinary(), "void is binary because it has no textable tag")
 	assert.False(t, voidUrn.IsNumeric())
-}
-
-// TEST850: with_list adds list marker, without_list removes it
-func Test850_with_list_without_list(t *testing.T) {
-	pdf, err := NewMediaUrnFromString("media:pdf")
-	require.NoError(t, err)
-	assert.True(t, pdf.IsScalar())
-	assert.False(t, pdf.IsList())
-
-	pdfList := pdf.WithList()
-	assert.True(t, pdfList.IsList())
-	assert.False(t, pdfList.IsScalar())
-	// The list URN should contain all original tags plus list
-	assert.True(t, pdfList.ConformsTo(pdf), "list version should still conform to scalar pattern")
-
-	backToScalar := pdfList.WithoutList()
-	assert.True(t, backToScalar.IsScalar())
-	assert.True(t, backToScalar.IsEquivalent(pdf), "removing list should restore original")
-}
-
-// TEST851: with_list is idempotent
-func Test851_with_list_idempotent(t *testing.T) {
-	listUrn, err := NewMediaUrnFromString("media:json;list;textable")
-	require.NoError(t, err)
-	assert.True(t, listUrn.IsList())
-
-	doubleList := listUrn.WithList()
-	assert.True(t, doubleList.IsList())
-	assert.True(t, doubleList.IsEquivalent(listUrn), "adding list to already-list should be no-op")
 }
 
 // TEST852: LUB of identical URNs returns the same URN

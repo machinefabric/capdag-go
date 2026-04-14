@@ -96,7 +96,7 @@ func TestTest671ResolveOptionalSlotNoValueReturnsNone(t *testing.T) {
 // This is the core disambiguation scenario that step-index keying was designed to solve.
 func TestTest1105TwoStepsSameCapUrnDifferentSlotValues(t *testing.T) {
 	capUrn := `cap:in="media:pdf";op=make_decision;out="media:bool;textable"`
-	slotName := "media:question;textable;list"
+	slotName := "media:list;question;textable"
 	ctx := emptyContext(func(c *ArgumentResolutionContext) {
 		c.SlotValues = map[string][]byte{
 			"step_0:" + slotName: []byte("Is this a contract?"),

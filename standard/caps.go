@@ -21,9 +21,9 @@ const CapDiscard = "cap:in=media:;out=media:void"
 // These return URN strings that can be parsed with urn.NewCapUrnFromString()
 // =============================================================================
 
-// LlmConversationUrn builds a URN string for LLM conversation capability
-func LlmConversationUrn(langCode string) string {
-	return "cap:op=conversation;unconstrained=*;language=" + langCode + ";in=media:string;out=media:llm-inference-output"
+// LlmGenerateTextUrn builds the URN for generic text-generation capability.
+func LlmGenerateTextUrn() string {
+	return fmt.Sprintf(`cap:in="%s";llm;ml-model;op=generate_text;out="%s"`, MediaString, MediaString)
 }
 
 // ModelAvailabilityUrn builds a URN string for model-availability capability
@@ -50,28 +50,28 @@ func MediaUrnForType(typeName string) string {
 		return MediaBoolean
 	case "object":
 		return MediaObject
-	case "string-array":
-		return MediaStringArray
-	case "integer-array":
-		return MediaIntegerArray
-	case "number-array":
-		return MediaNumberArray
-	case "boolean-array":
-		return MediaBooleanArray
-	case "object-array":
-		return MediaObjectArray
+	case "string-list":
+		return MediaStringList
+	case "integer-list":
+		return MediaIntegerList
+	case "number-list":
+		return MediaNumberList
+	case "boolean-list":
+		return MediaBooleanList
+	case "object-list":
+		return MediaObjectList
 	default:
-		panic(fmt.Sprintf("Unknown media type: %s. Valid types are: string, integer, number, boolean, object, string-array, integer-array, number-array, boolean-array, object-array", typeName))
+		panic(fmt.Sprintf("Unknown media type: %s. Valid types are: string, integer, number, boolean, object, string-list, integer-list, number-list, boolean-list, object-list", typeName))
 	}
 }
 
 // CoercionUrn builds a coercion cap URN string given source and target types.
-// The URN has op=coerce, target={targetType}, in={sourceMedia}, out={targetMedia}.
+// The URN has op=coerce, in={sourceMedia}, out={targetMedia}.
 // Panics if either type is unknown.
 func CoercionUrn(sourceType, targetType string) string {
 	inSpec := MediaUrnForType(sourceType)
 	outSpec := MediaUrnForType(targetType)
-	return fmt.Sprintf(`cap:in="%s";op=coerce;out="%s";target=%s`, inSpec, outSpec, targetType)
+	return fmt.Sprintf(`cap:in="%s";op=coerce;out="%s"`, inSpec, outSpec)
 }
 
 // AllCoercionPaths returns all valid coercion (source, target) pairs.
@@ -82,11 +82,11 @@ func AllCoercionPaths() [][2]string {
 		{"number", "string"},
 		{"boolean", "string"},
 		{"object", "string"},
-		{"string-array", "string"},
-		{"integer-array", "string"},
-		{"number-array", "string"},
-		{"boolean-array", "string"},
-		{"object-array", "string"},
+		{"string-list", "string"},
+		{"integer-list", "string"},
+		{"number-list", "string"},
+		{"boolean-list", "string"},
+		{"object-list", "string"},
 		// To integer
 		{"string", "integer"},
 		{"number", "integer"},
@@ -100,5 +100,48 @@ func AllCoercionPaths() [][2]string {
 		{"integer", "object"},
 		{"number", "object"},
 		{"boolean", "object"},
+	}
+}
+
+// FormatConversionUrn builds a URN for converting between formats.
+func FormatConversionUrn(inMedia, outMedia string) string {
+	return fmt.Sprintf(`cap:in="%s";op=convert_format;out="%s"`, inMedia, outMedia)
+}
+
+// FormatConversionPath describes a single format conversion path.
+type FormatConversionPath struct {
+	InMedia     string
+	OutMedia    string
+	Title       string
+	Description string
+}
+
+// AllFormatConversionPaths returns all supported format conversion paths.
+func AllFormatConversionPaths() []FormatConversionPath {
+	return []FormatConversionPath{
+		// JSON ↔ YAML
+		{MediaJSONValue, MediaYAMLValue, "JSON Value → YAML Value", "Convert a JSON scalar or object to YAML"},
+		{MediaYAMLValue, MediaJSONValue, "YAML Value → JSON Value", "Convert a YAML scalar or mapping to JSON"},
+		{MediaJSONRecord, MediaYAMLRecord, "JSON Object → YAML Mapping", "Convert a JSON object to a YAML mapping"},
+		{MediaYAMLRecord, MediaJSONRecord, "YAML Mapping → JSON Object", "Convert a YAML mapping to a JSON object"},
+		{MediaJSONList, MediaYAMLList, "JSON Array → YAML Sequence", "Convert a JSON array to a YAML sequence"},
+		{MediaYAMLList, MediaJSONList, "YAML Sequence → JSON Array", "Convert a YAML sequence to a JSON array"},
+		{MediaJSONListRecord, MediaYAMLListRecord, "JSON Array of Objects → YAML Sequence of Mappings", "Convert a JSON array of objects to a YAML sequence of mappings"},
+		{MediaYAMLListRecord, MediaJSONListRecord, "YAML Sequence of Mappings → JSON Array of Objects", "Convert a YAML sequence of mappings to a JSON array of objects"},
+		// JSON list-record ↔ CSV
+		{MediaJSONListRecord, MediaCSV, "JSON Array of Objects → CSV", "Convert a JSON array of objects to CSV with header row"},
+		{MediaCSV, MediaJSONListRecord, "CSV → JSON Array of Objects", "Convert CSV with header row to a JSON array of objects"},
+		// YAML list-record ↔ CSV
+		{MediaYAMLListRecord, MediaCSV, "YAML Sequence of Mappings → CSV", "Convert a YAML sequence of mappings to CSV with header row"},
+		{MediaCSV, MediaYAMLListRecord, "CSV → YAML Sequence of Mappings", "Convert CSV with header row to a YAML sequence of mappings"},
+		// Textable list ↔ JSON list
+		{MediaTextableList, MediaJSONList, "Textable List → JSON Array", "Convert a list of textable values to a JSON array"},
+		{MediaJSONList, MediaTextableList, "JSON Array → Textable List", "Convert a JSON array to a list of textable values"},
+		// Textable list ↔ YAML list
+		{MediaTextableList, MediaYAMLList, "Textable List → YAML Sequence", "Convert a list of textable values to a YAML sequence"},
+		{MediaYAMLList, MediaTextableList, "YAML Sequence → Textable List", "Convert a YAML sequence to a list of textable values"},
+		// Textable list ↔ CSV
+		{MediaTextableList, MediaCSVList, "Textable List → CSV List", "Convert a list of textable values to single-column CSV"},
+		{MediaCSVList, MediaTextableList, "CSV List → Textable List", "Convert single-column CSV to a list of textable values"},
 	}
 }

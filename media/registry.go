@@ -31,29 +31,31 @@ func DefaultRegistryConfig() RegistryConfig {
 
 // StoredMediaSpec represents a media spec from the registry (matches Rust StoredMediaSpec)
 type StoredMediaSpec struct {
-	Urn         string           `json:"urn"`
-	MediaType   string           `json:"media_type"`
-	Title       string           `json:"title"`
-	ProfileURI  string           `json:"profile_uri,omitempty"`
-	Schema      any              `json:"schema,omitempty"`
-	Description string           `json:"description,omitempty"`
-	Validation  *MediaValidation `json:"validation,omitempty"`
-	Metadata    map[string]any   `json:"metadata,omitempty"`
-	Extensions  []string         `json:"extensions,omitempty"`
+	Urn           string           `json:"urn"`
+	MediaType     string           `json:"media_type"`
+	Title         string           `json:"title"`
+	ProfileURI    string           `json:"profile_uri,omitempty"`
+	Schema        any              `json:"schema,omitempty"`
+	Description   string           `json:"description,omitempty"`
+	Documentation *string          `json:"documentation,omitempty"`
+	Validation    *MediaValidation `json:"validation,omitempty"`
+	Metadata      map[string]any   `json:"metadata,omitempty"`
+	Extensions    []string         `json:"extensions,omitempty"`
 }
 
 // ToMediaSpecDef converts StoredMediaSpec to MediaSpecDef
 func (s *StoredMediaSpec) ToMediaSpecDef() MediaSpecDef {
 	return MediaSpecDef{
-		Urn:         s.Urn,
-		MediaType:   s.MediaType,
-		Title:       s.Title,
-		ProfileURI:  s.ProfileURI,
-		Schema:      s.Schema,
-		Description: s.Description,
-		Validation:  s.Validation,
-		Metadata:    s.Metadata,
-		Extensions:  s.Extensions,
+		Urn:           s.Urn,
+		MediaType:     s.MediaType,
+		Title:         s.Title,
+		ProfileURI:    s.ProfileURI,
+		Schema:        s.Schema,
+		Description:   s.Description,
+		Documentation: s.Documentation,
+		Validation:    s.Validation,
+		Metadata:      s.Metadata,
+		Extensions:    s.Extensions,
 	}
 }
 

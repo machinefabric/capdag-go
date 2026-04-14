@@ -3,6 +3,7 @@ package orchestrator
 import (
 	"fmt"
 
+	"github.com/machinefabric/capdag-go/cap"
 	"github.com/machinefabric/capdag-go/planner"
 )
 
@@ -11,11 +12,25 @@ import (
 // This transforms the node-centric plan (where caps are nodes) into the
 // edge-centric graph (where caps are edge labels) that execute_dag expects.
 //
-// ForEach/Collect/Merge/Split nodes are rejected — the caller must decompose
+// Standalone Collect nodes (OutputMediaUrn != nil) are transparent pass-throughs.
+// ForEach-paired Collect nodes (OutputMediaUrn == nil) are rejected.
+// ForEach/Merge/Split nodes are also rejected — the caller must decompose
 // first using ExtractPrefixTo/ExtractForEachBody/ExtractSuffixFrom.
-func PlanToResolvedGraph(plan *planner.MachinePlan, registry CapRegistryTrait) (*ResolvedGraph, error) {
+//
+// All cap lookups use GetCachedCap: caps must be pre-loaded into the registry
+// cache before calling this function.
+func PlanToResolvedGraph(plan *planner.MachinePlan, registry *cap.CapRegistry) (*ResolvedGraph, error) {
 	nodes := make(map[string]string)
 	var resolvedEdges []*ResolvedEdge
+
+	// lookupCap resolves a cap URN from the registry cache.
+	lookupCap := func(capUrn string) (*cap.Cap, error) {
+		capDef, ok := registry.GetCachedCap(capUrn)
+		if !ok {
+			return nil, capNotFoundError(capUrn)
+		}
+		return capDef, nil
+	}
 
 	// First pass: identify all data nodes and their media URNs
 	for nodeID, node := range plan.Nodes {
@@ -26,7 +41,7 @@ func PlanToResolvedGraph(plan *planner.MachinePlan, registry CapRegistryTrait) (
 			nodes[nodeID] = nt.ExpectedMediaUrn
 
 		case planner.NodeKindCap:
-			capDef, err := registry.Lookup(nt.CapUrn)
+			capDef, err := lookupCap(nt.CapUrn)
 			if err != nil {
 				return nil, err
 			}
@@ -36,25 +51,31 @@ func PlanToResolvedGraph(plan *planner.MachinePlan, registry CapRegistryTrait) (
 		case planner.NodeKindOutput:
 			source, ok := plan.Nodes[nt.SourceNode]
 			if ok && source.NodeType.Kind == planner.NodeKindCap {
-				capDef, err := registry.Lookup(source.NodeType.CapUrn)
+				capDef, err := lookupCap(source.NodeType.CapUrn)
 				if err != nil {
 					return nil, err
 				}
 				nodes[nodeID] = capDef.Urn.OutSpec()
 			}
 
-		case planner.NodeKindWrapInList:
-			nodes[nodeID] = nt.ListMediaUrn
+		case planner.NodeKindCollect:
+			if nt.OutputMediaUrn != nil {
+				// Standalone Collect (scalar→list): pass-through at execution time.
+				// The data flows unchanged, only the type annotation changes.
+				// Register the node with the list media URN so downstream edges can find data at it.
+				nodes[nodeID] = *nt.OutputMediaUrn
+			} else {
+				// ForEach-paired Collect without OutputMediaUrn should not reach
+				// plan_converter — the plan should have been decomposed first.
+				return nil, invalidGraphError(fmt.Sprintf(
+					"Plan contains ForEach-paired Collect node '%s'. Decompose the plan using "+
+						"extract_prefix_to/extract_foreach_body/extract_suffix_from "+
+						"before converting to ResolvedGraph.", nodeID))
+			}
 
 		case planner.NodeKindForEach:
 			return nil, invalidGraphError(fmt.Sprintf(
 				"Plan contains ForEach node '%s'. Decompose the plan using "+
-					"extract_prefix_to/extract_foreach_body/extract_suffix_from "+
-					"before converting to ResolvedGraph.", nodeID))
-
-		case planner.NodeKindCollect:
-			return nil, invalidGraphError(fmt.Sprintf(
-				"Plan contains Collect node '%s'. Decompose the plan using "+
 					"extract_prefix_to/extract_foreach_body/extract_suffix_from "+
 					"before converting to ResolvedGraph.", nodeID))
 
@@ -68,12 +89,14 @@ func PlanToResolvedGraph(plan *planner.MachinePlan, registry CapRegistryTrait) (
 		}
 	}
 
-	// Build a map from WrapInList nodes to their input predecessors.
-	wrapPredecessors := make(map[string]string)
+	// Build a map from standalone Collect nodes to their input predecessors.
+	// Standalone Collect is a pass-through: data at the predecessor flows through unchanged.
+	// When an edge's from_node is a standalone Collect, we resolve it to the actual data source.
+	collectPredecessors := make(map[string]string)
 	for _, edge := range plan.Edges {
 		if toNode, ok := plan.Nodes[edge.ToNode]; ok {
-			if toNode.NodeType.Kind == planner.NodeKindWrapInList {
-				wrapPredecessors[edge.ToNode] = edge.FromNode
+			if toNode.NodeType.Kind == planner.NodeKindCollect && toNode.NodeType.OutputMediaUrn != nil {
+				collectPredecessors[edge.ToNode] = edge.FromNode
 			}
 		}
 	}
@@ -88,17 +111,18 @@ func PlanToResolvedGraph(plan *planner.MachinePlan, registry CapRegistryTrait) (
 		// Only create ResolvedEdges for edges that point to Cap nodes
 		if toNode.NodeType.Kind == planner.NodeKindCap {
 			capUrn := toNode.NodeType.CapUrn
-			capDef, err := registry.Lookup(capUrn)
+			capDef, err := lookupCap(capUrn)
 			if err != nil {
 				return nil, err
 			}
 			inMedia := capDef.Urn.InSpec()
 			outMedia := capDef.Urn.OutSpec()
 
-			// If the source is a WrapInList node, resolve through to the actual
-			// data source. WrapInList is transparent.
+			// If the source is a standalone Collect node, resolve through to the
+			// actual data source. Standalone Collect is transparent — data at the
+			// predecessor flows unchanged through it.
 			fromNode := edge.FromNode
-			if pred, ok := wrapPredecessors[fromNode]; ok {
+			if pred, ok := collectPredecessors[fromNode]; ok {
 				fromNode = pred
 			}
 

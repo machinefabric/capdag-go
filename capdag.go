@@ -26,9 +26,10 @@ type Cap = cap.Cap
 type CapArg = cap.CapArg
 type ArgSource = cap.ArgSource
 type CapArgumentValue = cap.CapArgumentValue
+type CapResult = cap.CapResult
+type CapResultKind = cap.CapResultKind
 type CapSet = cap.CapSet
 type CapCaller = cap.CapCaller
-type HostResult = cap.HostResult
 
 // Media types
 type MediaSpecDef = media.MediaSpecDef
@@ -56,6 +57,9 @@ var NewFrameWriter = bifaci.NewFrameWriter
 var NewCartridgeRuntime = bifaci.NewCartridgeRuntime
 var NewCapManifest = bifaci.NewCapManifest
 var DecodeChunkPayload = bifaci.DecodeChunkPayload
+var NewCapResultScalar = cap.NewCapResultScalar
+var NewCapResultList = cap.NewCapResultList
+var NewCapResultEmpty = cap.NewCapResultEmpty
 
 // Standard caps (constants)
 const CapIdentity = standard.CapIdentity
