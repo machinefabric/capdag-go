@@ -1,11 +1,15 @@
 # CapDag-Go Test Catalog
 
-**Total Tests:** 521
+**Total Tests:** 654
+
+**Numbered Tests:** 521
+
+**Unnumbered Tests:** 133
 
 **⚠ Duplicate test numbers detected: 6 number(s) used more than once.**
-Unique tests are listed first. Duplicate entries are grouped at the bottom of the table, marked with ⚠, followed by a resolution summary.
+Unique numbered tests are listed first. Duplicate-number entries are grouped after them and marked with ⚠. Unnumbered tests are listed in their own group.
 
-This catalog lists all numbered tests in the CapDag-Go codebase.
+This catalog lists all tests in the CapDag-Go codebase.
 
 | Test # | Function Name | Description | File |
 |--------|---------------|-------------|------|
@@ -531,6 +535,140 @@ This catalog lists all numbered tests in the CapDag-Go codebase.
 | test305 ⚠ | `Test305_media_path_output_constant` | TEST305: Test MediaPathOutput constant parses as valid media URN with correct tags | media/spec_test.go:517 |
 | test306 ⚠ | `Test306_availability_and_path_output_distinct` | TEST306: Test MEDIA_AVAILABILITY_OUTPUT and MEDIA_PATH_OUTPUT are distinct URNs | urn/media_urn_test.go:385 |
 | test306 ⚠ | `Test306_availability_and_path_output_distinct` | TEST306: Test MediaAvailabilityOutput and MediaPathOutput are distinct URNs | media/spec_test.go:527 |
+| | | | |
+| unnumbered | `Test336FilePathReadsFilePassesBytes` | TEST336: Single file-path arg with stdin source reads file and passes bytes to handler | bifaci/cartridge_runtime_test.go:599 |
+| unnumbered | `Test337FilePathWithoutStdinPassesString` | TEST337: file-path arg without stdin source passes path as string (no conversion) | bifaci/cartridge_runtime_test.go:674 |
+| unnumbered | `Test338FilePathViaCliFlag` | TEST338: file-path arg reads file via --file CLI flag | bifaci/cartridge_runtime_test.go:715 |
+| unnumbered | `Test339FilePathArrayGlobExpansion` | TEST339: file-path-array reads multiple files with glob pattern | bifaci/cartridge_runtime_test.go:755 |
+| unnumbered | `Test340FileNotFoundClearError` | TEST340: File not found error provides clear message | bifaci/cartridge_runtime_test.go:823 |
+| unnumbered | `Test341StdinPrecedenceOverFilePath` | TEST341: stdin takes precedence over file-path in source order | bifaci/cartridge_runtime_test.go:862 |
+| unnumbered | `Test342FilePathPositionZeroReadsFirstArg` | TEST342: file-path with position 0 reads first positional arg as file | bifaci/cartridge_runtime_test.go:905 |
+| unnumbered | `Test343NonFilePathArgsUnaffected` | TEST343: Non-file-path args are not affected by file reading | bifaci/cartridge_runtime_test.go:945 |
+| unnumbered | `Test344FilePathArrayInvalidJSONFails` | TEST344: file-path-array with invalid JSON fails clearly | bifaci/cartridge_runtime_test.go:981 |
+| unnumbered | `Test345FilePathArrayOneFileMissingFailsHard` | TEST345: file-path-array with one file failing stops and reports error | bifaci/cartridge_runtime_test.go:1020 |
+| unnumbered | `Test346LargeFileReadsSuccessfully` | TEST346: Large file (1MB) reads successfully | bifaci/cartridge_runtime_test.go:1068 |
+| unnumbered | `Test347EmptyFileReadsAsEmptyBytes` | TEST347: Empty file reads as empty bytes | bifaci/cartridge_runtime_test.go:1112 |
+| unnumbered | `Test348FilePathConversionRespectsSourceOrder` | TEST348: file-path conversion respects source order | bifaci/cartridge_runtime_test.go:1152 |
+| unnumbered | `Test349FilePathMultipleSourcesFallback` | TEST349: file-path arg with multiple sources tries all in order | bifaci/cartridge_runtime_test.go:1195 |
+| unnumbered | `Test350FullCLIModeWithFilePathIntegration` | TEST350: Integration test - full CLI mode invocation with file-path | bifaci/cartridge_runtime_test.go:1237 |
+| unnumbered | `Test351FilePathArrayEmptyArray` | TEST351: file-path-array with empty array succeeds | bifaci/cartridge_runtime_test.go:1313 |
+| unnumbered | `Test352FilePermissionDeniedClearError` | TEST352: file permission denied error is clear (Unix-specific, skip on Windows) | bifaci/cartridge_runtime_test.go:1354 |
+| unnumbered | `Test353CBORPayloadFormatConsistency` | TEST353: CBOR payload format matches between CLI and CBOR mode | bifaci/cartridge_runtime_test.go:1404 |
+| unnumbered | `Test354GlobPatternNoMatchesEmptyArray` | TEST354: Glob pattern with no matches produces empty array | bifaci/cartridge_runtime_test.go:1462 |
+| unnumbered | `Test355GlobPatternSkipsDirectories` | TEST355: Glob pattern skips directories | bifaci/cartridge_runtime_test.go:1509 |
+| unnumbered | `Test356MultipleGlobPatternsCombined` | TEST356: Multiple glob patterns combined | bifaci/cartridge_runtime_test.go:1574 |
+| unnumbered | `Test357SymlinksFollowed` | TEST357: Symlinks are followed when reading files (Unix-specific, skip on Windows) | bifaci/cartridge_runtime_test.go:1644 |
+| unnumbered | `Test358BinaryFileNonUTF8` | TEST358: Binary file with non-UTF8 data reads correctly | bifaci/cartridge_runtime_test.go:1697 |
+| unnumbered | `Test359InvalidGlobPatternFails` | TEST359: Invalid glob pattern fails with clear error | bifaci/cartridge_runtime_test.go:1743 |
+| unnumbered | `Test360ExtractEffectivePayloadWithFileData` | TEST360: Extract effective payload handles file-path data correctly | bifaci/cartridge_runtime_test.go:1781 |
+| unnumbered | `Test361CLIModeFilePath` | TEST361: CLI mode with file path - pass file path as command-line argument | bifaci/cartridge_runtime_test.go:1831 |
+| unnumbered | `Test362CLIModePipedBinary` | TEST362: CLI mode with binary piped in - pipe binary data via stdin  This test simulates real-world conditions: - Pure binary data piped to stdin (NOT CBOR) - CLI mode detected (command arg present) - cap.Cap accepts stdin source - Binary is chunked on-the-fly and accumulated - Handler receives complete CBOR payload | bifaci/cartridge_runtime_test.go:1887 |
+| unnumbered | `Test363CBORModeChunkedContent` | TEST363: CBOR mode with chunked content - send file content streaming as chunks | bifaci/cartridge_runtime_test.go:1974 |
+| unnumbered | `Test364CBORModeFilePath` | TEST364: CBOR mode with file path - send file path in CBOR arguments (auto-conversion) | bifaci/cartridge_runtime_test.go:2117 |
+| unnumbered | `Test395BuildPayloadSmall` | TEST395: Small payload (< max_chunk) produces correct CBOR arguments | bifaci/cartridge_runtime_test.go:2172 |
+| unnumbered | `Test396BuildPayloadLarge` | TEST396: Large payload (> max_chunk) accumulates across chunks correctly | bifaci/cartridge_runtime_test.go:2221 |
+| unnumbered | `Test397BuildPayloadEmpty` | TEST397: Empty reader produces valid empty CBOR arguments | bifaci/cartridge_runtime_test.go:2265 |
+| unnumbered | `Test398BuildPayloadIOError` | TEST398: IO error from reader propagates as error | bifaci/cartridge_runtime_test.go:2308 |
+| unnumbered | `TestArgumentsMultiple` | TEST303: Test multiple arguments are correctly serialized in CBOR payload | bifaci/integration_test.go:1592 |
+| unnumbered | `TestArgumentsRoundtrip` | TEST297: Test host call with unified CBOR arguments sends correct content_type and payload | bifaci/integration_test.go:1232 |
+| unnumbered | `TestAutoChunkingReassembly` | TEST313: Test auto-chunking splits payload larger than max_chunk into CHUNK frames + END frame, and host concatenated() reassembles the full original data | bifaci/integration_test.go:1665 |
+| unnumbered | `TestBinaryPayloadRoundtrip` | TEST291: Test binary payload with all 256 byte values roundtrips through host-cartridge communication | bifaci/integration_test.go:880 |
+| unnumbered | `TestCacheOperations` |  | cap/registry_test.go:76 |
+| unnumbered | `TestCapBlockRegistryManagement` |  | cap_matrix_test.go:466 |
+| unnumbered | `TestCapCallerBinaryResponse` |  | cap/caller_test.go:198 |
+| unnumbered | `TestCapCallerCall` |  | cap/caller_test.go:121 |
+| unnumbered | `TestCapCallerCreation` |  | cap/caller_test.go:43 |
+| unnumbered | `TestCapCallerResolveOutputSpec` |  | cap/caller_test.go:59 |
+| unnumbered | `TestCapCallerWithArguments` |  | cap/caller_test.go:157 |
+| unnumbered | `TestCapDescription` |  | cap/definition_test.go:446 |
+| unnumbered | `TestCapExists` |  | cap/registry_test.go:119 |
+| unnumbered | `TestCapJSONRoundTrip` |  | cap/definition_test.go:581 |
+| unnumbered | `TestCapManifestCompatibility` |  | bifaci/manifest_test.go:302 |
+| unnumbered | `TestCapManifestValidation` |  | bifaci/manifest_test.go:267 |
+| unnumbered | `TestCapManifestWithPageURL` |  | bifaci/manifest_test.go:61 |
+| unnumbered | `TestCapRequestHandling` | Additional existing tests below (not part of TEST108-116 sequence) | cap/definition_test.go:430 |
+| unnumbered | `TestCapUrn_JSONSerialization` | JSON serialization test (not numbered in Rust) | urn/cap_urn_test.go:1413 |
+| unnumbered | `TestCapValidationCoordinator_EndToEnd` |  | cap/schema_validation_test.go:426 |
+| unnumbered | `TestCapWithMediaSpecs` |  | cap/definition_test.go:458 |
+| unnumbered | `TestCartridgeErrorResponse` | TEST288: Test cartridge ERR frame is received by host as error | bifaci/integration_test.go:707 |
+| unnumbered | `TestCartridgeRuntimeHandlerRegistration` | TEST293: Test CartridgeRuntime handler registration and lookup by exact and non-existent cap URN | bifaci/integration_test.go:1025 |
+| unnumbered | `TestCartridgeSuddenDisconnect` | TEST298: Test host receives error when cartridge closes connection unexpectedly | bifaci/integration_test.go:1309 |
+| unnumbered | `TestChunkingDataIntegrity3x` | TEST317: Test auto-chunking preserves data integrity across chunk boundaries for 3x max_chunk payload | bifaci/integration_test.go:1919 |
+| unnumbered | `TestCollectIsElided` | TestCollectIsElided verifies that a Collect step produces no MachineEdge — the resolved strand has only one edge (from the Cap step). | machine/machine_test.go:317 |
+| unnumbered | `TestComplexNestedSchemaValidation` |  | cap/schema_validation_test.go:551 |
+| unnumbered | `TestConcatenatedVsFinalPayloadDivergence` | TEST316: Test that concatenated() returns full payload while final_payload() returns only last chunk | bifaci/integration_test.go:1895 |
+| unnumbered | `TestCustomMediaUrnResolution` |  | cap/schema_validation_test.go:668 |
+| unnumbered | `TestEmptyMachineSerializesToEmpty` | TestEmptyMachineSerializesToEmpty verifies that an empty machine produces an empty string from ToMachineNotation. | machine/machine_test.go:552 |
+| unnumbered | `TestEmptyPayloadRoundtrip` | TEST299: Test empty payload request and response roundtrip through host-cartridge communication | bifaci/integration_test.go:1361 |
+| unnumbered | `TestEndFrameNoPayload` | TEST300: Test END frame without payload is handled as complete response with empty data | bifaci/integration_test.go:1417 |
+| unnumbered | `TestExactMaxChunkSingleEnd` | TEST314: Test payload exactly equal to max_chunk produces single END frame (no CHUNK frames) | bifaci/integration_test.go:1751 |
+| unnumbered | `TestExtractEffectivePayloadBinaryValue` | TEST273: Test extract_effective_payload with binary data in CBOR value (not just text) | bifaci/cartridge_runtime_test.go:522 |
+| unnumbered | `TestFileSchemaResolver_ErrorHandling` |  | cap/schema_validation_test.go:540 |
+| unnumbered | `TestForEachSetsIsLoop` | TestForEachSetsIsLoop verifies that a ForEach step preceding a Cap step sets IsLoop=true on the resulting MachineEdge. | machine/machine_test.go:281 |
+| unnumbered | `TestFromStrandProducesSingleStrandMachine` | TestFromStrandProducesSingleStrandMachine verifies that a single-step planner strand yields a Machine with exactly one MachineStrand and one edge. | machine/machine_test.go:151 |
+| unnumbered | `TestFromStrandsEmptyInputFailsHard` | TestFromStrandsEmptyInputFailsHard verifies that passing an empty slice to FromStrands returns a NoCapabilitySteps error. | machine/machine_test.go:193 |
+| unnumbered | `TestFromStrandsKeepStrandsDisjoint` | TestFromStrandsKeepStrandsDisjoint verifies that FromStrands does NOT join two strands even when their URNs are type-compatible at runtime. | machine/machine_test.go:167 |
+| unnumbered | `TestHandshakeHostCartridge` | TEST284: Test host-cartridge handshake exchanges HELLO frames, negotiates limits, and transfers manifest | bifaci/integration_test.go:467 |
+| unnumbered | `TestHeartbeatDuringStreaming` | TEST294: Test cartridge-initiated heartbeat mid-stream is handled transparently by host | bifaci/integration_test.go:1052 |
+| unnumbered | `TestHeartbeatFromHost` | TEST287: Test host-initiated heartbeat is received and responded to by cartridge | bifaci/integration_test.go:649 |
+| unnumbered | `TestHostInitiatedHeartbeatNoPingPong` | TEST296: Test host does not echo back cartridge's heartbeat response (no infinite ping-pong) | bifaci/integration_test.go:1152 |
+| unnumbered | `TestInputOutputAnchors` | TestInputOutputAnchors verifies that the resolver correctly identifies root (input) and leaf (output) nodes for a simple linear strand. | machine/machine_test.go:247 |
+| unnumbered | `TestInputValidator_WithSchemaValidation` |  | cap/schema_validation_test.go:312 |
+| unnumbered | `TestIntegrationBinaryCapHandling` | TestIntegrationBinaryCapHandling verifies binary cap handling | bifaci/integration_test.go:187 |
+| unnumbered | `TestIntegrationCallerAndResponseSystem` | TestIntegrationCallerAndResponseSystem verifies the caller and response system | bifaci/integration_test.go:127 |
+| unnumbered | `TestIntegrationCapValidation` | TestIntegrationCapValidation verifies cap schema validation | bifaci/integration_test.go:327 |
+| unnumbered | `TestIntegrationCapWithMediaSpecs` | TestIntegrationCapWithMediaSpecs verifies caps with custom media specs | bifaci/integration_test.go:277 |
+| unnumbered | `TestIntegrationCaseInsensitiveUrns` | TestIntegrationCaseInsensitiveUrns verifies URNs are case-insensitive | bifaci/integration_test.go:86 |
+| unnumbered | `TestIntegrationMediaSpecDefConstruction` | TestIntegrationMediaSpecDefConstruction verifies media.MediaSpecDef construction | bifaci/integration_test.go:417 |
+| unnumbered | `TestIntegrationMediaUrnResolution` | TestIntegrationMediaUrnResolution verifies media URN resolution | bifaci/integration_test.go:369 |
+| unnumbered | `TestIntegrationTextCapHandling` | TestIntegrationTextCapHandling verifies text cap handling | bifaci/integration_test.go:227 |
+| unnumbered | `TestIntegrationVersionlessCapCreation` | TestIntegrationVersionlessCapCreation verifies caps can be created without version fields | bifaci/integration_test.go:58 |
+| unnumbered | `TestLimitsNegotiation` | TEST290: Test limit negotiation picks minimum of host and cartridge max_frame and max_chunk | bifaci/integration_test.go:840 |
+| unnumbered | `TestLogFramesDuringRequest` | TEST289: Test LOG frames sent during a request are transparently skipped by host | bifaci/integration_test.go:764 |
+| unnumbered | `TestMachineIsEquivalentIsStrictPositional` | TestMachineIsEquivalentIsStrictPositional verifies that swapping strand order breaks IsEquivalent — strand declaration order is part of identity. | machine/machine_test.go:206 |
+| unnumbered | `TestMachineStrandIsEquivalentWalksNodeBijection` | TestMachineStrandIsEquivalentWalksNodeBijection verifies that two MachineStrands built from the same planner strand are equivalent. | machine/machine_test.go:229 |
+| unnumbered | `TestMachineStringRepr` | TestMachineStringRepr verifies the String() representation of a machine. | machine/machine_test.go:560 |
+| unnumbered | `TestMaxChunkPlusOneSplitsIntoTwo` | TEST315: Test payload of max_chunk + 1 produces exactly one CHUNK frame + one END frame | bifaci/integration_test.go:1816 |
+| unnumbered | `TestMediaUrnResolutionWithMediaSpecs` |  | cap/schema_validation_test.go:629 |
+| unnumbered | `TestMessageIdUniqueness` | TEST292: Test three sequential requests get distinct MessageIds on the wire | bifaci/integration_test.go:954 |
+| unnumbered | `TestOutputValidator_WithSchemaValidation` |  | cap/schema_validation_test.go:369 |
+| unnumbered | `TestParseDuplicateAliasReturnsError` | TestParseDuplicateAliasReturnsError verifies that two headers with the same alias name return ErrDuplicateAlias. | machine/machine_test.go:456 |
+| unnumbered | `TestParseEmptyInputReturnsError` | TestParseEmptyInputReturnsError verifies that empty/whitespace input fails with an ErrEmpty error. | machine/machine_test.go:430 |
+| unnumbered | `TestParseHeadersWithNoWiringsReturnsNoEdgesError` | TestParseHeadersWithNoWiringsReturnsNoEdgesError verifies the ErrNoEdges case. | machine/machine_test.go:442 |
+| unnumbered | `TestParseNodeNameCollidesWithCapAlias` | TestParseNodeNameCollidesWithCapAlias verifies that a node name matching a cap alias returns ErrNodeAliasCollision. | machine/machine_test.go:502 |
+| unnumbered | `TestParseSingleStrandTwoCapsConnectedViaSharedNode` | TestParseSingleStrandTwoCapsConnectedViaSharedNode verifies that two wirings sharing the node name `txt` become a single connected component (one strand). | machine/machine_test.go:356 |
+| unnumbered | `TestParseTwoDisconnectedStrandsYieldsTwoMachineStrands` | TestParseTwoDisconnectedStrandsYieldsTwoMachineStrands verifies that wirings with no shared node names are partitioned into two separate strands. | machine/machine_test.go:385 |
+| unnumbered | `TestParseUndefinedAliasReturnsError` | TestParseUndefinedAliasReturnsError verifies that a wiring referencing an undefined cap alias returns ErrUndefinedAlias. | machine/machine_test.go:472 |
+| unnumbered | `TestParseUnknownCapInRegistryReturnsAbstractionError` | TestParseUnknownCapInRegistryReturnsAbstractionError verifies that when the registry doesn't contain the referenced cap, an abstraction error is returned. | machine/machine_test.go:486 |
+| unnumbered | `TestRegistryGetCap` |  | cap/registry_test.go:49 |
+| unnumbered | `TestRegistryValidation` |  | cap/registry_test.go:62 |
+| unnumbered | `TestRequestAfterShutdown` | TEST302: Test host request on a closed host returns error | bifaci/integration_test.go:1549 |
+| unnumbered | `TestRequestResponseSimple` | TEST285: Test simple request-response flow: host sends REQ, cartridge sends END with payload | bifaci/integration_test.go:509 |
+| unnumbered | `TestResponseWrapperAsBool` |  | cap/response_test.go:108 |
+| unnumbered | `TestResponseWrapperAsFloat` |  | cap/response_test.go:94 |
+| unnumbered | `TestResponseWrapperFromText` |  | cap/response_test.go:44 |
+| unnumbered | `TestResponseWrapperGetContentType` |  | cap/response_test.go:148 |
+| unnumbered | `TestResponseWrapperIsEmpty` |  | cap/response_test.go:138 |
+| unnumbered | `TestResponseWrapperMatchesOutputType` |  | cap/response_test.go:159 |
+| unnumbered | `TestResponseWrapperValidateAgainstCap` |  | cap/response_test.go:244 |
+| unnumbered | `TestSchemaValidator_ArraySchemaValidation` |  | cap/schema_validation_test.go:261 |
+| unnumbered | `TestSchemaValidator_ValidateArguments_Integration` |  | cap/schema_validation_test.go:198 |
+| unnumbered | `TestSchemaValidator_ValidateOutputWithSchema_Failure` |  | cap/schema_validation_test.go:167 |
+| unnumbered | `TestStdinSourceNilHandling` | TestStdinSourceNilHandling tests that nil StdinSource is handled correctly | cap/caller_test.go:340 |
+| unnumbered | `TestStrandEquivalenceWithDifferentNodeAllocationOrders` | TestStrandEquivalenceWithDifferentNodeAllocationOrders verifies that two equivalent strands remain equivalent even when their NodeIds were allocated in different positions (bijection check). | machine/machine_test.go:579 |
+| unnumbered | `TestStrandNonEquivalenceDifferentCap` | TestStrandNonEquivalenceDifferentCap verifies that strands with different cap URNs are not equivalent. | machine/machine_test.go:627 |
+| unnumbered | `TestStreamingChunks` | TEST286: Test streaming response with multiple CHUNK frames collected by host | bifaci/integration_test.go:571 |
+| unnumbered | `TestStreamingSequenceNumbers` | TEST301: Test streaming response sequence numbers are contiguous and start from 0 | bifaci/integration_test.go:1473 |
+| unnumbered | `TestTest1105TwoStepsSameCapUrnDifferentSlotValues` | TEST1105: Two steps with the same cap_urn get distinct slot values via different node_ids. This is the core disambiguation scenario that step-index keying was designed to solve. | planner/argument_binding_test.go:97 |
+| unnumbered | `TestTest1106SlotFallsThroughToCapSettingsShared` | TEST1106: Slot resolution falls through to cap_settings when no slot_value exists. cap_settings are keyed by cap_urn (shared across steps), so both steps get the same value. | planner/argument_binding_test.go:140 |
+| unnumbered | `TestTest1107SlotValueOverridesCapSettingsPerStep` | TEST1107: step_0 has a slot_value override, step_1 falls through to cap_settings. Proves per-step override works while shared settings remain as fallback. | planner/argument_binding_test.go:177 |
+| unnumbered | `TestTest1108ResolveAllPassesNodeID` | TEST1108: ResolveAll with node_id threads correctly through to each binding. | planner/argument_binding_test.go:219 |
+| unnumbered | `TestTest1109SlotKeyUsesNodeIDNotCapUrn` | TEST1109: Slot key uses node_id, NOT cap_urn — a slot_value keyed by cap_urn must not match. | planner/argument_binding_test.go:270 |
+| unnumbered | `TestTest668ResolveSlotWithPopulatedByteSlotValues` | TEST668: Resolve slot with populated byte slot_values using step-index key | planner/argument_binding_test.go:20 |
+| unnumbered | `TestTest669ResolveSlotFallsBackToDefault` | TEST669: Resolve slot falls back to default when no slot_value or cap_setting | planner/argument_binding_test.go:48 |
+| unnumbered | `TestTest670ResolveRequiredSlotNoValueReturnsErr` | TEST670: Required slot with no value returns error | planner/argument_binding_test.go:69 |
+| unnumbered | `TestTest671ResolveOptionalSlotNoValueReturnsNone` | TEST671: Optional slot with no value returns nil | planner/argument_binding_test.go:83 |
+| unnumbered | `TestToMachineNotationRoundTrips` | TestToMachineNotationRoundTrips verifies that a machine parsed from notation and re-serialized produces a machine equivalent to the original. | machine/machine_test.go:522 |
 
 ---
 
@@ -580,8 +718,149 @@ The following test numbers are assigned to more than one function. Keep the firs
 
 **Suggested free number(s):** test311
 
+---
+
+## Unnumbered Tests
+
+The following tests are cataloged but do not currently participate in numeric test indexing.
+
+- `Test336FilePathReadsFilePassesBytes` — bifaci/cartridge_runtime_test.go:599
+- `Test337FilePathWithoutStdinPassesString` — bifaci/cartridge_runtime_test.go:674
+- `Test338FilePathViaCliFlag` — bifaci/cartridge_runtime_test.go:715
+- `Test339FilePathArrayGlobExpansion` — bifaci/cartridge_runtime_test.go:755
+- `Test340FileNotFoundClearError` — bifaci/cartridge_runtime_test.go:823
+- `Test341StdinPrecedenceOverFilePath` — bifaci/cartridge_runtime_test.go:862
+- `Test342FilePathPositionZeroReadsFirstArg` — bifaci/cartridge_runtime_test.go:905
+- `Test343NonFilePathArgsUnaffected` — bifaci/cartridge_runtime_test.go:945
+- `Test344FilePathArrayInvalidJSONFails` — bifaci/cartridge_runtime_test.go:981
+- `Test345FilePathArrayOneFileMissingFailsHard` — bifaci/cartridge_runtime_test.go:1020
+- `Test346LargeFileReadsSuccessfully` — bifaci/cartridge_runtime_test.go:1068
+- `Test347EmptyFileReadsAsEmptyBytes` — bifaci/cartridge_runtime_test.go:1112
+- `Test348FilePathConversionRespectsSourceOrder` — bifaci/cartridge_runtime_test.go:1152
+- `Test349FilePathMultipleSourcesFallback` — bifaci/cartridge_runtime_test.go:1195
+- `Test350FullCLIModeWithFilePathIntegration` — bifaci/cartridge_runtime_test.go:1237
+- `Test351FilePathArrayEmptyArray` — bifaci/cartridge_runtime_test.go:1313
+- `Test352FilePermissionDeniedClearError` — bifaci/cartridge_runtime_test.go:1354
+- `Test353CBORPayloadFormatConsistency` — bifaci/cartridge_runtime_test.go:1404
+- `Test354GlobPatternNoMatchesEmptyArray` — bifaci/cartridge_runtime_test.go:1462
+- `Test355GlobPatternSkipsDirectories` — bifaci/cartridge_runtime_test.go:1509
+- `Test356MultipleGlobPatternsCombined` — bifaci/cartridge_runtime_test.go:1574
+- `Test357SymlinksFollowed` — bifaci/cartridge_runtime_test.go:1644
+- `Test358BinaryFileNonUTF8` — bifaci/cartridge_runtime_test.go:1697
+- `Test359InvalidGlobPatternFails` — bifaci/cartridge_runtime_test.go:1743
+- `Test360ExtractEffectivePayloadWithFileData` — bifaci/cartridge_runtime_test.go:1781
+- `Test361CLIModeFilePath` — bifaci/cartridge_runtime_test.go:1831
+- `Test362CLIModePipedBinary` — bifaci/cartridge_runtime_test.go:1887
+- `Test363CBORModeChunkedContent` — bifaci/cartridge_runtime_test.go:1974
+- `Test364CBORModeFilePath` — bifaci/cartridge_runtime_test.go:2117
+- `Test395BuildPayloadSmall` — bifaci/cartridge_runtime_test.go:2172
+- `Test396BuildPayloadLarge` — bifaci/cartridge_runtime_test.go:2221
+- `Test397BuildPayloadEmpty` — bifaci/cartridge_runtime_test.go:2265
+- `Test398BuildPayloadIOError` — bifaci/cartridge_runtime_test.go:2308
+- `TestArgumentsMultiple` — bifaci/integration_test.go:1592
+- `TestArgumentsRoundtrip` — bifaci/integration_test.go:1232
+- `TestAutoChunkingReassembly` — bifaci/integration_test.go:1665
+- `TestBinaryPayloadRoundtrip` — bifaci/integration_test.go:880
+- `TestCacheOperations` — cap/registry_test.go:76
+- `TestCapBlockRegistryManagement` — cap_matrix_test.go:466
+- `TestCapCallerBinaryResponse` — cap/caller_test.go:198
+- `TestCapCallerCall` — cap/caller_test.go:121
+- `TestCapCallerCreation` — cap/caller_test.go:43
+- `TestCapCallerResolveOutputSpec` — cap/caller_test.go:59
+- `TestCapCallerWithArguments` — cap/caller_test.go:157
+- `TestCapDescription` — cap/definition_test.go:446
+- `TestCapExists` — cap/registry_test.go:119
+- `TestCapJSONRoundTrip` — cap/definition_test.go:581
+- `TestCapManifestCompatibility` — bifaci/manifest_test.go:302
+- `TestCapManifestValidation` — bifaci/manifest_test.go:267
+- `TestCapManifestWithPageURL` — bifaci/manifest_test.go:61
+- `TestCapRequestHandling` — cap/definition_test.go:430
+- `TestCapUrn_JSONSerialization` — urn/cap_urn_test.go:1413
+- `TestCapValidationCoordinator_EndToEnd` — cap/schema_validation_test.go:426
+- `TestCapWithMediaSpecs` — cap/definition_test.go:458
+- `TestCartridgeErrorResponse` — bifaci/integration_test.go:707
+- `TestCartridgeRuntimeHandlerRegistration` — bifaci/integration_test.go:1025
+- `TestCartridgeSuddenDisconnect` — bifaci/integration_test.go:1309
+- `TestChunkingDataIntegrity3x` — bifaci/integration_test.go:1919
+- `TestCollectIsElided` — machine/machine_test.go:317
+- `TestComplexNestedSchemaValidation` — cap/schema_validation_test.go:551
+- `TestConcatenatedVsFinalPayloadDivergence` — bifaci/integration_test.go:1895
+- `TestCustomMediaUrnResolution` — cap/schema_validation_test.go:668
+- `TestEmptyMachineSerializesToEmpty` — machine/machine_test.go:552
+- `TestEmptyPayloadRoundtrip` — bifaci/integration_test.go:1361
+- `TestEndFrameNoPayload` — bifaci/integration_test.go:1417
+- `TestExactMaxChunkSingleEnd` — bifaci/integration_test.go:1751
+- `TestExtractEffectivePayloadBinaryValue` — bifaci/cartridge_runtime_test.go:522
+- `TestFileSchemaResolver_ErrorHandling` — cap/schema_validation_test.go:540
+- `TestForEachSetsIsLoop` — machine/machine_test.go:281
+- `TestFromStrandProducesSingleStrandMachine` — machine/machine_test.go:151
+- `TestFromStrandsEmptyInputFailsHard` — machine/machine_test.go:193
+- `TestFromStrandsKeepStrandsDisjoint` — machine/machine_test.go:167
+- `TestHandshakeHostCartridge` — bifaci/integration_test.go:467
+- `TestHeartbeatDuringStreaming` — bifaci/integration_test.go:1052
+- `TestHeartbeatFromHost` — bifaci/integration_test.go:649
+- `TestHostInitiatedHeartbeatNoPingPong` — bifaci/integration_test.go:1152
+- `TestInputOutputAnchors` — machine/machine_test.go:247
+- `TestInputValidator_WithSchemaValidation` — cap/schema_validation_test.go:312
+- `TestIntegrationBinaryCapHandling` — bifaci/integration_test.go:187
+- `TestIntegrationCallerAndResponseSystem` — bifaci/integration_test.go:127
+- `TestIntegrationCapValidation` — bifaci/integration_test.go:327
+- `TestIntegrationCapWithMediaSpecs` — bifaci/integration_test.go:277
+- `TestIntegrationCaseInsensitiveUrns` — bifaci/integration_test.go:86
+- `TestIntegrationMediaSpecDefConstruction` — bifaci/integration_test.go:417
+- `TestIntegrationMediaUrnResolution` — bifaci/integration_test.go:369
+- `TestIntegrationTextCapHandling` — bifaci/integration_test.go:227
+- `TestIntegrationVersionlessCapCreation` — bifaci/integration_test.go:58
+- `TestLimitsNegotiation` — bifaci/integration_test.go:840
+- `TestLogFramesDuringRequest` — bifaci/integration_test.go:764
+- `TestMachineIsEquivalentIsStrictPositional` — machine/machine_test.go:206
+- `TestMachineStrandIsEquivalentWalksNodeBijection` — machine/machine_test.go:229
+- `TestMachineStringRepr` — machine/machine_test.go:560
+- `TestMaxChunkPlusOneSplitsIntoTwo` — bifaci/integration_test.go:1816
+- `TestMediaUrnResolutionWithMediaSpecs` — cap/schema_validation_test.go:629
+- `TestMessageIdUniqueness` — bifaci/integration_test.go:954
+- `TestOutputValidator_WithSchemaValidation` — cap/schema_validation_test.go:369
+- `TestParseDuplicateAliasReturnsError` — machine/machine_test.go:456
+- `TestParseEmptyInputReturnsError` — machine/machine_test.go:430
+- `TestParseHeadersWithNoWiringsReturnsNoEdgesError` — machine/machine_test.go:442
+- `TestParseNodeNameCollidesWithCapAlias` — machine/machine_test.go:502
+- `TestParseSingleStrandTwoCapsConnectedViaSharedNode` — machine/machine_test.go:356
+- `TestParseTwoDisconnectedStrandsYieldsTwoMachineStrands` — machine/machine_test.go:385
+- `TestParseUndefinedAliasReturnsError` — machine/machine_test.go:472
+- `TestParseUnknownCapInRegistryReturnsAbstractionError` — machine/machine_test.go:486
+- `TestRegistryGetCap` — cap/registry_test.go:49
+- `TestRegistryValidation` — cap/registry_test.go:62
+- `TestRequestAfterShutdown` — bifaci/integration_test.go:1549
+- `TestRequestResponseSimple` — bifaci/integration_test.go:509
+- `TestResponseWrapperAsBool` — cap/response_test.go:108
+- `TestResponseWrapperAsFloat` — cap/response_test.go:94
+- `TestResponseWrapperFromText` — cap/response_test.go:44
+- `TestResponseWrapperGetContentType` — cap/response_test.go:148
+- `TestResponseWrapperIsEmpty` — cap/response_test.go:138
+- `TestResponseWrapperMatchesOutputType` — cap/response_test.go:159
+- `TestResponseWrapperValidateAgainstCap` — cap/response_test.go:244
+- `TestSchemaValidator_ArraySchemaValidation` — cap/schema_validation_test.go:261
+- `TestSchemaValidator_ValidateArguments_Integration` — cap/schema_validation_test.go:198
+- `TestSchemaValidator_ValidateOutputWithSchema_Failure` — cap/schema_validation_test.go:167
+- `TestStdinSourceNilHandling` — cap/caller_test.go:340
+- `TestStrandEquivalenceWithDifferentNodeAllocationOrders` — machine/machine_test.go:579
+- `TestStrandNonEquivalenceDifferentCap` — machine/machine_test.go:627
+- `TestStreamingChunks` — bifaci/integration_test.go:571
+- `TestStreamingSequenceNumbers` — bifaci/integration_test.go:1473
+- `TestTest1105TwoStepsSameCapUrnDifferentSlotValues` — planner/argument_binding_test.go:97
+- `TestTest1106SlotFallsThroughToCapSettingsShared` — planner/argument_binding_test.go:140
+- `TestTest1107SlotValueOverridesCapSettingsPerStep` — planner/argument_binding_test.go:177
+- `TestTest1108ResolveAllPassesNodeID` — planner/argument_binding_test.go:219
+- `TestTest1109SlotKeyUsesNodeIDNotCapUrn` — planner/argument_binding_test.go:270
+- `TestTest668ResolveSlotWithPopulatedByteSlotValues` — planner/argument_binding_test.go:20
+- `TestTest669ResolveSlotFallsBackToDefault` — planner/argument_binding_test.go:48
+- `TestTest670ResolveRequiredSlotNoValueReturnsErr` — planner/argument_binding_test.go:69
+- `TestTest671ResolveOptionalSlotNoValueReturnsNone` — planner/argument_binding_test.go:83
+- `TestToMachineNotationRoundTrips` — machine/machine_test.go:522
 
 ---
 
 *Generated from CapDag-Go source tree*
+*Total tests: 654*
 *Total numbered tests: 521*
+*Total unnumbered tests: 133*
