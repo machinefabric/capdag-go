@@ -16,6 +16,12 @@ const CapIdentity = "cap:"
 // Accepts any media type as input and produces void output
 const CapDiscard = "cap:in=media:;out=media:void"
 
+// CapAdapterSelection is the standard adapter-selection capability URN.
+// Default implementation returns empty END (no match).
+// Cartridges that inspect file content override this with a handler
+// that returns {"media_urns": [...]}.
+const CapAdapterSelection = `cap:in="media:";out="media:adapter-selection;json;record"`
+
 // =============================================================================
 // STANDARD CAP URN BUILDERS
 // These return URN strings that can be parsed with urn.NewCapUrnFromString()

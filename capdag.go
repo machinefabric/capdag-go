@@ -48,6 +48,7 @@ type StreamEmitter = bifaci.StreamEmitter
 type PeerInvoker = bifaci.PeerInvoker
 type HandlerFunc = bifaci.HandlerFunc
 type CapManifest = bifaci.CapManifest
+type CapGroup = bifaci.CapGroup
 
 var NewMessageIdFromUuid = bifaci.NewMessageIdFromUuid
 var NewMessageIdFromUint = bifaci.NewMessageIdFromUint
@@ -56,6 +57,7 @@ var NewFrameReader = bifaci.NewFrameReader
 var NewFrameWriter = bifaci.NewFrameWriter
 var NewCartridgeRuntime = bifaci.NewCartridgeRuntime
 var NewCapManifest = bifaci.NewCapManifest
+var DefaultGroup = bifaci.DefaultGroup
 var DecodeChunkPayload = bifaci.DecodeChunkPayload
 var NewCapResultScalar = cap.NewCapResultScalar
 var NewCapResultList = cap.NewCapResultList
@@ -64,6 +66,7 @@ var NewCapResultEmpty = cap.NewCapResultEmpty
 // Standard caps (constants)
 const CapIdentity = standard.CapIdentity
 const CapDiscard = standard.CapDiscard
+const CapAdapterSelection = standard.CapAdapterSelection
 
 // Protocol constants
 const ProtocolVersion = 2  // matches bifaci.PROTOCOL_VERSION

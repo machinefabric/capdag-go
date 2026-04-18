@@ -252,5 +252,8 @@ const MediaDecision = "media:decision;json;record;textable"
 // MediaCollection is the media URN for a collection (map/record form)
 const MediaCollection = "media:collection;record;textable"
 
+// MediaAdapterSelection is the media URN for adapter selection output - JSON record
+const MediaAdapterSelection = "media:adapter-selection;json;record"
+
 // MediaCollectionList is the media URN for a list of collections
 const MediaCollectionList = "media:collection;list;record;textable"

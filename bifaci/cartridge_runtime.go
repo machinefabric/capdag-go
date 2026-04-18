@@ -264,7 +264,7 @@ func NewCartridgeRuntimeWithManifest(manifest *CapManifest) (*CartridgeRuntime, 
 	}
 
 	hasIdentity := false
-	for _, cap := range manifest.Caps {
+	for _, cap := range manifest.AllCaps() {
 		if identityUrn.ConformsTo(cap.Urn) || cap.Urn.ConformsTo(identityUrn) {
 			hasIdentity = true
 			break
@@ -1097,9 +1097,11 @@ func (pr *CartridgeRuntime) findCapByCommand(commandName string) *cap.Cap {
 	if pr.manifest == nil {
 		return nil
 	}
-	for i := range pr.manifest.Caps {
-		if pr.manifest.Caps[i].Command == commandName {
-			return &pr.manifest.Caps[i]
+	for i := range pr.manifest.CapGroups {
+		for j := range pr.manifest.CapGroups[i].Caps {
+			if pr.manifest.CapGroups[i].Caps[j].Command == commandName {
+				return &pr.manifest.CapGroups[i].Caps[j]
+			}
 		}
 	}
 	return nil
@@ -1118,8 +1120,7 @@ func (pr *CartridgeRuntime) printHelp() {
 	fmt.Fprintf(os.Stderr, "COMMANDS:\n")
 	fmt.Fprintf(os.Stderr, "    manifest    Output the cartridge manifest as JSON\n")
 
-	for i := range pr.manifest.Caps {
-		cap := &pr.manifest.Caps[i]
+	for _, cap := range pr.manifest.AllCaps() {
 		desc := cap.Title
 		if cap.CapDescription != nil {
 			desc = *cap.CapDescription

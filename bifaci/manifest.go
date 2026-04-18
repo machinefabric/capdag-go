@@ -9,6 +9,23 @@ import (
 	"github.com/machinefabric/capdag-go/urn"
 )
 
+// CapGroup bundles caps and adapter URNs as an atomic registration unit.
+//
+// If any adapter in the group creates ambiguity with an already-registered adapter,
+// the entire group is rejected — none of its caps or adapters get registered.
+type CapGroup struct {
+	// Group name (for diagnostics and error messages)
+	Name string `json:"name"`
+
+	// Caps in this group
+	Caps []cap.Cap `json:"caps"`
+
+	// Media URNs this group's adapter handles.
+	// These are matched via conforms_to during registration — they are not patterns,
+	// they are declared URNs checked for overlap with existing registrations.
+	AdapterUrns []string `json:"adapter_urns,omitempty"`
+}
+
 // CapManifest represents unified cap manifest for --manifest output
 type CapManifest struct {
 	// Component name
@@ -20,8 +37,10 @@ type CapManifest struct {
 	// Component description
 	Description string `json:"description"`
 
-	// Component caps with formal definitions
-	Caps []cap.Cap `json:"caps"`
+	// Cap groups — bundles of caps + adapter URNs registered atomically.
+	// All caps must be in a cap group. Groups without adapter URNs are valid
+	// (they just don't contribute content inspection adapters).
+	CapGroups []CapGroup `json:"cap_groups"`
 
 	// Component author/maintainer
 	Author *string `json:"author,omitempty"`
@@ -30,13 +49,30 @@ type CapManifest struct {
 	PageUrl *string `json:"page_url,omitempty"`
 }
 
-// NewCapManifest creates a new cap manifest
-func NewCapManifest(name, version, description string, caps []cap.Cap) *CapManifest {
+// NewCapManifest creates a new cap manifest with cap groups
+func NewCapManifest(name, version, description string, capGroups []CapGroup) *CapManifest {
 	return &CapManifest{
 		Name:        name,
 		Version:     version,
 		Description: description,
-		Caps:        caps,
+		CapGroups:   capGroups,
+	}
+}
+
+// AllCaps returns all caps from all cap groups.
+func (cm *CapManifest) AllCaps() []cap.Cap {
+	var all []cap.Cap
+	for _, group := range cm.CapGroups {
+		all = append(all, group.Caps...)
+	}
+	return all
+}
+
+// DefaultGroup wraps caps in a cap group with no adapter URNs.
+func DefaultGroup(caps []cap.Cap) CapGroup {
+	return CapGroup{
+		Name: "default",
+		Caps: caps,
 	}
 }
 
@@ -53,6 +89,7 @@ func (cm *CapManifest) WithPageUrl(pageUrl string) *CapManifest {
 }
 
 // Validate checks that CAP_IDENTITY is declared in this manifest.
+// Checks caps within cap_groups.
 // Returns error if missing — identity is mandatory in every capset.
 func (cm *CapManifest) Validate() error {
 	identityUrn, err := urn.NewCapUrnFromString(standard.CapIdentity)
@@ -60,7 +97,7 @@ func (cm *CapManifest) Validate() error {
 		return fmt.Errorf("BUG: CAP_IDENTITY constant is invalid: %v", err)
 	}
 
-	for _, c := range cm.Caps {
+	for _, c := range cm.AllCaps() {
 		if c.Urn != nil && identityUrn.ConformsTo(c.Urn) {
 			return nil
 		}
@@ -78,23 +115,23 @@ func (cm *CapManifest) EnsureIdentity() *CapManifest {
 		panic("CAP_IDENTITY constant is invalid")
 	}
 
-	for _, cap := range cm.Caps {
-		if cap.Urn != nil && cap.Urn.Equals(identityUrn) {
+	for _, c := range cm.AllCaps() {
+		if c.Urn != nil && c.Urn.Equals(identityUrn) {
 			return cm // Already has identity
 		}
 	}
 
-	// Add identity cap
+	// Add identity cap in a default group
 	identityCap := cap.NewCap(identityUrn, "Identity", "identity")
-	newCaps := make([]cap.Cap, 0, len(cm.Caps)+1)
-	newCaps = append(newCaps, *identityCap)
-	newCaps = append(newCaps, cm.Caps...)
+	newGroups := make([]CapGroup, 0, len(cm.CapGroups)+1)
+	newGroups = append(newGroups, DefaultGroup([]cap.Cap{*identityCap}))
+	newGroups = append(newGroups, cm.CapGroups...)
 
 	return &CapManifest{
 		Name:        cm.Name,
 		Version:     cm.Version,
 		Description: cm.Description,
-		Caps:        newCaps,
+		CapGroups:   newGroups,
 		Author:      cm.Author,
 		PageUrl:     cm.PageUrl,
 	}
@@ -105,6 +142,6 @@ type ComponentMetadata interface {
 	// ComponentManifest returns the component manifest
 	ComponentManifest() *CapManifest
 
-	// Caps returns the component caps
+	// Caps returns all component caps from all cap groups
 	Caps() []cap.Cap
 }

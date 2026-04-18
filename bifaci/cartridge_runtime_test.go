@@ -587,12 +587,17 @@ func createTestManifest(name, version, description string, caps []*cap.Cap) *Cap
 	for i, cap := range caps {
 		capSlice[i] = *cap
 	}
-	return &CapManifest{
-		Name:        name,
-		Version:     version,
-		Description: description,
-		Caps:        capSlice,
+	return NewCapManifest(name, version, description, []CapGroup{DefaultGroup(capSlice)})
+}
+
+// firstCap returns the first cap from the manifest's cap groups (for test convenience).
+func firstCap(m *CapManifest) *cap.Cap {
+	for i := range m.CapGroups {
+		if len(m.CapGroups[i].Caps) > 0 {
+			return &m.CapGroups[i].Caps[0]
+		}
 	}
+	return nil
 }
 
 // TEST336: Single file-path arg with stdin source reads file and passes bytes to handler
@@ -640,18 +645,18 @@ func Test336_FilePathReadsFilePassesBytes(t *testing.T) {
 
 	// Simulate CLI invocation
 	cliArgs := []string{tempFile}
-	rawPayload, err := runtime.buildPayloadFromCLI(&manifest.Caps[0], cliArgs)
+	rawPayload, err := runtime.buildPayloadFromCLI(firstCap(manifest), cliArgs)
 	if err != nil {
 		t.Fatalf("Failed to build payload: %v", err)
 	}
 
 	// Extract effective payload
-	payload, err := extractEffectivePayload(rawPayload, "application/cbor", manifest.Caps[0].UrnString())
+	payload, err := extractEffectivePayload(rawPayload, "application/cbor", firstCap(manifest).UrnString())
 	if err != nil {
 		t.Fatalf("Failed to extract payload: %v", err)
 	}
 
-	handler := runtime.FindHandler(manifest.Caps[0].UrnString())
+	handler := runtime.FindHandler(firstCap(manifest).UrnString())
 	emitter := &mockStreamEmitter{}
 	peerInvoker := &noPeerInvoker{}
 	err = handler(bytesToFrameChannel(payload), emitter, peerInvoker)
@@ -699,7 +704,7 @@ func Test337_FilePathWithoutStdinPassesString(t *testing.T) {
 	}
 
 	cliArgs := []string{tempFile}
-	result, err := runtime.extractArgValue(&manifest.Caps[0].Args[0], cliArgs, nil)
+	result, err := runtime.extractArgValue(&firstCap(manifest).Args[0], cliArgs, nil)
 	if err != nil {
 		t.Fatalf("Failed to extract arg: %v", err)
 	}
@@ -741,7 +746,7 @@ func Test338_FilePathViaCliFlag(t *testing.T) {
 	}
 
 	cliArgs := []string{"--file", tempFile}
-	result, err := runtime.extractArgValue(&manifest.Caps[0].Args[0], cliArgs, nil)
+	result, err := runtime.extractArgValue(&firstCap(manifest).Args[0], cliArgs, nil)
 	if err != nil {
 		t.Fatalf("Failed to extract arg: %v", err)
 	}
@@ -794,7 +799,7 @@ func Test339_FilePathArrayGlobExpansion(t *testing.T) {
 	pathsJSON, _ := json.Marshal([]string{pattern})
 
 	cliArgs := []string{string(pathsJSON)}
-	result, err := runtime.extractArgValue(&manifest.Caps[0].Args[0], cliArgs, nil)
+	result, err := runtime.extractArgValue(&firstCap(manifest).Args[0], cliArgs, nil)
 	if err != nil {
 		t.Fatalf("Failed to extract arg: %v", err)
 	}
@@ -844,7 +849,7 @@ func Test340_FileNotFoundClearError(t *testing.T) {
 	}
 
 	cliArgs := []string{"/nonexistent/file.pdf"}
-	_, err = runtime.extractArgValue(&manifest.Caps[0].Args[0], cliArgs, nil)
+	_, err = runtime.extractArgValue(&firstCap(manifest).Args[0], cliArgs, nil)
 
 	if err == nil {
 		t.Fatal("Expected error when file doesn't exist")
@@ -890,7 +895,7 @@ func Test341_StdinPrecedenceOverFilePath(t *testing.T) {
 
 	cliArgs := []string{tempFile}
 	stdinData := []byte("stdin content 341")
-	result, err := runtime.extractArgValue(&manifest.Caps[0].Args[0], cliArgs, stdinData)
+	result, err := runtime.extractArgValue(&firstCap(manifest).Args[0], cliArgs, stdinData)
 	if err != nil {
 		t.Fatalf("Failed to extract arg: %v", err)
 	}
@@ -931,7 +936,7 @@ func Test342_FilePathPositionZeroReadsFirstArg(t *testing.T) {
 	}
 
 	cliArgs := []string{tempFile}
-	result, err := runtime.extractArgValue(&manifest.Caps[0].Args[0], cliArgs, nil)
+	result, err := runtime.extractArgValue(&firstCap(manifest).Args[0], cliArgs, nil)
 	if err != nil {
 		t.Fatalf("Failed to extract arg: %v", err)
 	}
@@ -966,7 +971,7 @@ func Test343_NonFilePathArgsUnaffected(t *testing.T) {
 	}
 
 	cliArgs := []string{"mlx-community/Llama-3.2-3B-Instruct-4bit"}
-	result, err := runtime.extractArgValue(&manifest.Caps[0].Args[0], cliArgs, nil)
+	result, err := runtime.extractArgValue(&firstCap(manifest).Args[0], cliArgs, nil)
 	if err != nil {
 		t.Fatalf("Failed to extract arg: %v", err)
 	}
@@ -1002,7 +1007,7 @@ func Test344_FilePathArrayInvalidJSONFails(t *testing.T) {
 	}
 
 	cliArgs := []string{"not a json array"}
-	_, err = runtime.extractArgValue(&manifest.Caps[0].Args[0], cliArgs, nil)
+	_, err = runtime.extractArgValue(&firstCap(manifest).Args[0], cliArgs, nil)
 
 	if err == nil {
 		t.Fatal("Expected error for invalid JSON")
@@ -1050,7 +1055,7 @@ func Test345_FilePathArrayOneFileMissingFailsHard(t *testing.T) {
 	// Explicitly list both files (one exists, one doesn't)
 	pathsJSON, _ := json.Marshal([]string{file1, file2Path})
 	cliArgs := []string{string(pathsJSON)}
-	_, err = runtime.extractArgValue(&manifest.Caps[0].Args[0], cliArgs, nil)
+	_, err = runtime.extractArgValue(&firstCap(manifest).Args[0], cliArgs, nil)
 
 	if err == nil {
 		t.Fatal("Expected error when any file in array is missing")
@@ -1098,7 +1103,7 @@ func Test346_LargeFileReadsSuccessfully(t *testing.T) {
 	}
 
 	cliArgs := []string{tempFile}
-	result, err := runtime.extractArgValue(&manifest.Caps[0].Args[0], cliArgs, nil)
+	result, err := runtime.extractArgValue(&firstCap(manifest).Args[0], cliArgs, nil)
 	if err != nil {
 		t.Fatalf("Failed to extract arg: %v", err)
 	}
@@ -1138,7 +1143,7 @@ func Test347_EmptyFileReadsAsEmptyBytes(t *testing.T) {
 	}
 
 	cliArgs := []string{tempFile}
-	result, err := runtime.extractArgValue(&manifest.Caps[0].Args[0], cliArgs, nil)
+	result, err := runtime.extractArgValue(&firstCap(manifest).Args[0], cliArgs, nil)
 	if err != nil {
 		t.Fatalf("Failed to extract arg: %v", err)
 	}
@@ -1180,7 +1185,7 @@ func Test348_FilePathConversionRespectsSourceOrder(t *testing.T) {
 
 	cliArgs := []string{tempFile}
 	stdinData := []byte("stdin content 348")
-	result, err := runtime.extractArgValue(&manifest.Caps[0].Args[0], cliArgs, stdinData)
+	result, err := runtime.extractArgValue(&firstCap(manifest).Args[0], cliArgs, stdinData)
 	if err != nil {
 		t.Fatalf("Failed to extract arg: %v", err)
 	}
@@ -1223,7 +1228,7 @@ func Test349_FilePathMultipleSourcesFallback(t *testing.T) {
 
 	// Only provide position arg, no --file flag
 	cliArgs := []string{tempFile}
-	result, err := runtime.extractArgValue(&manifest.Caps[0].Args[0], cliArgs, nil)
+	result, err := runtime.extractArgValue(&firstCap(manifest).Args[0], cliArgs, nil)
 	if err != nil {
 		t.Fatalf("Failed to extract arg: %v", err)
 	}
@@ -1279,18 +1284,18 @@ func Test350_FullCLIModeWithFilePathIntegration(t *testing.T) {
 
 	// Simulate full CLI invocation
 	cliArgs := []string{tempFile}
-	rawPayload, err := runtime.buildPayloadFromCLI(&manifest.Caps[0], cliArgs)
+	rawPayload, err := runtime.buildPayloadFromCLI(firstCap(manifest), cliArgs)
 	if err != nil {
 		t.Fatalf("Failed to build payload: %v", err)
 	}
 
 	// Extract effective payload
-	payload, err := extractEffectivePayload(rawPayload, "application/cbor", manifest.Caps[0].UrnString())
+	payload, err := extractEffectivePayload(rawPayload, "application/cbor", firstCap(manifest).UrnString())
 	if err != nil {
 		t.Fatalf("Failed to extract payload: %v", err)
 	}
 
-	handler := runtime.FindHandler(manifest.Caps[0].UrnString())
+	handler := runtime.FindHandler(firstCap(manifest).UrnString())
 	emitter := &mockStreamEmitter{}
 	peerInvoker := &noPeerInvoker{}
 	err = handler(bytesToFrameChannel(payload), emitter, peerInvoker)
@@ -1334,7 +1339,7 @@ func Test351_FilePathArrayEmptyArray(t *testing.T) {
 	}
 
 	cliArgs := []string{"[]"}
-	result, err := runtime.extractArgValue(&manifest.Caps[0].Args[0], cliArgs, nil)
+	result, err := runtime.extractArgValue(&firstCap(manifest).Args[0], cliArgs, nil)
 	if err != nil {
 		t.Fatalf("Failed to extract arg: %v", err)
 	}
@@ -1390,7 +1395,7 @@ func Test352_FilePermissionDeniedClearError(t *testing.T) {
 	}
 
 	cliArgs := []string{tempFile}
-	_, err = runtime.extractArgValue(&manifest.Caps[0].Args[0], cliArgs, nil)
+	_, err = runtime.extractArgValue(&firstCap(manifest).Args[0], cliArgs, nil)
 
 	if err == nil {
 		t.Fatal("Expected error for permission denied")
@@ -1425,7 +1430,7 @@ func Test353_CBORPayloadFormatConsistency(t *testing.T) {
 	}
 
 	cliArgs := []string{"test value"}
-	payload, err := runtime.buildPayloadFromCLI(&manifest.Caps[0], cliArgs)
+	payload, err := runtime.buildPayloadFromCLI(firstCap(manifest), cliArgs)
 	if err != nil {
 		t.Fatalf("Failed to build payload: %v", err)
 	}
@@ -1489,7 +1494,7 @@ func Test354_GlobPatternNoMatchesEmptyArray(t *testing.T) {
 	pathsJSON, _ := json.Marshal([]string{pattern})
 
 	cliArgs := []string{string(pathsJSON)}
-	result, err := runtime.extractArgValue(&manifest.Caps[0].Args[0], cliArgs, nil)
+	result, err := runtime.extractArgValue(&firstCap(manifest).Args[0], cliArgs, nil)
 	if err != nil {
 		t.Fatalf("Failed to extract arg: %v", err)
 	}
@@ -1549,7 +1554,7 @@ func Test355_GlobPatternSkipsDirectories(t *testing.T) {
 	pathsJSON, _ := json.Marshal([]string{pattern})
 
 	cliArgs := []string{string(pathsJSON)}
-	result, err := runtime.extractArgValue(&manifest.Caps[0].Args[0], cliArgs, nil)
+	result, err := runtime.extractArgValue(&firstCap(manifest).Args[0], cliArgs, nil)
 	if err != nil {
 		t.Fatalf("Failed to extract arg: %v", err)
 	}
@@ -1614,7 +1619,7 @@ func Test356_MultipleGlobPatternsCombined(t *testing.T) {
 	pathsJSON, _ := json.Marshal([]string{pattern1, pattern2})
 
 	cliArgs := []string{string(pathsJSON)}
-	result, err := runtime.extractArgValue(&manifest.Caps[0].Args[0], cliArgs, nil)
+	result, err := runtime.extractArgValue(&firstCap(manifest).Args[0], cliArgs, nil)
 	if err != nil {
 		t.Fatalf("Failed to extract arg: %v", err)
 	}
@@ -1683,7 +1688,7 @@ func Test357_SymlinksFollowed(t *testing.T) {
 	}
 
 	cliArgs := []string{linkFile}
-	result, err := runtime.extractArgValue(&manifest.Caps[0].Args[0], cliArgs, nil)
+	result, err := runtime.extractArgValue(&firstCap(manifest).Args[0], cliArgs, nil)
 	if err != nil {
 		t.Fatalf("Failed to extract arg: %v", err)
 	}
@@ -1724,7 +1729,7 @@ func Test358_BinaryFileNonUTF8(t *testing.T) {
 	}
 
 	cliArgs := []string{tempFile}
-	result, err := runtime.extractArgValue(&manifest.Caps[0].Args[0], cliArgs, nil)
+	result, err := runtime.extractArgValue(&firstCap(manifest).Args[0], cliArgs, nil)
 	if err != nil {
 		t.Fatalf("Failed to extract arg: %v", err)
 	}
@@ -1767,7 +1772,7 @@ func Test359_InvalidGlobPatternFails(t *testing.T) {
 	pathsJSON, _ := json.Marshal([]string{"[invalid"})
 
 	cliArgs := []string{string(pathsJSON)}
-	_, err = runtime.extractArgValue(&manifest.Caps[0].Args[0], cliArgs, nil)
+	_, err = runtime.extractArgValue(&firstCap(manifest).Args[0], cliArgs, nil)
 
 	if err == nil {
 		t.Fatal("Expected error for invalid glob pattern")
@@ -1810,13 +1815,13 @@ func Test360_ExtractEffectivePayloadWithFileData(t *testing.T) {
 	cliArgs := []string{tempFile}
 
 	// Build CBOR payload (what buildPayloadFromCLI does)
-	rawPayload, err := runtime.buildPayloadFromCLI(&manifest.Caps[0], cliArgs)
+	rawPayload, err := runtime.buildPayloadFromCLI(firstCap(manifest), cliArgs)
 	if err != nil {
 		t.Fatalf("Failed to build payload: %v", err)
 	}
 
 	// Extract effective payload (what runCLIMode does)
-	effective, err := extractEffectivePayload(rawPayload, "application/cbor", manifest.Caps[0].UrnString())
+	effective, err := extractEffectivePayload(rawPayload, "application/cbor", firstCap(manifest).UrnString())
 	if err != nil {
 		t.Fatalf("Failed to extract effective payload: %v", err)
 	}
@@ -1860,7 +1865,7 @@ func Test361_CLIModeFilePath(t *testing.T) {
 
 	// CLI mode: pass file path as positional argument
 	cliArgs := []string{tempFile}
-	payload, err := runtime.buildPayloadFromCLI(&manifest.Caps[0], cliArgs)
+	payload, err := runtime.buildPayloadFromCLI(firstCap(manifest), cliArgs)
 	if err != nil {
 		t.Fatalf("Failed to build payload from CLI: %v", err)
 	}

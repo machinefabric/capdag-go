@@ -14,7 +14,7 @@ func main() {
 		"testcartridge",
 		"1.0.0",
 		"Test cartridge for Go",
-		[]capdag.Cap{
+		[]capdag.CapGroup{capdag.DefaultGroup([]capdag.Cap{
 			{
 				Urn:     mustParseCapUrn(capdag.CapIdentity),
 				Title:   "Echo",
@@ -25,7 +25,7 @@ func main() {
 				Title:   "Void Test",
 				Command: "void",
 			},
-		},
+		})},
 	)
 
 	// Create runtime
