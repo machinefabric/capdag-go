@@ -1,6 +1,7 @@
 package planner
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/machinefabric/capdag-go/cap"
@@ -599,4 +600,186 @@ func Test1293_roundtrip_requires_cap_steps(t *testing.T) {
 
 	paths := graph.FindPathsToExactTarget(source, target, false, 5, 100)
 	assert.Empty(t, paths, "No round-trip should exist when there's no return edge. Got %d paths.", len(paths))
+}
+
+// TEST789: Tests that caps loaded from JSON have correct in_spec/out_spec
+func Test789_cap_from_json_has_valid_specs(t *testing.T) {
+	jsonStr := `{
+		"urn": "cap:in=media:pdf;op=disbind;out=\"media:disbound-page;textable\"",
+		"command": "disbind",
+		"title": "Disbind PDF",
+		"args": [],
+		"output": null
+	}`
+
+	var c cap.Cap
+	err := json.Unmarshal([]byte(jsonStr), &c)
+	require.NoError(t, err, "Failed to parse cap JSON")
+
+	inSpec := c.Urn.InSpec()
+	outSpec := c.Urn.OutSpec()
+
+	assert.NotEmpty(t, inSpec, "in_spec should not be empty")
+	assert.NotEmpty(t, outSpec, "out_spec should not be empty")
+	assert.Equal(t, "media:pdf", inSpec)
+	assert.Contains(t, outSpec, "disbound-page")
+}
+
+// TEST790: Tests identity_urn is specific and doesn't match everything
+func Test790_identity_urn_is_specific(t *testing.T) {
+	// The identity CapUrn has wildcard in/out specs ("media:")
+	identityUrn := urn.NewCapUrn("media:", "media:", map[string]string{})
+
+	assert.Equal(t, "media:", identityUrn.InSpec())
+	assert.Equal(t, "media:", identityUrn.OutSpec())
+
+	// A specific cap should NOT be equivalent to identity
+	specificCap, err := urn.NewCapUrnFromString(`cap:in=media:pdf;op=disbind;out="media:disbound-page;textable"`)
+	require.NoError(t, err)
+
+	assert.False(t, specificCap.IsEquivalent(identityUrn),
+		"A specific disbind cap should NOT be equivalent to identity")
+}
+
+// TEST1150: Adding one cap creates one edge and makes its output reachable in one step.
+func Test1150_add_cap_and_basic_traversal(t *testing.T) {
+	graph := NewLiveCapGraph()
+	c := makeTestCapForGraph("media:pdf", "media:extracted-text", "extract_text", "Extract Text")
+	graph.AddCap(c)
+
+	nodeCount, edgeCount := graph.Stats()
+	assert.Equal(t, 1, edgeCount)
+	assert.Equal(t, 2, nodeCount)
+
+	source, err := urn.NewMediaUrnFromString("media:pdf")
+	require.NoError(t, err)
+	targets := graph.GetReachableTargets(source, false, 5)
+
+	extractedText, err := urn.NewMediaUrnFromString("media:extracted-text")
+	require.NoError(t, err)
+
+	var found *ReachableTargetInfo
+	for i := range targets {
+		if targets[i].MediaSpec.IsEquivalent(extractedText) {
+			found = &targets[i]
+			break
+		}
+	}
+	require.NotNil(t, found, "extracted-text should be reachable")
+	assert.Equal(t, 1, found.MinPathLength)
+}
+
+// TEST1151: Exact target lookup prefers the direct singular or list-producing path over longer alternatives.
+func Test1151_exact_vs_conformance_matching(t *testing.T) {
+	singular, err := urn.NewMediaUrnFromString("media:analysis-result")
+	require.NoError(t, err)
+	list, err := urn.NewMediaUrnFromString("media:analysis-result;list")
+	require.NoError(t, err)
+
+	// These should NOT be equivalent
+	assert.False(t, singular.IsEquivalent(list), "singular and list should NOT be equivalent")
+	assert.False(t, list.IsEquivalent(singular), "list and singular should NOT be equivalent")
+
+	graph := NewLiveCapGraph()
+
+	// pdf → result (singular)
+	cap1 := makeTestCapForGraph("media:pdf", "media:analysis-result", "analyze", "Analyze PDF")
+	graph.AddCap(cap1)
+
+	// pdf → result;list (plural)
+	cap2 := makeTestCapForGraph("media:pdf", "media:analysis-result;list", "analyze_multi", "Analyze PDF Multi")
+	graph.AddCap(cap2)
+
+	source, err := urn.NewMediaUrnFromString("media:pdf")
+	require.NoError(t, err)
+
+	// Query for singular result — direct path should rank first
+	targetSingular, err := urn.NewMediaUrnFromString("media:analysis-result")
+	require.NoError(t, err)
+	pathsSingular := graph.FindPathsToExactTarget(source, targetSingular, false, 5, 10)
+	require.GreaterOrEqual(t, len(pathsSingular), 1, "singular query should find at least 1 path")
+	assert.Equal(t, "Analyze PDF", pathsSingular[0].Steps[0].Title(),
+		"First path should be the direct cap (fewer total steps)")
+
+	// Query for list result — direct path should rank first
+	targetPlural, err := urn.NewMediaUrnFromString("media:analysis-result;list")
+	require.NoError(t, err)
+	pathsPlural := graph.FindPathsToExactTarget(source, targetPlural, false, 5, 10)
+	require.GreaterOrEqual(t, len(pathsPlural), 1, "list query should find at least 1 path")
+	assert.Equal(t, "Analyze PDF Multi", pathsPlural[0].Steps[0].Title(),
+		"First path should be the direct cap (fewer total steps)")
+}
+
+// TEST1152: Path finding returns the expected two-cap chain through an intermediate media type.
+func Test1152_multi_step_path(t *testing.T) {
+	graph := NewLiveCapGraph()
+
+	cap1 := makeTestCapForGraph("media:pdf", "media:extracted-text", "extract", "Extract")
+	cap2 := makeTestCapForGraph("media:extracted-text", "media:summary-text", "summarize", "Summarize")
+	graph.AddCap(cap1)
+	graph.AddCap(cap2)
+
+	source, err := urn.NewMediaUrnFromString("media:pdf")
+	require.NoError(t, err)
+	target, err := urn.NewMediaUrnFromString("media:summary-text")
+	require.NoError(t, err)
+
+	paths := graph.FindPathsToExactTarget(source, target, false, 5, 10)
+	require.Equal(t, 1, len(paths))
+	assert.Equal(t, 2, paths[0].TotalSteps)
+	assert.Equal(t, "Extract", paths[0].Steps[0].Title())
+	assert.Equal(t, "Summarize", paths[0].Steps[1].Title())
+}
+
+// TEST1153: Repeated path searches return the same path order for the same graph and target.
+func Test1153_deterministic_ordering(t *testing.T) {
+	graph := NewLiveCapGraph()
+
+	cap1 := makeTestCapForGraph("media:pdf", "media:extracted-text", "extract_a", "Extract A")
+	cap2 := makeTestCapForGraph("media:pdf", "media:extracted-text", "extract_b", "Extract B")
+	graph.AddCap(cap1)
+	graph.AddCap(cap2)
+
+	source, err := urn.NewMediaUrnFromString("media:pdf")
+	require.NoError(t, err)
+	target, err := urn.NewMediaUrnFromString("media:extracted-text")
+	require.NoError(t, err)
+
+	paths1 := graph.FindPathsToExactTarget(source, target, false, 5, 10)
+	paths2 := graph.FindPathsToExactTarget(source, target, false, 5, 10)
+
+	require.Equal(t, len(paths1), len(paths2))
+	for i := range paths1 {
+		u1 := paths1[i].Steps[0].CapUrnVal
+		u2 := paths2[i].Steps[0].CapUrnVal
+		require.NotNil(t, u1)
+		require.NotNil(t, u2)
+		assert.True(t, u1.IsEquivalent(u2),
+			"determinism: first cap URN differs across runs: %s vs %s", u1, u2)
+	}
+}
+
+// TEST1154: SyncFromCaps replaces the existing graph contents with the new cap set.
+func Test1154_sync_from_caps(t *testing.T) {
+	graph := NewLiveCapGraph()
+
+	caps := []*cap.Cap{
+		makeTestCapForGraph("media:pdf", "media:extracted-text", "op1", "Op1"),
+		makeTestCapForGraph("media:extracted-text", "media:summary-text", "op2", "Op2"),
+	}
+	graph.SyncFromCaps(caps)
+
+	nodeCount, edgeCount := graph.Stats()
+	assert.Equal(t, 2, edgeCount)
+	assert.Equal(t, 3, nodeCount)
+
+	// Sync again with different caps — should replace
+	newCaps := []*cap.Cap{
+		makeTestCapForGraph("media:image", "media:extracted-text", "ocr", "OCR"),
+	}
+	graph.SyncFromCaps(newCaps)
+
+	nodeCount, edgeCount = graph.Stats()
+	assert.Equal(t, 1, edgeCount)
+	assert.Equal(t, 2, nodeCount)
 }

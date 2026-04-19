@@ -23,6 +23,36 @@ func buildTestCap(t *testing.T, capUrn string, title string) *cap.Cap {
 	return c
 }
 
+// buildTestCapWithStdin creates a test cap that includes a stdin arg for its in_spec.
+// This is required for ParseMachineToCapDag which validates source URN conforms to cap args.
+func buildTestCapWithStdin(t *testing.T, capUrn string, title string) *cap.Cap {
+	t.Helper()
+	parsed, err := urn.NewCapUrnFromString(capUrn)
+	if err != nil {
+		t.Fatalf("parse cap urn: %v", err)
+	}
+	inSpec := parsed.InSpec()
+	stdinArg := cap.NewCapArg(inSpec, true, []cap.ArgSource{{Stdin: &inSpec}})
+	c := cap.NewCapWithArgs(parsed, title, "test-command", []cap.CapArg{stdinArg})
+	c.Output = &cap.CapOutput{
+		MediaUrn:          parsed.OutSpec(),
+		OutputDescription: title + " output",
+	}
+	return c
+}
+
+// buildParserTestRegistry creates a registry with caps that have stdin args (for machine parser tests).
+func buildParserTestRegistry(t *testing.T, capUrns []string) *cap.CapRegistry {
+	t.Helper()
+	registry := cap.NewCapRegistryForTest()
+	caps := make([]*cap.Cap, 0, len(capUrns))
+	for index, capUrn := range capUrns {
+		caps = append(caps, buildTestCapWithStdin(t, capUrn, "Test Cap "+string(rune('0'+index))))
+	}
+	registry.AddCapsToCache(caps)
+	return registry
+}
+
 func buildTestRegistry(t *testing.T, capUrns []string) *cap.CapRegistry {
 	t.Helper()
 	registry := cap.NewCapRegistryForTest()
@@ -221,6 +251,220 @@ func Test954_standalone_collect_passthrough(t *testing.T) {
 	}
 	if !found["input→cap_0"] {
 		t.Errorf("Expected input→cap_0 edge, got: %v", found)
+	}
+}
+
+// TEST1256: A single declared cap and one wiring parse into a two-node one-edge DAG.
+func Test1256_parse_simple_machine(t *testing.T) {
+	registry := buildParserTestRegistry(t, []string{
+		`cap:in="media:pdf";op=extract;out="media:txt;textable"`,
+	})
+
+	notation := `[extract cap:in="media:pdf";op=extract;out="media:txt;textable"][A -> extract -> B]`
+
+	graph, err := ParseMachineToCapDag(notation, registry)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	if len(graph.Nodes) != 2 {
+		t.Fatalf("Expected 2 nodes, got %d: %v", len(graph.Nodes), graph.Nodes)
+	}
+	if len(graph.Edges) != 1 {
+		t.Fatalf("Expected 1 edge, got %d", len(graph.Edges))
+	}
+	if _, ok := graph.Nodes["A"]; !ok {
+		t.Errorf("Expected node A, got: %v", graph.Nodes)
+	}
+	if _, ok := graph.Nodes["B"]; !ok {
+		t.Errorf("Expected node B, got: %v", graph.Nodes)
+	}
+}
+
+// TEST1257: Two sequential wirings preserve the intermediate node media type.
+func Test1257_parse_two_step_chain(t *testing.T) {
+	registry := buildParserTestRegistry(t, []string{
+		`cap:in="media:pdf";op=extract;out="media:txt;textable"`,
+		`cap:in="media:txt;textable";op=embed;out="media:embedding-vector;record;textable"`,
+	})
+
+	notation := `[extract cap:in="media:pdf";op=extract;out="media:txt;textable"]` +
+		`[embed cap:in="media:txt;textable";op=embed;out="media:embedding-vector;record;textable"]` +
+		`[A -> extract -> B]` +
+		`[B -> embed -> C]`
+
+	graph, err := ParseMachineToCapDag(notation, registry)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+
+	if len(graph.Nodes) != 3 {
+		t.Fatalf("Expected 3 nodes, got %d: %v", len(graph.Nodes), graph.Nodes)
+	}
+	if len(graph.Edges) != 2 {
+		t.Fatalf("Expected 2 edges, got %d", len(graph.Edges))
+	}
+	// Intermediate node B must have the text media type
+	nodeB, ok := graph.Nodes["B"]
+	if !ok {
+		t.Fatal("Expected node B")
+	}
+	if !strings.Contains(nodeB, "txt") {
+		t.Errorf("Expected node B to be text media, got: %s", nodeB)
+	}
+}
+
+// TEST1261: Parsing fails when a declared cap is absent from the registry.
+// In Go the machine parser resolves caps before the orchestrator layer checks,
+// so the error may be ErrMachineSyntaxParseFailed or ErrCapNotFound.
+func Test1261_cap_not_found_in_registry(t *testing.T) {
+	registry := buildParserTestRegistry(t, []string{})
+
+	notation := `[ex cap:in="media:unknown";op=test;out="media:unknown"][A -> ex -> B]`
+	_, err := ParseMachineToCapDag(notation, registry)
+	if err == nil {
+		t.Fatal("Expected error for cap not in registry, got nil")
+	}
+	orchErr, ok := err.(*ParseOrchestrationError)
+	if !ok {
+		t.Fatalf("Expected *ParseOrchestrationError, got: %T %v", err, err)
+	}
+	if orchErr.Kind != ErrCapNotFound && orchErr.Kind != ErrMachineSyntaxParseFailed {
+		t.Errorf("Expected ErrCapNotFound or ErrMachineSyntaxParseFailed, got: %v", orchErr.Kind)
+	}
+}
+
+// TEST1262: Non-machine text fails with a machine syntax parse error.
+func Test1262_invalid_machine_notation(t *testing.T) {
+	registry := buildParserTestRegistry(t, []string{})
+	_, err := ParseMachineToCapDag("not valid", registry)
+	if err == nil {
+		t.Fatal("Expected error for invalid notation, got nil")
+	}
+	orchErr, ok := err.(*ParseOrchestrationError)
+	if !ok {
+		t.Fatalf("Expected *ParseOrchestrationError, got: %T %v", err, err)
+	}
+	if orchErr.Kind != ErrMachineSyntaxParseFailed {
+		t.Errorf("Expected ErrMachineSyntaxParseFailed, got: %v", orchErr.Kind)
+	}
+}
+
+// TEST1263: Cyclic wirings are rejected as non-DAG orchestrations.
+// In Go the machine parser may reject cycles at the parse layer or the orchestrator layer.
+func Test1263_cycle_detection(t *testing.T) {
+	registry := buildParserTestRegistry(t, []string{
+		`cap:in="media:txt;textable";op=process;out="media:txt;textable"`,
+	})
+
+	notation := `[proc cap:in="media:txt;textable";op=process;out="media:txt;textable"]` +
+		`[A -> proc -> B]` +
+		`[B -> proc -> C]` +
+		`[C -> proc -> A]`
+
+	_, err := ParseMachineToCapDag(notation, registry)
+	if err == nil {
+		t.Fatal("Expected error for cyclic graph, got nil")
+	}
+	orchErr, ok := err.(*ParseOrchestrationError)
+	if !ok {
+		t.Fatalf("Expected *ParseOrchestrationError, got: %T %v", err, err)
+	}
+	if orchErr.Kind != ErrNotADag && orchErr.Kind != ErrMachineSyntaxParseFailed {
+		t.Errorf("Expected ErrNotADag or ErrMachineSyntaxParseFailed, got: %v", orchErr.Kind)
+	}
+}
+
+// TEST1264: Shared nodes with incompatible upstream and downstream media fail during parsing.
+func Test1264_incompatible_media_types_at_shared_node(t *testing.T) {
+	registry := buildParserTestRegistry(t, []string{
+		`cap:in="media:void";op=produce_pdf;out="media:pdf"`,
+		`cap:in="media:audio;wav";op=transcribe;out="media:txt;textable"`,
+	})
+
+	notation := `[produce cap:in="media:void";op=produce_pdf;out="media:pdf"]` +
+		`[transcribe cap:in="media:audio;wav";op=transcribe;out="media:txt;textable"]` +
+		`[A -> produce -> B]` +
+		`[B -> transcribe -> C]`
+
+	_, err := ParseMachineToCapDag(notation, registry)
+	if err == nil {
+		t.Fatal("Expected error for incompatible media at shared node, got nil")
+	}
+	// Error should be a parse failure (media type conflict)
+	if _, ok := err.(*ParseOrchestrationError); !ok {
+		t.Fatalf("Expected *ParseOrchestrationError, got: %T %v", err, err)
+	}
+}
+
+// TEST1265: Shared nodes accept compatible media URNs when one is a more specific form of the other.
+func Test1265_compatible_media_urns_at_shared_node(t *testing.T) {
+	registry := buildParserTestRegistry(t, []string{
+		`cap:in="media:pdf";op=thumbnail;out="media:image;png"`,
+		`cap:in="media:image;png;bytes";op=embed_image;out="media:embedding-vector;record;textable"`,
+	})
+
+	notation := `[thumb cap:in="media:pdf";op=thumbnail;out="media:image;png"]` +
+		`[embed_image cap:in="media:image;png;bytes";op=embed_image;out="media:embedding-vector;record;textable"]` +
+		`[A -> thumb -> B]` +
+		`[B -> embed_image -> C]`
+
+	_, err := ParseMachineToCapDag(notation, registry)
+	if err != nil {
+		t.Fatalf("Compatible media URNs should not conflict: %v", err)
+	}
+}
+
+// TEST1267: Record-shaped outputs can feed record-shaped inputs without error.
+func Test1267_structure_match_both_record(t *testing.T) {
+	registry := buildParserTestRegistry(t, []string{
+		`cap:in="media:void";op=produce;out="media:json;record;textable"`,
+		`cap:in="media:json;record;textable";op=transform;out="media:result;record;textable"`,
+	})
+
+	notation := `[produce cap:in="media:void";op=produce;out="media:json;record;textable"]` +
+		`[transform cap:in="media:json;record;textable";op=transform;out="media:result;record;textable"]` +
+		`[A -> produce -> B]` +
+		`[B -> transform -> C]`
+
+	_, err := ParseMachineToCapDag(notation, registry)
+	if err != nil {
+		t.Fatalf("Record to record should be accepted: %v", err)
+	}
+}
+
+// TEST1268: Opaque outputs can feed opaque inputs without triggering structure conflicts.
+func Test1268_structure_match_both_opaque(t *testing.T) {
+	registry := buildParserTestRegistry(t, []string{
+		`cap:in="media:void";op=produce;out="media:json;textable"`,
+		`cap:in="media:json;textable";op=format;out="media:txt;textable"`,
+	})
+
+	notation := `[produce cap:in="media:void";op=produce;out="media:json;textable"]` +
+		`[format cap:in="media:json;textable";op=format;out="media:txt;textable"]` +
+		`[A -> produce -> B]` +
+		`[B -> format -> C]`
+
+	_, err := ParseMachineToCapDag(notation, registry)
+	if err != nil {
+		t.Fatalf("Opaque to opaque should be accepted: %v", err)
+	}
+}
+
+// TEST1269: Multi-line machine notation parses successfully with the same semantics as inline notation.
+func Test1269_parse_multiline_machine(t *testing.T) {
+	registry := buildParserTestRegistry(t, []string{
+		`cap:in="media:pdf";op=extract;out="media:txt;textable"`,
+	})
+
+	notation := `
+[extract cap:in="media:pdf";op=extract;out="media:txt;textable"]
+[doc -> extract -> text]
+`
+
+	_, err := ParseMachineToCapDag(notation, registry)
+	if err != nil {
+		t.Fatalf("Multi-line parse failed: %v", err)
 	}
 }
 
