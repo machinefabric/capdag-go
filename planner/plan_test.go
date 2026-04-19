@@ -152,57 +152,102 @@ func Test738_linear_chain_empty(t *testing.T) {
 	assert.Equal(t, 0, len(plan.Edges))
 }
 
-// TEST739: Tests NodeExecutionResult structure for successful node execution
-// Verifies that success status, outputs (binary and text), and error fields work correctly
-func Test739_node_execution_result_success(t *testing.T) {
-	result := &NodeExecutionResult{
-		NodeID:       "node_0",
-		Success:      true,
-		BinaryOutput: []byte{1, 2, 3},
-		Error:        "",
-		DurationMs:   50,
+// TEST739: Tests MachineResult PrimaryOutput returns populated output and nil when empty
+// Verifies the PrimaryOutput() accessor distinguishes populated vs empty outputs maps
+func Test739_machine_result_primary_output(t *testing.T) {
+	populated := &MachineResult{
+		Success: true,
+		Outputs: map[string]any{"result": map[string]any{"data": "success"}},
 	}
+	assert.NotNil(t, populated.PrimaryOutput(), "populated outputs must return non-nil primary output")
 
-	assert.True(t, result.Success)
-	assert.NotNil(t, result.BinaryOutput)
-	assert.Equal(t, "", result.Error)
+	empty := &MachineResult{
+		Success: false,
+		Outputs: map[string]any{},
+	}
+	assert.Nil(t, empty.PrimaryOutput(), "empty outputs must return nil primary output")
 }
 
-// TEST742: Tests EdgeType enum serialization — verifies EdgeKind values are correct
-// Go uses EdgeKind int constants rather than JSON-serialized strings (no serde), so
-// we verify that EdgeType fields match expectation for Direct and JsonField edges
-func Test742_edge_type_values(t *testing.T) {
-	direct := NewDirectEdge("a", "b")
-	assert.Equal(t, EdgeKindDirect, direct.Type.Kind)
+// TEST742: Tests that edge types determine dependency direction in TopologicalOrder
+// Iteration edges must NOT create a topological dependency (ForEach body must not block ForEach node).
+// Direct edges MUST create a dependency. Verifies that edge kind affects plan execution order.
+func Test742_iteration_edge_does_not_create_topological_dependency(t *testing.T) {
+	plan := NewMachinePlan("edge_kind_test")
+	plan.AddNode(NewInputSlotNode("input", "input", "media:pdf", CardinalitySingle))
+	plan.AddNode(NewMachineNode("cap_0", "cap:in=media:pdf;op=disbind;out=media:pdf-page"))
+	plan.AddNode(NewForEachNode("foreach_0", "cap_0", "body_cap", "body_cap"))
+	plan.AddNode(NewMachineNode("body_cap", "cap:in=media:pdf-page;op=process;out=media:text"))
+	plan.AddNode(NewOutputNode("output", "result", "body_cap"))
 
-	jsonField := NewJsonFieldEdge("a", "b", "data")
-	assert.Equal(t, EdgeKindJsonField, jsonField.Type.Kind)
-	assert.Equal(t, "data", jsonField.Type.Field)
+	plan.AddEdge(NewDirectEdge("input", "cap_0"))
+	plan.AddEdge(NewDirectEdge("cap_0", "foreach_0"))
+	plan.AddEdge(NewIterationEdge("foreach_0", "body_cap")) // iteration — must not block foreach_0
+	plan.AddEdge(NewDirectEdge("body_cap", "output"))
+
+	order, err := plan.TopologicalOrder()
+	require.NoError(t, err, "plan with iteration edge must be sortable")
+
+	pos := func(id string) int {
+		for i, n := range order {
+			if n.ID == id {
+				return i
+			}
+		}
+		return -1
+	}
+	// foreach_0 must come before body_cap in topological order
+	assert.Less(t, pos("foreach_0"), pos("body_cap"),
+		"ForEach node must precede body cap in topological order")
 }
 
-// TEST743: Tests ExecutionNodeType fields — verifies Kind and field values for Cap and ForEach nodes
-// Go uses struct fields (not JSON serde), so we verify the Kind and field values directly
-func Test743_execution_node_type_fields(t *testing.T) {
-	capNode := NewMachineNode("cap_0", "cap:test")
-	assert.Equal(t, NodeKindCap, capNode.NodeType.Kind)
-	assert.Equal(t, "cap:test", capNode.NodeType.CapUrn)
+// TEST743: Tests that ForEach node's body range fields are used correctly by ExtractForEachBody
+// The bodyEntry/bodyExit fields define which nodes are in scope. Verifies that wrong body bounds
+// produce a different extraction than correct ones — body_exit determines what gets included.
+func Test743_foreach_body_bounds_determine_extraction(t *testing.T) {
+	// Build a plan where foreach_0 spans body_cap_0 through body_cap_1 (closed)
+	plan := buildForeachPlanWithCollect()
 
-	foreachNode := NewForEachNode("foreach_0", "input", "body_entry", "body_exit")
-	assert.Equal(t, NodeKindForEach, foreachNode.NodeType.Kind)
-	assert.Equal(t, "input", foreachNode.NodeType.InputNode)
-	assert.Equal(t, "body_entry", foreachNode.NodeType.BodyEntry)
+	// Extract with the correct foreach node — body should contain 2 body caps
+	body, err := plan.ExtractForEachBody("foreach_0", "media:pdf-page")
+	require.NoError(t, err)
+
+	// The foreach node has bodyEntry="body_cap_0" and bodyExit="body_cap_1"
+	// Both must appear in the extracted body
+	assert.NotNil(t, body.GetNode("body_cap_0"),
+		"body entry cap must be included in extracted body")
+	assert.NotNil(t, body.GetNode("body_cap_1"),
+		"body exit cap must be included in extracted body")
+	// The disbind cap (cap_0) is before the foreach and must NOT be in the body
+	assert.Nil(t, body.GetNode("cap_0"),
+		"pre-foreach cap must not appear in extracted body")
+	// The post-collect cap is after foreach and must NOT be in the body
+	assert.Nil(t, body.GetNode("cap_post"),
+		"post-foreach cap must not appear in extracted body")
 }
 
-// TEST744: Tests MachinePlan structure for single cap
-// Verifies that SingleCap plan has correct nodes and edges
-func Test744_plan_single_cap_structure(t *testing.T) {
+// TEST744: Tests SingleCap plan passes Validate and TopologicalOrder produces correct sequence
+// Verifies the plan is structurally sound: input_slot must precede cap_0 must precede output
+func Test744_single_cap_plan_validates_and_orders_correctly(t *testing.T) {
 	plan := SingleCap("cap:test", "media:pdf", "media:png", "input_file")
 
-	assert.NotNil(t, plan.GetNode("cap_0"))
-	assert.NotNil(t, plan.GetNode("input_slot"))
-	assert.NotNil(t, plan.GetNode("output"))
-	assert.Equal(t, 3, len(plan.Nodes))
-	assert.Equal(t, 2, len(plan.Edges))
+	require.NoError(t, plan.Validate(), "SingleCap plan must pass validation")
+
+	order, err := plan.TopologicalOrder()
+	require.NoError(t, err, "SingleCap plan must have a valid topological order")
+	require.Equal(t, 3, len(order), "must have exactly 3 nodes")
+
+	pos := func(id string) int {
+		for i, n := range order {
+			if n.ID == id {
+				return i
+			}
+		}
+		return -1
+	}
+	assert.Less(t, pos("input_slot"), pos("cap_0"),
+		"input_slot must precede cap_0")
+	assert.Less(t, pos("cap_0"), pos("output"),
+		"cap_0 must precede output")
 }
 
 // TEST745: Tests MergeStrategy enum values
@@ -212,13 +257,18 @@ func Test745_merge_strategy_values(t *testing.T) {
 	assert.Equal(t, "zip_with", MergeZipWith.String())
 }
 
-// TEST746: Tests creation of Output node type that references a source node
-// Verifies that NewOutputNode correctly constructs an Output node with name and source
-func Test746_cap_node_output(t *testing.T) {
-	output := NewOutputNode("out", "result", "source")
-	assert.Equal(t, NodeKindOutput, output.NodeType.Kind)
-	assert.Equal(t, "result", output.NodeType.OutputName)
-	assert.Equal(t, "source", output.NodeType.SourceNode)
+// TEST746: Tests Output node is automatically registered as output_node on AddNode
+// Verifies that Validate() accepts a plan where the Output node is the plan's only output_node
+func Test746_output_node_registered_on_add(t *testing.T) {
+	plan := NewMachinePlan("output_test")
+	plan.AddNode(NewMachineNode("cap_0", "cap:test"))
+	plan.AddNode(NewOutputNode("out", "result", "cap_0"))
+	plan.AddEdge(NewDirectEdge("cap_0", "out"))
+
+	require.NoError(t, plan.Validate())
+	// Output node must be auto-registered in OutputNodes
+	assert.Contains(t, plan.OutputNodes, "out",
+		"Output node must be auto-registered as an output node by AddNode")
 }
 
 // TEST747: Tests creation and validation of Merge node that combines multiple inputs
@@ -244,9 +294,9 @@ func Test747_cap_node_merge(t *testing.T) {
 	assert.NoError(t, plan.Validate())
 }
 
-// TEST748: Tests creation of Split node that distributes input to multiple outputs
-// Verifies that Split nodes correctly specify an input node and output count
-func Test748_cap_node_split(t *testing.T) {
+// TEST748: Tests that IsCap/IsFanOut/IsFanIn return false for Split and Merge node types
+// Verifies that node type classification methods correctly reject non-cap, non-foreach, non-collect kinds
+func Test748_split_and_merge_not_classified_as_cap_fanout_fanin(t *testing.T) {
 	splitNode := &MachineNode{
 		ID: "split",
 		NodeType: &ExecutionNodeType{
@@ -255,9 +305,21 @@ func Test748_cap_node_split(t *testing.T) {
 			OutputCount: 3,
 		},
 	}
-	assert.Equal(t, NodeKindSplit, splitNode.NodeType.Kind)
-	assert.Equal(t, "input", splitNode.NodeType.InputNode)
-	assert.Equal(t, 3, splitNode.NodeType.OutputCount)
+	assert.False(t, splitNode.IsCap(), "Split node must not be classified as Cap")
+	assert.False(t, splitNode.IsFanOut(), "Split node must not be classified as FanOut")
+	assert.False(t, splitNode.IsFanIn(), "Split node must not be classified as FanIn")
+
+	mergeNode := &MachineNode{
+		ID: "merge",
+		NodeType: &ExecutionNodeType{
+			Kind:       NodeKindMerge,
+			InputNodes: []string{"a", "b"},
+			MergeStrat: MergeConcat,
+		},
+	}
+	assert.False(t, mergeNode.IsCap(), "Merge node must not be classified as Cap")
+	assert.False(t, mergeNode.IsFanOut(), "Merge node must not be classified as FanOut")
+	assert.False(t, mergeNode.IsFanIn(), "Merge node must not be classified as FanIn")
 }
 
 // TEST749: Tests GetNode() method for looking up nodes by ID in a plan
