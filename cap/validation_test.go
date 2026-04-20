@@ -42,6 +42,14 @@ func cliFlagSource(flag string) ArgSource {
 	return ArgSource{CliFlag: &flag}
 }
 
+// Helper to create a Cap with custom URN and given args
+func makeTestCapWithUrnAndArgs(t *testing.T, capUrnStr string, args []CapArg) *Cap {
+	t.Helper()
+	u, err := urn.NewCapUrnFromString(capUrnStr)
+	require.NoError(t, err)
+	return NewCapWithArgs(u, "Test Capability", "test-command", args)
+}
+
 // -------------------------------------------------------------------------
 // Input validation tests (051-052)
 // -------------------------------------------------------------------------
@@ -137,10 +145,13 @@ func Test579_rule2_empty_sources(t *testing.T) {
 
 // TEST580: RULE3 - multiple stdin sources with different URNs rejected
 func Test580_rule3_different_stdin_urns(t *testing.T) {
-	cap := makeTestCapWithArgs(t, []CapArg{
-		NewCapArg(standard.MediaString, true, []ArgSource{stdinSource("media:txt;textable")}),
-		NewCapArg(standard.MediaInteger, true, []ArgSource{stdinSource("media:")}),
-	})
+	cap := makeTestCapWithUrnAndArgs(t,
+		`cap:in="media:txt;textable";op=test-cap;out="media:void";type=test`,
+		[]CapArg{
+			NewCapArg(standard.MediaString, true, []ArgSource{stdinSource("media:txt;textable")}),
+			NewCapArg(standard.MediaInteger, true, []ArgSource{stdinSource("media:")}),
+		},
+	)
 	err := ValidateCapArgs(cap)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "RULE3")
@@ -148,10 +159,13 @@ func Test580_rule3_different_stdin_urns(t *testing.T) {
 
 // TEST581: RULE3 - multiple stdin sources with same URN is OK
 func Test581_rule3_same_stdin_urns_ok(t *testing.T) {
-	cap := makeTestCapWithArgs(t, []CapArg{
-		NewCapArg(standard.MediaString, true, []ArgSource{stdinSource("media:txt;textable")}),
-		NewCapArg(standard.MediaInteger, true, []ArgSource{stdinSource("media:txt;textable")}),
-	})
+	cap := makeTestCapWithUrnAndArgs(t,
+		`cap:in="media:txt;textable";op=test-cap;out="media:void";type=test`,
+		[]CapArg{
+			NewCapArg(standard.MediaString, true, []ArgSource{stdinSource("media:txt;textable")}),
+			NewCapArg(standard.MediaInteger, true, []ArgSource{stdinSource("media:txt;textable")}),
+		},
+	)
 	err := ValidateCapArgs(cap)
 	assert.NoError(t, err, "Same stdin URNs should be allowed: %v", err)
 }
@@ -240,15 +254,18 @@ func Test588_rule10_reserved_cli_flags(t *testing.T) {
 
 // TEST589: valid cap args with mixed sources pass all rules
 func Test589_all_rules_pass(t *testing.T) {
-	cap := makeTestCapWithArgs(t, []CapArg{
-		NewCapArg(standard.MediaString, true, []ArgSource{
-			positionSource(0),
-			stdinSource("media:txt;textable"),
-		}),
-		NewCapArg(standard.MediaInteger, false, []ArgSource{
-			positionSource(1),
-		}),
-	})
+	cap := makeTestCapWithUrnAndArgs(t,
+		`cap:in="media:txt;textable";op=test-cap;out="media:void";type=test`,
+		[]CapArg{
+			NewCapArg(standard.MediaString, true, []ArgSource{
+				positionSource(0),
+				stdinSource("media:txt;textable"),
+			}),
+			NewCapArg(standard.MediaInteger, false, []ArgSource{
+				positionSource(1),
+			}),
+		},
+	)
 	err := ValidateCapArgs(cap)
 	assert.NoError(t, err, "Valid cap args should pass: %v", err)
 }
@@ -261,4 +278,58 @@ func Test590_cli_flag_only_args(t *testing.T) {
 	})
 	err := ValidateCapArgs(cap)
 	assert.NoError(t, err, "CLI-flag-only args should pass: %v", err)
+}
+
+// -------------------------------------------------------------------------
+// RULE11 tests (1294-1297): Stdin source consistency with in= spec
+// -------------------------------------------------------------------------
+
+// TEST1294: RULE11 - void-input cap with stdin source rejected
+func Test1294_rule11_void_input_with_stdin_rejected(t *testing.T) {
+	cap := makeTestCapWithUrnAndArgs(t,
+		`cap:in="media:void";op=test;out="media:json;record;textable"`,
+		[]CapArg{
+			NewCapArg(standard.MediaString, true, []ArgSource{stdinSource("media:txt;textable")}),
+		},
+	)
+	err := ValidateCapArgs(cap)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "RULE11")
+}
+
+// TEST1295: RULE11 - non-void-input cap without stdin source rejected
+func Test1295_rule11_non_void_input_without_stdin_rejected(t *testing.T) {
+	cap := makeTestCapWithUrnAndArgs(t,
+		`cap:in="media:pdf";op=extract;out="media:txt;textable"`,
+		[]CapArg{
+			NewCapArg(standard.MediaString, true, []ArgSource{positionSource(0)}),
+		},
+	)
+	err := ValidateCapArgs(cap)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "RULE11")
+}
+
+// TEST1296: RULE11 - void-input cap with only cli_flag sources passes
+func Test1296_rule11_void_input_cli_flag_only_passes(t *testing.T) {
+	cap := makeTestCapWithUrnAndArgs(t,
+		`cap:in="media:void";op=test;out="media:json;record;textable"`,
+		[]CapArg{
+			NewCapArg(standard.MediaString, true, []ArgSource{cliFlagSource("--query")}),
+		},
+	)
+	err := ValidateCapArgs(cap)
+	assert.NoError(t, err, "Void-input cap with only cli_flag sources should pass: %v", err)
+}
+
+// TEST1297: RULE11 - non-void-input cap with stdin source passes
+func Test1297_rule11_non_void_input_with_stdin_passes(t *testing.T) {
+	cap := makeTestCapWithUrnAndArgs(t,
+		`cap:in="media:pdf";op=extract;out="media:txt;textable"`,
+		[]CapArg{
+			NewCapArg(standard.MediaString, true, []ArgSource{stdinSource("media:pdf")}),
+		},
+	)
+	err := ValidateCapArgs(cap)
+	assert.NoError(t, err, "Non-void-input cap with stdin source should pass: %v", err)
 }

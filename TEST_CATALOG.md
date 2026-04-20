@@ -1,8 +1,8 @@
 # CapDag-Go Test Catalog
 
-**Total Tests:** 951
+**Total Tests:** 955
 
-**Numbered Tests:** 883
+**Numbered Tests:** 887
 
 **Unnumbered Tests:** 68
 
@@ -66,9 +66,9 @@ This catalog lists all tests in the CapDag-Go codebase.
 | test048 | `Test048_matching_semantics_wildcard_direction_matches_anything` | TEST048: Matching semantics - wildcard direction matches anything | urn/cap_urn_test.go:879 |
 | test049 | `Test049_matching_semantics_cross_dimension_independence` | TEST049: Non-overlapping tags — neither direction accepts | urn/cap_urn_test.go:895 |
 | test050 | `Test050_matching_semantics_direction_mismatch` | TEST050: Matching semantics - direction mismatch prevents matching | urn/cap_urn_test.go:912 |
-| test051 | `Test051_input_validation_success` | TEST051: Test input validation succeeds with valid positional argument | cap/validation_test.go:50 |
-| test052 | `Test052_input_validation_missing_required` | TEST052: Test input validation fails with MissingRequiredArgument when required arg missing | cap/validation_test.go:67 |
-| test053 | `Test053_input_validation_wrong_type` | TEST053: Test input validation fails with InvalidArgumentType when wrong type provided | cap/validation_test.go:85 |
+| test051 | `Test051_input_validation_success` | TEST051: Test input validation succeeds with valid positional argument | cap/validation_test.go:58 |
+| test052 | `Test052_input_validation_missing_required` | TEST052: Test input validation fails with MissingRequiredArgument when required arg missing | cap/validation_test.go:75 |
+| test053 | `Test053_input_validation_wrong_type` | TEST053: Test input validation fails with InvalidArgumentType when wrong type provided | cap/validation_test.go:93 |
 | test054 | `Test054_xv5_inline_spec_redefinition_detected` | TEST054: XV5 - Test inline media spec redefinition of existing registry spec is detected and rejected | cap/schema_validation_test.go:702 |
 | test055 | `Test055_xv5_new_inline_spec_allowed` | TEST055: XV5 - Test new inline media spec (not in registry) is allowed | cap/schema_validation_test.go:724 |
 | test056 | `Test056_xv5_empty_media_specs_allowed` | TEST056: XV5 - Test empty media_specs (no inline specs) passes XV5 validation | cap/schema_validation_test.go:745 |
@@ -378,19 +378,19 @@ This catalog lists all tests in the CapDag-Go codebase.
 | test424 | `Test424_concurrent_requests_same_cartridge` | TEST424: Concurrent requests to the same cartridge are handled independently | bifaci/host_multi_test.go:745 |
 | test425 | `Test425_find_cartridge_for_cap_unknown` | TEST425: find_cartridge_for_cap returns None for unregistered cap | bifaci/host_multi_test.go:850 |
 | test426 | `Test426_relay_switch_single_master_req_response` | TEST426: Single master REQ/response routing | bifaci/relay_switch_test.go:10 |
-| test427 | `Test427_relay_switch_multi_master_cap_routing` | TEST427: Multi-master cap routing | bifaci/relay_switch_test.go:76 |
-| test428 | `Test428_relay_switch_unknown_cap_returns_error` | TEST428: Unknown cap returns error | bifaci/relay_switch_test.go:164 |
-| test429 | `Test429_relay_switch_find_master_for_cap` | TEST429: Cap routing logic (find_master_for_cap) | bifaci/relay_switch_test.go:209 |
-| test430 | `Test430_relay_switch_tie_breaking` | TEST430: Tie-breaking (same cap on multiple masters - first match wins, routing is consistent) | bifaci/relay_switch_test.go:282 |
-| test431 | `Test431_relay_switch_continuation_frame_routing` | TEST431: Continuation frame routing (CHUNK, END follow REQ) | bifaci/relay_switch_test.go:353 |
-| test432 | `Test432_relay_switch_empty_masters_list_error` | TEST432: Empty masters list creates empty switch, add_master works | bifaci/relay_switch_test.go:430 |
-| test433 | `Test433_relay_switch_capability_aggregation_deduplicates` | TEST433: Capability aggregation deduplicates caps | bifaci/relay_switch_test.go:445 |
-| test434 | `Test434_relay_switch_limits_negotiation_minimum` | TEST434: Limits negotiation takes minimum | bifaci/relay_switch_test.go:503 |
-| test435 | `Test435_relay_switch_urn_matching` | TEST435: URN matching (exact vs accepts()) | bifaci/relay_switch_test.go:552 |
+| test427 | `Test427_relay_switch_multi_master_cap_routing` | TEST427: Multi-master cap routing | bifaci/relay_switch_test.go:77 |
+| test428 | `Test428_relay_switch_unknown_cap_returns_error` | TEST428: Unknown cap returns error | bifaci/relay_switch_test.go:167 |
+| test429 | `Test429_relay_switch_find_master_for_cap` | TEST429: Cap routing logic (find_master_for_cap) | bifaci/relay_switch_test.go:213 |
+| test430 | `Test430_relay_switch_tie_breaking` | TEST430: Tie-breaking (same cap on multiple masters - first match wins, routing is consistent) | bifaci/relay_switch_test.go:288 |
+| test431 | `Test431_relay_switch_continuation_frame_routing` | TEST431: Continuation frame routing (CHUNK, END follow REQ) | bifaci/relay_switch_test.go:359 |
+| test432 | `Test432_relay_switch_empty_masters_list_error` | TEST432: Empty masters list creates empty switch, add_master works | bifaci/relay_switch_test.go:437 |
+| test433 | `Test433_relay_switch_capability_aggregation_deduplicates` | TEST433: Capability aggregation deduplicates caps | bifaci/relay_switch_test.go:452 |
+| test434 | `Test434_relay_switch_limits_negotiation_minimum` | TEST434: Limits negotiation takes minimum | bifaci/relay_switch_test.go:512 |
+| test435 | `Test435_relay_switch_urn_matching` | TEST435: URN matching (exact vs accepts()) | bifaci/relay_switch_test.go:561 |
 | test436 | `Test436_compute_checksum` | TEST436: Verify FNV-1a checksum function produces consistent results | bifaci/frame_test.go:862 |
-| test437 | `Test437_preferred_cap_routes_to_generic` | TEST437: find_master_for_cap with preferred_cap routes to generic handler. Generic provider (in=media:) CAN dispatch specific request (in="media:pdf"). Preference routes to preferred among dispatchable candidates via IsEquivalent (Accepts-based). | bifaci/relay_switch_test.go:615 |
-| test438 | `Test438_preferred_cap_falls_back_when_not_comparable` | TEST438: find_master_for_cap with preference falls back to closest-specificity when preferred cap is not in the comparable set. | bifaci/relay_switch_test.go:680 |
-| test439 | `Test439_generic_provider_can_dispatch_specific_request` | TEST439: Generic provider CAN dispatch specific request. With is_dispatchable: generic provider (in=media:) can handle specific request (in="media:pdf") because media: accepts any input type. | bifaci/relay_switch_test.go:720 |
+| test437 | `Test437_preferred_cap_routes_to_generic` | TEST437: find_master_for_cap with preferred_cap routes to generic handler. Generic provider (in=media:) CAN dispatch specific request (in="media:pdf"). Preference routes to preferred among dispatchable candidates via IsEquivalent (Accepts-based). | bifaci/relay_switch_test.go:625 |
+| test438 | `Test438_preferred_cap_falls_back_when_not_comparable` | TEST438: find_master_for_cap with preference falls back to closest-specificity when preferred cap is not in the comparable set. | bifaci/relay_switch_test.go:690 |
+| test439 | `Test439_generic_provider_can_dispatch_specific_request` | TEST439: Generic provider CAN dispatch specific request. With is_dispatchable: generic provider (in=media:) can handle specific request (in="media:pdf") because media: accepts any input type. | bifaci/relay_switch_test.go:730 |
 | test440 | `Test440_chunk_index_checksum_roundtrip` | TEST440: CHUNK frame with chunk_index and checksum roundtrips through encode/decode | bifaci/io_test.go:951 |
 | test441 | `Test441_stream_end_chunk_count_roundtrip` | TEST441: STREAM_END frame with chunk_count roundtrips through encode/decode | bifaci/io_test.go:992 |
 | test442 | `Test442_seq_assigner_monotonic_same_rid` | TEST442: SeqAssigner assigns seq 0,1,2,3 for consecutive frames with same RID | bifaci/frame_test.go:879 |
@@ -489,19 +489,19 @@ This catalog lists all tests in the CapDag-Go codebase.
 | test575 | `Test575_cap_block_get_registry` | TEST575: CapBlock::get_registry returns Arc clone by name | cap_matrix_test.go:1009 |
 | test576 | `Test576_cap_block_get_registry_names` | TEST576: CapBlock::get_registry_names returns names in insertion order | cap_matrix_test.go:1029 |
 | test577 | `Test577_cap_graph_input_output_specs` | TEST577: CapGraph::get_input_specs and get_output_specs return correct sets | cap_matrix_test.go:1048 |
-| test578 | `Test578_rule1_duplicate_media_urns` | TEST578: RULE1 - duplicate media_urns rejected | cap/validation_test.go:118 |
-| test579 | `Test579_rule2_empty_sources` | TEST579: RULE2 - empty sources rejected | cap/validation_test.go:129 |
-| test580 | `Test580_rule3_different_stdin_urns` | TEST580: RULE3 - multiple stdin sources with different URNs rejected | cap/validation_test.go:139 |
-| test581 | `Test581_rule3_same_stdin_urns_ok` | TEST581: RULE3 - multiple stdin sources with same URN is OK | cap/validation_test.go:150 |
-| test582 | `Test582_rule4_duplicate_source_type` | TEST582: RULE4 - duplicate source type in single arg rejected | cap/validation_test.go:160 |
-| test583 | `Test583_rule5_duplicate_position` | TEST583: RULE5 - duplicate position across args rejected | cap/validation_test.go:173 |
-| test584 | `Test584_rule6_position_gap` | TEST584: RULE6 - position gap rejected (0, 2 without 1) | cap/validation_test.go:184 |
-| test585 | `Test585_rule6_sequential_ok` | TEST585: RULE6 - sequential positions (0, 1, 2) pass | cap/validation_test.go:195 |
-| test586 | `Test586_rule7_position_and_cli_flag` | TEST586: RULE7 - arg with both position and cli_flag rejected | cap/validation_test.go:205 |
-| test587 | `Test587_rule9_duplicate_cli_flag` | TEST587: RULE9 - duplicate cli_flag across args rejected | cap/validation_test.go:218 |
-| test588 | `Test588_rule10_reserved_cli_flags` | TEST588: RULE10 - reserved cli_flags rejected | cap/validation_test.go:229 |
-| test589 | `Test589_all_rules_pass` | TEST589: valid cap args with mixed sources pass all rules | cap/validation_test.go:242 |
-| test590 | `Test590_cli_flag_only_args` | TEST590: validate_cap_args accepts cap with only cli_flag sources (no positions) | cap/validation_test.go:257 |
+| test578 | `Test578_rule1_duplicate_media_urns` | TEST578: RULE1 - duplicate media_urns rejected | cap/validation_test.go:126 |
+| test579 | `Test579_rule2_empty_sources` | TEST579: RULE2 - empty sources rejected | cap/validation_test.go:137 |
+| test580 | `Test580_rule3_different_stdin_urns` | TEST580: RULE3 - multiple stdin sources with different URNs rejected | cap/validation_test.go:147 |
+| test581 | `Test581_rule3_same_stdin_urns_ok` | TEST581: RULE3 - multiple stdin sources with same URN is OK | cap/validation_test.go:161 |
+| test582 | `Test582_rule4_duplicate_source_type` | TEST582: RULE4 - duplicate source type in single arg rejected | cap/validation_test.go:174 |
+| test583 | `Test583_rule5_duplicate_position` | TEST583: RULE5 - duplicate position across args rejected | cap/validation_test.go:187 |
+| test584 | `Test584_rule6_position_gap` | TEST584: RULE6 - position gap rejected (0, 2 without 1) | cap/validation_test.go:198 |
+| test585 | `Test585_rule6_sequential_ok` | TEST585: RULE6 - sequential positions (0, 1, 2) pass | cap/validation_test.go:209 |
+| test586 | `Test586_rule7_position_and_cli_flag` | TEST586: RULE7 - arg with both position and cli_flag rejected | cap/validation_test.go:219 |
+| test587 | `Test587_rule9_duplicate_cli_flag` | TEST587: RULE9 - duplicate cli_flag across args rejected | cap/validation_test.go:232 |
+| test588 | `Test588_rule10_reserved_cli_flags` | TEST588: RULE10 - reserved cli_flags rejected | cap/validation_test.go:243 |
+| test589 | `Test589_all_rules_pass` | TEST589: valid cap args with mixed sources pass all rules | cap/validation_test.go:256 |
+| test590 | `Test590_cli_flag_only_args` | TEST590: validate_cap_args accepts cap with only cli_flag sources (no positions) | cap/validation_test.go:274 |
 | test591 | `Test591_is_more_specific_than` | TEST591: is_more_specific_than returns true when self has more tags for same request | cap/definition_test.go:237 |
 | test592 | `Test592_remove_metadata` | TEST592: remove_metadata adds then removes metadata correctly | cap/definition_test.go:262 |
 | test593 | `Test593_registered_by_lifecycle` | TEST593: registered_by lifecycle — set, get, clear | cap/definition_test.go:284 |
@@ -899,6 +899,10 @@ This catalog lists all tests in the CapDag-Go codebase.
 | test1291 | `Test1291_iddfs_roundtrip_with_sequence` | TEST1291: IDDFS round-trip paths are also found with is_sequence=true. | planner/live_cap_graph_test.go:518 |
 | test1292 | `Test1292_bfs_iddfs_roundtrip_consistency` | TEST1292: BFS and IDDFS agree that round-trip targets exist. If BFS says target X is reachable from source X, IDDFS must find at least one path. | planner/live_cap_graph_test.go:548 |
 | test1293 | `Test1293_roundtrip_requires_cap_steps` | TEST1293: IDDFS round-trip does not produce paths with 0 cap steps. No round-trip should exist when there's no return edge. | planner/live_cap_graph_test.go:590 |
+| test1294 | `Test1294_rule11_void_input_with_stdin_rejected` | TEST1294: RULE11 - void-input cap with stdin source rejected | cap/validation_test.go:288 |
+| test1295 | `Test1295_rule11_non_void_input_without_stdin_rejected` | TEST1295: RULE11 - non-void-input cap without stdin source rejected | cap/validation_test.go:301 |
+| test1296 | `Test1296_rule11_void_input_cli_flag_only_passes` | TEST1296: RULE11 - void-input cap with only cli_flag sources passes | cap/validation_test.go:314 |
+| test1297 | `Test1297_rule11_non_void_input_with_stdin_passes` | TEST1297: RULE11 - non-void-input cap with stdin source passes | cap/validation_test.go:326 |
 | | | | |
 | unnumbered | `TestArgumentsMultiple` | Mirror-specific coverage: Test multiple arguments are correctly serialized in CBOR payload | bifaci/integration_test.go:1592 |
 | unnumbered | `TestArgumentsRoundtrip` | Mirror-specific coverage: Test host call with unified CBOR arguments sends correct content_type and payload | bifaci/integration_test.go:1232 |
@@ -1046,8 +1050,8 @@ The following tests are cataloged but do not currently participate in numeric te
 ---
 
 *Generated from CapDag-Go source tree*
-*Total tests: 951*
-*Total numbered tests: 883*
+*Total tests: 955*
+*Total numbered tests: 887*
 *Total unnumbered tests: 68*
 *Total numbered tests missing descriptions: 0*
 *Total numbering mismatches: 0*

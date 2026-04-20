@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	"github.com/machinefabric/capdag-go/media"
+	"github.com/machinefabric/capdag-go/urn"
 )
 
 // ValidationError represents validation errors with descriptive failure information
@@ -834,6 +835,7 @@ var ReservedCliFlags = []string{"manifest", "--help", "--version", "-v", "-h"}
 //	RULE7: No arg may have both position and cli_flag
 //	RULE9: No two args may have same cli_flag
 //	RULE10: Reserved cli_flags rejected
+//	RULE11: Stdin source consistency with in= spec (void input must have no stdin; non-void must have at least one)
 func ValidateCapArgs(cap *Cap) error {
 	capUrn := cap.UrnString()
 	args := cap.GetArgs()
@@ -937,6 +939,32 @@ func ValidateCapArgs(cap *Cap) error {
 					Type:    "InvalidCapSchema",
 					CapUrn:  capUrn,
 					Message: fmt.Sprintf("RULE3: Multiple args have different stdin media_urns: '%s' vs '%s'", first, su),
+				}
+			}
+		}
+	}
+
+	// RULE11: Stdin source consistency with in= spec
+	if cap.Urn != nil {
+		inMediaUrn, err := cap.Urn.InMediaUrn()
+		if err == nil {
+			voidUrn, voidErr := urn.NewMediaUrnFromString(media.MediaVoid)
+			if voidErr == nil {
+				isVoid := inMediaUrn.IsEquivalent(voidUrn)
+				hasStdin := len(stdinUrns) > 0
+				if isVoid && hasStdin {
+					return &ValidationError{
+						Type:    "InvalidCapSchema",
+						CapUrn:  capUrn,
+						Message: "RULE11: Cap has in=\"media:void\" but args have stdin sources",
+					}
+				}
+				if !isVoid && !hasStdin {
+					return &ValidationError{
+						Type:    "InvalidCapSchema",
+						CapUrn:  capUrn,
+						Message: fmt.Sprintf("RULE11: Cap has in=\"%s\" but no args have stdin sources", cap.Urn.InSpec()),
+					}
 				}
 			}
 		}
