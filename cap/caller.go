@@ -1,14 +1,17 @@
-// Package capdag provides cap-based execution with strict input validation
+// Package cap defines argument/result/stdin-source data types used by
+// in-process cap handlers.
+//
+// Previously this file also housed a CapCaller + CapSet interface for an
+// in-process direct-dispatch execution model. That stack is gone: cap
+// invocation now goes through the bifaci relay (RelaySwitch.ExecuteCap) for
+// out-of-process cartridges and through in-process frame handlers for
+// engine-built providers. The remaining types below are the argument/return
+// shape both paths share.
 package cap
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
 	"unicode/utf8"
-
-	"github.com/machinefabric/capdag-go/media"
-	"github.com/machinefabric/capdag-go/urn"
 )
 
 // StdinSourceKind identifies the type of stdin source
@@ -108,13 +111,6 @@ func (a *CapArgumentValue) String() string {
 	return fmt.Sprintf("CapArgumentValue{MediaUrn: %q, Value: %d bytes}", a.MediaUrn, len(a.Value))
 }
 
-// CapCaller executes caps via host service with strict validation
-type CapCaller struct {
-	cap           string
-	capSet        CapSet
-	capDefinition *Cap
-}
-
 // CapResultKind identifies the variant of a CapResult.
 type CapResultKind int
 
@@ -151,167 +147,4 @@ func NewCapResultList(cborSequence []byte) CapResult {
 // NewCapResultEmpty creates a CapResult for void caps.
 func NewCapResultEmpty() CapResult {
 	return CapResult{Kind: CapResultKindEmpty}
-}
-
-// CapSet defines the interface for cap host communication
-type CapSet interface {
-	ExecuteCap(
-		ctx context.Context,
-		capUrn string,
-		arguments []CapArgumentValue,
-	) (CapResult, error)
-}
-
-// NewCapCaller creates a new cap caller with validation
-func NewCapCaller(cap string, capSet CapSet, capDefinition *Cap) *CapCaller {
-	return &CapCaller{
-		cap:           cap,
-		capSet:        capSet,
-		capDefinition: capDefinition,
-	}
-}
-
-// Call executes the cap with arguments identified by media_urn.
-// Validates arguments against cap definition before execution.
-func (cc *CapCaller) Call(
-	ctx context.Context,
-	arguments []CapArgumentValue,
-	registry *media.MediaUrnRegistry,
-) (*ResponseWrapper, error) {
-	// Validate arguments against cap definition
-	if err := cc.validateArguments(arguments); err != nil {
-		return nil, fmt.Errorf("argument validation failed for %s: %w", cc.cap, err)
-	}
-
-	// Execute via cap host method
-	result, err := cc.capSet.ExecuteCap(
-		ctx,
-		cc.cap,
-		arguments,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("cap execution failed: %w", err)
-	}
-
-	// Resolve output spec to determine response type - fail hard if resolution fails
-	outputSpec, err := cc.resolveOutputSpec(registry)
-	if err != nil {
-		return nil, err
-	}
-
-	// Determine response type based on CapResult variant
-	var response *ResponseWrapper
-	switch result.Kind {
-	case CapResultKindScalar:
-		if outputSpec.IsBinary() {
-			response = NewResponseWrapperFromBinary(result.Scalar)
-		} else if outputSpec.IsStructured() {
-			response = NewResponseWrapperFromJSON(result.Scalar)
-		} else {
-			response = NewResponseWrapperFromText(result.Scalar)
-		}
-	case CapResultKindList:
-		// List output is a CBOR sequence — stored as raw binary
-		response = NewResponseWrapperFromBinary(result.List)
-	case CapResultKindEmpty:
-		return nil, fmt.Errorf("cap returned no output")
-	default:
-		return nil, fmt.Errorf("cap returned unknown result kind: %d", result.Kind)
-	}
-
-	// Validate output against cap definition
-	if err := cc.validateOutput(response, registry); err != nil {
-		return nil, fmt.Errorf("output validation failed for %s: %w", cc.cap, err)
-	}
-
-	return response, nil
-}
-
-// resolveOutputSpec resolves the output media URN from the cap URN's out spec.
-// This method fails hard if:
-// - The cap URN is invalid
-// - The media URN cannot be resolved (not in media_specs)
-func (cc *CapCaller) resolveOutputSpec(registry *media.MediaUrnRegistry) (*media.ResolvedMediaSpec, error) {
-	capUrn, err := urn.NewCapUrnFromString(cc.cap)
-	if err != nil {
-		return nil, fmt.Errorf("invalid cap URN '%s': %w", cc.cap, err)
-	}
-
-	// Get the output media URN - now always present since it's required in parsing
-	mediaUrn := capUrn.OutSpec()
-
-	// Resolve the media URN using the cap definition's media_specs
-	resolved, err := media.ResolveMediaUrn(mediaUrn, cc.capDefinition.GetMediaSpecs(), registry)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve output media URN '%s' for cap '%s': %w - ensure media_specs contains this media URN", mediaUrn, cc.cap, err)
-	}
-	return resolved, nil
-}
-
-// validateArguments validates arguments against cap definition.
-// Checks that all required arguments are provided (by media_urn) and rejects unknown arguments.
-func (cc *CapCaller) validateArguments(arguments []CapArgumentValue) error {
-	argDefs := cc.capDefinition.GetArgs()
-
-	// Build set of provided media_urns
-	providedUrns := make(map[string]bool)
-	for _, arg := range arguments {
-		providedUrns[arg.MediaUrn] = true
-	}
-
-	// Check all required arguments are provided
-	for _, argDef := range argDefs {
-		if argDef.Required && !providedUrns[argDef.MediaUrn] {
-			return fmt.Errorf("missing required argument: %s", argDef.MediaUrn)
-		}
-	}
-
-	// Check for unknown arguments
-	knownUrns := make(map[string]bool)
-	for _, argDef := range argDefs {
-		knownUrns[argDef.MediaUrn] = true
-	}
-
-	for _, arg := range arguments {
-		if !knownUrns[arg.MediaUrn] {
-			return fmt.Errorf("unknown argument media_urn: %s (cap %s accepts: %v)",
-				arg.MediaUrn, cc.cap, knownUrns)
-		}
-	}
-
-	return nil
-}
-
-// validateOutput validates output against cap definition
-func (cc *CapCaller) validateOutput(response *ResponseWrapper, registry *media.MediaUrnRegistry) error {
-	// Resolve output spec - fail hard if resolution fails
-	outputSpec, err := cc.resolveOutputSpec(registry)
-	if err != nil {
-		return err
-	}
-
-	// For binary outputs, check type compatibility
-	if response.IsBinary() {
-		// Binary validation already done in Call() before creating the response
-		return nil
-	}
-
-	// For text/JSON outputs, parse and validate
-	text, err := response.AsString()
-	if err != nil {
-		return fmt.Errorf("failed to convert output to string: %w", err)
-	}
-
-	var outputValue interface{}
-	// For structured outputs (map/list), verify it's valid JSON
-	if outputSpec.IsStructured() {
-		if err := json.Unmarshal([]byte(text), &outputValue); err != nil {
-			return fmt.Errorf("output is not valid JSON for cap %s: %w", cc.cap, err)
-		}
-	} else {
-		outputValue = text
-	}
-
-	outputValidator := NewOutputValidator()
-	return outputValidator.ValidateOutput(cc.capDefinition, outputValue, registry)
 }

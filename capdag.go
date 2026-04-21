@@ -15,7 +15,6 @@ import (
 // URN types and functions
 type CapUrn = urn.CapUrn
 type MediaUrn = urn.MediaUrn
-// CapMatrix is defined in cap_matrix.go - don't re-export
 
 var NewCapUrnFromString = urn.NewCapUrnFromString
 var NewCapUrnBuilder = urn.NewCapUrnBuilder
@@ -28,8 +27,6 @@ type ArgSource = cap.ArgSource
 type CapArgumentValue = cap.CapArgumentValue
 type CapResult = cap.CapResult
 type CapResultKind = cap.CapResultKind
-type CapSet = cap.CapSet
-type CapCaller = cap.CapCaller
 
 // Media types
 type MediaSpecDef = media.MediaSpecDef
