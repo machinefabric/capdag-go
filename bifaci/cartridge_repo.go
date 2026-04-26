@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/machinefabric/capdag-go/urn"
 )
 
 // CartridgeRepoError represents errors from cartridge repository operations
@@ -43,11 +46,53 @@ func NewNetworkBlockedError(msg string) *CartridgeRepoError {
 	return &CartridgeRepoError{Kind: "NetworkBlocked", Message: msg}
 }
 
-// CartridgeCapSummary represents a cartridge's capability summary
-type CartridgeCapSummary struct {
-	Urn         string `json:"urn"`
-	Title       string `json:"title"`
-	Description string `json:"description,omitempty"`
+// RegistryArgSource is one source for a registry cap argument. Exactly
+// one of Stdin / Position / CliFlag is populated by the producer.
+type RegistryArgSource struct {
+	Stdin    *string `json:"stdin,omitempty"`
+	Position *int64  `json:"position,omitempty"`
+	CliFlag  *string `json:"cli_flag,omitempty"`
+}
+
+// RegistryCapArg is one argument descriptor on a registry cap.
+type RegistryCapArg struct {
+	MediaUrn       string              `json:"media_urn"`
+	Required       bool                `json:"required"`
+	IsSequence     bool                `json:"is_sequence,omitempty"`
+	Sources        []RegistryArgSource `json:"sources,omitempty"`
+	ArgDescription *string             `json:"arg_description,omitempty"`
+	// DefaultValue is whatever JSON the registry emits for the default
+	// (string, number, bool, object). json.RawMessage preserves it
+	// verbatim so producers and consumers can round-trip without losing
+	// type information.
+	DefaultValue json.RawMessage `json:"default_value,omitempty"`
+}
+
+// RegistryCapOutput is the output descriptor on a registry cap.
+type RegistryCapOutput struct {
+	MediaUrn          string  `json:"media_urn"`
+	IsSequence        bool    `json:"is_sequence,omitempty"`
+	OutputDescription *string `json:"output_description,omitempty"`
+}
+
+// RegistryCap is a single capability advertised by a cartridge in the
+// registry. Urn / Title / Command are always present; the other three
+// fields appear only when the cartridge documents them.
+type RegistryCap struct {
+	Urn            string             `json:"urn"`
+	Title          string             `json:"title"`
+	Command        string             `json:"command"`
+	CapDescription *string            `json:"cap_description,omitempty"`
+	Args           []RegistryCapArg   `json:"args,omitempty"`
+	Output         *RegistryCapOutput `json:"output,omitempty"`
+}
+
+// RegistryCapGroup bundles caps + adapter URNs as one atomic
+// registration unit.
+type RegistryCapGroup struct {
+	Name        string        `json:"name"`
+	Caps        []RegistryCap `json:"caps,omitempty"`
+	AdapterUrns []string      `json:"adapter_urns,omitempty"`
 }
 
 // CartridgeDistributionInfo represents package distribution data
@@ -72,7 +117,9 @@ type CartridgeVersionData struct {
 	Builds        []CartridgeBuild `json:"builds"`
 }
 
-// CartridgeRegistryEntry represents a cartridge entry in the v4.0 registry (nested format)
+// CartridgeRegistryEntry represents a cartridge entry in the v4.0
+// registry (nested format). Each entry's capability surface lives in
+// CapGroups; there is no flat caps list.
 type CartridgeRegistryEntry struct {
 	Name          string                          `json:"name"`
 	Description   string                          `json:"description"`
@@ -80,7 +127,7 @@ type CartridgeRegistryEntry struct {
 	PageUrl       string                          `json:"pageUrl,omitempty"`
 	TeamId        string                          `json:"teamId"`
 	MinAppVersion string                          `json:"minAppVersion,omitempty"`
-	Caps          []CartridgeCapSummary           `json:"caps,omitempty"`
+	CapGroups     []RegistryCapGroup              `json:"cap_groups,omitempty"`
 	Categories    []string                        `json:"categories,omitempty"`
 	Tags          []string                        `json:"tags,omitempty"`
 	LatestVersion string                          `json:"latestVersion"`
@@ -94,23 +141,38 @@ type CartridgeRegistry struct {
 	Cartridges    map[string]CartridgeRegistryEntry `json:"cartridges"`
 }
 
-// CartridgeInfo represents a cartridge in the flat API response format
+// CartridgeInfo represents a cartridge in the flat API response format.
+//
+// The cartridge's capability surface lives in CapGroups; there is no
+// flat caps list. The Homepage field has been removed (it was never on
+// the wire). IterCaps walks every cap across every group in declaration
+// order.
 type CartridgeInfo struct {
 	Id                string                          `json:"id"`
 	Name              string                          `json:"name"`
 	Version           string                          `json:"version"`
 	Description       string                          `json:"description"`
 	Author            string                          `json:"author"`
-	Homepage          string                          `json:"homepage,omitempty"`
 	TeamId            string                          `json:"teamId"`
 	SignedAt          string                          `json:"signedAt"`
 	MinAppVersion     string                          `json:"minAppVersion,omitempty"`
 	PageUrl           string                          `json:"pageUrl,omitempty"`
 	Categories        []string                        `json:"categories,omitempty"`
 	Tags              []string                        `json:"tags,omitempty"`
-	Caps              []CartridgeCapSummary           `json:"caps"`
+	CapGroups         []RegistryCapGroup              `json:"cap_groups"`
 	Versions          map[string]CartridgeVersionData `json:"versions"`
 	AvailableVersions []string                        `json:"availableVersions,omitempty"`
+}
+
+// IterCaps yields every cap across every cap group in declaration order.
+// Use this whenever you need a flat view of the cartridge's caps now
+// that the on-wire shape groups them.
+func (p *CartridgeInfo) IterCaps() []RegistryCap {
+	var out []RegistryCap
+	for _, g := range p.CapGroups {
+		out = append(out, g.Caps...)
+	}
+	return out
 }
 
 // IsSigned checks if cartridge is signed (has team_id and signed_at)
@@ -277,9 +339,9 @@ func (s *CartridgeRepoServer) TransformToCartridgeArray() ([]CartridgeInfo, erro
 			minAppVersion = entry.MinAppVersion
 		}
 
-		caps := entry.Caps
-		if caps == nil {
-			caps = []CartridgeCapSummary{}
+		capGroups := entry.CapGroups
+		if capGroups == nil {
+			capGroups = []RegistryCapGroup{}
 		}
 
 		categories := entry.Categories
@@ -298,14 +360,13 @@ func (s *CartridgeRepoServer) TransformToCartridgeArray() ([]CartridgeInfo, erro
 			Version:           latestVersion,
 			Description:       entry.Description,
 			Author:            entry.Author,
-			Homepage:          "",
 			TeamId:            entry.TeamId,
 			SignedAt:          versionData.ReleaseDate,
 			MinAppVersion:     minAppVersion,
 			PageUrl:           entry.PageUrl,
 			Categories:        categories,
 			Tags:              tags,
-			Caps:              caps,
+			CapGroups:         capGroups,
 			Versions:          entry.Versions,
 			AvailableVersions: availableVersions,
 		})
@@ -337,7 +398,12 @@ func (s *CartridgeRepoServer) GetCartridgeById(id string) (*CartridgeInfo, error
 	return nil, nil
 }
 
-// SearchCartridges searches cartridges by query
+// SearchCartridges searches cartridges by free-text query.
+//
+// Matches against cartridge name, description, tags, and cap titles. Cap
+// URN strings are NOT substring-matched: a cap URN is a tagged
+// identifier and substring matching against it is a category error. Use
+// GetCartridgesByCap to look up cartridges that provide a specific cap.
 func (s *CartridgeRepoServer) SearchCartridges(query string) ([]CartridgeInfo, error) {
 	all, err := s.TransformToCartridgeArray()
 	if err != nil {
@@ -364,9 +430,8 @@ func (s *CartridgeRepoServer) SearchCartridges(query string) ([]CartridgeInfo, e
 			results = append(results, c)
 			continue
 		}
-		for _, cap := range c.Caps {
-			if strings.Contains(strings.ToLower(cap.Urn), lowerQuery) ||
-				strings.Contains(strings.ToLower(cap.Title), lowerQuery) {
+		for _, cap := range c.IterCaps() {
+			if strings.Contains(strings.ToLower(cap.Title), lowerQuery) {
 				found = true
 				break
 			}
@@ -398,8 +463,20 @@ func (s *CartridgeRepoServer) GetCartridgesByCategory(category string) ([]Cartri
 	return results, nil
 }
 
-// GetCartridgesByCap returns cartridges that provide a specific cap
+// GetCartridgesByCap returns cartridges that provide a specific cap.
+//
+// `capUrn` is parsed via NewCapUrnFromString; each candidate cartridge
+// cap is parsed too and matched via IsEquivalent so caps declared in
+// any tag order resolve. A malformed input URN is a ParseError — there
+// is no fallback that compares the raw strings.
 func (s *CartridgeRepoServer) GetCartridgesByCap(capUrn string) ([]CartridgeInfo, error) {
+	requested, err := urn.NewCapUrnFromString(capUrn)
+	if err != nil {
+		return nil, NewParseError(fmt.Sprintf(
+			"GetCartridgesByCap: invalid cap URN %q: %v", capUrn, err,
+		))
+	}
+
 	all, err := s.TransformToCartridgeArray()
 	if err != nil {
 		return nil, err
@@ -407,8 +484,12 @@ func (s *CartridgeRepoServer) GetCartridgesByCap(capUrn string) ([]CartridgeInfo
 
 	results := make([]CartridgeInfo, 0)
 	for _, c := range all {
-		for _, cap := range c.Caps {
-			if cap.Urn == capUrn {
+		for _, cap := range c.IterCaps() {
+			parsed, perr := urn.NewCapUrnFromString(cap.Urn)
+			if perr != nil {
+				continue
+			}
+			if parsed.IsEquivalent(requested) {
 				results = append(results, c)
 				break
 			}
@@ -481,15 +562,29 @@ func (r *CartridgeRepo) fetchRegistry(repoUrl string) (*CartridgeRegistryRespons
 	return &registry, nil
 }
 
-// updateCache updates cache from a registry response
-func (r *CartridgeRepo) updateCache(repoUrl string, registry *CartridgeRegistryResponse) {
+// updateCache updates cache from a registry response.
+//
+// The cap-to-cartridges index keys on the *normalized* tagged-URN form
+// of each cap URN (parse via NewCapUrnFromString, then take String()).
+// Two URNs that are textually different but canonically identical (e.g.
+// tag-order variants) collapse into the same bucket. A cap URN that
+// fails to parse is a registry corruption: the error is propagated to
+// the caller, which logs and moves on to the next repo.
+func (r *CartridgeRepo) updateCache(repoUrl string, registry *CartridgeRegistryResponse) error {
 	cartridges := make(map[string]CartridgeInfo)
 	capToCartridges := make(map[string][]string)
 
 	for _, cartridgeInfo := range registry.Cartridges {
 		cartridgeId := cartridgeInfo.Id
-		for _, cap := range cartridgeInfo.Caps {
-			capToCartridges[cap.Urn] = append(capToCartridges[cap.Urn], cartridgeId)
+		for _, cap := range cartridgeInfo.IterCaps() {
+			parsed, err := urn.NewCapUrnFromString(cap.Urn)
+			if err != nil {
+				return NewParseError(fmt.Sprintf(
+					"cartridge %s: invalid cap URN %q: %v", cartridgeId, cap.Urn, err,
+				))
+			}
+			normalized := parsed.String()
+			capToCartridges[normalized] = append(capToCartridges[normalized], cartridgeId)
 		}
 		cartridges[cartridgeId] = cartridgeInfo
 	}
@@ -502,17 +597,25 @@ func (r *CartridgeRepo) updateCache(repoUrl string, registry *CartridgeRegistryR
 		repoUrl:         repoUrl,
 	}
 	r.mu.Unlock()
+	return nil
 }
 
-// SyncRepos syncs cartridge data from the given repository URLs
+// SyncRepos syncs cartridge data from the given repository URLs.
+//
+// A fetch error or a malformed registry response moves on to the next
+// repo: a single bad repo must not stall the others. updateCache
+// returns an error rather than swallowing malformed cap URNs, so
+// indexing failures are surfaced to stderr where they are visible.
 func (r *CartridgeRepo) SyncRepos(repoUrls []string) {
 	for _, repoUrl := range repoUrls {
 		registry, err := r.fetchRegistry(repoUrl)
 		if err != nil {
-			// Log and continue with other repos on error
+			fmt.Fprintf(os.Stderr, "cartridge repo sync %s: %v\n", repoUrl, err)
 			continue
 		}
-		r.updateCache(repoUrl, registry)
+		if err := r.updateCache(repoUrl, registry); err != nil {
+			fmt.Fprintf(os.Stderr, "cartridge repo index %s: %v\n", repoUrl, err)
+		}
 	}
 }
 
@@ -521,15 +624,28 @@ func (r *CartridgeRepo) isCacheStale(cache *CartridgeRepoCache) bool {
 	return time.Since(cache.lastUpdated) > r.cacheTTL
 }
 
-// GetSuggestionsForCap gets cartridge suggestions for a cap URN
+// GetSuggestionsForCap gets cartridge suggestions for a cap URN.
+//
+// `capUrn` is parsed via NewCapUrnFromString; the parsed-and-
+// re-serialized form is the canonical key used to look up the
+// cap-to-cartridges index. Inside each candidate cartridge we walk its
+// caps via IterCaps and match each on IsEquivalent. A malformed input
+// URN logs and returns an empty result rather than masking the error.
 func (r *CartridgeRepo) GetSuggestionsForCap(capUrn string) []CartridgeSuggestion {
+	requested, err := urn.NewCapUrnFromString(capUrn)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "GetSuggestionsForCap: invalid cap URN %q: %v\n", capUrn, err)
+		return []CartridgeSuggestion{}
+	}
+	normalized := requested.String()
+
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	suggestions := make([]CartridgeSuggestion, 0)
 
 	for _, cache := range r.caches {
-		cartridgeIds, ok := cache.capToCartridges[capUrn]
+		cartridgeIds, ok := cache.capToCartridges[normalized]
 		if !ok {
 			continue
 		}
@@ -540,24 +656,29 @@ func (r *CartridgeRepo) GetSuggestionsForCap(capUrn string) []CartridgeSuggestio
 				continue
 			}
 
-			for _, capInfo := range cartridge.Caps {
-				if capInfo.Urn == capUrn {
-					pageUrl := cartridge.PageUrl
-					if pageUrl == "" {
-						pageUrl = cache.repoUrl
-					}
-					suggestions = append(suggestions, CartridgeSuggestion{
-						CartridgeId:          cartridgeId,
-						CartridgeName:        cartridge.Name,
-						CartridgeDescription: cartridge.Description,
-						CapUrn:               capUrn,
-						CapTitle:             capInfo.Title,
-						LatestVersion:        cartridge.Version,
-						RepoUrl:              cache.repoUrl,
-						PageUrl:              pageUrl,
-					})
-					break
+			for _, capInfo := range cartridge.IterCaps() {
+				parsed, perr := urn.NewCapUrnFromString(capInfo.Urn)
+				if perr != nil {
+					continue
 				}
+				if !parsed.IsEquivalent(requested) {
+					continue
+				}
+				pageUrl := cartridge.PageUrl
+				if pageUrl == "" {
+					pageUrl = cache.repoUrl
+				}
+				suggestions = append(suggestions, CartridgeSuggestion{
+					CartridgeId:          cartridgeId,
+					CartridgeName:        cartridge.Name,
+					CartridgeDescription: cartridge.Description,
+					CapUrn:               normalized,
+					CapTitle:             capInfo.Title,
+					LatestVersion:        cartridge.Version,
+					RepoUrl:              cache.repoUrl,
+					PageUrl:              pageUrl,
+				})
+				break
 			}
 		}
 	}

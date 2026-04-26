@@ -1,13 +1,13 @@
 module github.com/machinefabric/capdag-go
 
-// version: 0.182.1255
+// version: 0.214.1521
 
 go 1.21
 
 require (
+	github.com/machinefabric/tagged-urn-go v0.0.0
 	github.com/fxamacker/cbor/v2 v2.9.0
 	github.com/google/uuid v1.6.0
-	github.com/machinefabric/tagged-urn-go v0.0.0
 	github.com/stretchr/testify v1.8.4
 	github.com/xeipuuv/gojsonschema v1.2.0
 )
@@ -20,6 +20,5 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	github.com/xeipuuv/gojsonpointer v0.0.0-20180127040702-4e3ac2762d5f // indirect
 	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect
-	github.com/yhirose/go-peg v0.0.0-20210804202551-de25d6753cf1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

@@ -2,6 +2,8 @@ package bifaci
 
 import (
 	"testing"
+
+	"github.com/machinefabric/capdag-go/urn"
 )
 
 // makeTestVersions returns a basic v4.0 versions map for testing
@@ -44,14 +46,13 @@ func Test320_cartridge_info_construction(t *testing.T) {
 		Version:           "1.0.0",
 		Description:       "A test cartridge",
 		Author:            "Test Author",
-		Homepage:          "https://example.com",
 		TeamId:            "TEAM123",
 		SignedAt:          "2026-02-07T00:00:00Z",
 		MinAppVersion:     "1.0.0",
 		PageUrl:           "https://example.com/cartridge",
 		Categories:        []string{"test"},
 		Tags:              []string{"testing"},
-		Caps:              []CartridgeCapSummary{},
+		CapGroups:         []RegistryCapGroup{},
 		Versions:          makeTestVersions("darwin-arm64"),
 		AvailableVersions: []string{"1.0.0"},
 	}
@@ -75,7 +76,7 @@ func Test321_cartridge_info_is_signed(t *testing.T) {
 		Version:  "1.0.0",
 		TeamId:   "TEAM123",
 		SignedAt: "2026-02-07T00:00:00Z",
-		Caps:     []CartridgeCapSummary{},
+		CapGroups: []RegistryCapGroup{},
 	}
 
 	if !cartridge.IsSigned() {
@@ -100,7 +101,7 @@ func Test322_cartridge_info_build_for_platform(t *testing.T) {
 		Id:      "testcartridge",
 		Name:    "Test",
 		Version: "1.0.0",
-		Caps:    []CartridgeCapSummary{},
+		CapGroups: []RegistryCapGroup{},
 		Versions: map[string]CartridgeVersionData{
 			"1.0.0": {
 				ReleaseDate: "2026-02-07",
@@ -189,7 +190,7 @@ func Test324_cartridge_repo_server_transform_to_array(t *testing.T) {
 		PageUrl:       "https://example.com",
 		TeamId:        "TEAM123",
 		MinAppVersion: "1.0.0",
-		Caps:          []CartridgeCapSummary{},
+		CapGroups:     []RegistryCapGroup{},
 		Categories:    []string{"test"},
 		Tags:          []string{"testing"},
 		LatestVersion: "1.0.0",
@@ -237,7 +238,7 @@ func Test325_cartridge_repo_server_get_cartridges(t *testing.T) {
 		TeamId:        "TEAM123",
 		LatestVersion: "1.0.0",
 		Versions:      makeTestVersions("darwin-arm64"),
-		Caps:          []CartridgeCapSummary{},
+		CapGroups:     []RegistryCapGroup{},
 	}
 
 	registry := makeTestRegistry("testcartridge", entry)
@@ -267,7 +268,7 @@ func Test326_cartridge_repo_server_get_cartridge_by_id(t *testing.T) {
 		TeamId:        "TEAM123",
 		LatestVersion: "1.0.0",
 		Versions:      makeTestVersions("darwin-arm64"),
-		Caps:          []CartridgeCapSummary{},
+		CapGroups:     []RegistryCapGroup{},
 	}
 
 	registry := makeTestRegistry("testcartridge", entry)
@@ -305,7 +306,7 @@ func Test327_cartridge_repo_server_search_cartridges(t *testing.T) {
 		TeamId:        "TEAM123",
 		LatestVersion: "1.0.0",
 		Versions:      makeTestVersions("darwin-arm64"),
-		Caps:          []CartridgeCapSummary{},
+		CapGroups:     []RegistryCapGroup{},
 		Tags:          []string{"document"},
 	}
 
@@ -344,7 +345,7 @@ func Test328_cartridge_repo_server_get_by_category(t *testing.T) {
 		TeamId:        "TEAM123",
 		LatestVersion: "1.0.0",
 		Versions:      makeTestVersions("darwin-arm64"),
-		Caps:          []CartridgeCapSummary{},
+		CapGroups:     []RegistryCapGroup{},
 		Categories:    []string{"document"},
 	}
 
@@ -384,8 +385,13 @@ func Test329_cartridge_repo_server_get_by_cap(t *testing.T) {
 		TeamId:        "TEAM123",
 		LatestVersion: "1.0.0",
 		Versions:      makeTestVersions("darwin-arm64"),
-		Caps: []CartridgeCapSummary{
-			{Urn: capUrn, Title: "Disbind PDF", Description: "Extract pages"},
+		CapGroups: []RegistryCapGroup{
+			{
+				Name: "pdf",
+				Caps: []RegistryCap{
+					{Urn: capUrn, Title: "Disbind PDF", Command: "disbind"},
+				},
+			},
 		},
 	}
 
@@ -406,7 +412,20 @@ func Test329_cartridge_repo_server_get_by_cap(t *testing.T) {
 		t.Errorf("Expected id 'pdfcartridge', got '%s'", results[0].Id)
 	}
 
-	noMatch, err := server.GetCartridgesByCap("cap:nonexistent")
+	// Same cap URN, same in/out, same op, but the out-spec's tags appear
+	// in a different declared order. Tagged-URN equivalence treats them
+	// as identical, so the lookup must still resolve.
+	reorderedUrn := `cap:in="media:pdf";op=disbind;out="media:list;disbound-page;textable"`
+	reordered, err := server.GetCartridgesByCap(reorderedUrn)
+	if err != nil {
+		t.Fatalf("Failed to get by reordered cap: %v", err)
+	}
+	if len(reordered) != 1 {
+		t.Fatalf("Expected 1 result for tag-reordered request, got %d", len(reordered))
+	}
+
+	// Well-formed but no provider in the registry matches it.
+	noMatch, err := server.GetCartridgesByCap(`cap:in="media:bogus";op=nope;out="media:nonexistent"`)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -427,13 +446,15 @@ func Test330_cartridge_repo_client_update_cache(t *testing.T) {
 				Version:  "1.0.0",
 				TeamId:   "TEAM123",
 				SignedAt: "2026-02-07",
-				Caps:     []CartridgeCapSummary{},
+				CapGroups: []RegistryCapGroup{},
 				Versions: makeTestVersions("darwin-arm64"),
 			},
 		},
 	}
 
-	repo.updateCache("https://example.com/cartridges", registry)
+	if err := repo.updateCache("https://example.com/cartridges", registry); err != nil {
+		t.Fatalf("updateCache must succeed for a well-formed registry: %v", err)
+	}
 
 	cartridge := repo.GetCartridge("testcartridge")
 	if cartridge == nil {
@@ -457,15 +478,22 @@ func Test331_cartridge_repo_client_get_suggestions(t *testing.T) {
 				Version: "1.0.0",
 				TeamId:  "TEAM123",
 				PageUrl: "https://example.com/pdf",
-				Caps: []CartridgeCapSummary{
-					{Urn: capUrn, Title: "Disbind PDF", Description: "Extract pages"},
+				CapGroups: []RegistryCapGroup{
+					{
+						Name: "pdf",
+						Caps: []RegistryCap{
+							{Urn: capUrn, Title: "Disbind PDF", Command: "disbind"},
+						},
+					},
 				},
 				Versions: makeTestVersions("darwin-arm64"),
 			},
 		},
 	}
 
-	repo.updateCache("https://example.com/cartridges", registry)
+	if err := repo.updateCache("https://example.com/cartridges", registry); err != nil {
+		t.Fatalf("updateCache must succeed for a well-formed registry: %v", err)
+	}
 
 	suggestions := repo.GetSuggestionsForCap(capUrn)
 	if len(suggestions) != 1 {
@@ -474,8 +502,19 @@ func Test331_cartridge_repo_client_get_suggestions(t *testing.T) {
 	if suggestions[0].CartridgeId != "pdfcartridge" {
 		t.Errorf("Expected cartridge_id 'pdfcartridge', got '%s'", suggestions[0].CartridgeId)
 	}
-	if suggestions[0].CapUrn != capUrn {
-		t.Errorf("Expected cap_urn '%s', got '%s'", capUrn, suggestions[0].CapUrn)
+	// suggestions[0].CapUrn is the canonical (normalized) form. Compare
+	// via tagged-URN equivalence rather than string equality so a
+	// tag-order difference between request and canonical form is OK.
+	requested, perr := urn.NewCapUrnFromString(capUrn)
+	if perr != nil {
+		t.Fatalf("test fixture cap URN must parse: %v", perr)
+	}
+	returned, perr := urn.NewCapUrnFromString(suggestions[0].CapUrn)
+	if perr != nil {
+		t.Fatalf("returned cap URN must parse: %v", perr)
+	}
+	if !returned.IsEquivalent(requested) {
+		t.Errorf("Expected equivalent cap URN; got '%s' vs '%s'", suggestions[0].CapUrn, capUrn)
 	}
 }
 
@@ -489,13 +528,15 @@ func Test332_cartridge_repo_client_get_cartridge(t *testing.T) {
 				Id:       "testcartridge",
 				Name:     "Test Cartridge",
 				Version:  "1.0.0",
-				Caps:     []CartridgeCapSummary{},
+				CapGroups: []RegistryCapGroup{},
 				Versions: makeTestVersions("darwin-arm64"),
 			},
 		},
 	}
 
-	repo.updateCache("https://example.com/cartridges", registry)
+	if err := repo.updateCache("https://example.com/cartridges", registry); err != nil {
+		t.Fatalf("updateCache must succeed for a well-formed registry: %v", err)
+	}
 
 	cartridge := repo.GetCartridge("testcartridge")
 	if cartridge == nil {
@@ -521,23 +562,29 @@ func Test333_cartridge_repo_client_get_all_caps(t *testing.T) {
 	registry := &CartridgeRegistryResponse{
 		Cartridges: []CartridgeInfo{
 			{
-				Id:       "cartridge1",
-				Name:     "Cartridge 1",
-				Version:  "1.0.0",
-				Caps:     []CartridgeCapSummary{{Urn: cap1, Title: "Cap 1"}},
+				Id:      "cartridge1",
+				Name:    "Cartridge 1",
+				Version: "1.0.0",
+				CapGroups: []RegistryCapGroup{
+					{Name: "g", Caps: []RegistryCap{{Urn: cap1, Title: "Cap 1", Command: "x"}}},
+				},
 				Versions: makeTestVersions("darwin-arm64"),
 			},
 			{
-				Id:       "cartridge2",
-				Name:     "Cartridge 2",
-				Version:  "1.0.0",
-				Caps:     []CartridgeCapSummary{{Urn: cap2, Title: "Cap 2"}},
+				Id:      "cartridge2",
+				Name:    "Cartridge 2",
+				Version: "1.0.0",
+				CapGroups: []RegistryCapGroup{
+					{Name: "g", Caps: []RegistryCap{{Urn: cap2, Title: "Cap 2", Command: "x"}}},
+				},
 				Versions: makeTestVersions("darwin-arm64"),
 			},
 		},
 	}
 
-	repo.updateCache("https://example.com/cartridges", registry)
+	if err := repo.updateCache("https://example.com/cartridges", registry); err != nil {
+		t.Fatalf("updateCache must succeed for a well-formed registry: %v", err)
+	}
 
 	caps := repo.GetAllAvailableCaps()
 	if len(caps) != 2 {
@@ -571,7 +618,9 @@ func Test334_cartridge_repo_client_needs_sync(t *testing.T) {
 	}
 
 	registry := &CartridgeRegistryResponse{Cartridges: []CartridgeInfo{}}
-	repo.updateCache("https://example.com/cartridges", registry)
+	if err := repo.updateCache("https://example.com/cartridges", registry); err != nil {
+		t.Fatalf("updateCache must succeed for a well-formed registry: %v", err)
+	}
 
 	if repo.NeedsSync(urls) {
 		t.Error("Expected not to need sync after update")
@@ -589,8 +638,14 @@ func Test335_cartridge_repo_server_client_integration(t *testing.T) {
 		TeamId:        "TEAM123",
 		LatestVersion: "1.0.0",
 		Versions:      makeTestVersions("darwin-arm64"),
-		Caps: []CartridgeCapSummary{
-			{Urn: capUrn, Title: "Test Cap", Description: "Test capability"},
+		CapGroups: []RegistryCapGroup{
+			{
+				Name: "test-group",
+				Caps: []RegistryCap{
+					{Urn: capUrn, Title: "Test Cap", Command: "test"},
+				},
+				AdapterUrns: []string{"media:test"},
+			},
 		},
 		Categories: []string{"test"},
 	}
@@ -616,11 +671,12 @@ func Test335_cartridge_repo_server_client_integration(t *testing.T) {
 	if !c.IsSigned() {
 		t.Error("Expected cartridge to be signed")
 	}
-	if len(c.Caps) != 1 {
-		t.Fatalf("Expected 1 cap, got %d", len(c.Caps))
+	caps := c.IterCaps()
+	if len(caps) != 1 {
+		t.Fatalf("Expected 1 cap, got %d", len(caps))
 	}
-	if c.Caps[0].Urn != capUrn {
-		t.Errorf("Expected cap URN '%s', got '%s'", capUrn, c.Caps[0].Urn)
+	if caps[0].Urn != capUrn {
+		t.Errorf("Expected cap URN '%s', got '%s'", capUrn, caps[0].Urn)
 	}
 
 	// Verify build is accessible
@@ -650,5 +706,38 @@ func Test631_needs_sync_empty_cache(t *testing.T) {
 	urls := []string{"https://example.com/cartridges"}
 	if !repo.NeedsSync(urls) {
 		t.Error("Expected needs_sync to be true with empty cache")
+	}
+}
+
+// TEST336: A registry response with a malformed cap URN inside cap_groups
+// must propagate as ParseError when indexed into the cache, not silently
+// disappear.
+func Test336_update_cache_rejects_malformed_cap_urn(t *testing.T) {
+	repo := NewCartridgeRepo(3600)
+	registry := &CartridgeRegistryResponse{
+		Cartridges: []CartridgeInfo{
+			{
+				Id:      "broken",
+				Name:    "Broken",
+				Version: "1.0.0",
+				CapGroups: []RegistryCapGroup{
+					{
+						Name: "g",
+						Caps: []RegistryCap{
+							{Urn: "not a valid urn at all", Title: "Bad", Command: "x"},
+						},
+					},
+				},
+				Versions: makeTestVersions("darwin-arm64"),
+			},
+		},
+	}
+	err := repo.updateCache("https://x", registry)
+	if err == nil {
+		t.Fatal("Expected ParseError for malformed cap URN, got nil")
+	}
+	repoErr, ok := err.(*CartridgeRepoError)
+	if !ok || repoErr.Kind != "ParseError" {
+		t.Errorf("Expected ParseError, got %T %v", err, err)
 	}
 }
