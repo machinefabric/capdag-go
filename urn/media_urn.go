@@ -3,6 +3,7 @@ package urn
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/machinefabric/capdag-go/standard"
@@ -15,7 +16,28 @@ type MediaUrn struct {
 	inner *taggedurn.TaggedUrn
 }
 
-// NewMediaUrnFromString parses a media URN string
+// MediaUrnError represents errors that can occur during media URN operations.
+type MediaUrnError struct {
+	Code    int
+	Message string
+}
+
+func (e *MediaUrnError) Error() string {
+	return e.Message
+}
+
+// Error codes for media URN operations.
+const (
+	// ErrorMediaVoidNotAtomic is returned when a media URN combines the
+	// `void` marker tag with any other tag. media:void is the
+	// type-theoretic unit and admits no refinements; reasons or
+	// labels belong on cap-tags or args, not as media URN tags.
+	ErrorMediaVoidNotAtomic = 100
+)
+
+// NewMediaUrnFromString parses a media URN string. Enforces media:void
+// atomicity: refinements like media:void;text or media:void;reason=warmup
+// are rejected at parse time.
 func NewMediaUrnFromString(s string) (*MediaUrn, error) {
 	urn, err := taggedurn.NewTaggedUrnFromString(s)
 	if err != nil {
@@ -32,6 +54,26 @@ func NewMediaUrnFromString(s string) (*MediaUrn, error) {
 		return nil, &taggedurn.TaggedUrnError{
 			Code:    taggedurn.ErrorPrefixMismatch,
 			Message: fmt.Sprintf("invalid prefix for media URN: expected 'media:', got '%s:'", actual),
+		}
+	}
+
+	// Enforce media:void atomicity. The unit type has no lattice
+	// underneath it; refinements are conceptually wrong.
+	allTags := urn.AllTags()
+	if _, hasVoid := allTags["void"]; hasVoid && len(allTags) > 1 {
+		extras := make([]string, 0, len(allTags)-1)
+		for k := range allTags {
+			if k != "void" {
+				extras = append(extras, k)
+			}
+		}
+		sort.Strings(extras)
+		return nil, &MediaUrnError{
+			Code: ErrorMediaVoidNotAtomic,
+			Message: fmt.Sprintf(
+				"media:void is atomic and cannot be refined; got extra tag(s): %s. "+
+					"Move why/how this void is used into cap-tags or args, not the media URN.",
+				strings.Join(extras, ", ")),
 		}
 	}
 

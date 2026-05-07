@@ -8,6 +8,7 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/machinefabric/capdag-go/cap"
 	"github.com/machinefabric/capdag-go/urn"
 )
 
@@ -840,25 +841,52 @@ func (h *CartridgeHost) updateCapTable() {
 
 // rebuildCapabilities rebuilds the aggregate capabilities JSON.
 //
-// The wire payload now lives entirely inside
-// `installed_cartridges[*].cap_groups`. The Go host doesn't carry
-// installed-cartridge identities (this is a unit-test / interop host;
-// production cartridge hosting is the Rust runtime), so we synthesize
-// one entry per running cartridge with a `cap_groups` view assembled
-// from the parsed manifest.
+// The relay payload is the single source of truth. Every cartridge
+// that has not permanently failed HELLO is advertised, regardless of
+// whether its process is currently running — this mirrors Rust's
+// `rebuild_capabilities`. Running state is communicated via the
+// per-cartridge runtime stats; advertisement (cap_groups) is the
+// inventory view.
+//
+// `cap_groups` is the source of truth. For cartridges registered with
+// a flat `knownCaps` list (no manifest yet), we synthesize a default
+// cap_group from those URNs so the inventory shape stays uniform.
 func (h *CartridgeHost) rebuildCapabilities() {
 	var installed []InstalledCartridgeRecord
 	for idx, cartridge := range h.cartridges {
-		if !cartridge.running {
-			continue
+		if cartridge.helloFailed {
+			continue // Permanently broken, not advertised.
 		}
+
+		// Prefer manifest-derived cap_groups (the source of truth
+		// once HELLO has succeeded); fall back to a synthetic group
+		// built from knownCaps when the cartridge has not started
+		// yet.
+		var capGroups []CapGroup
+		if len(cartridge.capGroups) > 0 {
+			capGroups = cartridge.capGroups
+		} else if len(cartridge.knownCaps) > 0 {
+			caps := make([]cap.Cap, 0, len(cartridge.knownCaps))
+			for _, urnStr := range cartridge.knownCaps {
+				parsed, err := urn.NewCapUrnFromString(urnStr)
+				if err != nil {
+					// Registration accepted this string upstream;
+					// re-parsing it here must succeed. Fail hard
+					// rather than silently dropping.
+					panic(fmt.Sprintf("BUG: known cap URN %q failed to re-parse: %v", urnStr, err))
+				}
+				caps = append(caps, *cap.NewCap(parsed, urnStr, ""))
+			}
+			capGroups = []CapGroup{{Name: "default", Caps: caps}}
+		}
+
 		installed = append(installed, InstalledCartridgeRecord{
 			RegistryURL: nil,
 			Id:          fmt.Sprintf("cartridge-%d", idx),
 			Channel:     "release",
 			Version:     "0.0.0",
 			Sha256:      "",
-			CapGroups:   cartridge.capGroups,
+			CapGroups:   capGroups,
 		})
 	}
 

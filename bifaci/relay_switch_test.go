@@ -2,7 +2,9 @@ package bifaci
 
 import (
 	"encoding/json"
+	"fmt"
 	"net"
+	"sync/atomic"
 	"testing"
 )
 
@@ -15,10 +17,27 @@ import (
 // An empty cap-urn list produces an empty `installed_cartridges`
 // array, matching the "host has no cartridges that passed the
 // attachment checklist" wire state.
+// testManifestCounter assigns each testManifestWithCaps call a unique
+// `id`. Aggregate-capability tests register multiple slaves and expect
+// each to appear as a distinct installed cartridge; under the new
+// dedup-by-(id, version) rule, identical ids would silently collapse
+// into a single entry, so each manifest must carry its own.
+var testManifestCounter int64
+
 func testManifestWithCaps(capURNs []string) map[string]interface{} {
+	id := atomic.AddInt64(&testManifestCounter, 1)
 	if len(capURNs) == 0 {
 		return map[string]interface{}{
-			"installed_cartridges": []interface{}{},
+			"installed_cartridges": []interface{}{
+				map[string]interface{}{
+					"registry_url": nil,
+					"channel":      "release",
+					"id":           fmt.Sprintf("test-cartridge-%d", id),
+					"version":      "0.0.0",
+					"sha256":       "0000000000000000000000000000000000000000000000000000000000000000",
+					"cap_groups":   []interface{}{},
+				},
+			},
 		}
 	}
 	groupCaps := make([]map[string]interface{}, 0, len(capURNs))
@@ -35,7 +54,7 @@ func testManifestWithCaps(capURNs []string) map[string]interface{} {
 			map[string]interface{}{
 				"registry_url": nil,
 				"channel":      "release",
-				"id":           "test-cartridge",
+				"id":           fmt.Sprintf("test-cartridge-%d", id),
 				"version":      "0.0.0",
 				"sha256":       "0000000000000000000000000000000000000000000000000000000000000000",
 				"cap_groups": []interface{}{

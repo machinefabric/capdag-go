@@ -582,28 +582,31 @@ func (c *CapUrn) Accepts(request *CapUrn) bool {
 		}
 	}
 
-	// Check all tags that the pattern (self) requires.
-	// The instance (request param) must satisfy every pattern constraint.
-	// Missing tag in instance → instance doesn't satisfy constraint → reject.
-	for selfKey, selfValue := range c.tags {
-		reqValue, reqExists := request.tags[selfKey]
-		if !reqExists {
-			// Instance missing a tag the pattern requires
-			return false
+	// Y-axis: every tag's per-key match runs through the six-form
+	// truth table (taggedurn.ValuesMatch). Walk the union of all
+	// keys appearing on either side so missing-on-pattern and
+	// missing-on-instance cells both get evaluated.
+	allKeys := make(map[string]struct{}, len(c.tags)+len(request.tags))
+	for k := range c.tags {
+		allKeys[k] = struct{}{}
+	}
+	for k := range request.tags {
+		allKeys[k] = struct{}{}
+	}
+	for key := range allKeys {
+		var pattPtr, instPtr *string
+		if v, ok := c.tags[key]; ok {
+			vCopy := v
+			pattPtr = &vCopy
 		}
-		// Wildcard matching
-		if selfValue == "*" {
-			continue
+		if v, ok := request.tags[key]; ok {
+			vCopy := v
+			instPtr = &vCopy
 		}
-		if reqValue == "*" {
-			continue
-		}
-		// Exact match required
-		if selfValue != reqValue {
+		if !taggedurn.ValuesMatch(instPtr, pattPtr) {
 			return false
 		}
 	}
-
 	return true
 }
 
@@ -752,36 +755,59 @@ func (c *CapUrn) AcceptsStr(requestStr string) bool {
 	return c.Accepts(request)
 }
 
+// Per-axis weights for cap-URN specificity. Two orders of magnitude
+// separate each axis to keep them in distinct digit slots while
+// folding into a single comparable integer.
+const (
+	WeightOut = 10_000
+	WeightIn  = 100
+)
+
 // Specificity returns the specificity score for cap matching.
 // More specific caps have higher scores and are preferred.
 //
-// Direction specs contribute their raw media URN tag count (more tags = more specific).
-// This matches Rust's in_media.inner().tags.len() — NOT the TaggedUrn weighted score.
-// Other tags contribute 1 per non-wildcard value.
+// The score is a weighted sum of the per-tag truth-table score
+// across the three axes (out, in, y), each axis scored as a Tagged
+// URN per TaggedUrn.Specificity:
+//
+//	stored value       score   form
+//	------------------ -----   ----------------------
+//	"?"                0       no constraint
+//	starts with "?="   1       absent or not v
+//	"*"                2       must-have-any
+//	starts with "!="   3       present and not v
+//	exact value        4       exact match
+//	"!"                5       must-not-have
+//
+// Axis weighting:
+//
+//	spec_C(c) = WeightOut*spec_U(c.out) + WeightIn*spec_U(c.in) + spec_U(c.y)
+//
+// The lexicographic priority (out, in, y) reflects the routing
+// intent: producing different things is the largest semantic
+// difference between two caps; consuming different things is next;
+// descriptive y-axis metadata is last.
 func (c *CapUrn) Specificity() int {
-	count := 0
-	// "media:" is the wildcard (contributes 0 to specificity)
-	if c.inSpec != "media:" {
-		inMedia, err := NewMediaUrnFromString(c.inSpec)
-		if err != nil {
-			panic(fmt.Sprintf("CU2: in_spec '%s' is not a valid MediaUrn: %v", c.inSpec, err))
-		}
-		count += inMedia.TagCount()
+	inMedia, err := NewMediaUrnFromString(c.inSpec)
+	if err != nil {
+		panic(fmt.Sprintf("CU2: in_spec '%s' is not a valid MediaUrn: %v", c.inSpec, err))
 	}
-	if c.outSpec != "media:" {
-		outMedia, err := NewMediaUrnFromString(c.outSpec)
-		if err != nil {
-			panic(fmt.Sprintf("CU2: out_spec '%s' is not a valid MediaUrn: %v", c.outSpec, err))
-		}
-		count += outMedia.TagCount()
+	outMedia, err := NewMediaUrnFromString(c.outSpec)
+	if err != nil {
+		panic(fmt.Sprintf("CU2: out_spec '%s' is not a valid MediaUrn: %v", c.outSpec, err))
 	}
-	// Count non-wildcard tags
+
+	yScore := 0
 	for _, value := range c.tags {
-		if value != "*" {
-			count++
-		}
+		yScore += taggedurn.ScoreTagValue(value)
 	}
-	return count
+	return WeightOut*outMedia.Specificity() + WeightIn*inMedia.Specificity() + yScore
+}
+
+// scoreTagValue: kept for callers that need the raw scorer; delegates
+// to the canonical implementation in tagged_urn.
+func scoreTagValue(value string) int {
+	return taggedurn.ScoreTagValue(value)
 }
 
 // IsMoreSpecificThan checks if this cap is more specific than another

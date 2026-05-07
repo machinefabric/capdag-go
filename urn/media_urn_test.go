@@ -745,3 +745,35 @@ func Test557_audio_media_urn_for_ext(t *testing.T) {
 }
 
 // TEST629: Profile constants verified in media/spec_test.go (urn cannot import media due to cycle)
+
+// TEST1810: media:void is atomic — refinements are parse errors.
+//
+// Mirrored across every language port (Rust, Go, Python, Swift/ObjC,
+// JS) under the SAME number. Any divergence is a wire-level
+// inconsistency — the unit type's atomicity is part of the protocol's
+// deepest layer, not a per-port detail.
+func Test1810_media_void_is_atomic(t *testing.T) {
+	bare, err := NewMediaUrnFromString("media:void")
+	require.NoError(t, err, "bare `media:void` must parse — it is the unit type")
+	assert.True(t, bare.IsVoid())
+
+	badInputs := []string{
+		"media:void;text",
+		"media:void;pdf",
+		"media:void;audio",
+		"media:void;reason=warmup",
+		"media:void;heartbeat",
+		"media:void;manual",
+		"media:warmup;void",
+		"media:reason=foo;void",
+	}
+	for _, input := range badInputs {
+		_, err := NewMediaUrnFromString(input)
+		require.Error(t, err, "%s: expected parse error", input)
+		mediaErr, ok := err.(*MediaUrnError)
+		require.True(t, ok, "%s: expected *MediaUrnError, got %T (%v)", input, err, err)
+		assert.Equal(t, ErrorMediaVoidNotAtomic, mediaErr.Code,
+			"%s: expected ErrorMediaVoidNotAtomic, got code %d (%s)",
+			input, mediaErr.Code, mediaErr.Message)
+	}
+}

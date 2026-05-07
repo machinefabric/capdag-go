@@ -121,12 +121,14 @@ func Test416_attach_cartridge_handshake(t *testing.T) {
 
 	host.mu.Lock()
 	assert.True(t, host.cartridges[0].running, "attached cartridge must be running")
-	assert.Equal(t, []string{"cap:in=media:;out=media:"}, host.cartridges[0].caps)
+	// `cap:in=media:;out=media:` canonicalizes to bare identity `cap:`
+	// (in/out at top of order, no y-tags).
+	assert.Equal(t, []string{"cap:"}, host.cartridges[0].caps)
 	host.mu.Unlock()
 
 	caps := host.Capabilities()
 	assert.NotNil(t, caps, "running cartridge must produce capabilities")
-	assert.Contains(t, string(caps), "cap:in=media:;out=media:")
+	assert.Contains(t, string(caps), `"cap:"`)
 
 	// Clean up
 	hostRead.Close()

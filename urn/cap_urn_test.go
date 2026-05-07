@@ -109,9 +109,11 @@ func Test004_unquoted_values_lowercased(t *testing.T) {
 	assert.True(t, exists)
 	assert.Equal(t, "thumbnail", target)
 
-	op2, exists := cap.GetTag("OP")
+	// Key lookup is case-insensitive: uppercase variants of `ext`
+	// resolve to the same keyed tag.
+	extUpper, exists := cap.GetTag("EXT")
 	assert.True(t, exists)
-	assert.Equal(t, "generate", op2)
+	assert.Equal(t, "pdf", extUpper)
 }
 
 // TEST005: Test that quoted values preserve case while unquoted are lowercased
@@ -397,13 +399,17 @@ func Test019_missing_tag_handling(t *testing.T) {
 	assert.True(t, cap3.Accepts(request3))
 }
 
-// TEST020: Test specificity calculation (direction specs use MediaUrn tag count, wildcards don't count)
+// TEST020: Specificity is the sum of per-tag truth-table scores
+// across in/out/y. Marker tags (bare segments like `generate`) are
+// must-have-any (score 2), exact `key=value` tags score 3,
+// missing/`?` score 0, `!` scores 1.
+//
+// testUrn() builds "cap:in=media:void;out=media:record;<tags>" so
+// the directional baseline is:
+//   in:  media:void   -> {void=*}    -> 2
+//   out: media:record -> {record=*}  -> 2
+// Total directional baseline: 4.
 func Test020_specificity(t *testing.T) {
-	// CapUrn specificity counts non-wildcard tags + direction-spec tag
-	// counts. Markers (value="*") do NOT count; only exact-valued tags
-	// and the direction specs' inner media-URN tag counts.
-	// MEDIA_VOID = "media:void" -> 1 tag (void)
-	// MEDIA_OBJECT = "media:record" -> 1 tag (record)
 	cap1, err := NewCapUrnFromString(testUrn("type=general"))
 	require.NoError(t, err)
 
@@ -413,14 +419,22 @@ func Test020_specificity(t *testing.T) {
 	cap3, err := NewCapUrnFromString(testUrn("op;ext=pdf"))
 	require.NoError(t, err)
 
-	assert.Equal(t, 3, cap1.Specificity()) // void(1) + record(1) + type=general(1)
-	assert.Equal(t, 2, cap2.Specificity()) // void(1) + record(1) + generate marker(0)
-	assert.Equal(t, 3, cap3.Specificity()) // void(1) + record(1) + ext=pdf(1) + op marker(0)
+	// testUrn() prepends in="media:void" (1 marker, score 2) and
+	// out="media:record" (1 marker, score 2). Cap-URN spec is
+	// 10000*spec_U(out) + 100*spec_U(in) + spec_U(y).
 
-	// Wildcard in direction doesn't count
+	// out=2, in=2, y=4 (type=general exact)
+	assert.Equal(t, 10000*2+100*2+4, cap1.Specificity())
+	// out=2, in=2, y=2 (generate marker = must-have-any)
+	assert.Equal(t, 10000*2+100*2+2, cap2.Specificity())
+	// out=2, in=2, y=2+4 (op marker, ext=pdf exact)
+	assert.Equal(t, 10000*2+100*2+6, cap3.Specificity())
+
+	// Wildcard in direction normalizes to media: (no tags, score 0).
 	cap4, err := NewCapUrnFromString(`cap:in=*;out="` + standard.MediaObject + `";test`)
 	require.NoError(t, err)
-	assert.Equal(t, 1, cap4.Specificity()) // record(1) + test marker(0) (in wildcard doesn't count)
+	// out=2 (record=*), in=0 (media: empty), y=2 (test marker)
+	assert.Equal(t, 10000*2+100*0+2, cap4.Specificity())
 }
 
 // TEST021: Test builder creates cap URN with correct tags and direction specs
@@ -967,7 +981,10 @@ func Test890_direction_semantic_matching(t *testing.T) {
 		"Cap producing generic image must NOT satisfy request requiring image;png;thumbnail")
 }
 
-// TEST891: Semantic direction specificity - more media URN tags = higher specificity
+// TEST891: Semantic direction specificity — more constraints in
+// either axis means a higher score under the truth-table-driven sum.
+// media: (top, no tags) scores 0; each marker tag scores 2; each
+// exact tag scores 3.
 func Test891_direction_semantic_specificity(t *testing.T) {
 	genericCap, err := NewCapUrnFromString(
 		`cap:in="media:";generate-thumbnail;out="media:image;png;thumbnail"`,
@@ -978,13 +995,18 @@ func Test891_direction_semantic_specificity(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	// CapUrn specificity = (in-spec media tag count) + (out-spec media tag
-	// count) + (count of non-wildcard cap tags). The `generate-thumbnail`
-	// marker (value="*") does NOT count.
-	// genericCap:  in="media:" (0 tags) + out="media:image;png;thumbnail" (3 tags) + 0 = 3
-	// specificCap: in="media:pdf" (1 tag) + out="media:image;png;thumbnail" (3 tags) + 0 = 4
-	assert.Equal(t, 3, genericCap.Specificity())
-	assert.Equal(t, 4, specificCap.Specificity())
+	// genericCap:
+	//   out=media:image;png;thumbnail -> 2+2+2 = 6
+	//   in=media:                     -> 0
+	//   y: generate-thumbnail marker  -> 2
+	//   spec_C = 10000*6 + 100*0 + 2 = 60002
+	assert.Equal(t, 10000*6+100*0+2, genericCap.Specificity())
+	// specificCap:
+	//   out=media:image;png;thumbnail -> 6
+	//   in=media:pdf                  -> 2
+	//   y: generate-thumbnail marker  -> 2
+	//   spec_C = 10000*6 + 100*2 + 2 = 60202
+	assert.Equal(t, 10000*6+100*2+2, specificCap.Specificity())
 
 	assert.True(t, specificCap.Specificity() > genericCap.Specificity(),
 		"pdf cap must be more specific than wildcard cap")
@@ -997,7 +1019,7 @@ func Test891_direction_semantic_specificity(t *testing.T) {
 	matcher := &CapMatcher{}
 	best := matcher.FindBestMatch(caps, pdfRequest)
 	require.NotNil(t, best)
-	assert.Equal(t, 4, best.Specificity(),
+	assert.Equal(t, 10000*6+100*2+2, best.Specificity(),
 		"CapMatcher must prefer the more specific pdf provider")
 }
 
@@ -1693,4 +1715,258 @@ func Test1805_kind_invariant_under_canonical_spellings(t *testing.T) {
 		assert.Equal(t, kindA, kindB,
 			"%s and %s parse to the same cap and must classify identically", c.a, c.b)
 	}
+}
+
+// -------------------------------------------------------------------
+// Truth-table specificity tests (test1820–test1824).
+//
+// Mirrored across every language port (Rust, Go, Python, Swift/ObjC,
+// JS) under the SAME numbers. Specificity must be the truth-table
+// sum across all three axes using the six-form ladder:
+//
+//   ?x or missing     -> 0   (no constraint)
+//   x?=v              -> 1   (absent OR not v)
+//   x (=x=*) marker   -> 2   (must-have-any)
+//   x!=v              -> 3   (present and not v)
+//   x=v exact         -> 4   (must-have-this-value)
+//   !x                -> 5   (must-not-have)
+// -------------------------------------------------------------------
+
+// TEST1820: A `?`-valued cap-tag scores 0. Same as missing.
+func Test1820_specificity_question_is_zero(t *testing.T) {
+	bare, err := NewCapUrnFromString("cap:")
+	require.NoError(t, err)
+	assert.Equal(t, 0, bare.Specificity())
+
+	withQ, err := NewCapUrnFromString("cap:?target")
+	require.NoError(t, err)
+	assert.Equal(t, 0, withQ.Specificity(),
+		"?x must score 0 (explicit no-constraint, same as missing)")
+}
+
+// TEST1821: A `!`-valued cap-tag scores 5 (top of negative chain).
+func Test1821_specificity_must_not_have_is_five(t *testing.T) {
+	cap, err := NewCapUrnFromString("cap:!constrained")
+	require.NoError(t, err)
+	assert.Equal(t, 5, cap.Specificity(),
+		"!constrained (must-not-have) must score 5")
+}
+
+// TEST1822: A `*`-valued cap-tag (including bare markers) scores 2.
+func Test1822_specificity_must_have_any_is_two(t *testing.T) {
+	bareMarker, err := NewCapUrnFromString("cap:extract")
+	require.NoError(t, err)
+	assert.Equal(t, 2, bareMarker.Specificity(),
+		"bare `extract` parses as extract=* (must-have-any) and scores 2")
+
+	explicitStar, err := NewCapUrnFromString("cap:extract=*")
+	require.NoError(t, err)
+	assert.Equal(t, 2, explicitStar.Specificity(),
+		"explicit key=* must score 2 (same as bare marker)")
+
+	assert.Equal(t, bareMarker.Specificity(), explicitStar.Specificity(),
+		"bare marker and explicit key=* are the same form and must score identically")
+}
+
+// TEST1823: An exact-valued cap-tag scores 4.
+func Test1823_specificity_exact_value_is_four(t *testing.T) {
+	cap, err := NewCapUrnFromString("cap:target=metadata")
+	require.NoError(t, err)
+	assert.Equal(t, 4, cap.Specificity(),
+		"target=metadata (exact value) must score 4")
+}
+
+// TEST1824: All six forms compose additively on a single cap.
+// y combining 0+1+2+3+4+5 must sum to 15.
+func Test1824_specificity_combined_y_axis(t *testing.T) {
+	cap, err := NewCapUrnFromString(
+		"cap:!constrained;?target;extract;stage!=alpha;target2=metadata;ver?=draft")
+	require.NoError(t, err)
+	assert.Equal(t, 15, cap.Specificity(),
+		"y combining all six forms (0+1+2+3+4+5) must sum to 15")
+}
+
+// -------------------------------------------------------------------
+// Six-form canonicalization tests (test1830–test1835).
+//
+// Mirrored across every language port (Rust, Go, Python, Swift/ObjC,
+// JS) under the SAME numbers. Each test enumerates the authored
+// aliases for one canonical form and verifies that ALL of them parse
+// to the same canonical serialization.
+// -------------------------------------------------------------------
+
+// TEST1830: ?x ≡ x? ≡ x=? all canonicalize to ?x.
+func Test1830_canonicalize_no_constraint(t *testing.T) {
+	canonical := "cap:?x"
+	for _, input := range []string{"cap:?x", "cap:x?", "cap:x=?"} {
+		cap, err := NewCapUrnFromString(input)
+		require.NoError(t, err, "input %q must parse", input)
+		assert.Equal(t, canonical, cap.String(),
+			"input %q must canonicalize to %q", input, canonical)
+	}
+}
+
+// TEST1831: ?x=v and x?=v both canonicalize to x?=v. The third
+// hypothetical form `x=?v` is NOT recognized as a qualifier — a
+// value starting with `?` is just an exact value beginning with
+// a `?` character.
+func Test1831_canonicalize_absent_or_not_value(t *testing.T) {
+	canonical := "cap:x?=foo"
+	for _, input := range []string{"cap:?x=foo", "cap:x?=foo"} {
+		cap, err := NewCapUrnFromString(input)
+		require.NoError(t, err, "input %q must parse", input)
+		assert.Equal(t, canonical, cap.String(),
+			"input %q must canonicalize to %q", input, canonical)
+	}
+
+	// `x=?foo` is a plain exact tag whose value is the string `?foo`
+	// — NOT a canonicalization alias.
+	exact, err := NewCapUrnFromString("cap:x=?foo")
+	require.NoError(t, err)
+	assert.Equal(t, "cap:x=?foo", exact.String())
+	val, ok := exact.GetTag("x")
+	assert.True(t, ok)
+	assert.Equal(t, "?foo", val)
+}
+
+// TEST1832: x ≡ x=* both canonicalize to bare x.
+func Test1832_canonicalize_must_have_any(t *testing.T) {
+	canonical := "cap:x"
+	for _, input := range []string{"cap:x", "cap:x=*"} {
+		cap, err := NewCapUrnFromString(input)
+		require.NoError(t, err, "input %q must parse", input)
+		assert.Equal(t, canonical, cap.String(),
+			"input %q must canonicalize to %q", input, canonical)
+	}
+}
+
+// TEST1833: !x=v and x!=v both canonicalize to x!=v. The third
+// hypothetical form `x=!v` is NOT recognized as a qualifier — a
+// value starting with `!` is just an exact value beginning with
+// a `!` character.
+func Test1833_canonicalize_present_not_value(t *testing.T) {
+	canonical := "cap:x!=foo"
+	for _, input := range []string{"cap:!x=foo", "cap:x!=foo"} {
+		cap, err := NewCapUrnFromString(input)
+		require.NoError(t, err, "input %q must parse", input)
+		assert.Equal(t, canonical, cap.String(),
+			"input %q must canonicalize to %q", input, canonical)
+	}
+
+	// `x=!foo` is a plain exact tag whose value is the string `!foo`
+	// — NOT a canonicalization alias.
+	exact, err := NewCapUrnFromString("cap:x=!foo")
+	require.NoError(t, err)
+	assert.Equal(t, "cap:x=!foo", exact.String())
+	val, ok := exact.GetTag("x")
+	assert.True(t, ok)
+	assert.Equal(t, "!foo", val)
+}
+
+// TEST1834: x=v stays as x=v.
+func Test1834_canonicalize_exact_value(t *testing.T) {
+	cap, err := NewCapUrnFromString("cap:x=foo")
+	require.NoError(t, err)
+	assert.Equal(t, "cap:x=foo", cap.String())
+}
+
+// TEST1835: !x ≡ x! ≡ x=! all canonicalize to !x.
+func Test1835_canonicalize_must_not_have(t *testing.T) {
+	canonical := "cap:!x"
+	for _, input := range []string{"cap:!x", "cap:x!", "cap:x=!"} {
+		cap, err := NewCapUrnFromString(input)
+		require.NoError(t, err, "input %q must parse", input)
+		assert.Equal(t, canonical, cap.String(),
+			"input %q must canonicalize to %q", input, canonical)
+	}
+}
+
+// TEST1842: Full 6×6 truth table — every cell must match the matrix
+// in 04-PREDICATES.md §2.5.
+func Test1842_truth_table_full_cross_product(t *testing.T) {
+	forms := []string{"", "?x", "x?=v", "x", "x!=v", "x=v", "!x"}
+	expected := [7][7]bool{
+		//         miss   ?x    x?=v   x      x!=v   x=v    !x
+		/*miss*/  {true, true, true, false, false, false, true},
+		/*?x*/    {true, true, true, true, true, true, true},
+		/*x?=v*/  {true, true, true, false, false, false, true},
+		/*x*/     {true, true, true, true, true, true, false},
+		/*x!=v*/  {true, true, true, true, true, false, false},
+		/*x=v*/   {true, true, false, true, false, true, false},
+		/*!x*/    {true, true, true, false, false, false, true},
+	}
+	for i, instForm := range forms {
+		for j, pattForm := range forms {
+			instStr := "cap:"
+			if instForm != "" {
+				instStr = "cap:" + instForm
+			}
+			pattStr := "cap:"
+			if pattForm != "" {
+				pattStr = "cap:" + pattForm
+			}
+			inst, err := NewCapUrnFromString(instStr)
+			require.NoError(t, err)
+			patt, err := NewCapUrnFromString(pattStr)
+			require.NoError(t, err)
+			actual := patt.Accepts(inst)
+			assert.Equal(t, expected[i][j], actual,
+				"cell (inst=%q, patt=%q) expected %v got %v",
+				instForm, pattForm, expected[i][j], actual)
+		}
+	}
+}
+
+// TEST1843: Invalid qualifier combinations must be rejected.
+func Test1843_reject_invalid_combinations(t *testing.T) {
+	invalid := []string{
+		"cap:?x?=v",
+		"cap:!x!=v",
+		"cap:?!x",
+		"cap:!?x",
+		"cap:?x=*",
+		"cap:!x=*",
+		"cap:?x=?",
+		"cap:?x=!",
+		"cap:!x=?",
+		"cap:!x=!",
+		"cap:?",
+		"cap:!",
+	}
+	for _, input := range invalid {
+		_, err := NewCapUrnFromString(input)
+		assert.Error(t, err, "input %q must be rejected", input)
+	}
+}
+
+// TEST1844: out-axis difference dominates combined in+y differences.
+func Test1844_axis_weighting_out_dominates(t *testing.T) {
+	bigOut, err := NewCapUrnFromString(`cap:in=media:;out="media:record;textable"`)
+	require.NoError(t, err)
+	bigInAndY, err := NewCapUrnFromString(
+		"cap:in=media:pdf;out=media:record;!constrained;?target;extract;stage!=alpha;target2=metadata;ver?=draft")
+	require.NoError(t, err)
+	assert.Greater(t, bigOut.Specificity(), bigInAndY.Specificity(),
+		"out-axis difference must dominate combined in+y differences")
+}
+
+// TEST1845: With equal out, in-axis dominates over y-axis.
+func Test1845_axis_weighting_in_dominates_y(t *testing.T) {
+	bigIn, err := NewCapUrnFromString("cap:in=media:pdf;out=media:record")
+	require.NoError(t, err)
+	bigY, err := NewCapUrnFromString(
+		"cap:in=media:;out=media:record;!constrained;?target;extract;stage!=alpha;target2=metadata;ver?=draft")
+	require.NoError(t, err)
+	assert.Greater(t, bigIn.Specificity(), bigY.Specificity(),
+		"in-axis difference must dominate y-axis")
+}
+
+// TEST1846: Decoded layout — 10000*out + 100*in + y.
+func Test1846_axis_weighting_decoded_layout(t *testing.T) {
+	cap, err := NewCapUrnFromString(
+		`cap:in="media:a;b";out="media:a;b;c;d";extract`)
+	require.NoError(t, err)
+	// out=4 markers (8), in=2 markers (4), y=1 marker (2)
+	// 10000*8 + 100*4 + 2 = 80402
+	assert.Equal(t, 10000*8+100*4+2, cap.Specificity())
 }
