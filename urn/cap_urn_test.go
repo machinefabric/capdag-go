@@ -326,6 +326,37 @@ func Test016_trailing_semicolon_equivalence(t *testing.T) {
 	assert.True(t, cap2.Accepts(cap1))
 }
 
+// TEST939: The canonical form drops `in=media:` and `out=media:`
+// segments. Every spelling of "the same cap with wildcard in/out"
+// collapses to one byte-identical canonical string. This is the
+// contract that makes registry lookups work: the cap-publisher hashes
+// `<canonical-urn>` to compute the cache key, and every language port
+// (Rust, Go, Python, JS, ObjC) must agree on the canonical form for
+// cross-language lookups to land on the same key. A regression that
+// emitted the wildcard segments would silently move the published cap
+// to a different SHA-256 bucket, 404'ing every reader that hashes the
+// canonical form.
+func Test939_cap_urn_canonical_form_drops_wildcard_in_out(t *testing.T) {
+	canonical := "cap:decimate-sequence"
+	variants := []string{
+		"cap:decimate-sequence",
+		"cap:decimate-sequence;in=media:;out=media:",
+		"cap:in=media:;out=media:;decimate-sequence",
+		"cap:in=media:;decimate-sequence;out=media:",
+	}
+	for _, v := range variants {
+		parsed, err := NewCapUrnFromString(v)
+		require.NoError(t, err, "variant %q must parse", v)
+		assert.Equal(t, canonical, parsed.ToString(),
+			"input %q canonicalized to %q, expected %q — wildcard in/out segments must be elided so the registry SHA-256 key is stable across input spellings",
+			v, parsed.ToString(), canonical)
+	}
+	// Bare-identity round-trip.
+	identity, err := NewCapUrnFromString("cap:in=media:;out=media:")
+	require.NoError(t, err)
+	assert.Equal(t, "cap:", identity.ToString())
+}
+
 // TEST017: Test tag matching: exact match, subset match, wildcard match, value mismatch
 func Test017_tag_matching(t *testing.T) {
 	cap, err := NewCapUrnFromString(testUrn("generate;ext=pdf;target=thumbnail"))
