@@ -65,13 +65,13 @@ type PathArgumentRequirements struct {
 
 // MachinePlanBuilder builds execution plans from resolved paths.
 type MachinePlanBuilder struct {
-	capRegistry   *cap.CapRegistry
+	fabricRegistry   *cap.FabricRegistry
 }
 
 // NewMachinePlanBuilder creates a new plan builder.
-func NewMachinePlanBuilder(capRegistry *cap.CapRegistry) *MachinePlanBuilder {
+func NewMachinePlanBuilder(fabricRegistry *cap.FabricRegistry) *MachinePlanBuilder {
 	return &MachinePlanBuilder{
-		capRegistry:   capRegistry,
+		fabricRegistry:   fabricRegistry,
 	}
 }
 
@@ -120,7 +120,7 @@ func (b *MachinePlanBuilder) BuildPlanFromPath(
 ) (*MachinePlan, error) {
 	plan := NewMachinePlan(name)
 
-	caps := b.capRegistry.GetCachedCaps()
+	caps := b.fabricRegistry.GetCachedCaps()
 
 	// Build file-path info: cap_urn -> (file_path_arg_name, stdin_chainable)
 	type filePathEntry struct {
@@ -348,7 +348,7 @@ func (b *MachinePlanBuilder) BuildPlanFromPath(
 func (b *MachinePlanBuilder) AnalyzePathArguments(
 	path *Strand,
 ) (*PathArgumentRequirements, error) {
-	caps := b.capRegistry.GetCachedCaps()
+	caps := b.fabricRegistry.GetCachedCaps()
 
 	var stepRequirements []*StepArgumentRequirements
 	capStepIndex := 0

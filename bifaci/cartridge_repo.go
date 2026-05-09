@@ -96,7 +96,7 @@ type RegistryCapGroup struct {
 }
 
 // CartridgeDistributionInfo represents package distribution data.
-// `Url` is the absolute R2 URL of the package — every consumer downloads
+// `Url` is the absolute URL of the package — every consumer downloads
 // from that URL directly. There is no derived URL pattern any more.
 type CartridgeDistributionInfo struct {
 	Name   string `json:"name"`
@@ -114,7 +114,7 @@ type CartridgeBuild struct {
 // CartridgeVersionData represents a cartridge version's data (v5.0 schema).
 // Each version has one or more platform-specific builds.
 //
-// `NotesUrl` is the absolute R2 URL of the version's release-notes
+// `NotesUrl` is the absolute URL of the version's release-notes
 // Markdown file, when one was uploaded at publish time. Optional —
 // cartridges historically did not ship per-version notes.
 type CartridgeVersionData struct {

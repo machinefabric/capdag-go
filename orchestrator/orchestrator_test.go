@@ -42,9 +42,9 @@ func buildTestCapWithStdin(t *testing.T, capUrn string, title string) *cap.Cap {
 }
 
 // buildParserTestRegistry creates a registry with caps that have stdin args (for machine parser tests).
-func buildParserTestRegistry(t *testing.T, capUrns []string) *cap.CapRegistry {
+func buildParserTestRegistry(t *testing.T, capUrns []string) *cap.FabricRegistry {
 	t.Helper()
-	registry := cap.NewCapRegistryForTest()
+	registry := cap.NewFabricRegistryForTest()
 	caps := make([]*cap.Cap, 0, len(capUrns))
 	for index, capUrn := range capUrns {
 		caps = append(caps, buildTestCapWithStdin(t, capUrn, "Test Cap "+string(rune('0'+index))))
@@ -53,9 +53,9 @@ func buildParserTestRegistry(t *testing.T, capUrns []string) *cap.CapRegistry {
 	return registry
 }
 
-func buildTestRegistry(t *testing.T, capUrns []string) *cap.CapRegistry {
+func buildTestRegistry(t *testing.T, capUrns []string) *cap.FabricRegistry {
 	t.Helper()
-	registry := cap.NewCapRegistryForTest()
+	registry := cap.NewFabricRegistryForTest()
 	caps := make([]*cap.Cap, 0, len(capUrns))
 	for index, capUrn := range capUrns {
 		caps = append(caps, buildTestCap(t, capUrn, "Test Cap "+string(rune('0'+index))))

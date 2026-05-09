@@ -74,7 +74,7 @@ func NewUnresolvableMediaUrnErrorForValidation(capUrn, argumentName, mediaUrn st
 		Type:         "UnresolvableMediaUrn",
 		CapUrn:       capUrn,
 		ArgumentName: argumentName,
-		Message:      fmt.Sprintf("Cap '%s' argument '%s' has unresolvable media URN '%s' - not found in media_specs and not a built-in", capUrn, argumentName, mediaUrn),
+		Message:      fmt.Sprintf("Cap '%s' argument '%s' has unresolvable media URN '%s' - not found in registry", capUrn, argumentName, mediaUrn),
 	}
 }
 
@@ -167,7 +167,7 @@ func NewInputValidatorWithSchemaResolver(resolver SchemaResolver) *InputValidato
 }
 
 // ValidateArguments validates arguments against a cap's input schema
-func (iv *InputValidator) ValidateArguments(cap *Cap, arguments []interface{}, registry *media.MediaUrnRegistry) error {
+func (iv *InputValidator) ValidateArguments(cap *Cap, arguments []interface{}, registry *media.FabricRegistry) error {
 	capUrn := cap.UrnString()
 	args := cap.GetArgs()
 
@@ -210,7 +210,7 @@ func (iv *InputValidator) ValidateArguments(cap *Cap, arguments []interface{}, r
 }
 
 // ValidateNamedArguments validates named arguments against a cap's input schema
-func (iv *InputValidator) ValidateNamedArguments(cap *Cap, namedArgs []map[string]interface{}, registry *media.MediaUrnRegistry) error {
+func (iv *InputValidator) ValidateNamedArguments(cap *Cap, namedArgs []map[string]interface{}, registry *media.FabricRegistry) error {
 	capUrn := cap.UrnString()
 	args := cap.GetArgs()
 
@@ -263,9 +263,9 @@ func (iv *InputValidator) ValidateNamedArguments(cap *Cap, namedArgs []map[strin
 	return nil
 }
 
-func (iv *InputValidator) validateSingleArgument(cap *Cap, argDef *CapArg, value interface{}, registry *media.MediaUrnRegistry) error {
+func (iv *InputValidator) validateSingleArgument(cap *Cap, argDef *CapArg, value interface{}, registry *media.FabricRegistry) error {
 	// Resolve the media URN to determine the expected type
-	resolved, err := argDef.Resolve(cap.GetMediaSpecs(), registry)
+	resolved, err := argDef.Resolve(registry)
 	if err != nil {
 		return NewUnresolvableMediaUrnErrorForValidation(cap.UrnString(), argDef.MediaUrn, argDef.MediaUrn)
 	}
@@ -487,7 +487,7 @@ func NewOutputValidatorWithSchemaResolver(resolver SchemaResolver) *OutputValida
 // Two-pass validation:
 // 1. Type validation + media spec validation rules (inherent to semantic type)
 // 2. Output-level validation rules (context-specific)
-func (ov *OutputValidator) ValidateOutput(cap *Cap, output interface{}, registry *media.MediaUrnRegistry) error {
+func (ov *OutputValidator) ValidateOutput(cap *Cap, output interface{}, registry *media.FabricRegistry) error {
 	capUrn := cap.UrnString()
 
 	outputDef := cap.GetOutput()
@@ -500,7 +500,7 @@ func (ov *OutputValidator) ValidateOutput(cap *Cap, output interface{}, registry
 	}
 
 	// Resolve the media URN
-	resolved, err := outputDef.Resolve(cap.GetMediaSpecs(), registry)
+	resolved, err := outputDef.Resolve(registry)
 	if err != nil {
 		return &ValidationError{
 			Type:    "UnresolvableMediaUrn",
@@ -708,7 +708,7 @@ func (cvc *CapValidationCoordinator) GetCap(capUrn string) *Cap {
 }
 
 // ValidateInputs validates arguments against a cap's input schema
-func (cvc *CapValidationCoordinator) ValidateInputs(capUrn string, arguments []interface{}, registry *media.MediaUrnRegistry) error {
+func (cvc *CapValidationCoordinator) ValidateInputs(capUrn string, arguments []interface{}, registry *media.FabricRegistry) error {
 	cap := cvc.GetCap(capUrn)
 	if cap == nil {
 		return NewUnknownCapError(capUrn)
@@ -718,7 +718,7 @@ func (cvc *CapValidationCoordinator) ValidateInputs(capUrn string, arguments []i
 }
 
 // ValidateOutput validates output against a cap's output schema
-func (cvc *CapValidationCoordinator) ValidateOutput(capUrn string, output interface{}, registry *media.MediaUrnRegistry) error {
+func (cvc *CapValidationCoordinator) ValidateOutput(capUrn string, output interface{}, registry *media.FabricRegistry) error {
 	cap := cvc.GetCap(capUrn)
 	if cap == nil {
 		return NewUnknownCapError(capUrn)
@@ -728,14 +728,14 @@ func (cvc *CapValidationCoordinator) ValidateOutput(capUrn string, output interf
 }
 
 // ValidateCapSchema validates a cap definition itself
-func (cvc *CapValidationCoordinator) ValidateCapSchema(cap *Cap, registry *media.MediaUrnRegistry) error {
+func (cvc *CapValidationCoordinator) ValidateCapSchema(cap *Cap, registry *media.FabricRegistry) error {
 	capUrn := cap.UrnString()
 	args := cap.GetArgs()
 
 	if len(args) == 0 {
 		// Validate output media URN if present
 		if cap.Output != nil {
-			if _, err := cap.Output.Resolve(cap.GetMediaSpecs(), registry); err != nil {
+			if _, err := cap.Output.Resolve(registry); err != nil {
 				return &ValidationError{
 					Type:    "InvalidCapSchema",
 					CapUrn:  capUrn,
@@ -759,7 +759,7 @@ func (cvc *CapValidationCoordinator) ValidateCapSchema(cap *Cap, registry *media
 
 	// Validate that all argument media URNs can be resolved
 	for _, arg := range args {
-		if _, err := arg.Resolve(cap.GetMediaSpecs(), registry); err != nil {
+		if _, err := arg.Resolve(registry); err != nil {
 			argType := "optional"
 			if arg.Required {
 				argType = "required"
@@ -775,7 +775,7 @@ func (cvc *CapValidationCoordinator) ValidateCapSchema(cap *Cap, registry *media
 
 	// Validate output media URN if present
 	if cap.Output != nil {
-		if _, err := cap.Output.Resolve(cap.GetMediaSpecs(), registry); err != nil {
+		if _, err := cap.Output.Resolve(registry); err != nil {
 			return &ValidationError{
 				Type:    "InvalidCapSchema",
 				CapUrn:  capUrn,
@@ -1073,53 +1073,3 @@ func getNumericValue(value interface{}) (float64, bool) {
 // XV5 VALIDATION - No Redefinition of Registry Media Specs
 // ============================================================================
 
-// XV5ValidationResult contains the result of XV5 validation
-type XV5ValidationResult struct {
-	Valid     bool
-	Error     string
-	Redefines []string
-}
-
-// NewInlineMediaSpecRedefinesRegistryError creates an error for XV5 violations
-func NewInlineMediaSpecRedefinesRegistryError(mediaUrn string) *ValidationError {
-	return &ValidationError{
-		Type:    "InlineMediaSpecRedefinesRegistry",
-		Message: fmt.Sprintf("XV5: Inline media spec '%s' redefines existing registry spec", mediaUrn),
-	}
-}
-
-// MediaUrnExistsInRegistryFunc is a function that checks if a media URN exists in the registry
-// Returns true if the media URN exists in registry (cache or online), false otherwise
-// If the check fails (network error, etc.), should return false to allow graceful degradation
-type MediaUrnExistsInRegistryFunc func(mediaUrn string) bool
-
-// ValidateNoInlineMediaSpecRedefinition checks that inline media_specs don't redefine existing registry specs (XV5)
-// If existsInRegistry is nil, validation passes (graceful degradation - can't check)
-func ValidateNoInlineMediaSpecRedefinition(mediaSpecs map[string]any, existsInRegistry MediaUrnExistsInRegistryFunc) XV5ValidationResult {
-	if len(mediaSpecs) == 0 {
-		return XV5ValidationResult{Valid: true}
-	}
-
-	// If no registry check provided, degrade gracefully and allow
-	if existsInRegistry == nil {
-		return XV5ValidationResult{Valid: true}
-	}
-
-	var redefines []string
-	for mediaUrn := range mediaSpecs {
-		// Check if this media URN already exists in the registry
-		if existsInRegistry(mediaUrn) {
-			redefines = append(redefines, mediaUrn)
-		}
-	}
-
-	if len(redefines) > 0 {
-		return XV5ValidationResult{
-			Valid:     false,
-			Error:     fmt.Sprintf("XV5: Inline media specs redefine existing registry specs: %v", redefines),
-			Redefines: redefines,
-		}
-	}
-
-	return XV5ValidationResult{Valid: true}
-}

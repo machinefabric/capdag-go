@@ -22,6 +22,16 @@ const CapDiscard = "cap:in=media:;out=media:void"
 // that returns {"media_urns": [...]}.
 const CapAdapterSelection = `cap:in="media:";out="media:adapter-selection;json;record"`
 
+// CapLookupCapFabric resolves a canonical cap URN to its full flattened
+// cap definition by fetching from the public fabric registry. Implemented
+// by netaccesscartridge.
+const CapLookupCapFabric = `cap:in="media:cap-urn;textable";fabric;lookup-cap;out="media:cap-definition;json;record;textable"`
+
+// CapLookupMediaSpecFabric resolves a canonical media URN to its full
+// media spec definition by fetching from the public fabric registry.
+// Implemented by netaccesscartridge.
+const CapLookupMediaSpecFabric = `cap:in="media:media-urn;textable";fabric;lookup-media-spec;out="media:media-spec-definition;json;record;textable"`
+
 // =============================================================================
 // STANDARD CAP URN BUILDERS
 // These return URN strings that can be parsed with urn.NewCapUrnFromString()

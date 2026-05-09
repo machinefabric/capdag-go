@@ -80,7 +80,7 @@ func Test768_analyze_path_arguments_stdin_is_from_input_file(t *testing.T) {
 	c := cap.NewCapWithArgs(capUrnParsed, "Extract", "test", []cap.CapArg{stdinArg})
 	c.Output = &cap.CapOutput{MediaUrn: capUrnParsed.OutSpec()}
 
-	registry := cap.NewCapRegistryForTest()
+	registry := cap.NewFabricRegistryForTest()
 	registry.AddCapsToCache([]*cap.Cap{c})
 	builder := NewMachinePlanBuilder(registry)
 
@@ -124,7 +124,7 @@ func Test769_analyze_path_arguments_user_input_arg_appears_in_slots(t *testing.T
 	c := cap.NewCapWithArgs(capUrnParsed, "Translate", "test", []cap.CapArg{stdinArg, userArg})
 	c.Output = &cap.CapOutput{MediaUrn: capUrnParsed.OutSpec()}
 
-	registry := cap.NewCapRegistryForTest()
+	registry := cap.NewFabricRegistryForTest()
 	registry.AddCapsToCache([]*cap.Cap{c})
 	builder := NewMachinePlanBuilder(registry)
 

@@ -64,7 +64,7 @@ type rawWiring struct {
 //
 // Uses a PEG parser with a grammar equivalent to machine.pest.
 // Fails hard — no fallbacks, no guessing, no recovery.
-func ParseMachine(input string, registry *cap.CapRegistry) (*Machine, *MachineParseError) {
+func ParseMachine(input string, registry *cap.FabricRegistry) (*Machine, *MachineParseError) {
 	input = strings.TrimSpace(input)
 	if input == "" {
 		return nil, syntaxParseError(emptyError())

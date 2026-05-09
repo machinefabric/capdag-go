@@ -229,7 +229,7 @@ func fromResolvedStrands(strands []*MachineStrand) *Machine {
 // FromStrand builds a Machine containing exactly one MachineStrand from a
 // planner-produced Strand. The cap registry is required to look up each
 // cap's args list for source-to-arg matching.
-func FromStrand(strand *planner.Strand, registry *cap.CapRegistry) (*Machine, *MachineAbstractionError) {
+func FromStrand(strand *planner.Strand, registry *cap.FabricRegistry) (*Machine, *MachineAbstractionError) {
 	resolved, err := resolveStrand(strand, registry, 0)
 	if err != nil {
 		return nil, err
@@ -239,7 +239,7 @@ func FromStrand(strand *planner.Strand, registry *cap.CapRegistry) (*Machine, *M
 
 // FromStrands builds a Machine containing N MachineStrands, one per input
 // strand, in the given order. Each strand is resolved independently.
-func FromStrands(strands []*planner.Strand, registry *cap.CapRegistry) (*Machine, *MachineAbstractionError) {
+func FromStrands(strands []*planner.Strand, registry *cap.FabricRegistry) (*Machine, *MachineAbstractionError) {
 	if len(strands) == 0 {
 		return nil, noCapabilityStepsError()
 	}
@@ -287,7 +287,7 @@ func (m *Machine) IsEquivalent(other *Machine) bool {
 
 // FromString parses machine notation into a Machine.
 // Requires the cap registry for the resolution phase.
-func FromString(input string, registry *cap.CapRegistry) (*Machine, *MachineParseError) {
+func FromString(input string, registry *cap.FabricRegistry) (*Machine, *MachineParseError) {
 	return ParseMachine(input, registry)
 }
 

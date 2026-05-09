@@ -27,7 +27,7 @@ type preInternedWiring struct {
 // ForEach sets isLoop=true on the next cap; Collect is elided.
 func resolveStrand(
 	strand *planner.Strand,
-	registry *cap.CapRegistry,
+	registry *cap.FabricRegistry,
 	strandIndex int,
 ) (*MachineStrand, *MachineAbstractionError) {
 	var nodes []*urn.MediaUrn
@@ -98,7 +98,7 @@ func resolveStrand(
 func resolvePreInterned(
 	nodes []*urn.MediaUrn,
 	wirings []preInternedWiring,
-	registry *cap.CapRegistry,
+	registry *cap.FabricRegistry,
 	strandIndex int,
 ) (*MachineStrand, *MachineAbstractionError) {
 	if len(wirings) == 0 {

@@ -19,7 +19,7 @@ import (
 //
 // All cap lookups use GetCachedCap: caps must be pre-loaded into the registry
 // cache before calling this function.
-func PlanToResolvedGraph(plan *planner.MachinePlan, registry *cap.CapRegistry) (*ResolvedGraph, error) {
+func PlanToResolvedGraph(plan *planner.MachinePlan, registry *cap.FabricRegistry) (*ResolvedGraph, error) {
 	nodes := make(map[string]string)
 	var resolvedEdges []*ResolvedEdge
 

@@ -37,12 +37,6 @@ func main() {
 	}
 
 	// Add custom media spec with schema
-	cap.AddMediaSpec("media:user;textable;record", capdag.NewMediaSpecDefObjectWithSchema(
-		"application/json",
-		"https://example.com/schema/user",
-		userSchema,
-	))
-
 	// Add argument with schema using new CapArg architecture
 	cliFlag := "--user"
 	pos := 0
@@ -65,7 +59,7 @@ func main() {
 	}
 
 	// Get registry for resolving media URNs
-	registry, err := capdag.NewMediaUrnRegistry()
+	registry, err := capdag.NewFabricRegistry()
 	if err != nil {
 		fmt.Printf("ERR Failed to create media URN registry: %v\n", err)
 		return
@@ -74,7 +68,7 @@ func main() {
 	// Resolve the arg and validate
 	args := cap.GetArgs()
 	if len(args) > 0 {
-		resolved, _ := args[0].Resolve(cap.GetMediaSpecs(), registry)
+		resolved, _ := args[0].Resolve(registry)
 		if resolved != nil && resolved.Schema != nil {
 			err := validator.ValidateArgumentWithSchema(&args[0], resolved.Schema, validUser)
 			if err != nil {
@@ -92,7 +86,7 @@ func main() {
 	}
 
 	if len(args) > 0 {
-		resolved, _ := args[0].Resolve(cap.GetMediaSpecs(), registry)
+		resolved, _ := args[0].Resolve(registry)
 		if resolved != nil && resolved.Schema != nil {
 			err := validator.ValidateArgumentWithSchema(&args[0], resolved.Schema, invalidUser)
 			if err != nil {
@@ -132,12 +126,6 @@ func main() {
 	}
 
 	// Add custom media spec for output with schema
-	cap.AddMediaSpec("media:query-result;textable;record", capdag.NewMediaSpecDefObjectWithSchema(
-		"application/json",
-		"https://example.com/schema/query-result",
-		outputSchema,
-	))
-
 	output := capdag.NewCapOutput("media:query-result;textable;record", "Query results")
 	cap.SetOutput(output)
 
@@ -153,7 +141,7 @@ func main() {
 
 	// Resolve output and validate
 	if cap.Output != nil {
-		resolved, _ := cap.Output.Resolve(cap.GetMediaSpecs(), registry)
+		resolved, _ := cap.Output.Resolve(registry)
 		if resolved != nil && resolved.Schema != nil {
 			err := validator.ValidateOutputWithSchema(cap.Output, resolved.Schema, validOutput)
 			if err != nil {
@@ -205,12 +193,6 @@ func main() {
 	}
 
 	// Add custom media spec for array with schema
-	cap.AddMediaSpec("media:items;textable;record", capdag.NewMediaSpecDefObjectWithSchema(
-		"application/json",
-		"https://example.com/schema/items",
-		arraySchema,
-	))
-
 	cliFlag2 := "--items"
 	pos2 := 1
 	itemsArg := capdag.CapArg{
@@ -225,7 +207,7 @@ func main() {
 		map[string]interface{}{"id": 2, "name": "Item 2"},
 	}
 
-	resolved, _ := itemsArg.Resolve(cap.GetMediaSpecs(), registry)
+	resolved, _ := itemsArg.Resolve(registry)
 	if resolved != nil && resolved.Schema != nil {
 		err = validator.ValidateArgumentWithSchema(&itemsArg, resolved.Schema, validArray)
 		if err != nil {

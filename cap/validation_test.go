@@ -64,7 +64,7 @@ func Test051_input_validation_success(t *testing.T) {
 	inputArgs := []interface{}{"/path/to/file.txt"}
 
 	validator := NewInputValidator()
-	registry, err := media.NewMediaUrnRegistry()
+	registry, err := media.NewFabricRegistry()
 	require.NoError(t, err)
 
 	err = validator.ValidateArguments(cap, inputArgs, registry)
@@ -81,7 +81,7 @@ func Test052_input_validation_missing_required(t *testing.T) {
 	inputArgs := []interface{}{} // Missing required argument
 
 	validator := NewInputValidator()
-	registry, err := media.NewMediaUrnRegistry()
+	registry, err := media.NewFabricRegistry()
 	require.NoError(t, err)
 
 	err = validator.ValidateArguments(cap, inputArgs, registry)
@@ -95,19 +95,19 @@ func Test053_input_validation_wrong_type(t *testing.T) {
 	require.NoError(t, err)
 	cap := NewCap(u, "Test Capability", "test-command")
 
-	cap.AddMediaSpec(media.NewMediaSpecDefWithSchema(
+	registry, err := media.NewFabricRegistry()
+	require.NoError(t, err)
+	registry.AddSpec((media.NewMediaSpecDefWithSchema(
 		standard.MediaInteger,
 		"text/plain",
 		"https://capdag.com/schema/integer",
 		map[string]interface{}{"type": "integer"},
-	))
+	)).ToStored())
 	cap.AddArg(NewCapArg(standard.MediaInteger, true, []ArgSource{positionSource(0)}))
 
 	inputArgs := []interface{}{"not_a_number"}
 
 	validator := NewInputValidator()
-	registry, err := media.NewMediaUrnRegistry()
-	require.NoError(t, err)
 
 	err = validator.ValidateArguments(cap, inputArgs, registry)
 	require.Error(t, err)

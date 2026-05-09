@@ -14,18 +14,27 @@ import (
 // Media URN resolution tests
 // -------------------------------------------------------------------------
 
-// Helper to create a test registry (matches Rust test_registry() helper)
-func testRegistry(t *testing.T) *MediaUrnRegistry {
+// Helper to create a test registry pre-seeded with the baseline media specs
+// the Go test suite expects. Mirrors the Rust test_registry() helper which
+// loads the bundled standard specs.
+func testRegistry(t *testing.T) *FabricRegistry {
 	t.Helper()
-	registry, err := NewMediaUrnRegistry()
+	registry, err := NewFabricRegistry()
 	require.NoError(t, err, "Failed to create test registry")
+	for _, def := range []MediaSpecDef{
+		{Urn: "media:textable", MediaType: "text/plain", ProfileURI: "https://capdag.com/schema/string"},
+		{Urn: "media:record;textable", MediaType: "application/json", ProfileURI: "https://capdag.com/schema/object"},
+		{Urn: "media:", MediaType: "application/octet-stream"},
+	} {
+		registry.AddSpec(def.ToStored())
+	}
 	return registry
 }
 
 // TEST088: Test resolving string media URN from registry returns correct media type and profile
 func Test088_resolve_from_registry_str(t *testing.T) {
 	registry := testRegistry(t)
-	resolved, err := ResolveMediaUrn("media:textable", nil, registry)
+	resolved, err := ResolveMediaUrn("media:textable", registry)
 	require.NoError(t, err)
 	assert.Equal(t, "text/plain", resolved.MediaType)
 	assert.Equal(t, "https://capdag.com/schema/string", resolved.ProfileURI)
@@ -34,7 +43,7 @@ func Test088_resolve_from_registry_str(t *testing.T) {
 // TEST089: Test resolving JSON media URN from registry returns JSON media type
 func Test089_resolve_from_registry_obj(t *testing.T) {
 	registry := testRegistry(t)
-	resolved, err := ResolveMediaUrn("media:record;textable", nil, registry)
+	resolved, err := ResolveMediaUrn("media:record;textable", registry)
 	require.NoError(t, err)
 	assert.Equal(t, "application/json", resolved.MediaType)
 }
@@ -42,7 +51,7 @@ func Test089_resolve_from_registry_obj(t *testing.T) {
 // TEST090: Test resolving binary media URN returns octet-stream and is_binary true
 func Test090_resolve_from_registry_binary(t *testing.T) {
 	registry := testRegistry(t)
-	resolved, err := ResolveMediaUrn("media:", nil, registry)
+	resolved, err := ResolveMediaUrn("media:", registry)
 	require.NoError(t, err)
 	assert.Equal(t, "application/octet-stream", resolved.MediaType)
 	assert.True(t, resolved.IsBinary())
@@ -66,7 +75,8 @@ func Test091_resolve_custom_media_spec(t *testing.T) {
 	}
 
 	// Local media_specs takes precedence over registry
-	resolved, err := ResolveMediaUrn("media:custom-spec;json", customSpecs, registry)
+	for _, d := range customSpecs { registry.AddSpec(d.ToStored()) }
+	resolved, err := ResolveMediaUrn("media:custom-spec;json", registry)
 	require.NoError(t, err)
 	assert.Equal(t, "media:custom-spec;json", resolved.SpecID)
 	assert.Equal(t, "application/json", resolved.MediaType)
@@ -97,7 +107,9 @@ func Test092_resolve_custom_with_schema(t *testing.T) {
 		},
 	}
 
-	resolved, err := ResolveMediaUrn("media:output-spec;json;record", customSpecs, registry)
+	for _, d := range customSpecs { registry.AddSpec(d.ToStored()) }
+
+	resolved, err := ResolveMediaUrn("media:output-spec;json;record", registry)
 	require.NoError(t, err)
 	assert.Equal(t, "media:output-spec;json;record", resolved.SpecID)
 	assert.Equal(t, "application/json", resolved.MediaType)
@@ -109,7 +121,7 @@ func Test092_resolve_custom_with_schema(t *testing.T) {
 func Test093_resolve_unresolvable_fails_hard(t *testing.T) {
 	registry := testRegistry(t)
 	// URN not in local media_specs and not in registry - FAIL HARD
-	_, err := ResolveMediaUrn("media:completely-unknown-urn-not-in-registry", nil, registry)
+	_, err := ResolveMediaUrn("media:completely-unknown-urn-not-in-registry", registry)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "media:completely-unknown-urn-not-in-registry")
 	assert.Contains(t, err.Error(), "cannot resolve")
@@ -134,7 +146,9 @@ func Test094_local_overrides_registry(t *testing.T) {
 		},
 	}
 
-	resolved, err := ResolveMediaUrn("media:textable", customOverride, registry)
+	for _, d := range customOverride { registry.AddSpec(d.ToStored()) }
+
+	resolved, err := ResolveMediaUrn("media:textable", registry)
 	require.NoError(t, err)
 	// Custom definition used, not registry
 	assert.Equal(t, "application/json", resolved.MediaType)
@@ -347,7 +361,8 @@ func Test105_metadata_propagation(t *testing.T) {
 	}
 
 	registry := testRegistry(t)
-	resolved, err := ResolveMediaUrn("media:custom-setting", mediaSpecs, registry)
+	for _, d := range mediaSpecs { registry.AddSpec(d.ToStored()) }
+	resolved, err := ResolveMediaUrn("media:custom-setting", registry)
 	require.NoError(t, err)
 	require.NotNil(t, resolved.Metadata)
 	assert.Equal(t, "interface", resolved.Metadata["category_key"])
@@ -379,7 +394,8 @@ func Test106_metadata_with_validation(t *testing.T) {
 	}
 
 	registry := testRegistry(t)
-	resolved, err := ResolveMediaUrn("media:bounded-number;numeric", mediaSpecs, registry)
+	for _, d := range mediaSpecs { registry.AddSpec(d.ToStored()) }
+	resolved, err := ResolveMediaUrn("media:bounded-number;numeric", registry)
 	require.NoError(t, err)
 
 	// Verify validation
@@ -413,7 +429,8 @@ func Test107_extensions_propagation(t *testing.T) {
 	}
 
 	registry := testRegistry(t)
-	resolved, err := ResolveMediaUrn("media:custom-pdf", mediaSpecs, registry)
+	for _, d := range mediaSpecs { registry.AddSpec(d.ToStored()) }
+	resolved, err := ResolveMediaUrn("media:custom-pdf", registry)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"pdf"}, resolved.Extensions)
 }
@@ -467,7 +484,8 @@ func Test893_extensions_with_metadata_and_validation(t *testing.T) {
 	}
 
 	registry := testRegistry(t)
-	resolved, err := ResolveMediaUrn("media:custom-output;json", mediaSpecs, registry)
+	for _, d := range mediaSpecs { registry.AddSpec(d.ToStored()) }
+	resolved, err := ResolveMediaUrn("media:custom-output;json", registry)
 	require.NoError(t, err)
 
 	// Verify all fields are present
@@ -493,7 +511,8 @@ func Test894_multiple_extensions(t *testing.T) {
 	}
 
 	registry := testRegistry(t)
-	resolved, err := ResolveMediaUrn("media:image;jpeg", mediaSpecs, registry)
+	for _, d := range mediaSpecs { registry.AddSpec(d.ToStored()) }
+	resolved, err := ResolveMediaUrn("media:image;jpeg", registry)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"jpg", "jpeg"}, resolved.Extensions)
 	assert.Len(t, resolved.Extensions, 2)
@@ -505,7 +524,7 @@ func Test894_multiple_extensions(t *testing.T) {
 
 // TEST607: media_urns_for_extension returns error for unknown extension
 func Test607_media_urns_for_extension_unknown(t *testing.T) {
-	registry, err := NewMediaUrnRegistryForTest()
+	registry, err := NewFabricRegistryForTest()
 	require.NoError(t, err)
 
 	_, err = registry.MediaUrnsForExtension("zzzzunknown")
@@ -515,7 +534,7 @@ func Test607_media_urns_for_extension_unknown(t *testing.T) {
 
 // TEST608: media_urns_for_extension returns URNs after adding a spec with extensions
 func Test608_media_urns_for_extension_populated(t *testing.T) {
-	registry, err := NewMediaUrnRegistryForTest()
+	registry, err := NewFabricRegistryForTest()
 	require.NoError(t, err)
 
 	registry.AddSpec(StoredMediaSpec{
@@ -546,7 +565,7 @@ func Test608_media_urns_for_extension_populated(t *testing.T) {
 
 // TEST609: get_extension_mappings returns all registered extension->URN pairs
 func Test609_get_extension_mappings(t *testing.T) {
-	registry, err := NewMediaUrnRegistryForTest()
+	registry, err := NewFabricRegistryForTest()
 	require.NoError(t, err)
 
 	registry.AddSpec(StoredMediaSpec{
@@ -573,7 +592,7 @@ func Test609_get_extension_mappings(t *testing.T) {
 
 // TEST610: get_cached_spec returns None for unknown and Some for known
 func Test610_get_cached_spec(t *testing.T) {
-	registry, err := NewMediaUrnRegistryForTest()
+	registry, err := NewFabricRegistryForTest()
 	require.NoError(t, err)
 
 	// Unknown spec
@@ -593,14 +612,14 @@ func Test610_get_cached_spec(t *testing.T) {
 
 // TEST614: Verify registry creation succeeds and cache directory exists
 func Test614_registry_creation(t *testing.T) {
-	registry, err := NewMediaUrnRegistryForTest()
+	registry, err := NewFabricRegistryForTest()
 	require.NoError(t, err)
 	require.NotNil(t, registry)
 }
 
 // TEST615: Verify cache key generation is deterministic and distinct for different URNs
 func Test615_cache_key_generation(t *testing.T) {
-	registry, err := NewMediaUrnRegistryForTest()
+	registry, err := NewFabricRegistryForTest()
 	require.NoError(t, err)
 
 	key1 := registry.CacheKey("media:textable")
@@ -653,7 +672,9 @@ func Test1131_media_documentation_propagates_through_resolve(t *testing.T) {
 		Documentation: &body,
 	}
 
-	resolved, err := ResolveMediaUrn(docUrn, []MediaSpecDef{spec}, registry)
+	for _, d := range []MediaSpecDef{spec} { registry.AddSpec(d.ToStored()) }
+
+	resolved, err := ResolveMediaUrn(docUrn, registry)
 	require.NoError(t, err)
 	require.NotNil(t, resolved.Documentation,
 		"documentation must propagate from MediaSpecDef into ResolvedMediaSpec")
@@ -732,7 +753,7 @@ func Test629_profile_constants_format(t *testing.T) {
 // This is a regression guard: every cap output URN must produce user-facing files
 // with a known extension. If a spec lacks extensions, save_cap_output will fail.
 func Test895_cap_output_media_specs_have_extensions(t *testing.T) {
-	registry, err := NewMediaUrnRegistry()
+	registry, err := NewFabricRegistry()
 	require.NoError(t, err)
 
 	capOutputUrns := []string{
@@ -772,7 +793,7 @@ func Test895_cap_output_media_specs_have_extensions(t *testing.T) {
 // TEST896: All cap input media specs that represent user files must have extensions.
 // These are the entry points — the file types users can right-click on.
 func Test896_cap_input_media_specs_have_extensions(t *testing.T) {
-	registry, err := NewMediaUrnRegistry()
+	registry, err := NewFabricRegistry()
 	require.NoError(t, err)
 
 	capInputUrns := []string{
@@ -807,7 +828,7 @@ func Test896_cap_input_media_specs_have_extensions(t *testing.T) {
 // TEST897: Verify that specific cap output URNs resolve to the correct extension.
 // This catches misconfigurations where a spec exists but has the wrong extension.
 func Test897_cap_output_extension_values_correct(t *testing.T) {
-	registry, err := NewMediaUrnRegistry()
+	registry, err := NewFabricRegistry()
 	require.NoError(t, err)
 
 	expected := []struct {

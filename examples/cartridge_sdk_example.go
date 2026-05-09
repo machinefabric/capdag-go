@@ -57,12 +57,6 @@ func main() {
 	}
 
 	// Add a custom media spec with the schema
-	cap.AddMediaSpec("media:query-params;textable;record", capdag.NewMediaSpecDefObjectWithSchema(
-		"application/json",
-		"https://example.com/schema/query-params",
-		querySchema,
-	))
-
 	// Add schema-enabled argument using new CapArg architecture
 	cliFlag := "--query"
 	pos := 0
@@ -114,12 +108,6 @@ func main() {
 	}
 
 	// Add custom media spec for output with schema
-	cap.AddMediaSpec("media:query-results;textable;record", capdag.NewMediaSpecDefObjectWithSchema(
-		"application/json",
-		"https://example.com/schema/query-results",
-		resultSchema,
-	))
-
 	// Set output
 	cap.SetOutput(capdag.NewCapOutput("media:query-results;textable;record", "Document search results"))
 

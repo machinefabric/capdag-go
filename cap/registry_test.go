@@ -1,6 +1,7 @@
 package cap
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -23,14 +24,14 @@ func regTestUrn(tags string) string {
 
 // TEST135: Test registry creation with temporary cache directory succeeds
 func Test135_registry_creation(t *testing.T) {
-	registry, err := NewCapRegistry()
+	registry, err := NewFabricRegistry()
 	require.NoError(t, err)
 	assert.NotNil(t, registry)
 }
 
 // TEST136: Test cache key generation produces consistent hashes for same URN
 func Test136_cache_key_generation(t *testing.T) {
-	registry, err := NewCapRegistry()
+	registry, err := NewFabricRegistry()
 	require.NoError(t, err)
 
 	// Use URNs with required in/out
@@ -47,7 +48,7 @@ func Test136_cache_key_generation(t *testing.T) {
 }
 
 func TestRegistryGetCap(t *testing.T) {
-	registry, err := NewCapRegistry()
+	registry, err := NewFabricRegistry()
 	require.NoError(t, err)
 
 	// Test with a fake URN that won't exist (still needs in/out)
@@ -60,7 +61,7 @@ func TestRegistryGetCap(t *testing.T) {
 }
 
 func TestRegistryValidation(t *testing.T) {
-	registry, err := NewCapRegistry()
+	registry, err := NewFabricRegistry()
 	require.NoError(t, err)
 
 	// Create a test cap
@@ -74,7 +75,7 @@ func TestRegistryValidation(t *testing.T) {
 }
 
 func TestCacheOperations(t *testing.T) {
-	registry, err := NewCapRegistry()
+	registry, err := NewFabricRegistry()
 	require.NoError(t, err)
 
 	// Test clearing empty cache (should not error)
@@ -117,7 +118,7 @@ func Test138_parse_registry_json_with_stdin(t *testing.T) {
 }
 
 func TestCapExists(t *testing.T) {
-	registry, err := NewCapRegistry()
+	registry, err := NewFabricRegistry()
 	require.NoError(t, err)
 
 	// Test with a URN that doesn't exist
@@ -125,60 +126,55 @@ func TestCapExists(t *testing.T) {
 	assert.False(t, exists)
 }
 
-// URL Encoding Tests - Guard against the bug where encoding "cap:" causes 404s
-
-// buildRegistryURL replicates the URL construction logic from fetchFromRegistry
+// Per-cap URL construction. The new scheme uses /caps/<sha256>,
+// where the hash is computed over the canonical URN's UTF-8 bytes.
+// buildRegistryURL replicates the construction logic from fetchFromRegistry.
 func buildRegistryURL(capUrn string) string {
 	normalizedUrn := capUrn
 	if parsed, err := urn.NewCapUrnFromString(capUrn); err == nil {
 		normalizedUrn = parsed.String()
 	}
-	tagsPart := strings.TrimPrefix(normalizedUrn, "cap:")
-	encodedTags := url.PathEscape(tagsPart)
-	return fmt.Sprintf("%s/cap:%s", DefaultRegistryBaseURL, encodedTags)
+	digest := sha256.Sum256([]byte(normalizedUrn))
+	return fmt.Sprintf("%s/caps/%x", DefaultRegistryBaseURL, digest)
 }
 
-// TEST139: Test URL construction keeps cap prefix literal and only encodes tags part
-func Test139_url_keeps_cap_prefix_literal(t *testing.T) {
-	urn := `cap:in="media:string";test;out="media:object"`
-	registryURL := buildRegistryURL(urn)
+// TEST139: Per-cap URL is /caps/<sha256-hex> — no URN-grammar
+// characters in the path, no percent-encoding gymnastics.
+func Test139_per_cap_url_uses_sha256(t *testing.T) {
+	registryURL := buildRegistryURL(`cap:in="media:string";test;out="media:object"`)
 
-	// URL must contain literal "/cap:" not encoded
-	assert.Contains(t, registryURL, "/cap:", "URL must contain literal '/cap:' not encoded")
-	// URL must NOT contain "cap%3A" (encoded version)
-	assert.NotContains(t, registryURL, "cap%3A", "URL must not encode 'cap:' as 'cap%3A'")
+	assert.Contains(t, registryURL, "/caps/", "URL must use the /caps/ path prefix")
+	assert.NotContains(t, registryURL, "cap:", "URL must not contain raw cap: URN syntax")
+	assert.NotContains(t, registryURL, "%3A", "URL must not contain percent-encoded URN characters")
+	assert.NotContains(t, registryURL, "%3D", "URL must not contain percent-encoded URN characters")
+	assert.NotContains(t, registryURL, "%3B", "URL must not contain percent-encoded URN characters")
 }
 
-// TEST140: Test URL encodes media URNs with proper percent encoding for special characters
-func Test140_url_encodes_media_urns(t *testing.T) {
-	// Colons don't need quoting, so the canonical form won't have quotes
-	urn := `cap:in=media:listing-id;use-grinder;out=media:task;id`
-	registryURL := buildRegistryURL(urn)
-
-	// URL should contain the media URN values
-	assert.Contains(t, registryURL, "media:listing-id", "URL should contain media URN")
-	// Note: url.PathEscape doesn't encode =, :, or ; as they're valid in paths
-	// The key requirement is that the URL is valid and the Netlify function can decode it
+// TEST140: Equivalent URNs (different tag order, etc.) hash to the
+// same key. This is the property that makes cross-language lookups
+// land at the same registry object regardless of which capdag
+// implementation issued the request.
+func Test140_same_cap_different_spellings_same_url(t *testing.T) {
+	urlA := buildRegistryURL(`cap:in="media:listing-id";use-grinder;out="media:task;id"`)
+	urlB := buildRegistryURL(`cap:out="media:task;id";in="media:listing-id";use-grinder`)
+	assert.Equal(t, urlA, urlB, "Equivalent URNs must hash to the same registry key")
 }
 
-// TEST141: Test exact URL format contains properly encoded media URN components
-func Test141_url_format_is_valid(t *testing.T) {
-	// Colons don't need quoting, so the canonical form won't have quotes
-	urn := `cap:in=media:listing-id;use-grinder;out=media:task;id`
-	registryURL := buildRegistryURL(urn)
+// TEST141: URL has the right shape — protocol, host, /caps/ prefix,
+// 64 hex chars, no extension.
+func Test141_per_cap_url_shape(t *testing.T) {
+	registryURL := buildRegistryURL(`cap:in=media:listing-id;use-grinder;out=media:task;id`)
 
-	// URL should be parseable
 	parsed, err := url.Parse(registryURL)
 	require.NoError(t, err, "Generated URL must be valid")
-
-	// Host should be capdag.com
-	assert.Equal(t, "capdag.com", parsed.Host, "Host must be capdag.com")
-
-	// Raw URL string should start with the correct base
-	assert.True(t, strings.HasPrefix(registryURL, DefaultRegistryBaseURL+"/cap:"), "URL must start with base URL and /cap:")
+	assert.Equal(t, "fabric.capdag.com", parsed.Host, "Default host is fabric.capdag.com")
+	assert.True(t, strings.HasPrefix(parsed.Path, "/caps/"))
+	hashPart := strings.TrimPrefix(parsed.Path, "/caps/")
+	assert.Len(t, hashPart, 64, "SHA-256 hex digest is 64 characters")
 }
 
-// TEST142: Test normalize handles different tag orders producing same canonical form
+// TEST142: Different tag orders normalise to the same URL — the
+// canonicaliser strips the variation before hashing.
 func Test142_normalize_handles_different_tag_orders(t *testing.T) {
 	urn1 := `cap:test;in="media:string";out="media:object"`
 	urn2 := `cap:in="media:string";out="media:object";test`
@@ -189,13 +185,14 @@ func Test142_normalize_handles_different_tag_orders(t *testing.T) {
 	assert.Equal(t, url1, url2, "Different tag orders should produce the same URL")
 }
 
-// TEST143: Test default config uses capdag.com or environment variable values
+// TEST143: Default config points at https://fabric.capdag.com/ unless
+// overridden by CAPDAG_REGISTRY_URL.
 func Test143_default_config(t *testing.T) {
 	config := DefaultRegistryConfig()
-	// Default should use capdag.com (unless env var is set)
 	registryURL := os.Getenv("CAPDAG_REGISTRY_URL")
 	if registryURL == "" {
-		assert.Contains(t, config.RegistryBaseURL, "capdag.com", "Default registry URL should be capdag.com")
+		assert.Equal(t, "https://fabric.capdag.com", config.RegistryBaseURL,
+			"Default registry URL is fabric.capdag.com")
 	} else {
 		assert.Equal(t, registryURL, config.RegistryBaseURL, "Registry URL should be from env var")
 	}
@@ -233,6 +230,6 @@ func Test146_schema_url_not_overwritten_when_explicit(t *testing.T) {
 func Test147_registry_for_test_with_config(t *testing.T) {
 	config := DefaultRegistryConfig()
 	WithRegistryURL("https://test-registry.local")(&config)
-	registry := NewCapRegistryForTestWithConfig(config)
+	registry := NewFabricRegistryForTestWithConfig(config)
 	assert.Equal(t, "https://test-registry.local", registry.Config().RegistryBaseURL)
 }

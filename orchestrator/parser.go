@@ -68,7 +68,7 @@ func checkStructureCompatibility(source, target *urn.MediaUrn, nodeName string) 
 // derived from the cap's in=/out= specs. Media type consistency and structure
 // compatibility (record vs opaque) are validated at each node.
 // Caps must be pre-loaded into the registry cache before calling this function.
-func ParseMachineToCapDag(machineStr string, registry *cap.CapRegistry) (*ResolvedGraph, error) {
+func ParseMachineToCapDag(machineStr string, registry *cap.FabricRegistry) (*ResolvedGraph, error) {
 	// Step 1: Parse machine notation into a Machine (strand-based).
 	m, parseErr := machine.ParseMachine(machineStr, registry)
 	if parseErr != nil {

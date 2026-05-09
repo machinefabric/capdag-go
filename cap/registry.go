@@ -6,19 +6,17 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/machinefabric/capdag-go/media"
 	"github.com/machinefabric/capdag-go/urn"
 )
 
 const (
-	DefaultRegistryBaseURL = "https://capdag.com"
+	DefaultRegistryBaseURL = "https://fabric.capdag.com"
 	CacheDurationHours     = 24
 	HTTPTimeoutSeconds     = 10
 )
@@ -32,7 +30,7 @@ type RegistryConfig struct {
 // DefaultRegistryConfig returns config from environment variables or defaults
 //
 // Environment variables:
-//   - CAPDAG_REGISTRY_URL: Base URL for the registry (default: https://capdag.com)
+//   - CAPDAG_REGISTRY_URL: Base URL for the registry (default: https://fabric.capdag.com)
 //   - CAPDAG_SCHEMA_BASE_URL: Base URL for schemas (default: {registry_url}/schema)
 func DefaultRegistryConfig() RegistryConfig {
 	registryBase := os.Getenv("CAPDAG_REGISTRY_URL")
@@ -83,7 +81,12 @@ func (e *CacheEntry) isExpired() bool {
 	return time.Now().Unix() > e.CachedAt+(e.TTLHours*3600)
 }
 
-// RegistryCapResponse represents the response format from capdag.com registry
+// RegistryCapResponse represents the per-cap JSON body served at
+// /caps/<sha256>. The wire shape is the flattened cap entry; fields
+// beyond what we explicitly model below (urn_tags, in_spec, out_spec,
+// in_media_title, out_media_title, media_specs, registered_by,
+// documentation) are silently ignored by Go's JSON unmarshaller — the
+// Go Cap type only carries the subset below.
 type RegistryCapResponse struct {
 	Urn            string            `json:"urn"` // URN in canonical string format
 	Title          string            `json:"title"`
@@ -120,8 +123,8 @@ func (r *RegistryCapResponse) ToCap() (*Cap, error) {
 	return cap, nil
 }
 
-// CapRegistry handles communication with the capdag registry
-type CapRegistry struct {
+// FabricRegistry handles communication with the capdag registry
+type FabricRegistry struct {
 	client     *http.Client
 	cacheDir   string
 	cachedCaps map[string]*Cap
@@ -129,16 +132,16 @@ type CapRegistry struct {
 	config     RegistryConfig
 }
 
-// NewCapRegistry creates a new registry client
+// NewFabricRegistry creates a new registry client
 //
 // Accepts optional RegistryOption functions to configure the registry.
 // Without options, uses environment variables or defaults.
 //
 // Example:
 //
-//	registry, err := NewCapRegistry()  // Uses env vars or defaults
-//	registry, err := NewCapRegistry(WithRegistryURL("https://my-registry.com"))
-func NewCapRegistry(opts ...RegistryOption) (*CapRegistry, error) {
+//	registry, err := NewFabricRegistry()  // Uses env vars or defaults
+//	registry, err := NewFabricRegistry(WithRegistryURL("https://my-registry.com"))
+func NewFabricRegistry(opts ...RegistryOption) (*FabricRegistry, error) {
 	config := DefaultRegistryConfig()
 	for _, opt := range opts {
 		opt(&config)
@@ -163,7 +166,7 @@ func NewCapRegistry(opts ...RegistryOption) (*CapRegistry, error) {
 		return nil, fmt.Errorf("failed to load cached caps: %w", err)
 	}
 
-	return &CapRegistry{
+	return &FabricRegistry{
 		client:     client,
 		cacheDir:   cacheDir,
 		cachedCaps: cachedCaps,
@@ -172,12 +175,12 @@ func NewCapRegistry(opts ...RegistryOption) (*CapRegistry, error) {
 }
 
 // Config returns the current registry configuration
-func (r *CapRegistry) Config() RegistryConfig {
+func (r *FabricRegistry) Config() RegistryConfig {
 	return r.config
 }
 
 // GetCap gets a cap from in-memory cache or fetch from registry
-func (r *CapRegistry) GetCap(urn string) (*Cap, error) {
+func (r *FabricRegistry) GetCap(urn string) (*Cap, error) {
 	// Check in-memory cache first
 	r.mutex.RLock()
 	if cap, exists := r.cachedCaps[urn]; exists {
@@ -201,7 +204,7 @@ func (r *CapRegistry) GetCap(urn string) (*Cap, error) {
 }
 
 // GetCaps gets multiple caps at once - fails if any cap is not available
-func (r *CapRegistry) GetCaps(urns []string) ([]*Cap, error) {
+func (r *FabricRegistry) GetCaps(urns []string) ([]*Cap, error) {
 	var caps []*Cap
 	for _, urn := range urns {
 		cap, err := r.GetCap(urn)
@@ -214,7 +217,7 @@ func (r *CapRegistry) GetCaps(urns []string) ([]*Cap, error) {
 }
 
 // ValidateCap validates a local cap against its canonical definition
-func (r *CapRegistry) ValidateCap(cap *Cap) error {
+func (r *FabricRegistry) ValidateCap(cap *Cap) error {
 	canonicalCap, err := r.GetCap(cap.UrnString())
 	if err != nil {
 		return err
@@ -246,13 +249,13 @@ func (r *CapRegistry) ValidateCap(cap *Cap) error {
 }
 
 // CapExists checks if a cap URN exists in registry (either cached or available online)
-func (r *CapRegistry) CapExists(urn string) bool {
+func (r *FabricRegistry) CapExists(urn string) bool {
 	_, err := r.GetCap(urn)
 	return err == nil
 }
 
 // GetCachedCaps gets all currently cached caps from in-memory cache
-func (r *CapRegistry) GetCachedCaps() []*Cap {
+func (r *FabricRegistry) GetCachedCaps() []*Cap {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
@@ -265,7 +268,7 @@ func (r *CapRegistry) GetCachedCaps() []*Cap {
 
 // GetCachedCap returns a cap from the in-memory cache synchronously.
 // Returns (*Cap, true) if found, (nil, false) otherwise.
-func (r *CapRegistry) GetCachedCap(capUrn string) (*Cap, bool) {
+func (r *FabricRegistry) GetCachedCap(capUrn string) (*Cap, bool) {
 	normalized := capUrn
 	if parsed, err := urn.NewCapUrnFromString(capUrn); err == nil {
 		normalized = parsed.String()
@@ -280,7 +283,7 @@ func (r *CapRegistry) GetCachedCap(capUrn string) (*Cap, bool) {
 }
 
 // ClearCache removes all cached registry definitions
-func (r *CapRegistry) ClearCache() error {
+func (r *FabricRegistry) ClearCache() error {
 	// Clear in-memory cache
 	r.mutex.Lock()
 	r.cachedCaps = make(map[string]*Cap)
@@ -312,13 +315,13 @@ func getCacheDir() (string, error) {
 	return filepath.Join(cacheBase, "capdag"), nil
 }
 
-func (r *CapRegistry) cacheKey(urn string) string {
+func (r *FabricRegistry) cacheKey(urn string) string {
 	hasher := sha256.New()
 	hasher.Write([]byte(urn))
 	return fmt.Sprintf("%x", hasher.Sum(nil))
 }
 
-func (r *CapRegistry) cacheFilePath(urn string) string {
+func (r *FabricRegistry) cacheFilePath(urn string) string {
 	key := r.cacheKey(urn)
 	return filepath.Join(r.cacheDir, key+".json")
 }
@@ -370,7 +373,7 @@ func loadAllCachedCaps(cacheDir string) (map[string]*Cap, error) {
 	return caps, nil
 }
 
-func (r *CapRegistry) saveToCache(cap *Cap) error {
+func (r *FabricRegistry) saveToCache(cap *Cap) error {
 	urn := cap.UrnString()
 	entry := CacheEntry{
 		Definition: *cap,
@@ -387,17 +390,19 @@ func (r *CapRegistry) saveToCache(cap *Cap) error {
 	return os.WriteFile(cacheFile, data, 0644)
 }
 
-func (r *CapRegistry) fetchFromRegistry(capUrn string) (*Cap, error) {
+func (r *FabricRegistry) fetchFromRegistry(capUrn string) (*Cap, error) {
 	// Normalize the cap URN using the proper parser
 	normalizedUrn := capUrn
 	if parsed, err := urn.NewCapUrnFromString(capUrn); err == nil {
 		normalizedUrn = parsed.String()
 	}
 
-	// URL-encode only the tags part (after "cap:") while keeping "cap:" literal
-	tagsPart := strings.TrimPrefix(normalizedUrn, "cap:")
-	encodedTags := url.PathEscape(tagsPart)
-	registryURL := fmt.Sprintf("%s/cap:%s", r.config.RegistryBaseURL, encodedTags)
+	// The registry serves each cap at /caps/<sha256>, where
+	// <sha256> is the hex digest of the canonical URN's UTF-8 bytes.
+	// Hashing avoids URL-encoding hazards for the colons, quotes,
+	// semicolons, and equals signs that appear in raw cap URNs.
+	hash := sha256.Sum256([]byte(normalizedUrn))
+	registryURL := fmt.Sprintf("%s/caps/%x", r.config.RegistryBaseURL, hash)
 	resp, err := r.client.Get(registryURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch from registry: %w", err)
@@ -439,7 +444,7 @@ func (r *CapRegistry) fetchFromRegistry(capUrn string) (*Cap, error) {
 // Validation functions
 
 // ValidateCapCanonical validates a cap against its canonical definition
-func ValidateCapCanonical(registry *CapRegistry, cap *Cap) error {
+func ValidateCapCanonical(registry *FabricRegistry, cap *Cap) error {
 	return registry.ValidateCap(cap)
 }
 
@@ -461,7 +466,6 @@ func identityCap() *Cap {
 		Command:        "identity",
 		CapDescription: &desc,
 		Metadata:       make(map[string]string),
-		MediaSpecs:     []media.MediaSpecDef{},
 		Args: []CapArg{
 			NewCapArg("media:", true, []ArgSource{{Stdin: strPtr("media:")}}),
 		},
@@ -476,7 +480,7 @@ func strPtr(s string) *string { return &s }
 // EnsureIdentityCap installs the mandatory identity cap into the in-memory cache
 // if it is not already present. This is idempotent — calling it multiple times
 // is safe.
-func (r *CapRegistry) EnsureIdentityCap() {
+func (r *FabricRegistry) EnsureIdentityCap() {
 	identity := identityCap()
 	urnStr := identity.UrnString()
 	// Normalize via parsing, same as how GetCachedCap and GetCap key the cache
@@ -492,15 +496,15 @@ func (r *CapRegistry) EnsureIdentityCap() {
 	}
 }
 
-// NewCapRegistryForTest creates an empty registry for testing purposes.
+// NewFabricRegistryForTest creates an empty registry for testing purposes.
 // The mandatory identity cap is auto-installed so the resolver's
 // source-to-cap-arg matching can route through identity in any notation,
-// matching the production CapRegistry invariant.
-func NewCapRegistryForTest() *CapRegistry {
+// matching the production FabricRegistry invariant.
+func NewFabricRegistryForTest() *FabricRegistry {
 	client := &http.Client{
 		Timeout: HTTPTimeoutSeconds * time.Second,
 	}
-	registry := &CapRegistry{
+	registry := &FabricRegistry{
 		client:     client,
 		cacheDir:   "/tmp/capdag-test-cache",
 		cachedCaps: make(map[string]*Cap),
@@ -510,16 +514,16 @@ func NewCapRegistryForTest() *CapRegistry {
 	return registry
 }
 
-// NewCapRegistryForTestWithConfig creates a registry for testing with a custom configuration.
+// NewFabricRegistryForTestWithConfig creates a registry for testing with a custom configuration.
 // This is a synchronous constructor that doesn't perform any initialization.
 // Intended for use in tests only - creates a registry with no network configuration.
-// The mandatory identity cap is auto-installed (see NewCapRegistryForTest).
-func NewCapRegistryForTestWithConfig(config RegistryConfig) *CapRegistry {
+// The mandatory identity cap is auto-installed (see NewFabricRegistryForTest).
+func NewFabricRegistryForTestWithConfig(config RegistryConfig) *FabricRegistry {
 	client := &http.Client{
 		Timeout: HTTPTimeoutSeconds * time.Second,
 	}
 
-	registry := &CapRegistry{
+	registry := &FabricRegistry{
 		client:     client,
 		cacheDir:   "/tmp/capdag-test-cache",
 		cachedCaps: make(map[string]*Cap),
@@ -532,7 +536,7 @@ func NewCapRegistryForTestWithConfig(config RegistryConfig) *CapRegistry {
 // AddCapsToCache inserts caps directly into the in-memory cache.
 // Intended for use in tests only — production code should use the registry's
 // fetch/cache pipeline. Each cap is keyed by its normalized URN string.
-func (r *CapRegistry) AddCapsToCache(caps []*Cap) {
+func (r *FabricRegistry) AddCapsToCache(caps []*Cap) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	for _, cap := range caps {

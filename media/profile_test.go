@@ -1,36 +1,84 @@
 package media
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
+// schemaBody returns a JSON Schema body suitable for one of the well-known
+// scalar/array profile URLs. Tests use this to seed the registry without
+// HTTP because the library no longer ships embedded schema bodies.
+func schemaBody(profileURL string) []byte {
+	switch profileURL {
+	case ProfileStr:
+		return []byte(fmt.Sprintf(`{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"%s","type":"string"}`, profileURL))
+	case ProfileInt:
+		return []byte(fmt.Sprintf(`{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"%s","type":"integer"}`, profileURL))
+	case ProfileNum:
+		return []byte(fmt.Sprintf(`{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"%s","type":"number"}`, profileURL))
+	case ProfileBool:
+		return []byte(fmt.Sprintf(`{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"%s","type":"boolean"}`, profileURL))
+	case ProfileObj:
+		return []byte(fmt.Sprintf(`{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"%s","type":"object"}`, profileURL))
+	case ProfileStrArray:
+		return []byte(fmt.Sprintf(`{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"%s","type":"array","items":{"type":"string"}}`, profileURL))
+	case ProfileNumArray:
+		return []byte(fmt.Sprintf(`{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"%s","type":"array","items":{"type":"number"}}`, profileURL))
+	case ProfileBoolArray:
+		return []byte(fmt.Sprintf(`{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"%s","type":"array","items":{"type":"boolean"}}`, profileURL))
+	case ProfileObjArray:
+		return []byte(fmt.Sprintf(`{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"%s","type":"array","items":{"type":"object"}}`, profileURL))
+	}
+	panic(fmt.Sprintf("schemaBody: unknown profile URL %q", profileURL))
+}
+
+func standardProfileURLs() []string {
+	return []string{
+		ProfileStr, ProfileInt, ProfileNum, ProfileBool, ProfileObj,
+		ProfileStrArray, ProfileNumArray, ProfileBoolArray, ProfileObjArray,
+	}
+}
+
+// createTestRegistry returns a registry with the well-known scalar/array
+// profile schemas seeded into the cache.
 func createTestRegistry(t *testing.T) *ProfileSchemaRegistry {
+	t.Helper()
+	registry, err := NewProfileSchemaRegistry()
+	require.NoError(t, err, "Failed to create profile registry")
+	for _, url := range standardProfileURLs() {
+		require.NoError(t, registry.InsertSchema(url, schemaBody(url)))
+	}
+	return registry
+}
+
+// createEmptyTestRegistry returns a registry with no schemas seeded.
+func createEmptyTestRegistry(t *testing.T) *ProfileSchemaRegistry {
 	t.Helper()
 	registry, err := NewProfileSchemaRegistry()
 	require.NoError(t, err, "Failed to create profile registry")
 	return registry
 }
 
-// TEST611: is_embedded_profile recognizes all 9 embedded profiles and rejects non-embedded
-func Test611_is_embedded_profile_comprehensive(t *testing.T) {
-	allEmbedded := []string{
-		ProfileStr, ProfileInt, ProfileNum, ProfileBool, ProfileObj,
-		ProfileStrArray, ProfileNumArray, ProfileBoolArray, ProfileObjArray,
-	}
-	for _, url := range allEmbedded {
-		assert.True(t, IsEmbeddedProfile(url), "%s should be recognized as embedded", url)
-	}
+// TEST611: InsertSchema seeds the cache so subsequent validation hits a real
+// compiled schema rather than the skip-on-unknown path. A registry that
+// silently dropped inserts would let validation calls return nil even for
+// inputs that violate the schema.
+func Test611_insert_schema_populates_cache(t *testing.T) {
+	registry := createEmptyTestRegistry(t)
+	assert.False(t, registry.SchemaExists(ProfileStr))
 
-	// Custom/invalid URLs should not be recognized
-	assert.False(t, IsEmbeddedProfile("https://example.com/schema/custom"))
-	assert.False(t, IsEmbeddedProfile(""))
-	assert.False(t, IsEmbeddedProfile("https://capdag.com/schema/nonexistent"))
+	require.NoError(t, registry.InsertSchema(ProfileStr, schemaBody(ProfileStr)))
+
+	assert.True(t, registry.SchemaExists(ProfileStr))
+	assert.Nil(t, registry.ValidateCached(ProfileStr, "ok"))
+	assert.NotNil(t, registry.ValidateCached(ProfileStr, 7),
+		"Number must not validate against the string schema")
 }
 
-// TEST612: clear_cache empties all in-memory schemas
+// TEST612: ClearCache empties all in-memory schemas
 func Test612_clear_cache(t *testing.T) {
 	registry := createTestRegistry(t)
 	assert.True(t, len(registry.GetCachedProfiles()) > 0)
@@ -38,18 +86,15 @@ func Test612_clear_cache(t *testing.T) {
 	assert.Equal(t, 0, len(registry.GetCachedProfiles()))
 }
 
-// TEST613: validate_cached validates against cached standard schemas
+// TEST613: ValidateCached validates against seeded schemas
 func Test613_validate_cached(t *testing.T) {
 	registry := createTestRegistry(t)
 
-	// String validation
 	assert.Nil(t, registry.ValidateCached(ProfileStr, "hello"))
 	assert.NotNil(t, registry.ValidateCached(ProfileStr, 42))
 
-	// Integer validation
 	assert.Nil(t, registry.ValidateCached(ProfileInt, 42))
 
-	// Object array validation
 	assert.Nil(t, registry.ValidateCached(ProfileObjArray, []map[string]interface{}{{"key": "value"}}))
 	assert.NotNil(t, registry.ValidateCached(ProfileObjArray, []string{"not", "objects"}))
 
@@ -57,22 +102,21 @@ func Test613_validate_cached(t *testing.T) {
 	assert.Nil(t, registry.ValidateCached("https://example.com/unknown", "anything"))
 }
 
-// TEST618: Verify profile schema registry creation succeeds with temp cache
+// TEST618: A freshly constructed registry is operational and reports an empty
+// cache. Schemas must be inserted explicitly — none are bundled.
 func Test618_registry_creation(t *testing.T) {
-	registry := createTestRegistry(t)
-	profiles := registry.GetCachedProfiles()
-	assert.True(t, len(profiles) > 0)
+	registry := createEmptyTestRegistry(t)
+	assert.Equal(t, 0, len(registry.GetCachedProfiles()))
 }
 
-// TEST619: Verify all 9 embedded standard schemas are loaded on creation
-func Test619_embedded_schemas_loaded(t *testing.T) {
-	registry := createTestRegistry(t)
-	allEmbedded := []string{
-		ProfileStr, ProfileInt, ProfileNum, ProfileBool, ProfileObj,
-		ProfileStrArray, ProfileNumArray, ProfileBoolArray, ProfileObjArray,
-	}
-	for _, url := range allEmbedded {
-		assert.True(t, registry.SchemaExists(url), "Schema %s should be loaded", url)
+// TEST619: A freshly constructed registry has no cached schemas. The well-known
+// profile URLs are not bundled into the library; callers must seed them.
+func Test619_fresh_registry_cache_is_empty(t *testing.T) {
+	registry := createEmptyTestRegistry(t)
+	assert.Equal(t, 0, len(registry.GetCachedProfiles()),
+		"Fresh registry must have no cached schemas; nothing is bundled into the library")
+	for _, url := range standardProfileURLs() {
+		assert.False(t, registry.SchemaExists(url), "%s must not be cached on a fresh registry", url)
 	}
 }
 
@@ -122,16 +166,20 @@ func Test625_string_array_validation(t *testing.T) {
 	assert.NotNil(t, registry.Validate(ProfileStrArray, "hello"))
 }
 
-// TEST626: Verify unknown profile URL skips validation and returns Ok
+// TEST626: Verify unknown profile URL skips validation and returns nil
 func Test626_unknown_profile_skips_validation(t *testing.T) {
-	registry := createTestRegistry(t)
-	result := registry.Validate("https://example.com/unknown", "anything")
-	assert.Nil(t, result)
+	registry := createEmptyTestRegistry(t)
+	assert.Nil(t, registry.Validate("https://example.com/unknown", "anything"))
 }
 
-// TEST627: Verify is_embedded_profile recognizes standard and rejects custom URLs
-func Test627_is_embedded_profile(t *testing.T) {
-	assert.True(t, IsEmbeddedProfile(ProfileStr))
-	assert.True(t, IsEmbeddedProfile(ProfileInt))
-	assert.False(t, IsEmbeddedProfile("https://example.com/custom"))
+// TEST627: InsertSchema rejects malformed JSON Schemas instead of caching them.
+// Silent acceptance of an invalid schema would hide the configuration error
+// until the first validation call against it.
+func Test627_insert_schema_rejects_invalid_schema(t *testing.T) {
+	registry := createEmptyTestRegistry(t)
+	bad := []byte(`{"$schema":"https://json-schema.org/draft/2020-12/schema","type":99}`)
+	err := registry.InsertSchema("https://capdag.com/schema/bad", bad)
+	assert.Error(t, err, "Invalid schema must not be cached")
+	assert.False(t, registry.SchemaExists("https://capdag.com/schema/bad"),
+		"Failed insert must not leave the URL in the cache")
 }

@@ -18,10 +18,19 @@ import (
 )
 
 // Helper to create test registry
-func createTestRegistry(t *testing.T) *media.MediaUrnRegistry {
+func createTestRegistry(t *testing.T) *media.FabricRegistry {
 	t.Helper()
-	registry, err := media.NewMediaUrnRegistry()
+	registry, err := media.NewFabricRegistry()
 	require.NoError(t, err)
+	for _, def := range []media.MediaSpecDef{
+		{Urn: "media:textable", MediaType: "text/plain", ProfileURI: media.ProfileStr},
+		{Urn: "media:record;textable", MediaType: "application/json", ProfileURI: media.ProfileObj},
+		{Urn: "media:json;record;textable", MediaType: "application/json", ProfileURI: media.ProfileObj},
+		{Urn: "media:", MediaType: "application/octet-stream"},
+		{Urn: "media:void", MediaType: "application/x-void", ProfileURI: media.ProfileVoid},
+	} {
+		registry.AddSpec(def.ToStored())
+	}
 	return registry
 }
 
@@ -117,11 +126,13 @@ func TestIntegrationCapValidation(t *testing.T) {
 
 	capDef := cap.NewCap(urn, "Data Processor", "process-data")
 
-	// Add mediaSpecs for resolution
-	capDef.SetMediaSpecs([]media.MediaSpecDef{
+	// Seed the registry for resolution
+	for _, def := range []media.MediaSpecDef{
 		{Urn: standard.MediaJSON, MediaType: "application/json", ProfileURI: media.ProfileObj},
 		{Urn: standard.MediaString, MediaType: "text/plain", ProfileURI: media.ProfileStr},
-	})
+	} {
+		registry.AddSpec(def.ToStored())
+	}
 
 	// Add required string argument using new architecture
 	cliFlag1 := "--input"
@@ -152,15 +163,17 @@ func TestIntegrationCapValidation(t *testing.T) {
 func TestIntegrationMediaUrnResolution(t *testing.T) {
 	registry := createTestRegistry(t)
 
-	// mediaSpecs for resolution - no built-in resolution, must provide specs
-	mediaSpecs := []media.MediaSpecDef{
+	// Seed registry with the specs we resolve below.
+	for _, def := range []media.MediaSpecDef{
 		{Urn: standard.MediaString, MediaType: "text/plain", ProfileURI: media.ProfileStr},
 		{Urn: standard.MediaJSON, MediaType: "application/json", ProfileURI: media.ProfileObj},
 		{Urn: standard.MediaIdentity, MediaType: "application/octet-stream"},
+	} {
+		registry.AddSpec(def.ToStored())
 	}
 
 	// Test string media URN resolution
-	resolved, err := media.ResolveMediaUrn(standard.MediaString, mediaSpecs, registry)
+	resolved, err := media.ResolveMediaUrn(standard.MediaString, registry)
 	require.NoError(t, err)
 	assert.Equal(t, "text/plain", resolved.MediaType)
 	assert.Equal(t, media.ProfileStr, resolved.ProfileURI)
@@ -169,7 +182,7 @@ func TestIntegrationMediaUrnResolution(t *testing.T) {
 	assert.True(t, resolved.IsText())
 
 	// Test JSON media URN
-	resolved, err = media.ResolveMediaUrn(standard.MediaJSON, mediaSpecs, registry)
+	resolved, err = media.ResolveMediaUrn(standard.MediaJSON, registry)
 	require.NoError(t, err)
 	assert.Equal(t, "application/json", resolved.MediaType)
 	assert.True(t, resolved.IsRecord())
@@ -177,22 +190,24 @@ func TestIntegrationMediaUrnResolution(t *testing.T) {
 	assert.True(t, resolved.IsJSON()) // MediaJSON has json marker tag
 
 	// Test binary media URN
-	resolved, err = media.ResolveMediaUrn(standard.MediaIdentity, mediaSpecs, registry)
+	resolved, err = media.ResolveMediaUrn(standard.MediaIdentity, registry)
 	require.NoError(t, err)
 	assert.True(t, resolved.IsBinary())
 
 	// Test custom media URN resolution
-	customSpecs := []media.MediaSpecDef{
-		{Urn: "media:custom;textable", MediaType: "text/html", ProfileURI: "https://example.com/schema/html"},
-	}
+	registry.AddSpec(media.MediaSpecDef{
+		Urn:        "media:custom;textable",
+		MediaType:  "text/html",
+		ProfileURI: "https://example.com/schema/html",
+	}.ToStored())
 
-	resolved, err = media.ResolveMediaUrn("media:custom;textable", customSpecs, registry)
+	resolved, err = media.ResolveMediaUrn("media:custom;textable", registry)
 	require.NoError(t, err)
 	assert.Equal(t, "text/html", resolved.MediaType)
 	assert.Equal(t, "https://example.com/schema/html", resolved.ProfileURI)
 
 	// Test unknown media URN fails
-	_, err = media.ResolveMediaUrn("media:unknown", nil, registry)
+	_, err = media.ResolveMediaUrn("media:unknown", registry)
 	assert.Error(t, err)
 }
 

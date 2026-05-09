@@ -37,9 +37,9 @@ func buildCap(capUrnStr, title string, argMediaUrns []string, outputMediaUrn str
 	}
 }
 
-// registryWith builds a test CapRegistry pre-populated with the given caps.
-func registryWith(caps []*cap.Cap) *cap.CapRegistry {
-	r := cap.NewCapRegistryForTest()
+// registryWith builds a test FabricRegistry pre-populated with the given caps.
+func registryWith(caps []*cap.Cap) *cap.FabricRegistry {
+	r := cap.NewFabricRegistryForTest()
 	r.AddCapsToCache(caps)
 	return r
 }
@@ -1142,7 +1142,7 @@ func Test1177_render_payload_for_empty_machine_has_empty_strands_array(t *testin
 // Helpers
 // ===================================================================
 
-func pdfExtractEmbedRegistry() *cap.CapRegistry {
+func pdfExtractEmbedRegistry() *cap.FabricRegistry {
 	extract := buildCap(
 		`cap:in=media:pdf;extract;out="media:txt;textable"`,
 		"extract",

@@ -160,11 +160,14 @@ func TestResponseWrapperMatchesOutputType(t *testing.T) {
 	registry := testRegistry(t)
 	// Common mediaSpecs for all caps - resolution requires this table
 	// Use the constant values directly since the cap URNs reference these specific media URN strings
-	mediaSpecs := []media.MediaSpecDef{
+	// Seed the registry with the media specs the test caps reference.
+	for _, def := range []media.MediaSpecDef{
 		{Urn: "media:textable", MediaType: "text/plain", ProfileURI: media.ProfileStr},
 		{Urn: "media:", MediaType: "application/octet-stream"},
 		{Urn: "media:json;record;textable", MediaType: "application/json", ProfileURI: media.ProfileObj},
 		{Urn: "media:void", MediaType: "application/x-void", ProfileURI: media.ProfileVoid},
+	} {
+		registry.AddSpec(def.ToStored())
 	}
 
 	// Setup cap definitions with media URNs - all need in/out with proper tags
@@ -173,19 +176,16 @@ func TestResponseWrapperMatchesOutputType(t *testing.T) {
 	stringCap := NewCap(stringCapUrn, "String Test", "test")
 	// Use expanded URN form matching the cap's out spec for proper resolution
 	stringCap.SetOutput(NewCapOutput("media:textable", "String output"))
-	stringCap.SetMediaSpecs(mediaSpecs)
 
 	binaryCapUrn, err := urn.NewCapUrnFromString(`cap:in="media:void";test;out="media:"`)
 	require.NoError(t, err)
 	binaryCap := NewCap(binaryCapUrn, "Binary Test", "test")
 	binaryCap.SetOutput(NewCapOutput("media:", "Binary output"))
-	binaryCap.SetMediaSpecs(mediaSpecs)
 
 	jsonCapUrn, err := urn.NewCapUrnFromString(`cap:in="media:void";test;out="media:json;record;textable"`)
 	require.NoError(t, err)
 	jsonCap := NewCap(jsonCapUrn, "JSON Test", "test")
 	jsonCap.SetOutput(NewCapOutput("media:json;record;textable", "JSON output"))
-	jsonCap.SetMediaSpecs(mediaSpecs)
 
 	// Test text response with string output type
 	textResponse := NewResponseWrapperFromText([]byte("test"))
@@ -249,7 +249,7 @@ func TestResponseWrapperValidateAgainstCap(t *testing.T) {
 	cap := NewCap(capUrn, "Test Cap", "test")
 
 	// Add custom spec with schema - needs map tag for JSON
-	cap.AddMediaSpec(media.NewMediaSpecDefWithSchema(
+	registry.AddSpec((media.NewMediaSpecDefWithSchema(
 		"media:result;textable;record",
 		"application/json",
 		"https://example.com/schema/result",
@@ -260,7 +260,7 @@ func TestResponseWrapperValidateAgainstCap(t *testing.T) {
 			},
 			"required": []interface{}{"status"},
 		},
-	))
+	)).ToStored())
 
 	cap.SetOutput(NewCapOutput("media:result;textable;record", "Result output"))
 

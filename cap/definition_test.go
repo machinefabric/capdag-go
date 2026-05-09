@@ -352,7 +352,7 @@ func Test596_with_full_definition_constructor(t *testing.T) {
 
 	c := NewCapWithFullDefinition(
 		u, "Full Cap", &desc, metadata, "full-cmd",
-		nil, args, output, jsonMeta,
+		args, output, jsonMeta,
 	)
 
 	assert.Equal(t, "Full Cap", c.Title)
@@ -462,11 +462,10 @@ func TestCapWithMediaSpecs(t *testing.T) {
 
 	cap := NewCap(id, "Query Structured Data", "query-cmd")
 
-	// Add media spec for standard.MediaString (required for resolution)
-	cap.AddMediaSpec(media.NewMediaSpecDef(standard.MediaString, "text/plain", media.ProfileStr))
-
-	// Add a custom media spec for the result type
-	cap.AddMediaSpec(media.NewMediaSpecDefWithSchema(
+	// Get test registry and seed the specs the cap references.
+	registry := testRegistry(t)
+	registry.AddSpec((media.NewMediaSpecDef(standard.MediaString, "text/plain", media.ProfileStr)).ToStored())
+	registry.AddSpec((media.NewMediaSpecDefWithSchema(
 		"media:result",
 		"application/json",
 		"https://example.com/schema/result",
@@ -476,7 +475,7 @@ func TestCapWithMediaSpecs(t *testing.T) {
 				"data": map[string]any{"type": "string"},
 			},
 		},
-	))
+	)).ToStored())
 
 	// Add an argument using the media URN with new architecture
 	cliFlag := "--query"
@@ -491,20 +490,17 @@ func TestCapWithMediaSpecs(t *testing.T) {
 	// Add output
 	cap.SetOutput(NewCapOutput("media:result", "Query result"))
 
-	// Get test registry
-	registry := testRegistry(t)
-
 	// Resolve the argument spec
 	args := cap.GetArgs()
 	require.Len(t, args, 1)
 	arg := args[0]
-	resolved, err := arg.Resolve(cap.GetMediaSpecs(), registry)
+	resolved, err := arg.Resolve(registry)
 	require.NoError(t, err)
 	assert.Equal(t, "text/plain", resolved.MediaType)
 	assert.Equal(t, media.ProfileStr, resolved.ProfileURI)
 
 	// Resolve the output spec
-	outResolved, err := cap.Output.Resolve(cap.GetMediaSpecs(), registry)
+	outResolved, err := cap.Output.Resolve(registry)
 	require.NoError(t, err)
 	assert.Equal(t, "application/json", outResolved.MediaType)
 	assert.NotNil(t, outResolved.Schema)

@@ -65,8 +65,8 @@ func NewNotFoundError(msg string) *PlannerError {
 	return &PlannerError{Kind: ErrNotFound, Message: msg}
 }
 
-// NewRegistryError creates a Registry planner error.
-func NewRegistryError(msg string) *PlannerError {
+// NewFabricRegistryError creates a Registry planner error.
+func NewFabricRegistryError(msg string) *PlannerError {
 	return &PlannerError{Kind: ErrRegistry, Message: msg}
 }
 

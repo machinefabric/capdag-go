@@ -1,4 +1,9 @@
-// Package media profile schema registry
+// Package media profile schema registry.
+//
+// Schemas are not bundled into the library — callers seed the in-memory
+// cache explicitly via InsertSchema (e.g. after fetching a schema body
+// from the public registry). A registry constructed via
+// NewProfileSchemaRegistry is empty until populated.
 package media
 
 import (
@@ -18,80 +23,50 @@ func (e *ProfileSchemaError) Error() string {
 	return e.Message
 }
 
-// embeddedSchema represents an embedded JSON schema definition
-type embeddedSchema struct {
-	url    string
-	schema string
-}
-
-// All 9 embedded schemas
-var embeddedSchemas = []embeddedSchema{
-	{ProfileStr, `{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"` + ProfileStr + `","title":"String","description":"A JSON string value","type":"string"}`},
-	{ProfileInt, `{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"` + ProfileInt + `","title":"Integer","description":"A JSON integer value","type":"integer"}`},
-	{ProfileNum, `{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"` + ProfileNum + `","title":"Number","description":"A JSON number value (integer or floating point)","type":"number"}`},
-	{ProfileBool, `{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"` + ProfileBool + `","title":"Boolean","description":"A JSON boolean value (true or false)","type":"boolean"}`},
-	{ProfileObj, `{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"` + ProfileObj + `","title":"Object","description":"A JSON object value","type":"object"}`},
-	{ProfileStrArray, `{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"` + ProfileStrArray + `","title":"String Array","description":"A JSON array of string values","type":"array","items":{"type":"string"}}`},
-	{ProfileNumArray, `{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"` + ProfileNumArray + `","title":"Number Array","description":"A JSON array of number values","type":"array","items":{"type":"number"}}`},
-	{ProfileBoolArray, `{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"` + ProfileBoolArray + `","title":"Boolean Array","description":"A JSON array of boolean values","type":"array","items":{"type":"boolean"}}`},
-	{ProfileObjArray, `{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"` + ProfileObjArray + `","title":"Object Array","description":"A JSON array of object values","type":"array","items":{"type":"object"}}`},
-}
-
-// embeddedProfileURLs is a set of all 9 embedded profile URLs
-var embeddedProfileURLs map[string]bool
-
-func init() {
-	embeddedProfileURLs = make(map[string]bool, len(embeddedSchemas))
-	for _, s := range embeddedSchemas {
-		embeddedProfileURLs[s.url] = true
-	}
-}
-
-// IsEmbeddedProfile checks if a profile URL is one of the 9 standard embedded profiles.
-func IsEmbeddedProfile(profileURL string) bool {
-	return embeddedProfileURLs[profileURL]
-}
-
 // ProfileSchemaRegistry validates data against JSON Schema profiles.
 type ProfileSchemaRegistry struct {
 	mu      sync.RWMutex
 	schemas map[string]*gojsonschema.Schema
 }
 
-// NewProfileSchemaRegistry creates a new registry with standard schemas loaded.
+// NewProfileSchemaRegistry creates an empty registry. Schemas must be
+// added via InsertSchema before validation against them succeeds.
 func NewProfileSchemaRegistry() (*ProfileSchemaRegistry, error) {
-	r := &ProfileSchemaRegistry{
+	return &ProfileSchemaRegistry{
 		schemas: make(map[string]*gojsonschema.Schema),
-	}
+	}, nil
+}
 
-	// Install embedded schemas
-	for _, es := range embeddedSchemas {
-		loader := gojsonschema.NewStringLoader(es.schema)
-		compiled, err := gojsonschema.NewSchema(loader)
-		if err != nil {
-			return nil, &ProfileSchemaError{
-				Message: fmt.Sprintf("Failed to compile embedded schema %s: %v", es.url, err),
-			}
+// InsertSchema compiles a JSON Schema body and stores it under profileURL.
+// Returns an error (and leaves the cache unchanged) when the body fails to
+// compile — callers must not rely on a silent skip path for malformed schemas.
+func (r *ProfileSchemaRegistry) InsertSchema(profileURL string, schemaJSON []byte) error {
+	loader := gojsonschema.NewBytesLoader(schemaJSON)
+	compiled, err := gojsonschema.NewSchema(loader)
+	if err != nil {
+		return &ProfileSchemaError{
+			Message: fmt.Sprintf("Failed to compile schema for %s: %v", profileURL, err),
 		}
-		r.schemas[es.url] = compiled
 	}
-
-	return r, nil
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.schemas[profileURL] = compiled
+	return nil
 }
 
 // Validate validates a value against a profile schema.
-// Returns nil if valid (or schema not found), list of error strings if invalid.
+// Returns nil if valid or if the schema is not in the cache; a list of
+// error strings if the value is invalid. Callers that want to fail loudly
+// when a schema is missing should pre-check with SchemaExists.
 func (r *ProfileSchemaRegistry) Validate(profileURL string, value interface{}) []string {
 	r.mu.RLock()
 	schema, exists := r.schemas[profileURL]
 	r.mu.RUnlock()
 
 	if !exists {
-		// Schema not available — skip validation (matches Rust behavior)
 		return nil
 	}
 
-	// Marshal value to JSON for validation
 	valueJSON, err := json.Marshal(value)
 	if err != nil {
 		return []string{fmt.Sprintf("Failed to marshal value: %v", err)}

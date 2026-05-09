@@ -25,7 +25,7 @@ const (
 	ErrInvalidGraph
 	ErrCapUrnParseError
 	ErrMediaUrnParseError
-	ErrOrchestratorRegistryError
+	ErrOrchestratorFabricRegistryError
 	ErrStructureMismatch
 )
 
@@ -59,7 +59,7 @@ func (e *ParseOrchestrationError) Error() string {
 		return fmt.Sprintf("Failed to parse Cap URN: %s", e.Message)
 	case ErrMediaUrnParseError:
 		return fmt.Sprintf("Failed to parse Media URN: %s", e.Message)
-	case ErrOrchestratorRegistryError:
+	case ErrOrchestratorFabricRegistryError:
 		return fmt.Sprintf("Registry error: %s", e.Message)
 	case ErrStructureMismatch:
 		return fmt.Sprintf("Structure mismatch at node '%s': source is %v but cap expects %v",
@@ -173,6 +173,6 @@ func mermaidEscape(s string) string {
 	return s
 }
 
-// CapRegistryTrait is gone. The orchestrator parser and plan converter take
-// *cap.CapRegistry directly. Tests use CapRegistry.NewForTest() +
+// FabricRegistryTrait is gone. The orchestrator parser and plan converter take
+// *cap.FabricRegistry directly. Tests use FabricRegistry.NewForTest() +
 // AddCapsToCache(...) instead of a hand-built mock.

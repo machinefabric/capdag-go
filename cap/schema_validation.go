@@ -93,13 +93,12 @@ func (sv *SchemaValidator) ValidateOutputWithSchema(output *CapOutput, schema in
 }
 
 // ValidateArguments validates all arguments for a capability using media specs
-func (sv *SchemaValidator) ValidateArguments(cap *Cap, arguments []interface{}, namedArgs map[string]interface{}, registry *media.MediaUrnRegistry) error {
+func (sv *SchemaValidator) ValidateArguments(cap *Cap, arguments []interface{}, namedArgs map[string]interface{}, registry *media.FabricRegistry) error {
 	args := cap.GetArgs()
 	if len(args) == 0 {
 		return nil
 	}
 
-	mediaSpecs := cap.GetMediaSpecs()
 	requiredArgs := cap.GetRequiredArgs()
 	optionalArgs := cap.GetOptionalArgs()
 
@@ -131,7 +130,7 @@ func (sv *SchemaValidator) ValidateArguments(cap *Cap, arguments []interface{}, 
 
 		if found {
 			// Resolve the media URN to get the schema
-			resolved, err := argDef.Resolve(mediaSpecs, registry)
+			resolved, err := argDef.Resolve(registry)
 			if err != nil {
 				return &SchemaValidationError{
 					Type:     "UnresolvableMediaUrn",
@@ -173,7 +172,7 @@ func (sv *SchemaValidator) ValidateArguments(cap *Cap, arguments []interface{}, 
 
 		if found {
 			// Resolve the media URN to get the schema
-			resolved, err := argDef.Resolve(mediaSpecs, registry)
+			resolved, err := argDef.Resolve(registry)
 			if err != nil {
 				return &SchemaValidationError{
 					Type:     "UnresolvableMediaUrn",
