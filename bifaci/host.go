@@ -526,12 +526,24 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *FrameWriter)
 		// body's continuation frames. The cartridge receives the
 		// REQ with XID intact so its response frames carry the
 		// same XID back to the relay.
-		h.incomingRxids[makeRxidKey(xid, frame.Id)] = incomingRoute{
+		key := makeRxidKey(xid, frame.Id)
+		h.incomingRxids[key] = incomingRoute{
 			cartridgeIdx: cartridgeIdx,
 			xid:          xid,
 			rid:          frame.Id,
 		}
-		h.sendToCartridge(cartridgeIdx, frame)
+		if err := h.sendToCartridge(cartridgeIdx, frame); err != nil {
+			// Cartridge died between dispatch and delivery. Synthesize
+			// a terminal ERR back to the relay so the engine doesn't
+			// wait forever, and tear down the routing entry we just
+			// created — `handleCartridgeDeath` won't see it because
+			// the death event may already have been processed.
+			// Mirrors Rust host_runtime.rs:1438.
+			delete(h.incomingRxids, key)
+			errFrame := NewErr(frame.Id, "CARTRIDGE_DIED", err.Error())
+			errFrame.RoutingId = frame.RoutingId
+			relayWriter.WriteFrame(errFrame)
+		}
 
 	case FrameTypeStreamStart, FrameTypeChunk, FrameTypeStreamEnd, FrameTypeEnd, FrameTypeErr:
 		// Continuation frame from the relay. Two possibilities:
@@ -574,9 +586,27 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *FrameWriter)
 			return nil
 		}
 
-		h.sendToCartridge(cartridgeIdx, frame)
-
 		isTerminal := frame.FrameType == FrameTypeEnd || frame.FrameType == FrameTypeErr
+
+		if err := h.sendToCartridge(cartridgeIdx, frame); err != nil {
+			// Cartridge died while we were routing a body- or
+			// response-phase continuation. Synthesize a terminal
+			// ERR so the engine sees a defined outcome rather than
+			// silently losing the in-flight request. Tear down the
+			// matching routing entry whether or not this frame was
+			// itself terminal — there is nothing left to route.
+			// Mirrors Rust host_runtime.rs:1438-1465.
+			if routedViaIncoming {
+				delete(h.incomingRxids, key)
+			} else {
+				delete(h.outgoingRids, frame.Id.ToString())
+			}
+			errFrame := NewErr(frame.Id, "CARTRIDGE_DIED", err.Error())
+			errFrame.RoutingId = frame.RoutingId
+			relayWriter.WriteFrame(errFrame)
+			return nil
+		}
+
 		if isTerminal {
 			if routedViaIncoming {
 				// Body phase done. The cartridge's response phase
@@ -605,9 +635,13 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *FrameWriter)
 	case FrameTypeLog:
 		// LOG frames from peer responses — route to the cartridge
 		// that made the peer request, identified by
-		// `outgoingRids[rid]`. Mirrors Rust handling.
+		// `outgoingRids[rid]`. Mirrors Rust handling. LOG is a
+		// best-effort side channel: if the requesting cartridge has
+		// died, the LOG line is simply lost — no terminal ERR is
+		// synthesized for a LOG, since LOG is not part of the
+		// request-lifecycle frame set.
 		if route, ok := h.outgoingRids[frame.Id.ToString()]; ok {
-			h.sendToCartridge(route.cartridgeIdx, frame)
+			_ = h.sendToCartridge(route.cartridgeIdx, frame)
 		}
 		return nil
 	}
@@ -635,8 +669,11 @@ func (h *CartridgeHost) handleCartridgeFrame(cartridgeIdx int, frame *Frame, rel
 	switch frame.FrameType {
 	case FrameTypeHeartbeat:
 		// Respond to cartridge heartbeat locally — don't forward.
+		// Best-effort: if the cartridge has already died, the
+		// heartbeat reply is dropped and the death will surface on
+		// the next reader-loop iteration.
 		response := NewHeartbeat(frame.Id)
-		h.sendToCartridge(cartridgeIdx, response)
+		_ = h.sendToCartridge(cartridgeIdx, response)
 
 	case FrameTypeHello:
 		// HELLO post-handshake — protocol violation, ignore.
@@ -725,15 +762,26 @@ func (h *CartridgeHost) handleCartridgeDeath(cartridgeIdx int, relayWriter *Fram
 	h.rebuildCapabilities()
 }
 
-// sendToCartridge sends a frame to a cartridge via its writer channel.
-func (h *CartridgeHost) sendToCartridge(cartridgeIdx int, frame *Frame) {
+// sendToCartridge sends a frame to a cartridge via its writer
+// channel. Returns a non-nil error if the cartridge is unreachable
+// (already dead, never spawned, or writerCh closed by the death
+// handler). The caller is responsible for synthesizing a terminal
+// ERR back to the relay when this fails on a request-body frame —
+// see `handleRelayFrame`. Mirrors the Rust `send_to_cartridge`
+// semantics in capdag/src/bifaci/host_runtime.rs:1438.
+func (h *CartridgeHost) sendToCartridge(cartridgeIdx int, frame *Frame) error {
 	cartridge := h.cartridges[cartridgeIdx]
-	if cartridge.writerCh != nil {
-		select {
-		case cartridge.writerCh <- frame:
-		default:
-			// Channel full — cartridge probably dead, frame dropped
-		}
+	if cartridge.writerCh == nil || !cartridge.running {
+		return fmt.Errorf("cartridge %d is not running", cartridgeIdx)
+	}
+	select {
+	case cartridge.writerCh <- frame:
+		return nil
+	default:
+		// Channel full and stuck — treat as dead so the engine sees
+		// a terminal ERR rather than waiting forever for a frame
+		// that will never be processed.
+		return fmt.Errorf("cartridge %d writer channel full", cartridgeIdx)
 	}
 }
 

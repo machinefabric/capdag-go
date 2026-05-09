@@ -146,9 +146,9 @@ func (r *FabricRegistry) AddSpec(spec StoredMediaSpec) {
 	}
 }
 
-// GetCachedSpec retrieves a cached spec by URN without network access.
+// GetCachedMediaSpec retrieves a cached spec by URN without network access.
 // Returns nil if not found (no error — absence is expected).
-func (r *FabricRegistry) GetCachedSpec(urnStr string) *StoredMediaSpec {
+func (r *FabricRegistry) GetCachedMediaSpec(urnStr string) *StoredMediaSpec {
 	normalizedUrn := normalizeMediaUrn(urnStr)
 
 	r.mu.RLock()

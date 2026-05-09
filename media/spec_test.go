@@ -15,8 +15,15 @@ import (
 // -------------------------------------------------------------------------
 
 // Helper to create a test registry pre-seeded with the baseline media specs
-// the Go test suite expects. Mirrors the Rust test_registry() helper which
-// loads the bundled standard specs.
+// Returns a FabricRegistry pre-seeded with the small set of
+// abstract value-type specs the bulk of the spec_test suite refers
+// to. Tests that exercise specific seeded-spec roundtrip semantics
+// (Test088, Test089) skip this helper and seed their own registry
+// inline so the test reads as a self-contained statement of what
+// the registry must round-trip. Long-term the goal is to migrate
+// every test to explicit per-test seeding (mirroring the Rust
+// reference's discipline); leaving the helper in place avoids a
+// big-bang rewrite of unrelated tests.
 func testRegistry(t *testing.T) *FabricRegistry {
 	t.Helper()
 	registry, err := NewFabricRegistry()
@@ -31,91 +38,55 @@ func testRegistry(t *testing.T) *FabricRegistry {
 	return registry
 }
 
-// TEST088: Test resolving string media URN from registry returns correct media type and profile
-func Test088_resolve_from_registry_str(t *testing.T) {
+// TEST088: Resolving a media URN seeded into the registry returns
+// the seeded spec verbatim. A regression in the registry-resolution
+// path would surface as a missing or empty result here, since there
+// is no local-override fallback to mask it. Mirrors Rust test088.
+func Test088_resolve_seeded_spec(t *testing.T) {
 	registry := testRegistry(t)
+	registry.AddSpec(MediaSpecDef{
+		Urn:       "media:textable",
+		MediaType: "text/plain",
+		Title:     "Textable",
+	}.ToStored())
 	resolved, err := ResolveMediaUrn("media:textable", registry)
 	require.NoError(t, err)
 	assert.Equal(t, "text/plain", resolved.MediaType)
-	assert.Equal(t, "https://capdag.com/schema/string", resolved.ProfileURI)
+	assert.Empty(t, resolved.ProfileURI, "abstract value-type spec carries no profile_uri")
 }
 
-// TEST089: Test resolving JSON media URN from registry returns JSON media type
-func Test089_resolve_from_registry_obj(t *testing.T) {
-	registry := testRegistry(t)
-	resolved, err := ResolveMediaUrn("media:record;textable", registry)
-	require.NoError(t, err)
-	assert.Equal(t, "application/json", resolved.MediaType)
-}
-
-// TEST090: Test resolving binary media URN returns octet-stream and is_binary true
-func Test090_resolve_from_registry_binary(t *testing.T) {
-	registry := testRegistry(t)
-	resolved, err := ResolveMediaUrn("media:", registry)
-	require.NoError(t, err)
-	assert.Equal(t, "application/octet-stream", resolved.MediaType)
-	assert.True(t, resolved.IsBinary())
-}
-
-// TEST091: Test resolving custom media URN from local media_specs takes precedence over registry
-func Test091_resolve_custom_media_spec(t *testing.T) {
-	registry := testRegistry(t)
-	customSpecs := []MediaSpecDef{
-		{
-			Urn:         "media:custom-spec;json",
-			MediaType:   "application/json",
-			Title:       "Custom Spec",
-			ProfileURI:  "https://example.com/schema",
-			Schema:      nil,
-			Description: "",
-			Validation:  nil,
-			Metadata:    nil,
-			Extensions:  []string{},
-		},
-	}
-
-	// Local media_specs takes precedence over registry
-	for _, d := range customSpecs { registry.AddSpec(d.ToStored()) }
-	resolved, err := ResolveMediaUrn("media:custom-spec;json", registry)
-	require.NoError(t, err)
-	assert.Equal(t, "media:custom-spec;json", resolved.SpecID)
-	assert.Equal(t, "application/json", resolved.MediaType)
-	assert.Equal(t, "https://example.com/schema", resolved.ProfileURI)
-	assert.Nil(t, resolved.Schema)
-}
-
-// TEST092: Test resolving custom record media spec with schema from local media_specs
-func Test092_resolve_custom_with_schema(t *testing.T) {
+// TEST089: A seeded record-shaped media spec carries its schema and
+// profile_uri intact through resolution. Catches a regression that
+// dropped optional fields when copying into ResolvedMediaSpec.
+// Mirrors Rust test089.
+func Test089_resolve_seeded_record_spec(t *testing.T) {
 	registry := testRegistry(t)
 	schema := map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			"name": map[string]any{"type": "string"},
-		},
+		"type":       "object",
+		"properties": map[string]any{"name": map[string]any{"type": "string"}},
 	}
-	customSpecs := []MediaSpecDef{
-		{
-			Urn:         "media:output-spec;json;record",
-			MediaType:   "application/json",
-			Title:       "Output Spec",
-			ProfileURI:  "https://example.com/schema/output",
-			Schema:      schema,
-			Description: "",
-			Validation:  nil,
-			Metadata:    nil,
-			Extensions:  []string{},
-		},
-	}
-
-	for _, d := range customSpecs { registry.AddSpec(d.ToStored()) }
-
-	resolved, err := ResolveMediaUrn("media:output-spec;json;record", registry)
+	registry.AddSpec(MediaSpecDef{
+		Urn:        "media:json;output-spec;record",
+		MediaType:  "application/json",
+		Title:      "Output Spec",
+		ProfileURI: "https://example.com/schema/output",
+		Schema:     schema,
+	}.ToStored())
+	resolved, err := ResolveMediaUrn("media:json;output-spec;record", registry)
 	require.NoError(t, err)
-	assert.Equal(t, "media:output-spec;json;record", resolved.SpecID)
 	assert.Equal(t, "application/json", resolved.MediaType)
 	assert.Equal(t, "https://example.com/schema/output", resolved.ProfileURI)
 	assert.Equal(t, schema, resolved.Schema)
 }
+
+// TESTs 090-092, 094 (deleted): exercised the legacy "local
+// `media_specs` overrides registry" path. The unified registry is
+// the only source of media specs in the new regime — there is no
+// override layer to test. The seeded-spec roundtrip property is
+// already covered by Test088 (above) and Test089 in the
+// MediaSpecDef block below. Rust dropped these for the same
+// reason; this deletion keeps the Go mirror in parity with the
+// Rust reference and the Python mirror.
 
 // TEST093: Test resolving unknown media URN fails with UnresolvableMediaUrn error
 func Test093_resolve_unresolvable_fails_hard(t *testing.T) {
@@ -127,33 +98,8 @@ func Test093_resolve_unresolvable_fails_hard(t *testing.T) {
 	assert.Contains(t, err.Error(), "cannot resolve")
 }
 
-// TEST094: Test local media_specs definition overrides registry definition for same URN
-func Test094_local_overrides_registry(t *testing.T) {
-	registry := testRegistry(t)
-
-	// Custom definition in media_specs takes precedence over registry
-	customOverride := []MediaSpecDef{
-		{
-			Urn:         "media:textable",
-			MediaType:   "application/json", // Override: normally text/plain
-			Title:       "Custom String",
-			ProfileURI:  "https://custom.example.com/str",
-			Schema:      nil,
-			Description: "",
-			Validation:  nil,
-			Metadata:    nil,
-			Extensions:  []string{},
-		},
-	}
-
-	for _, d := range customOverride { registry.AddSpec(d.ToStored()) }
-
-	resolved, err := ResolveMediaUrn("media:textable", registry)
-	require.NoError(t, err)
-	// Custom definition used, not registry
-	assert.Equal(t, "application/json", resolved.MediaType)
-	assert.Equal(t, "https://custom.example.com/str", resolved.ProfileURI)
-}
+// TEST094 (deleted): see the consolidated note above with TESTs
+// 090-092 — the override semantics it tested no longer exist.
 
 // -------------------------------------------------------------------------
 // MediaSpecDef serialization tests
@@ -596,7 +542,7 @@ func Test610_get_cached_spec(t *testing.T) {
 	require.NoError(t, err)
 
 	// Unknown spec
-	assert.Nil(t, registry.GetCachedSpec("media:nonexistent;xyzzy"))
+	assert.Nil(t, registry.GetCachedMediaSpec("media:nonexistent;xyzzy"))
 
 	// Add a spec and verify retrieval
 	registry.AddSpec(StoredMediaSpec{
@@ -605,7 +551,7 @@ func Test610_get_cached_spec(t *testing.T) {
 		Title:     "Test Spec",
 	})
 
-	retrieved := registry.GetCachedSpec("media:test;spec;textable")
+	retrieved := registry.GetCachedMediaSpec("media:test;spec;textable")
 	require.NotNil(t, retrieved, "Should find spec by URN")
 	assert.Equal(t, "Test Spec", retrieved.Title)
 }
@@ -617,18 +563,10 @@ func Test614_registry_creation(t *testing.T) {
 	require.NotNil(t, registry)
 }
 
-// TEST615: Verify cache key generation is deterministic and distinct for different URNs
-func Test615_cache_key_generation(t *testing.T) {
-	registry, err := NewFabricRegistryForTest()
-	require.NoError(t, err)
-
-	key1 := registry.CacheKey("media:textable")
-	key2 := registry.CacheKey("media:textable")
-	key3 := registry.CacheKey("media:integer")
-
-	assert.Equal(t, key1, key2)
-	assert.NotEqual(t, key1, key3)
-}
+// TEST615 (deleted): exercised the on-disk cache-key hashing
+// scheme — an internal persistence detail with no user-observable
+// behavior. Rust and Python dropped this for the same reason; this
+// deletion keeps the Go mirror in parity.
 
 // TEST616: Verify StoredMediaSpec converts to MediaSpecDef preserving all fields
 func Test616_stored_media_spec_to_def(t *testing.T) {
@@ -745,113 +683,13 @@ func Test629_profile_constants_format(t *testing.T) {
 		"PROFILE_OBJ must start with %s", prefix)
 }
 
-// -------------------------------------------------------------------------
-// Cap I/O media spec regression tests
-// -------------------------------------------------------------------------
+// TEST895/896/897 (cap I/O media spec extension regression checks)
+// were removed: they queried `NewFabricRegistry()` for hardcoded URN
+// lists and asserted each spec carried file extensions. The unified
+// FabricRegistry no longer bundles standard specs — it hydrates from
+// the publisher's catalogue (or local seeding) on demand. The
+// "every-cap-output-URN-has-extensions" invariant belongs to the
+// publisher (`fabric/src/fabric.js`), which validates spec contents
+// at publish time. Asserting that invariant here against an empty
+// registry is a category error.
 
-// TEST895: All cap output media specs must have file extensions defined.
-// This is a regression guard: every cap output URN must produce user-facing files
-// with a known extension. If a spec lacks extensions, save_cap_output will fail.
-func Test895_cap_output_media_specs_have_extensions(t *testing.T) {
-	registry, err := NewFabricRegistry()
-	require.NoError(t, err)
-
-	capOutputUrns := []string{
-		"media:textable",
-		"media:embedding-vector;textable;record",
-		"media:image-description;textable",
-		"media:transcription;textable;record",
-		"media:decision;json;record;textable",
-		"media:llm-text-stream;ndjson",
-		"media:generated-text;textable;record",
-		"media:llm-vocab-response;json;record",
-		"media:llm-model-info;json;record",
-		"media:model-dim;integer;textable;numeric",
-		"media:model-availability;textable;record",
-		"media:model-contents;textable;record",
-		"media:model-list;textable;record",
-		"media:model-path;textable;record",
-		"media:model-status;textable;record",
-		"media:download-result;textable;record",
-		"media:json;textable;record",
-	}
-
-	var missing []string
-	for _, u := range capOutputUrns {
-		spec := registry.GetCachedSpec(u)
-		if spec == nil {
-			missing = append(missing, u+" (spec not found in registry)")
-		} else if len(spec.Extensions) == 0 {
-			missing = append(missing, u+" (found spec but extensions is empty)")
-		}
-	}
-	assert.Empty(t, missing,
-		"Cap output media specs missing file extensions:\n  %s",
-		strings.Join(missing, "\n  "))
-}
-
-// TEST896: All cap input media specs that represent user files must have extensions.
-// These are the entry points — the file types users can right-click on.
-func Test896_cap_input_media_specs_have_extensions(t *testing.T) {
-	registry, err := NewFabricRegistry()
-	require.NoError(t, err)
-
-	capInputUrns := []string{
-		"media:textable",
-		"media:txt;textable",
-		"media:md;textable",
-		"media:rst;textable",
-		"media:pdf",
-		"media:image;png",
-		"media:audio;wav;speech",
-		"media:log;textable",
-		"media:json;json-schema;textable;record",
-		"media:llm-generation-request;json;record",
-		"media:model-repo;textable;record",
-		"media:model-spec;textable",
-	}
-
-	var missing []string
-	for _, u := range capInputUrns {
-		spec := registry.GetCachedSpec(u)
-		if spec == nil {
-			missing = append(missing, u+" (spec not found in registry)")
-		} else if len(spec.Extensions) == 0 {
-			missing = append(missing, u+" (found spec but extensions is empty)")
-		}
-	}
-	assert.Empty(t, missing,
-		"Cap input media specs missing file extensions:\n  %s",
-		strings.Join(missing, "\n  "))
-}
-
-// TEST897: Verify that specific cap output URNs resolve to the correct extension.
-// This catches misconfigurations where a spec exists but has the wrong extension.
-func Test897_cap_output_extension_values_correct(t *testing.T) {
-	registry, err := NewFabricRegistry()
-	require.NoError(t, err)
-
-	expected := []struct {
-		urn string
-		ext string
-	}{
-		{"media:textable", "txt"},
-		{"media:embedding-vector;textable;record", "json"},
-		{"media:image-description;textable", "txt"},
-		{"media:transcription;textable;record", "json"},
-		{"media:decision;json;record;textable", "json"},
-		{"media:llm-text-stream;ndjson", "ndjson"},
-		{"media:generated-text;textable;record", "json"},
-		{"media:llm-model-info;json;record", "json"},
-		{"media:download-result;textable;record", "json"},
-		{"media:model-dim;integer;textable;numeric", "txt"},
-	}
-
-	for _, e := range expected {
-		spec := registry.GetCachedSpec(e.urn)
-		require.NotNil(t, spec, "Spec not found for %s", e.urn)
-		require.NotEmpty(t, spec.Extensions, "No extensions for %s", e.urn)
-		assert.Equal(t, e.ext, spec.Extensions[0],
-			"Wrong extension for %s: got %s, want %s", e.urn, spec.Extensions[0], e.ext)
-	}
-}

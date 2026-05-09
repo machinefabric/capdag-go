@@ -29,23 +29,13 @@ func Test135_registry_creation(t *testing.T) {
 	assert.NotNil(t, registry)
 }
 
-// TEST136: Test cache key generation produces consistent hashes for same URN
-func Test136_cache_key_generation(t *testing.T) {
-	registry, err := NewFabricRegistry()
-	require.NoError(t, err)
-
-	// Use URNs with required in/out
-	urn1 := `cap:in="media:void";extract;out="media:json;record;textable;target=metadata"`
-	urn2 := `cap:in="media:void";extract;out="media:json;record;textable;target=metadata"`
-	urn3 := `cap:in="media:void";different;out="media:json;record;textable"`
-
-	key1 := registry.cacheKey(urn1)
-	key2 := registry.cacheKey(urn2)
-	key3 := registry.cacheKey(urn3)
-
-	assert.Equal(t, key1, key2, "Same URN should produce same cache key")
-	assert.NotEqual(t, key1, key3, "Different URNs should produce different cache keys")
-}
+// TEST136 (deleted): exercised the private `cacheKey` method on
+// the unified FabricRegistry. The on-disk cache filename scheme is
+// an implementation detail of the persistence layer; equivalent
+// observable behavior — that two equivalent URNs land in the same
+// cache slot — is covered by Test140 (`same_cap_different_spellings_same_url`).
+// Rust and Python dropped this; this deletion keeps the Go mirror
+// in parity.
 
 func TestRegistryGetCap(t *testing.T) {
 	registry, err := NewFabricRegistry()

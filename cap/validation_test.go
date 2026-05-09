@@ -66,6 +66,14 @@ func Test051_input_validation_success(t *testing.T) {
 	validator := NewInputValidator()
 	registry, err := media.NewFabricRegistry()
 	require.NoError(t, err)
+	// The unified registry resolves the cap's referenced media URNs
+	// at validation time; seed the spec the cap references.
+	registry.AddSpec(media.MediaSpecDef{
+		Urn:        standard.MediaString,
+		MediaType:  "text/plain",
+		Title:      "String",
+		ProfileURI: media.ProfileStr,
+	}.ToStored())
 
 	err = validator.ValidateArguments(cap, inputArgs, registry)
 	assert.NoError(t, err)
