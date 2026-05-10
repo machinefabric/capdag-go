@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"strings"
 	"sync/atomic"
 	"testing"
 )
@@ -101,7 +102,7 @@ func Test426_relay_switch_single_master_req_response(t *testing.T) {
 	}()
 
 	// Create RelaySwitch - this reads the RelayNotify from the goroutine
-	sw, err := NewRelaySwitch([]SocketPair{{Read: engineRead, Write: engineWrite}})
+	sw, err := NewRelaySwitch([]SocketPair{{ID: "test-master-0", Read: engineRead, Write: engineWrite}})
 	if err != nil {
 		t.Fatalf("Failed to create RelaySwitch: %v", err)
 	}
@@ -183,8 +184,8 @@ func Test427_relay_switch_multi_master_cap_routing(t *testing.T) {
 	}()
 
 	sw, err := NewRelaySwitch([]SocketPair{
-		{Read: engineRead1, Write: engineWrite1},
-		{Read: engineRead2, Write: engineWrite2},
+		{ID: "test-master-1", Read: engineRead1, Write: engineWrite1},
+		{ID: "test-master-2", Read: engineRead2, Write: engineWrite2},
 	})
 	if err != nil {
 		t.Fatalf("Failed to create RelaySwitch: %v", err)
@@ -238,7 +239,7 @@ func Test428_relay_switch_unknown_cap_returns_error(t *testing.T) {
 		}
 	}()
 
-	sw, err := NewRelaySwitch([]SocketPair{{Read: engineRead, Write: engineWrite}})
+	sw, err := NewRelaySwitch([]SocketPair{{ID: "test-master-3", Read: engineRead, Write: engineWrite}})
 	if err != nil {
 		t.Fatalf("Failed to create RelaySwitch: %v", err)
 	}
@@ -294,8 +295,8 @@ func Test429_relay_switch_find_master_for_cap(t *testing.T) {
 	}()
 
 	sw, err := NewRelaySwitch([]SocketPair{
-		{Read: engineRead1, Write: engineWrite1},
-		{Read: engineRead2, Write: engineWrite2},
+		{ID: "test-master-4", Read: engineRead1, Write: engineWrite1},
+		{ID: "test-master-5", Read: engineRead2, Write: engineWrite2},
 	})
 	if err != nil {
 		t.Fatalf("Failed to create RelaySwitch: %v", err)
@@ -396,8 +397,8 @@ func Test430_relay_switch_tie_breaking(t *testing.T) {
 	}()
 
 	sw, _ := NewRelaySwitch([]SocketPair{
-		{Read: engineRead1, Write: engineWrite1},
-		{Read: engineRead2, Write: engineWrite2},
+		{ID: "test-master-6", Read: engineRead1, Write: engineWrite1},
+		{ID: "test-master-7", Read: engineRead2, Write: engineWrite2},
 	})
 
 	// First request
@@ -464,7 +465,7 @@ func Test431_relay_switch_continuation_frame_routing(t *testing.T) {
 		writer.WriteFrame(response)
 	}()
 
-	sw, _ := NewRelaySwitch([]SocketPair{{Read: engineRead, Write: engineWrite}})
+	sw, _ := NewRelaySwitch([]SocketPair{{ID: "test-master-8", Read: engineRead, Write: engineWrite}})
 
 	reqID := NewMessageIdFromUint(1)
 
@@ -547,8 +548,8 @@ func Test433_relay_switch_capability_aggregation_deduplicates(t *testing.T) {
 	}()
 
 	sw, _ := NewRelaySwitch([]SocketPair{
-		{Read: engineRead1, Write: engineWrite1},
-		{Read: engineRead2, Write: engineWrite2},
+		{ID: "test-master-9", Read: engineRead1, Write: engineWrite1},
+		{ID: "test-master-10", Read: engineRead2, Write: engineWrite2},
 	})
 
 	// The wire payload carries caps inside
@@ -606,8 +607,8 @@ func Test434_relay_switch_limits_negotiation_minimum(t *testing.T) {
 	}()
 
 	sw, _ := NewRelaySwitch([]SocketPair{
-		{Read: engineRead1, Write: engineWrite1},
-		{Read: engineRead2, Write: engineWrite2},
+		{ID: "test-master-11", Read: engineRead1, Write: engineWrite1},
+		{ID: "test-master-12", Read: engineRead2, Write: engineWrite2},
 	})
 
 	limits := sw.Limits()
@@ -645,7 +646,7 @@ func Test435_relay_switch_urn_matching(t *testing.T) {
 		}
 	}()
 
-	sw, _ := NewRelaySwitch([]SocketPair{{Read: engineRead, Write: engineWrite}})
+	sw, _ := NewRelaySwitch([]SocketPair{{ID: "test-master-13", Read: engineRead, Write: engineWrite}})
 
 	// Exact match should work
 	req1 := NewReq(NewMessageIdFromUint(1), registeredCap, []byte{}, "text/plain")
@@ -713,8 +714,8 @@ func Test437_preferred_cap_routes_to_generic(t *testing.T) {
 	spawnSlave(slaveRead1, slaveWrite1, []string{`cap:in=media:;out=media:`, specificCap})
 
 	sw, err := NewRelaySwitch([]SocketPair{
-		{Read: engineRead0, Write: engineWrite0},
-		{Read: engineRead1, Write: engineWrite1},
+		{ID: "test-master-14", Read: engineRead0, Write: engineWrite0},
+		{ID: "test-master-15", Read: engineRead1, Write: engineWrite1},
 	})
 	if err != nil {
 		t.Fatalf("Failed to create RelaySwitch: %v", err)
@@ -765,7 +766,7 @@ func Test438_preferred_cap_falls_back_when_not_comparable(t *testing.T) {
 		}
 	}()
 
-	sw, err := NewRelaySwitch([]SocketPair{{Read: engineRead, Write: engineWrite}})
+	sw, err := NewRelaySwitch([]SocketPair{{ID: "test-master-16", Read: engineRead, Write: engineWrite}})
 	if err != nil {
 		t.Fatalf("Failed to create RelaySwitch: %v", err)
 	}
@@ -805,7 +806,7 @@ func Test439_generic_provider_can_dispatch_specific_request(t *testing.T) {
 		}
 	}()
 
-	sw, err := NewRelaySwitch([]SocketPair{{Read: engineRead, Write: engineWrite}})
+	sw, err := NewRelaySwitch([]SocketPair{{ID: "test-master-17", Read: engineRead, Write: engineWrite}})
 	if err != nil {
 		t.Fatalf("Failed to create RelaySwitch: %v", err)
 	}
@@ -948,3 +949,163 @@ func TestCartridgeAttachmentErrorDecodesProtoSnakeCaseStrings(t *testing.T) {
 	}
 }
 
+
+// ============================================================
+// Reattach-by-id tests for the cardinality-stable slot model.
+//
+// When a master dies and the host reconnects, the new socket MUST
+// attach to the same slot index — preserving routing entries
+// keyed by index. Accumulating zombie slots on each reconnect was
+// the bug class these tests guard against.
+
+func TestReattachByIDPreservesSlotIndex(t *testing.T) {
+	engineRead, slaveWrite := net.Pipe()
+	slaveRead, engineWrite := net.Pipe()
+
+	// Slave 1: send RelayNotify and stay alive until pipe closes.
+	go func() {
+		writer := NewFrameWriter(slaveWrite)
+		manifest := testManifestWithCaps([]string{`cap:in=media:;out=media:`})
+		manifestJSON, _ := json.Marshal(manifest)
+		limits := DefaultLimits()
+		if err := SendNotify(writer, manifestJSON, limits); err != nil {
+			t.Errorf("slave1 SendNotify: %v", err)
+			return
+		}
+		// Block on a read so the pipe stays open until the test
+		// closes its end.
+		reader := NewFrameReader(slaveRead)
+		_, _ = reader.ReadFrame()
+	}()
+
+	sw, err := NewRelaySwitch([]SocketPair{
+		{ID: "xpc-service", Read: engineRead, Write: engineWrite},
+	})
+	if err != nil {
+		t.Fatalf("NewRelaySwitch: %v", err)
+	}
+	if got := len(sw.masters); got != 1 {
+		t.Fatalf("masters len: got %d, want 1", got)
+	}
+	if sw.masters[0].id != "xpc-service" {
+		t.Fatalf("master id: got %q, want %q", sw.masters[0].id, "xpc-service")
+	}
+	if !sw.masters[0].healthy {
+		t.Fatalf("master should be healthy after construction")
+	}
+
+	// Simulate master death via the same code path the frame loop
+	// uses on EOF. Bypassing the frame loop keeps the test focused
+	// on the reattach contract itself.
+	sw.handleMasterDeath(0)
+	if got := len(sw.masters); got != 1 {
+		t.Fatalf("handleMasterDeath must NOT remove the slot — reattach depends on it staying in place; got len %d", got)
+	}
+	if sw.masters[0].healthy {
+		t.Fatalf("master should be unhealthy after handleMasterDeath")
+	}
+
+	// Reconnect: build a fresh slave + pipe pair under the SAME id.
+	engineRead2, slaveWrite2 := net.Pipe()
+	slaveRead2, engineWrite2 := net.Pipe()
+
+	go func() {
+		writer := NewFrameWriter(slaveWrite2)
+		manifest := testManifestWithCaps([]string{`cap:in=media:;out=media:`})
+		manifestJSON, _ := json.Marshal(manifest)
+		limits := DefaultLimits()
+		if err := SendNotify(writer, manifestJSON, limits); err != nil {
+			t.Errorf("slave2 SendNotify: %v", err)
+			return
+		}
+		reader := NewFrameReader(slaveRead2)
+		_, _ = reader.ReadFrame()
+	}()
+
+	newIdx, err := sw.AddMaster(SocketPair{
+		ID:    "xpc-service",
+		Read:  engineRead2,
+		Write: engineWrite2,
+	})
+	if err != nil {
+		t.Fatalf("AddMaster reattach: %v", err)
+	}
+	if newIdx != 0 {
+		t.Fatalf("reattach MUST return the same slot index (0), not append a new slot; got %d", newIdx)
+	}
+	if got := len(sw.masters); got != 1 {
+		t.Fatalf("reattach MUST NOT grow the slot count — that was the zombie-slot bug; got len %d", got)
+	}
+	if !sw.masters[0].healthy {
+		t.Fatalf("slot should be healthy after reattach")
+	}
+	if sw.masters[0].id != "xpc-service" {
+		t.Fatalf("slot id MUST be preserved across reattach; got %q", sw.masters[0].id)
+	}
+}
+
+func TestAddMasterWithDuplicateHealthyIDErrors(t *testing.T) {
+	engineRead, slaveWrite := net.Pipe()
+	slaveRead, engineWrite := net.Pipe()
+
+	go func() {
+		writer := NewFrameWriter(slaveWrite)
+		manifest := testManifestWithCaps([]string{`cap:in=media:;out=media:`})
+		manifestJSON, _ := json.Marshal(manifest)
+		limits := DefaultLimits()
+		if err := SendNotify(writer, manifestJSON, limits); err != nil {
+			t.Errorf("slave SendNotify: %v", err)
+			return
+		}
+		reader := NewFrameReader(slaveRead)
+		_, _ = reader.ReadFrame()
+	}()
+
+	sw, err := NewRelaySwitch([]SocketPair{
+		{ID: "xpc-service", Read: engineRead, Write: engineWrite},
+	})
+	if err != nil {
+		t.Fatalf("NewRelaySwitch: %v", err)
+	}
+	if !sw.masters[0].healthy {
+		t.Fatalf("slot should be healthy after construction")
+	}
+
+	// Try to add a second master with the same id while healthy.
+	// The duplicate-id check fires BEFORE any I/O on the dummy
+	// pipes, so the dummies never have to go through a handshake.
+	dummyRead, _ := net.Pipe()
+	dummyOther, _ := net.Pipe()
+	_, err = sw.AddMaster(SocketPair{
+		ID:    "xpc-service",
+		Read:  dummyRead,
+		Write: dummyOther,
+	})
+	if err == nil {
+		t.Fatalf("re-adding a healthy id must error")
+	}
+	if !strings.Contains(err.Error(), "already attached to a healthy slot") {
+		t.Fatalf("error message should name the cardinality violation; got %q", err.Error())
+	}
+	if got := len(sw.masters); got != 1 {
+		t.Fatalf("no slot should be created when the duplicate-id check fires; got len %d", got)
+	}
+}
+
+func TestNewRelaySwitchRejectsDuplicateIDs(t *testing.T) {
+	a, _ := net.Pipe()
+	aOther, _ := net.Pipe()
+	b, _ := net.Pipe()
+	bOther, _ := net.Pipe()
+
+	_, err := NewRelaySwitch([]SocketPair{
+		{ID: "dup-id", Read: a, Write: aOther},
+		{ID: "dup-id", Read: b, Write: bOther},
+	})
+	if err == nil {
+		t.Fatalf("duplicate ids must be rejected")
+	}
+	if !strings.Contains(err.Error(), `duplicate master id "dup-id"`) {
+		t.Fatalf("error should name the duplicate id; got %q", err.Error())
+	}
+}

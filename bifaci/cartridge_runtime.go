@@ -2394,13 +2394,73 @@ func (pr *CartridgeRuntime) extractArgValue(argDef *cap.CapArg, cliArgs []string
 		}
 	}
 
-	// Try default value
+	// Try default value.
+	//
+	// The wire contract for an arg stream is "bytes of the typed
+	// media URN". For a `media:textable`-shaped arg that's plain
+	// UTF-8 text — NOT a JSON-encoded form. A naive `json.Marshal`
+	// of the `RawMessage` would corrupt every string default by
+	// keeping the surrounding `"…"` quotes, which the handler's
+	// UTF-8 decode would surface as a literal quoted string and
+	// downstream parsers (model-spec, system-prompt, etc.) would
+	// silently choke. Encode each scalar as its lexical wire form
+	// matching exactly what the same value typed at the CLI flag
+	// would produce. Composite defaults (array, object) ARE JSON
+	// on the wire by design and pass through unchanged.
 	if argDef.DefaultValue != nil {
-		bytes, err := json.Marshal(argDef.DefaultValue)
-		if err != nil {
-			return nil, false, fmt.Errorf("failed to serialize default value: %w", err)
+		raw := []byte(argDef.DefaultValue)
+		// `json.RawMessage` carries the registry's JSON encoding
+		// verbatim. Peek the first non-whitespace byte to dispatch.
+		// We also trim trailing whitespace so a number/bool default
+		// with stray formatting becomes a clean lexical token on
+		// the wire.
+		stripped := raw
+		for len(stripped) > 0 {
+			c := stripped[0]
+			if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
+				stripped = stripped[1:]
+				continue
+			}
+			break
 		}
-		return bytes, false, nil
+		for len(stripped) > 0 {
+			c := stripped[len(stripped)-1]
+			if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
+				stripped = stripped[:len(stripped)-1]
+				continue
+			}
+			break
+		}
+		if len(stripped) == 0 {
+			// Whitespace-only or empty default — treat as
+			// "no default supplied".
+			return nil, false, nil
+		}
+		switch stripped[0] {
+		case '"':
+			// String value. JSON-decode to recover the un-quoted
+			// text and emit raw UTF-8 bytes.
+			var s string
+			if err := json.Unmarshal(raw, &s); err != nil {
+				return nil, false, fmt.Errorf("failed to decode string default: %w", err)
+			}
+			return []byte(s), false, nil
+		case '{', '[':
+			// Object / array — composite default, stays JSON on
+			// the wire.
+			return raw, false, nil
+		case 'n':
+			// `null` — semantically equivalent to "no default
+			// supplied". Emit empty bytes; mirrors the Rust
+			// runtime's null arm.
+			return []byte{}, false, nil
+		default:
+			// Number, `true`, `false`. JSON's lexical form for
+			// these matches the CLI/text wire form; pass
+			// through unchanged. Trim leading/trailing whitespace
+			// so the caller sees a clean lexical token.
+			return stripped, false, nil
+		}
 	}
 
 	return nil, false, nil

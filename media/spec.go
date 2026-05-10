@@ -64,9 +64,9 @@ const (
 	// Semantic output types
 	MediaModelDim  = "media:model-dim;integer;textable;numeric"
 	MediaDecision  = "media:decision;json;record;textable"
-	MediaTextablePage = "media:textable;page"
-	// Semantic output types
-	MediaLlmInferenceOutput = "media:generated-text;textable;record"
+	MediaTextablePage = "media:page;plain-text;textable;txt"
+	// MediaPlainText is the canonical input/output of cap:save-as-txt.
+	MediaPlainText = "media:plain-text;textable;txt"
 	// Semantic output types for model operations
 	MediaAvailabilityOutput = "media:model-availability;textable;record"
 	MediaPathOutput         = "media:model-path;textable;record"

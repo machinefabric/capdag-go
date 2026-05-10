@@ -206,8 +206,11 @@ const MediaFilePath = "media:file-path;textable"
 
 // Semantic text input types - distinguished by their purpose/context
 
-// MediaTextablePage is the media URN for extracted page text
-const MediaTextablePage = "media:textable;page"
+// MediaTextablePage is the media URN for a single page of finalised plain
+// text extracted from a multi-page document (e.g. cap:disbind-pdf, one item
+// per page). Carries `role=page`, `plain-text` (the opt-in marker for
+// cap:save-as-txt's persistence path), and `file-type=txt`.
+const MediaTextablePage = "media:page;plain-text;textable;txt"
 
 // MediaModelSpec is the media URN for model spec (provider:model format, HuggingFace name, etc.) - scalar by default
 // Generic, backend-agnostic — used by inference caps for download/status/path operations.
@@ -285,11 +288,19 @@ const MediaPathOutput = "media:model-path;record;textable"
 // MediaEmbeddingVector is the media URN for embedding vector output - has record marker
 const MediaEmbeddingVector = "media:embedding-vector;record;textable"
 
-// MediaLLMInferenceOutput is the media URN for LLM inference output - has record marker
-const MediaLLMInferenceOutput = "media:generated-text;record;textable"
+// MediaImageDescription is the media URN for vision inference output — a
+// concrete textable terminal. Carries `image-description` (the vision-specific
+// marker), `plain-text` (the finalised-text marker that opts into
+// cap:save-as-txt's persistence path), and `file-type=txt` (binds the URN to
+// the `.txt` extension at the registry).
+const MediaImageDescription = "media:image-description;plain-text;textable;txt"
 
-// MediaImageDescription is the media URN for vision inference output - textable, scalar by default
-const MediaImageDescription = "media:image-description;textable"
+// MediaPlainText is the media URN for finalised plain text — the canonical
+// input/output of cap:save-as-txt. Producers of user-facing prose
+// (LLM text-generation, OCR's extracted text, summarisation) declare this
+// URN as their `out` so the planner restricts the .txt persistence path
+// to those caps. See fabric/media/plain-text.toml.
+const MediaPlainText = "media:plain-text;textable;txt"
 
 // MediaTranscriptionOutput is the media URN for transcription output - has record marker
 const MediaTranscriptionOutput = "media:record;textable;transcription"

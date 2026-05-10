@@ -268,8 +268,14 @@ type RoutingEntry struct {
 	RequestId            MessageId // original MessageId for cancel frames
 }
 
-// MasterConnection represents a connection to a single RelayMaster
+// MasterConnection represents a connection to a single RelayMaster.
+//
+// `id` is the stable identity of this slot. Reattach-by-id matches
+// against it on subsequent reconnects so the slot index stays
+// constant across the death-and-reconnect cycle. Once set at slot
+// creation it is never overwritten.
 type MasterConnection struct {
+	id                  string
 	socketWriter        *FrameWriter
 	manifest            []byte
 	limits              Limits
@@ -295,6 +301,15 @@ type RelaySwitch struct {
 	negotiatedLimits             Limits
 	frameRx                      chan MasterFrame
 	mu                           sync.Mutex
+	// addMasterMu serialises AddMaster across the whole switch.
+	// `masterIdx` is the routing key for capTable / requestRouting;
+	// it must be decided once per slot and stay stable for the slot's
+	// lifetime. Concurrent AddMaster calls would race on `len(masters)`
+	// — two appenders could both decide they are slot N. The mutex
+	// covers the I/O too (RelayNotify read + identity probe) so the
+	// reattach branch sees a stable view of `masters` for the
+	// duration; contention is bounded by the small slot count.
+	addMasterMu sync.Mutex
 }
 
 type CapTableEntry struct {
@@ -311,13 +326,33 @@ type MasterFrame struct {
 // ENGINE_SOURCE sentinel value for engine-initiated requests
 const ENGINE_SOURCE = -1
 
-// NewRelaySwitch creates a new RelaySwitch with the given socket pairs
+// NewRelaySwitch creates a new RelaySwitch with the given socket pairs.
+//
+// Each `SocketPair.ID` is the stable identity of the cardinality slot
+// it fills. `AddMaster` uses the id to reattach a reconnecting host
+// to the same slot index; duplicate ids in the constructor list are
+// a wiring bug and surface as a hard `ProtocolError` (without this
+// guard the first reconnect would reattach to whichever slot is
+// found first by the linear scan, leaving the other stuck unhealthy
+// forever — the exact bug class this contract closes).
 func NewRelaySwitch(sockets []SocketPair) (*RelaySwitch, error) {
 	if len(sockets) == 0 {
 		return nil, &RelaySwitchError{
 			Type:    RelaySwitchErrorTypeProtocol,
 			Message: "RelaySwitch requires at least one master",
 		}
+	}
+
+	// Reject duplicate ids up front.
+	seen := make(map[string]bool, len(sockets))
+	for _, sp := range sockets {
+		if seen[sp.ID] {
+			return nil, &RelaySwitchError{
+				Type:    RelaySwitchErrorTypeProtocol,
+				Message: fmt.Sprintf("NewRelaySwitch: duplicate master id %q in cardinality list — each slot must have a unique stable id", sp.ID),
+			}
+		}
+		seen[sp.ID] = true
 	}
 
 	frameRx := make(chan MasterFrame, 100)
@@ -386,6 +421,7 @@ func NewRelaySwitch(sockets []SocketPair) (*RelaySwitch, error) {
 		}()
 
 		masters = append(masters, &MasterConnection{
+			id:                  sockPair.ID,
 			socketWriter:        socketWriter,
 			manifest:            manifest,
 			limits:              *limits,
@@ -417,7 +453,183 @@ func NewRelaySwitch(sockets []SocketPair) (*RelaySwitch, error) {
 	return sw, nil
 }
 
+// AddMaster attaches a (re)connecting host to a slot.
+//
+// `sockPair.ID` is the stable identity of the cardinality slot:
+//
+//   - Existing slot, currently UNHEALTHY → reattach in place at the
+//     existing slot index. The dead master's reader goroutine has
+//     already exited on EOF; the new connection installs a fresh
+//     writer + reader goroutine and clears the unhealthy flag.
+//     `requestRouting` and `capTable` entries keyed by `masterIdx`
+//     stay coherent because the index does not change.
+//   - Existing slot, currently HEALTHY → caller bug
+//     (the same master must not be added twice). Surface as a
+//     `RelaySwitchError` so the wiring mistake is fixed instead of
+//     silently growing zombie slots.
+//   - No existing slot with that id → append a fresh slot at
+//     `len(masters)`. The reader goroutine is spawned with that
+//     index baked in.
+//
+// Returns the slot index (stable across reattach).
+func (sw *RelaySwitch) AddMaster(sockPair SocketPair) (int, error) {
+	sw.addMasterMu.Lock()
+	defer sw.addMasterMu.Unlock()
+
+	// Existing-slot lookup under the inner mutex so the linear scan
+	// observes a stable `masters`.
+	sw.mu.Lock()
+	existingIdx := -1
+	for i, m := range sw.masters {
+		if m.id == sockPair.ID {
+			if m.healthy {
+				sw.mu.Unlock()
+				return 0, &RelaySwitchError{
+					Type: RelaySwitchErrorTypeProtocol,
+					Message: fmt.Sprintf(
+						"AddMaster: id %q is already attached to a healthy slot at index %d — "+
+							"cardinality violation (each id may only be attached once at a time)",
+						sockPair.ID, i,
+					),
+				}
+			}
+			existingIdx = i
+			break
+		}
+	}
+
+	// Reserve the slot index. For the append case this is the
+	// current length under `addMasterMu`; for reattach it is the
+	// existing slot index. The reader goroutine captures this
+	// value so per-frame routing always carries the right index.
+	var masterIdx int
+	if existingIdx >= 0 {
+		masterIdx = existingIdx
+	} else {
+		masterIdx = len(sw.masters)
+	}
+	sw.mu.Unlock()
+
+	// Handshake: read RelayNotify.
+	socketReader := NewFrameReader(sockPair.Read)
+	socketWriter := NewFrameWriter(sockPair.Write)
+	frame, err := socketReader.ReadFrame()
+	if err != nil {
+		return 0, err
+	}
+	if frame == nil {
+		return 0, &RelaySwitchError{
+			Type:    RelaySwitchErrorTypeProtocol,
+			Message: "AddMaster: relay connection closed before receiving RelayNotify",
+		}
+	}
+	if frame.FrameType != FrameTypeRelayNotify {
+		return 0, &RelaySwitchError{
+			Type:    RelaySwitchErrorTypeProtocol,
+			Message: fmt.Sprintf("AddMaster: expected RelayNotify, got %d", frame.FrameType),
+		}
+	}
+	manifest := frame.RelayNotifyManifest()
+	if manifest == nil {
+		return 0, &RelaySwitchError{
+			Type:    RelaySwitchErrorTypeProtocol,
+			Message: "AddMaster: RelayNotify missing manifest",
+		}
+	}
+	limits := frame.RelayNotifyLimits()
+	if limits == nil {
+		return 0, &RelaySwitchError{
+			Type:    RelaySwitchErrorTypeProtocol,
+			Message: "AddMaster: RelayNotify missing limits",
+		}
+	}
+	payload, err := parseRelayNotifyPayload(manifest)
+	if err != nil {
+		return 0, err
+	}
+
+	// Spawn reader goroutine bound to masterIdx.
+	idx := masterIdx
+	frameRx := sw.frameRx
+	go func() {
+		for {
+			f, err := socketReader.ReadFrame()
+			if err != nil {
+				frameRx <- MasterFrame{MasterIdx: idx, Frame: nil, Err: err}
+				return
+			}
+			if f == nil {
+				frameRx <- MasterFrame{MasterIdx: idx, Frame: nil, Err: fmt.Errorf("EOF")}
+				return
+			}
+			frameRx <- MasterFrame{MasterIdx: idx, Frame: f, Err: nil}
+		}
+	}()
+
+	// Commit the connection state into the slot.
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	if existingIdx < 0 {
+		// Append. The captured `masterIdx` MUST equal the new
+		// length; if not, a concurrent appender bypassed
+		// `addMasterMu`, which is a protocol violation.
+		if len(sw.masters) != masterIdx {
+			return 0, &RelaySwitchError{
+				Type: RelaySwitchErrorTypeProtocol,
+				Message: fmt.Sprintf(
+					"AddMaster: append-index race for id %q: reserved %d but len(masters) is now %d "+
+						"(a concurrent caller bypassed addMasterMu)",
+					sockPair.ID, masterIdx, len(sw.masters),
+				),
+			}
+		}
+		sw.masters = append(sw.masters, &MasterConnection{
+			id:                  sockPair.ID,
+			socketWriter:        socketWriter,
+			manifest:            manifest,
+			limits:              *limits,
+			caps:                payload.CapURNs(),
+			installedCartridges: payload.InstalledCartridges,
+			healthy:             true,
+		})
+	} else {
+		slot := sw.masters[masterIdx]
+		if slot.id != sockPair.ID {
+			return 0, &RelaySwitchError{
+				Type: RelaySwitchErrorTypeProtocol,
+				Message: fmt.Sprintf(
+					"AddMaster: reattach-id mismatch at index %d: expected %q but found %q",
+					masterIdx, sockPair.ID, slot.id,
+				),
+			}
+		}
+		// In-place mutation. The dead master's reader goroutine
+		// has already exited on EOF (Go goroutines aren't
+		// cancellable; we rely on the natural EOF exit).
+		slot.socketWriter = socketWriter
+		slot.manifest = manifest
+		slot.limits = *limits
+		slot.caps = payload.CapURNs()
+		slot.installedCartridges = payload.InstalledCartridges
+		slot.healthy = true
+	}
+
+	sw.rebuildCapTable()
+	sw.rebuildInstalledCartridges()
+	sw.rebuildCapabilities()
+	sw.rebuildLimits()
+
+	return masterIdx, nil
+}
+
+// SocketPair carries a relay master connection plus the stable
+// identity (`ID`) of the cardinality slot it fills. Reattach-by-id
+// in `AddMaster` matches against this id so a reconnecting host
+// lands back in the same slot index — preserving routing entries
+// keyed by index. Re-adding the same id while the slot is still
+// healthy is a wiring bug and is rejected.
 type SocketPair struct {
+	ID    string
 	Read  net.Conn
 	Write net.Conn
 }
