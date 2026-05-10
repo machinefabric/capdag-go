@@ -1,10 +1,10 @@
 # Go Test Catalog
 
-**Total Tests:** 911
+**Total Tests:** 914
 
 **Numbered Tests:** 852
 
-**Unnumbered Tests:** 59
+**Unnumbered Tests:** 62
 
 **Numbered Tests Missing Descriptions:** 0
 
@@ -335,20 +335,20 @@ This catalog lists all tests in the Go codebase.
 | test423 | `Test423_multi_cartridge_distinct_caps` | TEST423: Multiple cartridges registered with distinct caps route independently | bifaci/host_multi_test.go:643 |
 | test424 | `Test424_concurrent_requests_same_cartridge` | TEST424: Concurrent requests to the same cartridge are handled independently | bifaci/host_multi_test.go:774 |
 | test425 | `Test425_find_cartridge_for_cap_unknown` | TEST425: find_cartridge_for_cap returns None for unregistered cap | bifaci/host_multi_test.go:892 |
-| test426 | `Test426_relay_switch_single_master_req_response` | TEST426: Single master REQ/response routing | bifaci/relay_switch_test.go:73 |
-| test427 | `Test427_relay_switch_multi_master_cap_routing` | TEST427: Multi-master cap routing | bifaci/relay_switch_test.go:137 |
-| test428 | `Test428_relay_switch_unknown_cap_returns_error` | TEST428: Unknown cap returns error | bifaci/relay_switch_test.go:221 |
-| test429 | `Test429_relay_switch_find_master_for_cap` | TEST429: Cap routing logic (find_master_for_cap) | bifaci/relay_switch_test.go:264 |
-| test430 | `Test430_relay_switch_tie_breaking` | TEST430: Tie-breaking (same cap on multiple masters - first match wins, routing is consistent) | bifaci/relay_switch_test.go:350 |
-| test431 | `Test431_relay_switch_continuation_frame_routing` | TEST431: Continuation frame routing (CHUNK, END follow REQ) | bifaci/relay_switch_test.go:421 |
-| test432 | `Test432_relay_switch_empty_masters_list_error` | TEST432: Empty masters list creates empty switch, add_master works | bifaci/relay_switch_test.go:496 |
-| test433 | `Test433_relay_switch_capability_aggregation_deduplicates` | TEST433: Capability aggregation deduplicates caps | bifaci/relay_switch_test.go:511 |
-| test434 | `Test434_relay_switch_limits_negotiation_minimum` | TEST434: Limits negotiation takes minimum | bifaci/relay_switch_test.go:574 |
-| test435 | `Test435_relay_switch_urn_matching` | TEST435: URN matching (exact vs accepts()) | bifaci/relay_switch_test.go:623 |
+| test426 | `Test426_relay_switch_single_master_req_response` | TEST426: Single master REQ/response routing | bifaci/relay_switch_test.go:74 |
+| test427 | `Test427_relay_switch_multi_master_cap_routing` | TEST427: Multi-master cap routing | bifaci/relay_switch_test.go:138 |
+| test428 | `Test428_relay_switch_unknown_cap_returns_error` | TEST428: Unknown cap returns error | bifaci/relay_switch_test.go:222 |
+| test429 | `Test429_relay_switch_find_master_for_cap` | TEST429: Cap routing logic (find_master_for_cap) | bifaci/relay_switch_test.go:265 |
+| test430 | `Test430_relay_switch_tie_breaking` | TEST430: Tie-breaking (same cap on multiple masters - first match wins, routing is consistent) | bifaci/relay_switch_test.go:351 |
+| test431 | `Test431_relay_switch_continuation_frame_routing` | TEST431: Continuation frame routing (CHUNK, END follow REQ) | bifaci/relay_switch_test.go:422 |
+| test432 | `Test432_relay_switch_empty_masters_list_error` | TEST432: Empty masters list creates empty switch, add_master works | bifaci/relay_switch_test.go:497 |
+| test433 | `Test433_relay_switch_capability_aggregation_deduplicates` | TEST433: Capability aggregation deduplicates caps | bifaci/relay_switch_test.go:512 |
+| test434 | `Test434_relay_switch_limits_negotiation_minimum` | TEST434: Limits negotiation takes minimum | bifaci/relay_switch_test.go:575 |
+| test435 | `Test435_relay_switch_urn_matching` | TEST435: URN matching (exact vs accepts()) | bifaci/relay_switch_test.go:624 |
 | test436 | `Test436_compute_checksum` | TEST436: Verify FNV-1a checksum function produces consistent results | bifaci/frame_test.go:862 |
-| test437 | `Test437_preferred_cap_routes_to_generic` | TEST437: find_master_for_cap with preferred_cap routes to generic handler. Generic provider (in=media:) CAN dispatch specific request (in="media:pdf"). Preference routes to preferred among dispatchable candidates via IsEquivalent (Accepts-based). | bifaci/relay_switch_test.go:684 |
-| test438 | `Test438_preferred_cap_falls_back_when_not_comparable` | TEST438: find_master_for_cap with preference falls back to closest-specificity when preferred cap is not in the comparable set. | bifaci/relay_switch_test.go:749 |
-| test439 | `Test439_generic_provider_can_dispatch_specific_request` | TEST439: Generic provider CAN dispatch specific request. With is_dispatchable: generic provider (in=media:) can handle specific request (in="media:pdf") because media: accepts any input type. | bifaci/relay_switch_test.go:789 |
+| test437 | `Test437_preferred_cap_routes_to_generic` | TEST437: find_master_for_cap with preferred_cap routes to generic handler. Generic provider (in=media:) CAN dispatch specific request (in="media:pdf"). Preference routes to preferred among dispatchable candidates via IsEquivalent (Accepts-based). | bifaci/relay_switch_test.go:685 |
+| test438 | `Test438_preferred_cap_falls_back_when_not_comparable` | TEST438: find_master_for_cap with preference falls back to closest-specificity when preferred cap is not in the comparable set. | bifaci/relay_switch_test.go:750 |
+| test439 | `Test439_generic_provider_can_dispatch_specific_request` | TEST439: Generic provider CAN dispatch specific request. With is_dispatchable: generic provider (in=media:) can handle specific request (in="media:pdf") because media: accepts any input type. | bifaci/relay_switch_test.go:790 |
 | test440 | `Test440_chunk_index_checksum_roundtrip` | TEST440: CHUNK frame with chunk_index and checksum roundtrips through encode/decode | bifaci/io_test.go:951 |
 | test441 | `Test441_stream_end_chunk_count_roundtrip` | TEST441: STREAM_END frame with chunk_count roundtrips through encode/decode | bifaci/io_test.go:992 |
 | test442 | `Test442_seq_assigner_monotonic_same_rid` | TEST442: SeqAssigner assigns seq 0,1,2,3 for consecutive frames with same RID | bifaci/frame_test.go:879 |
@@ -869,6 +869,7 @@ This catalog lists all tests in the Go codebase.
 | test1845 | `Test1845_axis_weighting_in_dominates_y` | TEST1845: With equal out, in-axis dominates over y-axis. | urn/cap_urn_test.go:1985 |
 | test1846 | `Test1846_axis_weighting_decoded_layout` | TEST1846: Decoded layout — 10000*out + 100*in + y. | urn/cap_urn_test.go:1996 |
 | | | | |
+| unnumbered | `TestAddMasterWithDuplicateHealthyIDErrors` |  | bifaci/relay_switch_test.go:1047 |
 | unnumbered | `TestArgumentsMultiple` | Mirror-specific coverage: Test multiple arguments are correctly serialized in CBOR payload | bifaci/integration_test.go:1390 |
 | unnumbered | `TestArgumentsRoundtrip` | Mirror-specific coverage: Test host call with unified CBOR arguments sends correct content_type and payload | bifaci/integration_test.go:1030 |
 | unnumbered | `TestAutoChunkingReassembly` | Mirror-specific coverage: Test auto-chunking splits payload larger than max_chunk into CHUNK frames + END frame, and host concatenated() reassembles the full original data | bifaci/integration_test.go:1463 |
@@ -883,9 +884,9 @@ This catalog lists all tests in the Go codebase.
 | unnumbered | `TestCapUrn_JSONSerialization` | JSON serialization test (not numbered in Rust) | urn/cap_urn_test.go:1455 |
 | unnumbered | `TestCapValidationCoordinator_EndToEnd` |  | cap/schema_validation_test.go:406 |
 | unnumbered | `TestCapWithMediaSpecs` |  | cap/definition_test.go:458 |
-| unnumbered | `TestCartridgeAttachmentErrorDecodesProtoSnakeCaseStrings` | TestCartridgeAttachmentErrorDecodesProtoSnakeCaseStrings is the engine→Go-host (or Swift→Go-host) decode path: incoming JSON uses the snake_case wire format, and the Go side must resolve each string into the matching variant. CartridgeAttachmentErrorKind is just `type ... string`, so this test is also a check that the JSON unmarshaller doesn't normalise/lowercase/etc the bytes behind our backs. | bifaci/relay_switch_test.go:923 |
-| unnumbered | `TestCartridgeAttachmentErrorJSONRoundTrips` | TestCartridgeAttachmentErrorJSONRoundTrips verifies a CartridgeAttachmentError marshals to JSON and unmarshals back without changing the kind for every variant. RelayNotify wire payload is JSON; a single-variant regression breaks the entire per-master parse. | bifaci/relay_switch_test.go:875 |
-| unnumbered | `TestCartridgeAttachmentErrorKindMatchesProtoSnakeCase` | TestCartridgeAttachmentErrorKindMatchesProtoSnakeCase pins every variant's string value against its proto snake_case name. New variants must be added here AND in the Rust / Swift / proto sides. | bifaci/relay_switch_test.go:847 |
+| unnumbered | `TestCartridgeAttachmentErrorDecodesProtoSnakeCaseStrings` | TestCartridgeAttachmentErrorDecodesProtoSnakeCaseStrings is the engine→Go-host (or Swift→Go-host) decode path: incoming JSON uses the snake_case wire format, and the Go side must resolve each string into the matching variant. CartridgeAttachmentErrorKind is just `type ... string`, so this test is also a check that the JSON unmarshaller doesn't normalise/lowercase/etc the bytes behind our backs. | bifaci/relay_switch_test.go:924 |
+| unnumbered | `TestCartridgeAttachmentErrorJSONRoundTrips` | TestCartridgeAttachmentErrorJSONRoundTrips verifies a CartridgeAttachmentError marshals to JSON and unmarshals back without changing the kind for every variant. RelayNotify wire payload is JSON; a single-variant regression breaks the entire per-master parse. | bifaci/relay_switch_test.go:876 |
+| unnumbered | `TestCartridgeAttachmentErrorKindMatchesProtoSnakeCase` | TestCartridgeAttachmentErrorKindMatchesProtoSnakeCase pins every variant's string value against its proto snake_case name. New variants must be added here AND in the Rust / Swift / proto sides. | bifaci/relay_switch_test.go:848 |
 | unnumbered | `TestCartridgeErrorResponse` | Mirror-specific coverage: Test cartridge ERR frame is received by host as error | bifaci/integration_test.go:505 |
 | unnumbered | `TestCartridgeSuddenDisconnect` | Mirror-specific coverage: Test host receives error when cartridge closes connection unexpectedly | bifaci/integration_test.go:1107 |
 | unnumbered | `TestChunkingDataIntegrity3x` | Mirror-specific coverage: Test auto-chunking preserves data integrity across chunk boundaries for 3x max_chunk payload | bifaci/integration_test.go:1717 |
@@ -907,11 +908,13 @@ This catalog lists all tests in the Go codebase.
 | unnumbered | `TestLogFramesDuringRequest` | Mirror-specific coverage: Test LOG frames sent during a request are transparently skipped by host | bifaci/integration_test.go:562 |
 | unnumbered | `TestMaxChunkPlusOneSplitsIntoTwo` | Mirror-specific coverage: Test payload of max_chunk + 1 produces exactly one CHUNK frame + one END frame | bifaci/integration_test.go:1614 |
 | unnumbered | `TestMediaUrnResolutionWithRegistry` |  | cap/schema_validation_test.go:609 |
+| unnumbered | `TestNewRelaySwitchRejectsDuplicateIDs` |  | bifaci/relay_switch_test.go:1095 |
 | unnumbered | `TestOutputValidator_WithSchemaValidation` |  | cap/schema_validation_test.go:349 |
 | unnumbered | `TestParseHeadersWithNoWiringsReturnsNoEdgesError` | TestParseHeadersWithNoWiringsReturnsNoEdgesError verifies the ErrNoEdges case. | machine/machine_test.go:477 |
 | unnumbered | `TestParseSimple` | Mirror-specific coverage: Test parsing simple media URN verifies correct structure with no version, subtype, or profile | urn/media_urn_test.go:14 |
 | unnumbered | `TestParseWithProfile` | Mirror-specific coverage: Test parsing media URN with profile extracts profile URL correctly | urn/media_urn_test.go:32 |
 | unnumbered | `TestParseWithSubtype` | Mirror-specific coverage: Test parsing media URN with marker tags works correctly | urn/media_urn_test.go:22 |
+| unnumbered | `TestReattachByIDPreservesSlotIndex` | Reattach-by-id tests for the cardinality-stable slot model. When a master dies and the host reconnects, the new socket MUST attach to the same slot index — preserving routing entries keyed by index. Accumulating zombie slots on each reconnect was the bug class these tests guard against. | bifaci/relay_switch_test.go:961 |
 | unnumbered | `TestRegistryGetCap` | TEST136 (deleted): exercised the private `cacheKey` method on the unified FabricRegistry. The on-disk cache filename scheme is an implementation detail of the persistence layer; equivalent observable behavior — that two equivalent URNs land in the same cache slot — is covered by Test140 (`same_cap_different_spellings_same_url`). Rust and Python dropped this; this deletion keeps the Go mirror in parity. | cap/registry_test.go:40 |
 | unnumbered | `TestRegistryValidation` |  | cap/registry_test.go:53 |
 | unnumbered | `TestRequestAfterShutdown` | Mirror-specific coverage: Test host request on a closed host returns error | bifaci/integration_test.go:1347 |
@@ -934,6 +937,7 @@ This catalog lists all tests in the Go codebase.
 
 The following tests are cataloged but do not currently participate in numeric test indexing.
 
+- `TestAddMasterWithDuplicateHealthyIDErrors` — bifaci/relay_switch_test.go:1047
 - `TestArgumentsMultiple` — bifaci/integration_test.go:1390
 - `TestArgumentsRoundtrip` — bifaci/integration_test.go:1030
 - `TestAutoChunkingReassembly` — bifaci/integration_test.go:1463
@@ -948,9 +952,9 @@ The following tests are cataloged but do not currently participate in numeric te
 - `TestCapUrn_JSONSerialization` — urn/cap_urn_test.go:1455
 - `TestCapValidationCoordinator_EndToEnd` — cap/schema_validation_test.go:406
 - `TestCapWithMediaSpecs` — cap/definition_test.go:458
-- `TestCartridgeAttachmentErrorDecodesProtoSnakeCaseStrings` — bifaci/relay_switch_test.go:923
-- `TestCartridgeAttachmentErrorJSONRoundTrips` — bifaci/relay_switch_test.go:875
-- `TestCartridgeAttachmentErrorKindMatchesProtoSnakeCase` — bifaci/relay_switch_test.go:847
+- `TestCartridgeAttachmentErrorDecodesProtoSnakeCaseStrings` — bifaci/relay_switch_test.go:924
+- `TestCartridgeAttachmentErrorJSONRoundTrips` — bifaci/relay_switch_test.go:876
+- `TestCartridgeAttachmentErrorKindMatchesProtoSnakeCase` — bifaci/relay_switch_test.go:848
 - `TestCartridgeErrorResponse` — bifaci/integration_test.go:505
 - `TestCartridgeSuddenDisconnect` — bifaci/integration_test.go:1107
 - `TestChunkingDataIntegrity3x` — bifaci/integration_test.go:1717
@@ -972,11 +976,13 @@ The following tests are cataloged but do not currently participate in numeric te
 - `TestLogFramesDuringRequest` — bifaci/integration_test.go:562
 - `TestMaxChunkPlusOneSplitsIntoTwo` — bifaci/integration_test.go:1614
 - `TestMediaUrnResolutionWithRegistry` — cap/schema_validation_test.go:609
+- `TestNewRelaySwitchRejectsDuplicateIDs` — bifaci/relay_switch_test.go:1095
 - `TestOutputValidator_WithSchemaValidation` — cap/schema_validation_test.go:349
 - `TestParseHeadersWithNoWiringsReturnsNoEdgesError` — machine/machine_test.go:477
 - `TestParseSimple` — urn/media_urn_test.go:14
 - `TestParseWithProfile` — urn/media_urn_test.go:32
 - `TestParseWithSubtype` — urn/media_urn_test.go:22
+- `TestReattachByIDPreservesSlotIndex` — bifaci/relay_switch_test.go:961
 - `TestRegistryGetCap` — cap/registry_test.go:40
 - `TestRegistryValidation` — cap/registry_test.go:53
 - `TestRequestAfterShutdown` — bifaci/integration_test.go:1347
@@ -997,8 +1003,8 @@ The following tests are cataloged but do not currently participate in numeric te
 ---
 
 *Generated from Go source tree*
-*Total tests: 911*
+*Total tests: 914*
 *Total numbered tests: 852*
-*Total unnumbered tests: 59*
+*Total unnumbered tests: 62*
 *Total numbered tests missing descriptions: 0*
 *Total numbering mismatches: 0*
