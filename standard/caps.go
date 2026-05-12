@@ -24,12 +24,12 @@ const CapAdapterSelection = `cap:in="media:";out="media:adapter-selection;json;r
 
 // CapLookupCapFabric resolves a canonical cap URN to its full flattened
 // cap definition by fetching from the public fabric registry. Implemented
-// by netaccesscartridge.
+// by fetchcartridge.
 const CapLookupCapFabric = `cap:in="media:cap-urn;textable";fabric;lookup-cap;out="media:cap-definition;json;record;textable"`
 
 // CapLookupMediaSpecFabric resolves a canonical media URN to its full
 // media spec definition by fetching from the public fabric registry.
-// Implemented by netaccesscartridge.
+// Implemented by fetchcartridge.
 const CapLookupMediaSpecFabric = `cap:in="media:media-urn;textable";fabric;lookup-media-spec;out="media:media-spec-definition;json;record;textable"`
 
 // =============================================================================
