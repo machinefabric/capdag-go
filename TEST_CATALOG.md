@@ -108,9 +108,9 @@ This catalog lists all tests in the Go codebase.
 | test111 | `Test111_cap_title` | TEST111: Test getting and setting cap title updates correctly | cap/definition_test.go:82 |
 | test112 | `Test112_cap_definition_equality` | TEST112: Test cap equality based on URN and title matching | cap/definition_test.go:97 |
 | test113 | `Test113_cap_stdin` | TEST113: Test cap stdin support via args with stdin source and serialization roundtrip | cap/definition_test.go:113 |
-| test114 | `Test114_arg_source_types` | TEST114: Test ArgSource type variants stdin, position, and cli_flag with their accessors | cap/definition_test.go:150 |
-| test115 | `Test115_cap_arg_serialization` | TEST115: CapArg JSON roundtrip preserves multiple sources plus typed `default_value` / `metadata` payloads without stringifying them. | cap/definition_test.go:181 |
-| test116 | `Test116_cap_arg_constructors` | TEST116: Basic CapArg construction leaves optional fields absent; described construction preserves an explicit description and typed default. | cap/definition_test.go:215 |
+| test114 | `Test114_arg_source_types` | TEST114: Test ArgSource type variants stdin, position, and cli_flag with their accessors | cap/definition_test.go:151 |
+| test115 | `Test115_cap_arg_serialization` | TEST115: Test CapArg serialization and deserialization with multiple sources | cap/definition_test.go:181 |
+| test116 | `Test116_cap_arg_constructors` | TEST116: Test CapArg constructor methods basic and with_description create args correctly | cap/definition_test.go:223 |
 | test135 | `Test135_registry_creation` | TEST135: Test registry creation with temporary cache directory succeeds | cap/registry_test.go:26 |
 | test137 | `Test137_parse_registry_json` | TEST137: Test parsing registry JSON without stdin args verifies cap structure | cap/registry_test.go:77 |
 | test138 | `Test138_parse_registry_json_with_stdin` | TEST138: Test parsing registry JSON with stdin args verifies stdin media URN extraction | cap/registry_test.go:93 |
@@ -125,12 +125,12 @@ This catalog lists all tests in the Go codebase.
 | test147 | `Test147_registry_for_test_with_config` | TEST147: Test registry for test with custom config creates registry with specified URLs | cap/registry_test.go:220 |
 | test148 | `Test148_cap_manifest_creation` | TEST148: Manifest creation with cap groups | bifaci/manifest_test.go:23 |
 | test149 | `Test149_cap_manifest_with_author` | TEST149: Author field | bifaci/manifest_test.go:45 |
-| test150 | `Test150_cap_manifest_json_serialization` | TEST150: CapManifest JSON roundtrip preserves typed CapArg defaults inside cap_groups, including numeric, boolean, and metadata JSON values. | bifaci/manifest_test.go:84 |
-| test151 | `Test151_cap_manifest_required_fields` | TEST151: Missing required fields fail | bifaci/manifest_test.go:119 |
-| test152 | `Test152_cap_manifest_with_multiple_caps` | TEST152: Multiple caps across groups | bifaci/manifest_test.go:128 |
-| test153 | `Test153_cap_manifest_empty_cap_groups` | TEST153: Empty cap groups | bifaci/manifest_test.go:152 |
-| test154 | `Test154_cap_manifest_optional_fields` | TEST154: Optional author field omitted in serialization | bifaci/manifest_test.go:171 |
-| test155 | `Test155_component_metadata_interface` | TEST155: ComponentMetadata interface | bifaci/manifest_test.go:213 |
+| test150 | `Test150_cap_manifest_json_serialization` | TEST150: JSON roundtrip | bifaci/manifest_test.go:84 |
+| test151 | `Test151_cap_manifest_required_fields` | TEST151: Missing required fields fail | bifaci/manifest_test.go:144 |
+| test152 | `Test152_cap_manifest_with_multiple_caps` | TEST152: Multiple caps across groups | bifaci/manifest_test.go:153 |
+| test153 | `Test153_cap_manifest_empty_cap_groups` | TEST153: Empty cap groups | bifaci/manifest_test.go:177 |
+| test154 | `Test154_cap_manifest_optional_fields` | TEST154: Optional author field omitted in serialization | bifaci/manifest_test.go:196 |
+| test155 | `Test155_component_metadata_interface` | TEST155: ComponentMetadata interface | bifaci/manifest_test.go:238 |
 | test163 | `Test163_schema_validator_validate_argument_with_schema_success` | TEST163: Test argument schema validation succeeds with valid JSON matching schema | cap/schema_validation_test.go:14 |
 | test164 | `Test164_schema_validator_validate_argument_with_schema_failure` | TEST164: Test argument schema validation fails with JSON missing required fields | cap/schema_validation_test.go:53 |
 | test165 | `Test165_schema_validator_validate_output_with_schema_success` | TEST165: Test output schema validation succeeds with valid JSON matching schema | cap/schema_validation_test.go:116 |
@@ -374,8 +374,8 @@ This catalog lists all tests in the Go codebase.
 | test472 | `Test472_handshake_negotiates_reorder_buffer` | TEST472: Handshake negotiates max_reorder_buffer as minimum of both sides. | bifaci/io_test.go:1211 |
 | test473 | `Test473_cap_discard_parses_as_valid_urn` | TEST473: CAP_DISCARD parses as valid CapUrn with in=media: and out=media:void | standard/caps_test.go:59 |
 | test474 | `Test474_cap_discard_structure` | TEST474: CAP_DISCARD accepts specific-input/void-output caps | standard/caps_test.go:68 |
-| test475 | `Test475_validate_passes_with_identity` | TEST475: validate() passes with CAP_IDENTITY in a cap group | bifaci/manifest_test.go:297 |
-| test476 | `Test476_validate_fails_without_identity` | TEST476: validate() fails without CAP_IDENTITY | bifaci/manifest_test.go:308 |
+| test475 | `Test475_validate_passes_with_identity` | TEST475: validate() passes with CAP_IDENTITY in a cap group | bifaci/manifest_test.go:322 |
+| test476 | `Test476_validate_fails_without_identity` | TEST476: validate() fails without CAP_IDENTITY | bifaci/manifest_test.go:333 |
 | test491 | `Test491_chunk_requires_chunk_index_and_checksum` | TEST491: Frame::chunk constructor requires and sets chunk_index and checksum | bifaci/frame_test.go:1370 |
 | test492 | `Test492_stream_end_requires_chunk_count` | TEST492: Frame::stream_end constructor requires and sets chunk_count | bifaci/frame_test.go:1386 |
 | test493 | `Test493_compute_checksum_fnv1a_test_vectors` | TEST493: compute_checksum produces correct FNV-1a hash for known test vectors | bifaci/frame_test.go:1399 |
@@ -449,14 +449,14 @@ This catalog lists all tests in the Go codebase.
 | test588 | `Test588_rule10_reserved_cli_flags` | TEST588: RULE10 - reserved cli_flags rejected | cap/validation_test.go:251 |
 | test589 | `Test589_all_rules_pass` | TEST589: valid cap args with mixed sources pass all rules | cap/validation_test.go:264 |
 | test590 | `Test590_cli_flag_only_args` | TEST590: validate_cap_args accepts cap with only cli_flag sources (no positions) | cap/validation_test.go:282 |
-| test591 | `Test591_is_more_specific_than` | TEST591: is_more_specific_than returns true when self has more tags for same request | cap/definition_test.go:237 |
-| test592 | `Test592_remove_metadata` | TEST592: remove_metadata adds then removes metadata correctly | cap/definition_test.go:262 |
-| test593 | `Test593_registered_by_lifecycle` | TEST593: registered_by lifecycle — set, get, clear | cap/definition_test.go:284 |
-| test594 | `Test594_metadata_json_lifecycle` | TEST594: metadata_json lifecycle — set, get, clear | cap/definition_test.go:306 |
-| test595 | `Test595_with_args_constructor` | TEST595: with_args constructor stores args correctly | cap/definition_test.go:325 |
-| test596 | `Test596_with_full_definition_constructor` | TEST596: with_full_definition constructor stores all fields | cap/definition_test.go:344 |
-| test597 | `Test597_cap_arg_with_full_definition` | TEST597: CapArg::with_full_definition preserves object-shaped `default_value` JSON and optional metadata without narrowing them to strings. | cap/definition_test.go:384 |
-| test598 | `Test598_cap_output_lifecycle` | TEST598: CapOutput lifecycle — set_output, set/clear metadata | cap/definition_test.go:399 |
+| test591 | `Test591_is_more_specific_than` | TEST591: is_more_specific_than returns true when self has more tags for same request | cap/definition_test.go:256 |
+| test592 | `Test592_remove_metadata` | TEST592: remove_metadata adds then removes metadata correctly | cap/definition_test.go:281 |
+| test593 | `Test593_registered_by_lifecycle` | TEST593: registered_by lifecycle — set, get, clear | cap/definition_test.go:303 |
+| test594 | `Test594_metadata_json_lifecycle` | TEST594: metadata_json lifecycle — set, get, clear | cap/definition_test.go:325 |
+| test595 | `Test595_with_args_constructor` | TEST595: with_args constructor stores args correctly | cap/definition_test.go:344 |
+| test596 | `Test596_with_full_definition_constructor` | TEST596: with_full_definition constructor stores all fields | cap/definition_test.go:363 |
+| test597 | `Test597_cap_arg_with_full_definition` | TEST597: CapArg::with_full_definition stores all fields including optional ones | cap/definition_test.go:393 |
+| test598 | `Test598_cap_output_lifecycle` | TEST598: CapOutput lifecycle — set_output, set/clear metadata | cap/definition_test.go:419 |
 | test599 | `Test599_is_empty` | TEST599: is_empty returns true for empty response, false for non-empty | cap/response_test.go:279 |
 | test600 | `Test600_size` | TEST600: size returns exact byte count for all content types | cap/response_test.go:294 |
 | test601 | `Test601_get_content_type` | TEST601: get_content_type returns correct MIME type for each variant | cap/response_test.go:309 |
@@ -762,10 +762,10 @@ This catalog lists all tests in the Go codebase.
 | test1118 | `Test1118_no_foreach_without_cap_consumers` | TEST1118: ForEach not synthesized without cap consumers even with is_sequence=true. | planner/live_cap_fab_test.go:433 |
 | test1119 | `Test1119_FromStrand_returns_single_strand_machine` | TEST1119: FromStrand builds a single-strand Machine from a planner.Strand. Smoke test the registry-threaded API end-to-end. | machine/machine_test.go:695 |
 | test1120 | `Test1120_FromStrand_unknown_cap_fails_hard` | TEST1120: FromStrand fails hard when the cap is not in the registry. The planner produces strands referencing caps that must be present in the cap registry cache for resolution to succeed. | machine/machine_test.go:723 |
-| test1127 | `Test1127_cap_documentation_round_trip_with_markdown_body` | TEST1127: Documentation field round-trips through JSON serialize/deserialize. The body must survive multi-line markdown with CRLF, backticks, double quotes, and Unicode characters — every character must be preserved. | cap/definition_test.go:512 |
-| test1128 | `Test1128_cap_documentation_omitted_when_none` | TEST1128: When Documentation is nil, the serializer must omit the field entirely. There must be no "documentation":null — only absence. | cap/definition_test.go:534 |
-| test1129 | `Test1129_cap_documentation_parses_from_capfab_json` | TEST1129: A capfab-shaped JSON document with a documentation field must deserialize into a Cap with the body intact. | cap/definition_test.go:552 |
-| test1130 | `Test1130_cap_documentation_set_and_clear_lifecycle` | TEST1130: Documentation set/clear lifecycle must not cross-contaminate cap_description. | cap/definition_test.go:569 |
+| test1127 | `Test1127_cap_documentation_round_trip_with_markdown_body` | TEST1127: Documentation field round-trips through JSON serialize/deserialize. The body must survive multi-line markdown with CRLF, backticks, double quotes, and Unicode characters — every character must be preserved. | cap/definition_test.go:533 |
+| test1128 | `Test1128_cap_documentation_omitted_when_none` | TEST1128: When Documentation is nil, the serializer must omit the field entirely. There must be no "documentation":null — only absence. | cap/definition_test.go:555 |
+| test1129 | `Test1129_cap_documentation_parses_from_capfab_json` | TEST1129: A capfab-shaped JSON document with a documentation field must deserialize into a Cap with the body intact. | cap/definition_test.go:573 |
+| test1130 | `Test1130_cap_documentation_set_and_clear_lifecycle` | TEST1130: Documentation set/clear lifecycle must not cross-contaminate cap_description. | cap/definition_test.go:590 |
 | test1131 | `Test1131_media_documentation_propagates_through_resolve` | TEST1131: Documentation propagates from MediaSpecDef through ResolveMediaUrn into ResolvedMediaSpec. Verifies description and documentation remain distinct. | media/spec_test.go:601 |
 | test1132 | `Test1132_media_spec_def_documentation_round_trip` | TEST1132: MediaSpecDef serializes documentation only when present and round-trips losslessly. When nil, the field must be omitted entirely. | media/spec_test.go:626 |
 | test1133 | `Test1133_media_spec_def_documentation_lifecycle` | TEST1133: MediaSpecDef set/clear lifecycle for documentation. Setter and clearer must not cross-contaminate the description field. | media/spec_test.go:656 |
@@ -835,7 +835,7 @@ This catalog lists all tests in the Go codebase.
 | test1275 | `Test1275_adapter_selection_dispatchable_by_specific_provider` | TEST1275: A cap whose output is adapter-selection can dispatch adapter-selection requests; identity (wildcard output) cannot, because wildcard output cannot satisfy a specific output requirement. | standard/caps_test.go:171 |
 | test1282 | `Test1282_adapter_selection_auto_registered` | TEST1282: AdapterSelectionOp is auto-registered by CartridgeRuntime | bifaci/cartridge_runtime_test.go:3188 |
 | test1283 | `Test1283_adapter_selection_custom_override` | TEST1283: Custom adapter selection handler overrides the default | bifaci/cartridge_runtime_test.go:3202 |
-| test1284 | `Test1284_cap_group_with_adapter_urns` | TEST1284: Cap group with adapter URNs serializes and deserializes correctly | bifaci/manifest_test.go:320 |
+| test1284 | `Test1284_cap_group_with_adapter_urns` | TEST1284: Cap group with adapter URNs serializes and deserializes correctly | bifaci/manifest_test.go:345 |
 | test1289 | `Test1289_bfs_reachable_includes_source_roundtrip` | TEST1289: BFS reachable targets includes the source itself when round-trip paths exist. A→B and B→A means A is reachable from A (via A→B→A). | planner/live_cap_fab_test.go:447 |
 | test1290 | `Test1290_iddfs_finds_roundtrip_paths` | TEST1290: IDDFS find_paths_to_exact_target finds round-trip paths when source == target. | planner/live_cap_fab_test.go:481 |
 | test1291 | `Test1291_iddfs_roundtrip_with_sequence` | TEST1291: IDDFS round-trip paths are also found with is_sequence=true. | planner/live_cap_fab_test.go:518 |
@@ -874,16 +874,16 @@ This catalog lists all tests in the Go codebase.
 | unnumbered | `TestArgumentsRoundtrip` | Mirror-specific coverage: Test host call with unified CBOR arguments sends correct content_type and payload | bifaci/integration_test.go:1030 |
 | unnumbered | `TestAutoChunkingReassembly` | Mirror-specific coverage: Test auto-chunking splits payload larger than max_chunk into CHUNK frames + END frame, and host concatenated() reassembles the full original data | bifaci/integration_test.go:1463 |
 | unnumbered | `TestCacheOperations` |  | cap/registry_test.go:67 |
-| unnumbered | `TestCapDescription` |  | cap/definition_test.go:446 |
+| unnumbered | `TestCapDescription` |  | cap/definition_test.go:466 |
 | unnumbered | `TestCapExists` |  | cap/registry_test.go:110 |
-| unnumbered | `TestCapJSONRoundTrip` |  | cap/definition_test.go:589 |
-| unnumbered | `TestCapManifestCompatibility` |  | bifaci/manifest_test.go:257 |
-| unnumbered | `TestCapManifestValidation` |  | bifaci/manifest_test.go:228 |
+| unnumbered | `TestCapJSONRoundTrip` |  | cap/definition_test.go:610 |
+| unnumbered | `TestCapManifestCompatibility` |  | bifaci/manifest_test.go:282 |
+| unnumbered | `TestCapManifestValidation` |  | bifaci/manifest_test.go:253 |
 | unnumbered | `TestCapManifestWithPageURL` |  | bifaci/manifest_test.go:61 |
-| unnumbered | `TestCapRequestHandling` | Additional existing tests below (not part of TEST108-116 sequence) | cap/definition_test.go:430 |
+| unnumbered | `TestCapRequestHandling` | Additional existing tests below (not part of TEST108-116 sequence) | cap/definition_test.go:450 |
 | unnumbered | `TestCapUrn_JSONSerialization` | JSON serialization test (not numbered in Rust) | urn/cap_urn_test.go:1455 |
 | unnumbered | `TestCapValidationCoordinator_EndToEnd` |  | cap/schema_validation_test.go:406 |
-| unnumbered | `TestCapWithMediaSpecs` |  | cap/definition_test.go:458 |
+| unnumbered | `TestCapWithMediaSpecs` |  | cap/definition_test.go:478 |
 | unnumbered | `TestCartridgeAttachmentErrorDecodesProtoSnakeCaseStrings` | TestCartridgeAttachmentErrorDecodesProtoSnakeCaseStrings is the engine→Go-host (or Swift→Go-host) decode path: incoming JSON uses the snake_case wire format, and the Go side must resolve each string into the matching variant. CartridgeAttachmentErrorKind is just `type ... string`, so this test is also a check that the JSON unmarshaller doesn't normalise/lowercase/etc the bytes behind our backs. | bifaci/relay_switch_test.go:924 |
 | unnumbered | `TestCartridgeAttachmentErrorJSONRoundTrips` | TestCartridgeAttachmentErrorJSONRoundTrips verifies a CartridgeAttachmentError marshals to JSON and unmarshals back without changing the kind for every variant. RelayNotify wire payload is JSON; a single-variant regression breaks the entire per-master parse. | bifaci/relay_switch_test.go:876 |
 | unnumbered | `TestCartridgeAttachmentErrorKindMatchesProtoSnakeCase` | TestCartridgeAttachmentErrorKindMatchesProtoSnakeCase pins every variant's string value against its proto snake_case name. New variants must be added here AND in the Rust / Swift / proto sides. | bifaci/relay_switch_test.go:848 |
@@ -942,16 +942,16 @@ The following tests are cataloged but do not currently participate in numeric te
 - `TestArgumentsRoundtrip` — bifaci/integration_test.go:1030
 - `TestAutoChunkingReassembly` — bifaci/integration_test.go:1463
 - `TestCacheOperations` — cap/registry_test.go:67
-- `TestCapDescription` — cap/definition_test.go:446
+- `TestCapDescription` — cap/definition_test.go:466
 - `TestCapExists` — cap/registry_test.go:110
-- `TestCapJSONRoundTrip` — cap/definition_test.go:589
-- `TestCapManifestCompatibility` — bifaci/manifest_test.go:257
-- `TestCapManifestValidation` — bifaci/manifest_test.go:228
+- `TestCapJSONRoundTrip` — cap/definition_test.go:610
+- `TestCapManifestCompatibility` — bifaci/manifest_test.go:282
+- `TestCapManifestValidation` — bifaci/manifest_test.go:253
 - `TestCapManifestWithPageURL` — bifaci/manifest_test.go:61
-- `TestCapRequestHandling` — cap/definition_test.go:430
+- `TestCapRequestHandling` — cap/definition_test.go:450
 - `TestCapUrn_JSONSerialization` — urn/cap_urn_test.go:1455
 - `TestCapValidationCoordinator_EndToEnd` — cap/schema_validation_test.go:406
-- `TestCapWithMediaSpecs` — cap/definition_test.go:458
+- `TestCapWithMediaSpecs` — cap/definition_test.go:478
 - `TestCartridgeAttachmentErrorDecodesProtoSnakeCaseStrings` — bifaci/relay_switch_test.go:924
 - `TestCartridgeAttachmentErrorJSONRoundTrips` — bifaci/relay_switch_test.go:876
 - `TestCartridgeAttachmentErrorKindMatchesProtoSnakeCase` — bifaci/relay_switch_test.go:848
