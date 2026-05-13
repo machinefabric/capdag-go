@@ -92,6 +92,25 @@ func Test150_cap_manifest_json_serialization(t *testing.T) {
 		Required: true,
 		Sources:  []cap.ArgSource{{Stdin: &stdinUrn}},
 	})
+	chunkDesc := "Chunk size"
+	timestampDesc := "Include timestamps"
+	chunkFlag := "--chunk-size"
+	timestampFlag := "--timestamps"
+	capDef.AddArg(cap.CapArg{
+		MediaUrn:       "media:chunk-size;textable;numeric",
+		Required:       false,
+		Sources:        []cap.ArgSource{{CliFlag: &chunkFlag}},
+		ArgDescription: &chunkDesc,
+		DefaultValue:   400,
+		Metadata:       map[string]any{"unit": "words"},
+	})
+	capDef.AddArg(cap.CapArg{
+		MediaUrn:       "media:timestamps;textable;bool",
+		Required:       false,
+		Sources:        []cap.ArgSource{{CliFlag: &timestampFlag}},
+		ArgDescription: &timestampDesc,
+		DefaultValue:   false,
+	})
 
 	manifest := NewCapManifest("TestComponent", "0.1.0", "release",
 		nil,
@@ -106,6 +125,8 @@ func Test150_cap_manifest_json_serialization(t *testing.T) {
 	assert.Contains(t, jsonStr, `"name":"TestComponent"`)
 	assert.Contains(t, jsonStr, `"author":"Test Author"`)
 	assert.Contains(t, jsonStr, `"cap_groups"`)
+	assert.Contains(t, jsonStr, `"default_value":400`)
+	assert.Contains(t, jsonStr, `"default_value":false`)
 
 	var deserialized CapManifest
 	err = json.Unmarshal(jsonData, &deserialized)
@@ -113,6 +134,10 @@ func Test150_cap_manifest_json_serialization(t *testing.T) {
 
 	assert.Equal(t, manifest.Name, deserialized.Name)
 	assert.Len(t, deserialized.AllCaps(), len(manifest.AllCaps()))
+	decodedCap := deserialized.AllCaps()[0]
+	assert.Equal(t, json.Number("400"), decodedCap.Args[1].DefaultValue)
+	assert.Equal(t, map[string]any{"unit": "words"}, decodedCap.Args[1].Metadata)
+	assert.Equal(t, false, decodedCap.Args[2].DefaultValue)
 }
 
 // TEST151: Missing required fields fail

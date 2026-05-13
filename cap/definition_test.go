@@ -122,11 +122,12 @@ func Test113_cap_stdin(t *testing.T) {
 
 	// Enable stdin support by adding an arg with a stdin source
 	stdinUrn := "media:textable"
+	inputTextDesc := "Input text"
 	stdinArg := CapArg{
 		MediaUrn:       "media:textable",
 		Required:       true,
 		Sources:        []ArgSource{{Stdin: &stdinUrn}},
-		ArgDescription: "Input text",
+		ArgDescription: &inputTextDesc,
 	}
 	cap.AddArg(stdinArg)
 
@@ -180,11 +181,18 @@ func Test114_arg_source_types(t *testing.T) {
 func Test115_cap_arg_serialization(t *testing.T) {
 	flag := "--name"
 	pos := 0
+	desc := "The name argument"
+	metadata := map[string]any{
+		"kind":  "example",
+		"flags": []any{true, false},
+	}
 	arg := CapArg{
 		MediaUrn:       "media:string",
 		Required:       true,
 		Sources:        []ArgSource{{CliFlag: &flag}, {Position: &pos}},
-		ArgDescription: "The name argument",
+		ArgDescription: &desc,
+		DefaultValue:   400,
+		Metadata:       metadata,
 	}
 
 	serialized, err := json.Marshal(arg)
@@ -195,11 +203,20 @@ func Test115_cap_arg_serialization(t *testing.T) {
 	assert.Contains(t, jsonStr, `"required":true`)
 	assert.Contains(t, jsonStr, `"cli_flag":"--name"`)
 	assert.Contains(t, jsonStr, `"position":0`)
+	assert.Contains(t, jsonStr, `"default_value":400`)
 
 	var deserialized CapArg
 	err = json.Unmarshal(serialized, &deserialized)
 	require.NoError(t, err)
-	assert.Equal(t, arg, deserialized)
+	assert.Equal(t, arg.MediaUrn, deserialized.MediaUrn)
+	assert.Equal(t, arg.Required, deserialized.Required)
+	require.NotNil(t, deserialized.ArgDescription)
+	assert.Equal(t, *arg.ArgDescription, *deserialized.ArgDescription)
+	assert.Equal(t, json.Number("400"), deserialized.DefaultValue)
+	assert.Equal(t, map[string]any{
+		"kind":  "example",
+		"flags": []any{true, false},
+	}, deserialized.Metadata)
 }
 
 // TEST116: Test CapArg constructor methods basic and with_description create args correctly
@@ -210,7 +227,8 @@ func Test116_cap_arg_constructors(t *testing.T) {
 	assert.Equal(t, "media:string", arg.MediaUrn)
 	assert.True(t, arg.Required)
 	assert.Len(t, arg.Sources, 1)
-	assert.Equal(t, "", arg.ArgDescription)
+	assert.Nil(t, arg.ArgDescription)
+	assert.Nil(t, arg.DefaultValue)
 
 	// Test with description
 	pos := 0
@@ -222,7 +240,8 @@ func Test116_cap_arg_constructors(t *testing.T) {
 	)
 	assert.Equal(t, "media:integer", arg2.MediaUrn)
 	assert.False(t, arg2.Required)
-	assert.Equal(t, "The count argument", arg2.ArgDescription)
+	require.NotNil(t, arg2.ArgDescription)
+	assert.Equal(t, "The count argument", *arg2.ArgDescription)
 }
 
 // Helper matching Rust's test_urn (with in="media:void";out="media:record")
@@ -372,7 +391,7 @@ func Test596_with_full_definition_constructor(t *testing.T) {
 
 // TEST597: CapArg::with_full_definition stores all fields including optional ones
 func Test597_cap_arg_with_full_definition(t *testing.T) {
-	defaultVal := "default_text"
+	defaultVal := map[string]any{"chunk_size": 400, "timestamps": false}
 	meta := map[string]any{"hint": "enter name"}
 	flag := "--name"
 
@@ -384,7 +403,8 @@ func Test597_cap_arg_with_full_definition(t *testing.T) {
 
 	assert.Equal(t, "media:string", arg.MediaUrn)
 	assert.True(t, arg.Required)
-	assert.Equal(t, "User name", arg.ArgDescription)
+	require.NotNil(t, arg.ArgDescription)
+	assert.Equal(t, "User name", *arg.ArgDescription)
 	assert.Equal(t, defaultVal, arg.DefaultValue)
 	assert.Equal(t, meta, arg.GetMetadata())
 
@@ -480,11 +500,12 @@ func TestCapWithMediaSpecs(t *testing.T) {
 	// Add an argument using the media URN with new architecture
 	cliFlag := "--query"
 	pos := 0
+	queryDesc := "The query string"
 	cap.AddArg(CapArg{
 		MediaUrn:       standard.MediaString,
 		Required:       true,
 		Sources:        []ArgSource{{CliFlag: &cliFlag}, {Position: &pos}},
-		ArgDescription: "The query string",
+		ArgDescription: &queryDesc,
 	})
 
 	// Add output
@@ -593,11 +614,12 @@ func TestCapJSONRoundTrip(t *testing.T) {
 	cap := NewCap(id, "Test Cap", "test-command")
 	cliFlag := "--input"
 	pos := 0
+	inputTextDesc2 := "Input text"
 	cap.AddArg(CapArg{
 		MediaUrn:       standard.MediaString,
 		Required:       true,
 		Sources:        []ArgSource{{CliFlag: &cliFlag}, {Position: &pos}},
-		ArgDescription: "Input text",
+		ArgDescription: &inputTextDesc2,
 	})
 	cap.SetOutput(NewCapOutput(standard.MediaJSON, "Output object"))
 

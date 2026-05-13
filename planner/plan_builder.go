@@ -372,11 +372,15 @@ func (b *MachinePlanBuilder) AnalyzePathArguments(
 		for _, arg := range c.GetArgs() {
 			resolution := determineResolutionWithIOCheck(
 				arg.MediaUrn, inSpec, outSpec, capStepIndex, arg.DefaultValue)
+			description := ""
+			if arg.ArgDescription != nil {
+				description = *arg.ArgDescription
+			}
 
 			argInfo := &ArgumentInfo{
 				Name:         arg.MediaUrn,
 				MediaUrn:     arg.MediaUrn,
-				Description:  arg.ArgDescription,
+				Description:  description,
 				Resolution:   resolution,
 				DefaultValue: arg.DefaultValue,
 				IsRequired:   arg.Required,

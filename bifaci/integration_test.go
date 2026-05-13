@@ -141,7 +141,7 @@ func TestIntegrationCapValidation(t *testing.T) {
 		MediaUrn:       standard.MediaString,
 		Required:       true,
 		Sources:        []cap.ArgSource{{CliFlag: &cliFlag1}, {Position: &pos1}},
-		ArgDescription: "Input path",
+		ArgDescription: cap.StringPtr("Input path"),
 	})
 
 	// Set output

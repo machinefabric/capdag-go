@@ -64,7 +64,7 @@ func main() {
 		MediaUrn:       "media:query-params;textable;record",
 		Required:       true,
 		Sources:        []capdag.ArgSource{{CliFlag: &cliFlag}, {Position: &pos}},
-		ArgDescription: "Document query parameters",
+		ArgDescription: capdag.StringPtr("Document query parameters"),
 	})
 
 	// Define output schema

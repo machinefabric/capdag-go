@@ -44,7 +44,7 @@ func main() {
 		MediaUrn:       "media:user;textable;record",
 		Required:       true,
 		Sources:        []capdag.ArgSource{{CliFlag: &cliFlag}, {Position: &pos}},
-		ArgDescription: "User data",
+		ArgDescription: capdag.StringPtr("User data"),
 	}
 	cap.AddArg(userArg)
 
@@ -199,7 +199,7 @@ func main() {
 		MediaUrn:       "media:items;textable;record",
 		Required:       false,
 		Sources:        []capdag.ArgSource{{CliFlag: &cliFlag2}, {Position: &pos2}},
-		ArgDescription: "List of items",
+		ArgDescription: capdag.StringPtr("List of items"),
 	}
 
 	validArray := []interface{}{

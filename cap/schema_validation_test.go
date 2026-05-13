@@ -36,7 +36,7 @@ func Test163_schema_validator_validate_argument_with_schema_success(t *testing.T
 		MediaUrn:       "media:json;record;test-obj;textable",
 		Required:       true,
 		Sources:        []ArgSource{{CliFlag: &cliFlag}, {Position: &pos}},
-		ArgDescription: "User data",
+		ArgDescription: StringPtr("User data"),
 	}
 
 	// Test valid data
@@ -75,7 +75,7 @@ func Test164_schema_validator_validate_argument_with_schema_failure(t *testing.T
 		MediaUrn:       "media:json;record;test-obj;textable",
 		Required:       true,
 		Sources:        []ArgSource{{CliFlag: &cliFlag}, {Position: &pos}},
-		ArgDescription: "User data",
+		ArgDescription: StringPtr("User data"),
 	}
 
 	// Test invalid data (missing required field)
@@ -104,7 +104,7 @@ func TestSchemaValidator_ValidateArgumentWithSchema_NilSchema(t *testing.T) {
 		MediaUrn:       standard.MediaString,
 		Required:       true,
 		Sources:        []ArgSource{{CliFlag: &cliFlag}, {Position: &pos}},
-		ArgDescription: "Simple string",
+		ArgDescription: StringPtr("Simple string"),
 	}
 
 	// Nil schema should not validate
@@ -209,7 +209,7 @@ func TestSchemaValidator_ValidateArguments_Integration(t *testing.T) {
 		MediaUrn:       "media:user;textable;record",
 		Required:       true,
 		Sources:        []ArgSource{{CliFlag: &cliFlag}, {Position: &pos}},
-		ArgDescription: "User data",
+		ArgDescription: StringPtr("User data"),
 	})
 
 	// Test valid arguments
@@ -262,7 +262,7 @@ func TestSchemaValidator_ArraySchemaValidation(t *testing.T) {
 		MediaUrn:       "media:items;textable;record",
 		Required:       true,
 		Sources:        []ArgSource{{CliFlag: &cliFlag}, {Position: &pos}},
-		ArgDescription: "List of items",
+		ArgDescription: StringPtr("List of items"),
 	}
 
 	// Test valid array data
@@ -321,7 +321,7 @@ func TestInputValidator_WithSchemaValidation(t *testing.T) {
 		MediaUrn:       "media:config;textable;record",
 		Required:       true,
 		Sources:        []ArgSource{{CliFlag: &cliFlag}, {Position: &pos}},
-		ArgDescription: "Configuration",
+		ArgDescription: StringPtr("Configuration"),
 	})
 
 	// Test valid input
@@ -436,7 +436,7 @@ func TestCapValidationCoordinator_EndToEnd(t *testing.T) {
 		MediaUrn:       "media:query-params;textable;record",
 		Required:       true,
 		Sources:        []ArgSource{{CliFlag: &cliFlag}, {Position: &pos}},
-		ArgDescription: "Query parameters",
+		ArgDescription: StringPtr("Query parameters"),
 	})
 
 	// Add output with schema
@@ -572,7 +572,7 @@ func TestComplexNestedSchemaValidation(t *testing.T) {
 		MediaUrn:       "media:user-data;textable;record",
 		Required:       true,
 		Sources:        []ArgSource{{CliFlag: &cliFlag}, {Position: &pos}},
-		ArgDescription: "Complex user data",
+		ArgDescription: StringPtr("Complex user data"),
 	}
 
 	// Test valid complex data
@@ -689,7 +689,7 @@ func Test166_schema_validator_skip_validation_without_schema(t *testing.T) {
 		MediaUrn:       media.MediaString,
 		Required:       true,
 		Sources:        []ArgSource{{CliFlag: &cliFlag}, {Position: &pos}},
-		ArgDescription: "String input",
+		ArgDescription: StringPtr("String input"),
 	})
 
 	// Validate with any string value - should succeed because media.MediaString has no schema
@@ -715,7 +715,7 @@ func Test167_schema_validator_unresolvable_media_urn_fails_hard(t *testing.T) {
 		MediaUrn:       unknownUrn,
 		Required:       true,
 		Sources:        []ArgSource{{CliFlag: &cliFlag}, {Position: &pos}},
-		ArgDescription: "Unknown type",
+		ArgDescription: StringPtr("Unknown type"),
 	})
 
 	// Validate with any value - should fail hard because URN cannot be resolved

@@ -1,6 +1,7 @@
 package cap
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -71,9 +72,68 @@ type CapArg struct {
 	Required       bool        `json:"required"`
 	IsSequence     bool        `json:"is_sequence,omitempty"`
 	Sources        []ArgSource `json:"sources"`
-	ArgDescription string      `json:"arg_description,omitempty"`
+	ArgDescription *string     `json:"arg_description,omitempty"`
 	DefaultValue   any         `json:"default_value,omitempty"`
 	Metadata       any         `json:"metadata,omitempty"`
+}
+
+// StringPtr preserves the distinction between an omitted optional string and an
+// explicitly present empty string in wire models.
+func StringPtr(value string) *string {
+	return &value
+}
+
+func decodeArbitraryJSON(data []byte) (any, error) {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	var value any
+	if err := decoder.Decode(&value); err != nil {
+		return nil, err
+	}
+	return value, nil
+}
+
+type capArgJSON struct {
+	MediaUrn       string           `json:"media_urn"`
+	Required       bool             `json:"required"`
+	IsSequence     bool             `json:"is_sequence,omitempty"`
+	Sources        []ArgSource      `json:"sources"`
+	ArgDescription *string          `json:"arg_description,omitempty"`
+	DefaultValue   *json.RawMessage `json:"default_value,omitempty"`
+	Metadata       *json.RawMessage `json:"metadata,omitempty"`
+}
+
+func (a *CapArg) UnmarshalJSON(data []byte) error {
+	var raw capArgJSON
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	a.MediaUrn = raw.MediaUrn
+	a.Required = raw.Required
+	a.IsSequence = raw.IsSequence
+	a.Sources = raw.Sources
+	a.ArgDescription = raw.ArgDescription
+	a.DefaultValue = nil
+	a.Metadata = nil
+
+	if raw.DefaultValue != nil {
+		value, err := decodeArbitraryJSON(*raw.DefaultValue)
+		if err != nil {
+			return err
+		}
+		a.DefaultValue = value
+	}
+
+	if raw.Metadata != nil {
+		value, err := decodeArbitraryJSON(*raw.Metadata)
+		if err != nil {
+			return err
+		}
+		a.Metadata = value
+	}
+
+	return nil
 }
 
 // NewCapArg creates a new cap argument
@@ -87,11 +147,12 @@ func NewCapArg(mediaUrn string, required bool, sources []ArgSource) CapArg {
 
 // NewCapArgWithDescription creates a new cap argument with description
 func NewCapArgWithDescription(mediaUrn string, required bool, sources []ArgSource, description string) CapArg {
+	desc := description
 	return CapArg{
 		MediaUrn:       mediaUrn,
 		Required:       required,
 		Sources:        sources,
-		ArgDescription: description,
+		ArgDescription: &desc,
 	}
 }
 
@@ -104,11 +165,12 @@ func NewCapArgWithFullDefinition(
 	defaultValue any,
 	metadata any,
 ) CapArg {
+	desc := argDescription
 	return CapArg{
 		MediaUrn:       mediaUrn,
 		Required:       required,
 		Sources:        sources,
-		ArgDescription: argDescription,
+		ArgDescription: &desc,
 		DefaultValue:   defaultValue,
 		Metadata:       metadata,
 	}
