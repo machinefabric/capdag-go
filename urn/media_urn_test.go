@@ -376,7 +376,7 @@ func Test078_object_does_not_conform_to_string(t *testing.T) {
 
 // TEST304: Test MEDIA_AVAILABILITY_OUTPUT constant parses as valid media URN with correct tags
 func Test304_media_availability_output_constant(t *testing.T) {
-	urn, err := NewMediaUrnFromString("media:model-availability;textable;record")
+	urn, err := NewMediaUrnFromString("media:model-availability;record;textable")
 	require.NoError(t, err)
 	assert.True(t, urn.IsTextable())
 	assert.True(t, urn.IsRecord())
@@ -385,7 +385,7 @@ func Test304_media_availability_output_constant(t *testing.T) {
 
 // TEST305: Test MEDIA_PATH_OUTPUT constant parses as valid media URN with correct tags
 func Test305_media_path_output_constant(t *testing.T) {
-	urn, err := NewMediaUrnFromString("media:model-path;textable;record")
+	urn, err := NewMediaUrnFromString("media:model-path;record;textable")
 	require.NoError(t, err)
 	assert.True(t, urn.IsTextable())
 	assert.True(t, urn.IsRecord())
@@ -394,9 +394,9 @@ func Test305_media_path_output_constant(t *testing.T) {
 
 // TEST306: Test MEDIA_AVAILABILITY_OUTPUT and MEDIA_PATH_OUTPUT are distinct URNs
 func Test306_availability_and_path_output_distinct(t *testing.T) {
-	availUrn, err := NewMediaUrnFromString("media:model-availability;textable;record")
+	availUrn, err := NewMediaUrnFromString("media:model-availability;record;textable")
 	require.NoError(t, err)
-	pathUrn, err := NewMediaUrnFromString("media:model-path;textable;record")
+	pathUrn, err := NewMediaUrnFromString("media:model-path;record;textable")
 	require.NoError(t, err)
 	assert.False(t, availUrn.Equals(pathUrn))
 	// They must NOT conform to each other (different marker tags)

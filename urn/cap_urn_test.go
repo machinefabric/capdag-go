@@ -1522,7 +1522,7 @@ func Test568_dispatch_output_tag_order(t *testing.T) {
 	require.NoError(t, err)
 
 	request, err := NewCapUrnFromString(
-		`cap:in="media:model-spec;textable";download-model;out="media:download-result;textable;record"`)
+		`cap:in="media:model-spec;textable";download-model;out="media:download-result;record;textable"`)
 	require.NoError(t, err)
 
 	// After parsing, both should be normalized to same canonical form

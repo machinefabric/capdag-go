@@ -44,12 +44,12 @@ func LlmGenerateTextUrn() string {
 
 // ModelAvailabilityUrn builds a URN string for model-availability capability
 func ModelAvailabilityUrn() string {
-	return "cap:model-availability;in=media:model-spec;out=media:availability-output"
+	return "cap:in=media:model-spec;model-availability;out=media:availability-output"
 }
 
 // ModelPathUrn builds a URN string for model-path capability
 func ModelPathUrn() string {
-	return "cap:model-path;in=media:model-spec;out=media:path-output"
+	return "cap:in=media:model-spec;model-path;out=media:path-output"
 }
 
 // MediaUrnForType maps a type name to its media URN constant.

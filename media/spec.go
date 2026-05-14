@@ -58,7 +58,7 @@ const (
 	MediaYaml       = "media:yaml;textable;record"
 	// Semantic input types
 	MediaModelSpec = "media:model-spec;textable"
-	MediaModelRepo = "media:model-repo;textable;record"
+	MediaModelRepo = "media:model-repo;record;textable"
 	// File path type — single URN; cardinality lives on is_sequence.
 	MediaFilePath = "media:file-path;textable"
 	// Semantic output types
@@ -68,8 +68,8 @@ const (
 	// MediaPlainText is the canonical input/output of cap:save-as-txt.
 	MediaPlainText = "media:plain-text;textable;txt"
 	// Semantic output types for model operations
-	MediaAvailabilityOutput = "media:model-availability;textable;record"
-	MediaPathOutput         = "media:model-path;textable;record"
+	MediaAvailabilityOutput = "media:model-availability;record;textable"
+	MediaPathOutput         = "media:model-path;record;textable"
 )
 
 // Profile URL constants (defaults, use GetSchemaBase() for configurable version)
