@@ -7,10 +7,9 @@ import "fmt"
 // STANDARD CAP URN CONSTANTS
 // =============================================================================
 
-// CapIdentity is the standard identity capability URN (short form)
-// Accepts any media type as input and outputs the same type
-// This expands to "cap:in=media:;out=media:" during parsing
-const CapIdentity = "cap:"
+// CapIdentity is the standard identity capability URN.
+// Accepts any media type as input and preserves the runtime media identity.
+const CapIdentity = "cap:effect=none"
 
 // CapDiscard is the standard discard capability URN
 // Accepts any media type as input and produces void output

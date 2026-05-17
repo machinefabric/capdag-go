@@ -55,6 +55,15 @@ const (
 	CapKindTransform CapKind = "transform"
 )
 
+type CapEffect string
+
+const (
+	CapEffectDeclared CapEffect = "declared"
+	CapEffectNone     CapEffect = "none"
+	CapEffectPatch    CapEffect = "patch"
+	CapEffectAny      CapEffect = "?"
+)
+
 // CapUrn represents a cap URN using flat, ordered tags with required direction specifiers
 //
 // Direction (in→out) is integral to a cap's identity. The `inSpec` and `outSpec`
@@ -69,7 +78,9 @@ type CapUrn struct {
 	inSpec string
 	// outSpec is the output media URN - required
 	outSpec string
-	// tags are additional tags that define this cap (not including in/out)
+	// effect is the runtime media/type effect coordinate
+	effect string
+	// tags are additional tags that define this cap (not including in/out/effect)
 	tags map[string]string
 }
 
@@ -97,7 +108,44 @@ const (
 	ErrorMissingInSpec         = 10
 	ErrorMissingOutSpec        = 11
 	ErrorInvalidMediaUrn       = 12
+	ErrorInvalidEffect         = 13
+	ErrorInvalidEffectApply    = 14
+	ErrorIllegalDeclaration    = 15
 )
+
+func normalizeEffectValue(raw *string) (string, error) {
+	if raw == nil {
+		return string(CapEffectDeclared), nil
+	}
+	switch *raw {
+	case "*", "?":
+		return string(CapEffectAny), nil
+	case "declared":
+		return string(CapEffectDeclared), nil
+	case "none":
+		return string(CapEffectNone), nil
+	case "patch":
+		return string(CapEffectPatch), nil
+	case "":
+		return "", &CapUrnError{Code: ErrorInvalidEffect, Message: "Empty value for 'effect' tag is not allowed"}
+	default:
+		return "", &CapUrnError{
+			Code: ErrorInvalidEffect,
+			Message: fmt.Sprintf(
+				"Unsupported effect '%s'. Supported values are declared, none, patch, or explicit unconstrained ?effect/effect=*",
+				*raw,
+			),
+		}
+	}
+}
+
+func validateNonStructuralTags(tags map[string]string) error {
+	urn := taggedurn.NewTaggedUrnFromTags("cap", tags)
+	if _, err := taggedurn.NewTaggedUrnFromString(urn.ToString()); err != nil {
+		return capUrnErrorFromTaggedUrn(err)
+	}
+	return nil
+}
 
 // processDirectionTag processes a direction tag (in or out) with wildcard expansion
 //
@@ -221,6 +269,15 @@ func NewCapUrnFromString(s string) (*CapUrn, error) {
 	if err != nil {
 		return nil, err
 	}
+	effectRaw, hasEffect := taggedUrn.GetTag("effect")
+	var effectPtr *string
+	if hasEffect {
+		effectPtr = &effectRaw
+	}
+	effect, err := normalizeEffectValue(effectPtr)
+	if err != nil {
+		return nil, err
+	}
 
 	// Validate and canonicalize in/out specs as media URNs.
 	// Parse through MediaUrn and re-serialize to get canonical tag ordering.
@@ -249,12 +306,18 @@ func NewCapUrnFromString(s string) (*CapUrn, error) {
 	// Build tags map without in/out
 	tags := make(map[string]string)
 	for key, value := range taggedUrn.AllTags() {
-		if key != "in" && key != "out" {
+		if key != "in" && key != "out" && key != "effect" {
 			tags[key] = value
 		}
 	}
-
-	return &CapUrn{inSpec: inSpec, outSpec: outSpec, tags: tags}, nil
+	if err := validateNonStructuralTags(tags); err != nil {
+		return nil, err
+	}
+	cap := &CapUrn{inSpec: inSpec, outSpec: outSpec, effect: effect, tags: tags}
+	if err := cap.validateAdmissible(); err != nil {
+		return nil, err
+	}
+	return cap, nil
 }
 
 // NewCapUrnFromTags creates a cap URN from tags that must contain 'in' and 'out'
@@ -309,6 +372,16 @@ func NewCapUrnFromTags(tags map[string]string) (*CapUrn, error) {
 		}
 	}
 	delete(result, "out")
+	effectRaw, hasEffect := result["effect"]
+	var effectPtr *string
+	if hasEffect {
+		effectPtr = &effectRaw
+	}
+	effect, err := normalizeEffectValue(effectPtr)
+	if err != nil {
+		return nil, err
+	}
+	delete(result, "effect")
 
 	// Validate and canonicalize out spec
 	if outSpec != "media:" {
@@ -322,7 +395,14 @@ func NewCapUrnFromTags(tags map[string]string) (*CapUrn, error) {
 		outSpec = outMediaUrn.String()
 	}
 
-	return &CapUrn{inSpec: inSpec, outSpec: outSpec, tags: result}, nil
+	if err := validateNonStructuralTags(result); err != nil {
+		return nil, err
+	}
+	cap := &CapUrn{inSpec: inSpec, outSpec: outSpec, effect: effect, tags: result}
+	if err := cap.validateAdmissible(); err != nil {
+		return nil, err
+	}
+	return cap, nil
 }
 
 // NewCapUrn creates a cap URN from direction specs and additional tags
@@ -344,12 +424,58 @@ func NewCapUrn(inSpec, outSpec string, tags map[string]string) *CapUrn {
 	normalizedTags := make(map[string]string)
 	for k, v := range tags {
 		keyLower := strings.ToLower(k)
-		// Ensure in and out are not in tags
-		if keyLower != "in" && keyLower != "out" {
+		// Ensure in, out, and effect are not in tags
+		if keyLower != "in" && keyLower != "out" && keyLower != "effect" {
 			normalizedTags[keyLower] = v
 		}
 	}
-	return &CapUrn{inSpec: inSpec, outSpec: outSpec, tags: normalizedTags}
+	cap, err := NewCapUrnWithEffect(inSpec, outSpec, string(CapEffectDeclared), normalizedTags)
+	if err != nil {
+		panic(fmt.Sprintf("invalid CapUrn construction: %v", err))
+	}
+	return cap
+}
+
+func NewCapUrnWithEffect(inSpec, outSpec, effect string, tags map[string]string) (*CapUrn, error) {
+	if inSpec == "*" || inSpec == "" {
+		inSpec = "media:"
+	}
+	if outSpec == "*" || outSpec == "" {
+		outSpec = "media:"
+	}
+	inMedia, err := NewMediaUrnFromString(inSpec)
+	if err != nil {
+		return nil, &CapUrnError{Code: ErrorInvalidMediaUrn, Message: fmt.Sprintf("Invalid media URN for in spec '%s': %v", inSpec, err)}
+	}
+	outMedia, err := NewMediaUrnFromString(outSpec)
+	if err != nil {
+		return nil, &CapUrnError{Code: ErrorInvalidMediaUrn, Message: fmt.Sprintf("Invalid media URN for out spec '%s': %v", outSpec, err)}
+	}
+	effectValue, err := normalizeEffectValue(&effect)
+	if err != nil {
+		return nil, err
+	}
+	normalizedTags := make(map[string]string)
+	for k, v := range tags {
+		keyLower := strings.ToLower(k)
+		if keyLower == "in" || keyLower == "out" || keyLower == "effect" {
+			continue
+		}
+		normalizedTags[keyLower] = v
+	}
+	if err := validateNonStructuralTags(normalizedTags); err != nil {
+		return nil, err
+	}
+	cap := &CapUrn{
+		inSpec:  inMedia.String(),
+		outSpec: outMedia.String(),
+		effect:  effectValue,
+		tags:    normalizedTags,
+	}
+	if err := cap.validateAdmissible(); err != nil {
+		return nil, err
+	}
+	return cap, nil
 }
 
 // InSpec returns the input spec ID
@@ -372,17 +498,90 @@ func (c *CapUrn) OutMediaUrn() (*MediaUrn, error) {
 	return NewMediaUrnFromString(c.outSpec)
 }
 
+func (c *CapUrn) EffectSpec() string {
+	return c.effect
+}
+
+func (c *CapUrn) Effect() CapEffect {
+	switch c.effect {
+	case string(CapEffectDeclared):
+		return CapEffectDeclared
+	case string(CapEffectNone):
+		return CapEffectNone
+	case string(CapEffectPatch):
+		return CapEffectPatch
+	case string(CapEffectAny):
+		return CapEffectAny
+	default:
+		panic(fmt.Sprintf("CapUrn invariant: invalid stored effect '%s'", c.effect))
+	}
+}
+
+func (c *CapUrn) validateAdmissible() error {
+	inMedia, err := c.InMediaUrn()
+	if err != nil {
+		return &CapUrnError{Code: ErrorInvalidMediaUrn, Message: fmt.Sprintf("Stored inSpec failed CapUrn admissibility validation: %v", err)}
+	}
+	outMedia, err := c.OutMediaUrn()
+	if err != nil {
+		return &CapUrnError{Code: ErrorInvalidMediaUrn, Message: fmt.Sprintf("Stored outSpec failed CapUrn admissibility validation: %v", err)}
+	}
+	if inMedia.IsTop() && outMedia.IsTop() && len(c.tags) == 0 && c.Effect() == CapEffectDeclared {
+		return &CapUrnError{
+			Code: ErrorIllegalDeclaration,
+			Message: "illegal bare top cap; use cap:effect=none for identity, or declare a non-vacuous input/output/effect/tag",
+		}
+	}
+
+	switch c.Effect() {
+	case CapEffectDeclared, CapEffectAny:
+		return nil
+	case CapEffectNone:
+		if !inMedia.ConformsTo(outMedia) {
+			return &CapUrnError{
+				Code: ErrorIllegalDeclaration,
+				Message: fmt.Sprintf("effect=none requires declared input '%s' to conform to declared output '%s'", inMedia, outMedia),
+			}
+		}
+		return nil
+	case CapEffectPatch:
+		delta, err := outMedia.DeltaFrom(inMedia)
+		if err != nil {
+			return &CapUrnError{
+				Code: ErrorIllegalDeclaration,
+				Message: fmt.Sprintf("effect=patch requires a computable declared media delta from '%s' to '%s': %v", inMedia, outMedia, err),
+			}
+		}
+		witness, err := inMedia.ApplyDelta(delta)
+		if err != nil {
+			return &CapUrnError{
+				Code: ErrorIllegalDeclaration,
+				Message: fmt.Sprintf("effect=patch failed to apply declared media delta to input '%s': %v", inMedia, err),
+			}
+		}
+		if !witness.ConformsTo(outMedia) {
+			return &CapUrnError{
+				Code: ErrorIllegalDeclaration,
+				Message: fmt.Sprintf("effect=patch witness '%s' does not conform to declared output '%s'", witness, outMedia),
+			}
+		}
+		return nil
+	default:
+		return &CapUrnError{Code: ErrorInvalidEffect, Message: fmt.Sprintf("invalid stored effect '%s'", c.effect)}
+	}
+}
+
 // Kind classifies this cap into one of CapKind's five categories,
-// looking at all three axes:
+// looking at all four structural axes:
 //   - in (parsed MediaUrn)
 //   - out (parsed MediaUrn)
+//   - effect
 //   - the rest of the tags (the operation/metadata axis — c.tags
 //     does not include in/out, those live in their own fields)
 //
-// Identity requires every axis to be in its most generic form: in is
-// the top media URN (media:), out is the top media URN, and there
-// are no other tags. Source/Sink/Effect are decided by void on
-// either directional axis. Anything else is Transform.
+// Identity requires every axis to be in its explicit identity form:
+// in is the top media URN (media:), out is the top media URN,
+// effect is none, and there are no other tags.
 //
 // Returns an error if either in/out side is not a valid MediaUrn —
 // this only happens on internally inconsistent state since
@@ -402,8 +601,9 @@ func (c *CapUrn) Kind() (CapKind, error) {
 	inTop := inMedia.IsTop()
 	outTop := outMedia.IsTop()
 	noExtraTags := len(c.tags) == 0
+	effect := c.Effect()
 
-	if inTop && outTop && noExtraTags {
+	if inTop && outTop && noExtraTags && effect == CapEffectNone {
 		return CapKindIdentity, nil
 	}
 	if inVoid && outVoid {
@@ -435,7 +635,7 @@ func CanonicalOption(capUrn *string) (*string, error) {
 
 // GetTag returns the value of a specific tag
 // Key is normalized to lowercase for lookup
-// For 'in' and 'out', returns the direction spec fields
+// For 'in', 'out', and 'effect', returns the structural coordinate fields
 func (c *CapUrn) GetTag(key string) (string, bool) {
 	keyLower := strings.ToLower(key)
 	switch keyLower {
@@ -443,6 +643,8 @@ func (c *CapUrn) GetTag(key string) (string, bool) {
 		return c.inSpec, true
 	case "out":
 		return c.outSpec, true
+	case "effect":
+		return c.effect, true
 	default:
 		value, exists := c.tags[keyLower]
 		return value, exists
@@ -451,7 +653,7 @@ func (c *CapUrn) GetTag(key string) (string, bool) {
 
 // HasTag checks if this cap has a specific tag with a specific value
 // Key is normalized to lowercase; value comparison is case-sensitive
-// For 'in' and 'out', checks the direction spec fields
+// For structural coordinates, checks the dedicated fields
 func (c *CapUrn) HasTag(key, value string) bool {
 	keyLower := strings.ToLower(key)
 	switch keyLower {
@@ -459,6 +661,8 @@ func (c *CapUrn) HasTag(key, value string) bool {
 		return c.inSpec == value
 	case "out":
 		return c.outSpec == value
+	case "effect":
+		return c.effect == value
 	default:
 		tagValue, exists := c.tags[keyLower]
 		return exists && tagValue == value
@@ -475,20 +679,22 @@ func (c *CapUrn) HasMarkerTag(tagName string) bool {
 
 // WithTag returns a new cap URN with an added or updated tag
 // Key is normalized to lowercase; value is preserved as-is
-// Note: Cannot modify 'in' or 'out' tags - use WithInSpec/WithOutSpec
+// Note: Cannot modify structural coordinates here.
 func (c *CapUrn) WithTag(key, value string) *CapUrn {
 	keyLower := strings.ToLower(key)
-	// Silently ignore attempts to set in/out via WithTag
-	// Use WithInSpec/WithOutSpec instead
-	if keyLower == "in" || keyLower == "out" {
-		return c
+	if keyLower == "in" || keyLower == "out" || keyLower == "effect" {
+		panic(fmt.Sprintf("CapUrn::WithTag cannot set reserved structural key '%s'; use WithInSpec/WithOutSpec/WithEffect", keyLower))
 	}
 	newTags := make(map[string]string)
 	for k, v := range c.tags {
 		newTags[k] = v
 	}
 	newTags[keyLower] = value
-	return &CapUrn{inSpec: c.inSpec, outSpec: c.outSpec, tags: newTags}
+	result, err := NewCapUrnWithEffect(c.inSpec, c.outSpec, c.effect, newTags)
+	if err != nil {
+		panic(fmt.Sprintf("CapUrn::WithTag produced an illegal cap declaration: %v", err))
+	}
+	return result
 }
 
 // WithTagValidated adds or updates a tag, rejecting empty values (matches Rust with_tag)
@@ -496,35 +702,49 @@ func (c *CapUrn) WithTagValidated(key, value string) (*CapUrn, error) {
 	if value == "" {
 		return nil, errors.New("tag value cannot be empty")
 	}
+	keyLower := strings.ToLower(key)
+	if keyLower == "in" || keyLower == "out" || keyLower == "effect" {
+		return nil, &CapUrnError{
+			Code:    ErrorInvalidTagFormat,
+			Message: fmt.Sprintf("reserved structural key '%s' must be changed via dedicated CapUrn accessors", keyLower),
+		}
+	}
 	return c.WithTag(key, value), nil
 }
 
 // WithInSpec returns a new cap URN with a different input spec
 func (c *CapUrn) WithInSpec(inSpec string) *CapUrn {
-	newTags := make(map[string]string)
-	for k, v := range c.tags {
-		newTags[k] = v
+	result, err := NewCapUrnWithEffect(inSpec, c.outSpec, c.effect, c.tags)
+	if err != nil {
+		panic(fmt.Sprintf("CapUrn::WithInSpec produced an illegal cap declaration: %v", err))
 	}
-	return &CapUrn{inSpec: inSpec, outSpec: c.outSpec, tags: newTags}
+	return result
 }
 
 // WithOutSpec returns a new cap URN with a different output spec
 func (c *CapUrn) WithOutSpec(outSpec string) *CapUrn {
-	newTags := make(map[string]string)
-	for k, v := range c.tags {
-		newTags[k] = v
+	result, err := NewCapUrnWithEffect(c.inSpec, outSpec, c.effect, c.tags)
+	if err != nil {
+		panic(fmt.Sprintf("CapUrn::WithOutSpec produced an illegal cap declaration: %v", err))
 	}
-	return &CapUrn{inSpec: c.inSpec, outSpec: outSpec, tags: newTags}
+	return result
+}
+
+func (c *CapUrn) WithEffect(effect CapEffect) *CapUrn {
+	result, err := NewCapUrnWithEffect(c.inSpec, c.outSpec, string(effect), c.tags)
+	if err != nil {
+		panic(fmt.Sprintf("CapUrn::WithEffect produced an illegal cap declaration: %v", err))
+	}
+	return result
 }
 
 // WithoutTag returns a new cap URN with a tag removed
 // Key is normalized to lowercase for case-insensitive removal
-// Note: Cannot remove 'in' or 'out' tags - they are required
+// Note: Cannot remove structural coordinates.
 func (c *CapUrn) WithoutTag(key string) *CapUrn {
 	keyLower := strings.ToLower(key)
-	// Silently ignore attempts to remove in/out
-	if keyLower == "in" || keyLower == "out" {
-		return c
+	if keyLower == "in" || keyLower == "out" || keyLower == "effect" {
+		panic(fmt.Sprintf("CapUrn::WithoutTag cannot remove reserved structural key '%s'", keyLower))
 	}
 	newTags := make(map[string]string)
 	for k, v := range c.tags {
@@ -532,7 +752,11 @@ func (c *CapUrn) WithoutTag(key string) *CapUrn {
 			newTags[k] = v
 		}
 	}
-	return &CapUrn{inSpec: c.inSpec, outSpec: c.outSpec, tags: newTags}
+	result, err := NewCapUrnWithEffect(c.inSpec, c.outSpec, c.effect, newTags)
+	if err != nil {
+		panic(fmt.Sprintf("CapUrn::WithoutTag produced an illegal cap declaration: %v", err))
+	}
+	return result
 }
 
 // Accepts checks if this cap (pattern/handler) accepts the given request (instance).
@@ -580,6 +804,10 @@ func (c *CapUrn) Accepts(request *CapUrn) bool {
 		if !capOut.ConformsTo(requestOut) {
 			return false
 		}
+	}
+
+	if c.effect != string(CapEffectAny) && c.effect != request.effect {
+		return false
 	}
 
 	// Y-axis: every tag's per-key match runs through the six-form
@@ -681,25 +909,32 @@ func (c *CapUrn) outputDispatchable(request *CapUrn) bool {
 // Wildcard (*) in request means any value acceptable.
 // Wildcard (*) in provider means provider can handle any value.
 func (c *CapUrn) capTagsDispatchable(request *CapUrn) bool {
-	for key, requestValue := range request.tags {
-		providerValue, exists := c.tags[key]
-		if !exists {
-			// Provider missing a tag that request specifies.
-			// Even wildcard (*) means "any value is fine" — the tag
-			// must still be present.
-			return false
+	allKeys := make(map[string]struct{}, len(c.tags)+len(request.tags))
+	for key := range c.tags {
+		allKeys[key] = struct{}{}
+	}
+	for key := range request.tags {
+		allKeys[key] = struct{}{}
+	}
+	for key := range allKeys {
+		var pattPtr, instPtr *string
+		if v, ok := request.tags[key]; ok {
+			vCopy := v
+			pattPtr = &vCopy
 		}
-		if requestValue == "*" {
-			continue
+		if v, ok := c.tags[key]; ok {
+			vCopy := v
+			instPtr = &vCopy
 		}
-		if providerValue == "*" {
-			continue
-		}
-		if requestValue != providerValue {
+		if !taggedurn.ValuesMatch(instPtr, pattPtr) {
 			return false
 		}
 	}
 	return true
+}
+
+func (c *CapUrn) effectDispatchable(request *CapUrn) bool {
+	return request.effect == string(CapEffectAny) || c.effect == request.effect
 }
 
 // IsDispatchable checks if this provider can dispatch (handle) the given request.
@@ -720,6 +955,9 @@ func (c *CapUrn) IsDispatchable(request *CapUrn) bool {
 		return false
 	}
 	if !c.outputDispatchable(request) {
+		return false
+	}
+	if !c.effectDispatchable(request) {
 		return false
 	}
 	if !c.capTagsDispatchable(request) {
@@ -753,6 +991,53 @@ func (c *CapUrn) AcceptsStr(requestStr string) bool {
 		return false
 	}
 	return c.Accepts(request)
+}
+
+func (c *CapUrn) InferRuntimeOutputMedia(runtimeInput *MediaUrn) (*MediaUrn, error) {
+	declaredIn, err := c.InMediaUrn()
+	if err != nil {
+		return nil, &CapUrnError{Code: ErrorInvalidMediaUrn, Message: fmt.Sprintf("Stored inSpec failed to parse during inference: %v", err)}
+	}
+	declaredOut, err := c.OutMediaUrn()
+	if err != nil {
+		return nil, &CapUrnError{Code: ErrorInvalidMediaUrn, Message: fmt.Sprintf("Stored outSpec failed to parse during inference: %v", err)}
+	}
+	if runtimeInput == nil {
+		return nil, &CapUrnError{Code: ErrorInvalidEffectApply, Message: "cannot infer runtime output for nil runtime input"}
+	}
+	if !runtimeInput.ConformsTo(declaredIn) {
+		return nil, &CapUrnError{
+			Code:    ErrorInvalidEffectApply,
+			Message: fmt.Sprintf("Runtime input '%s' does not conform to declared input '%s'", runtimeInput, declaredIn),
+		}
+	}
+
+	var runtimeOut *MediaUrn
+	switch c.Effect() {
+	case CapEffectDeclared:
+		runtimeOut = declaredOut
+	case CapEffectNone:
+		runtimeOut = runtimeInput
+	case CapEffectPatch:
+		delta, err := declaredOut.DeltaFrom(declaredIn)
+		if err != nil {
+			return nil, &CapUrnError{Code: ErrorInvalidEffectApply, Message: fmt.Sprintf("Failed to derive media delta from '%s' to '%s': %v", declaredIn, declaredOut, err)}
+		}
+		runtimeOut, err = runtimeInput.ApplyDelta(delta)
+		if err != nil {
+			return nil, &CapUrnError{Code: ErrorInvalidEffectApply, Message: fmt.Sprintf("Failed to apply media delta to runtime input '%s': %v", runtimeInput, err)}
+		}
+	case CapEffectAny:
+		return nil, &CapUrnError{Code: ErrorInvalidEffectApply, Message: "Cannot infer runtime output for an unconstrained effect request"}
+	}
+
+	if !runtimeOut.ConformsTo(declaredOut) {
+		return nil, &CapUrnError{
+			Code:    ErrorInvalidEffectApply,
+			Message: fmt.Sprintf("Inferred runtime output '%s' does not conform to declared output '%s'", runtimeOut, declaredOut),
+		}
+	}
+	return runtimeOut, nil
 }
 
 // Per-axis weights for cap-URN specificity. Two orders of magnitude
@@ -820,7 +1105,8 @@ func (c *CapUrn) IsMoreSpecificThan(other *CapUrn) bool {
 }
 
 // Less returns true if this CapUrn is ordered before other.
-// Comparison is performed on the in/out MediaUrn values, then lexicographically on the full string.
+// Comparison is structural over in/out/effect/tags; it does not route through
+// flat full-string comparison.
 func (c *CapUrn) Less(other *CapUrn) bool {
 	if other == nil {
 		return false
@@ -839,18 +1125,26 @@ func (c *CapUrn) Less(other *CapUrn) bool {
 			return cmp < 0
 		}
 	}
-	return c.String() < other.String()
+	if c.effect != other.effect {
+		return c.effect < other.effect
+	}
+	selfTagged := taggedurn.NewTaggedUrnFromTags("cap", c.tags)
+	otherTagged := taggedurn.NewTaggedUrnFromTags("cap", other.tags)
+	return selfTagged.Compare(otherTagged) < 0
 }
 
 // WithWildcardTag returns a new cap with a specific tag set to wildcard
-// For 'in' or 'out', sets the corresponding direction spec to wildcard
+// For structural coordinates, sets the corresponding coordinate to its explicit
+// unconstrained value.
 func (c *CapUrn) WithWildcardTag(key string) *CapUrn {
 	keyLower := strings.ToLower(key)
 	switch keyLower {
 	case "in":
-		return c.WithInSpec("*")
+		return c.WithInSpec("media:")
 	case "out":
-		return c.WithOutSpec("*")
+		return c.WithOutSpec("media:")
+	case "effect":
+		return c.WithEffect(CapEffectAny)
 	default:
 		if _, exists := c.tags[keyLower]; exists {
 			newTags := make(map[string]string)
@@ -858,27 +1152,35 @@ func (c *CapUrn) WithWildcardTag(key string) *CapUrn {
 				newTags[k] = v
 			}
 			newTags[keyLower] = "*"
-			return &CapUrn{inSpec: c.inSpec, outSpec: c.outSpec, tags: newTags}
+			result, err := NewCapUrnWithEffect(c.inSpec, c.outSpec, c.effect, newTags)
+			if err != nil {
+				panic(fmt.Sprintf("CapUrn::WithWildcardTag produced an illegal cap declaration: %v", err))
+			}
+			return result
 		}
 		return c
 	}
 }
 
 // Subset returns a new cap with only specified tags
-// Note: 'in' and 'out' are always included as they are required
+// Structural coordinates remain intact; y-axis tags are filtered.
 func (c *CapUrn) Subset(keys []string) *CapUrn {
 	newTags := make(map[string]string)
 	for _, key := range keys {
 		keyLower := strings.ToLower(key)
 		// Skip in/out as they're handled separately
-		if keyLower == "in" || keyLower == "out" {
+		if keyLower == "in" || keyLower == "out" || keyLower == "effect" {
 			continue
 		}
 		if value, exists := c.tags[keyLower]; exists {
 			newTags[keyLower] = value
 		}
 	}
-	return &CapUrn{inSpec: c.inSpec, outSpec: c.outSpec, tags: newTags}
+	result, err := NewCapUrnWithEffect(c.inSpec, c.outSpec, c.effect, newTags)
+	if err != nil {
+		panic(fmt.Sprintf("CapUrn::Subset produced an illegal cap declaration: %v", err))
+	}
+	return result
 }
 
 // Merge returns a new cap merged with another (other takes precedence for conflicts)
@@ -891,7 +1193,11 @@ func (c *CapUrn) Merge(other *CapUrn) *CapUrn {
 	for k, v := range other.tags {
 		newTags[k] = v
 	}
-	return &CapUrn{inSpec: other.inSpec, outSpec: other.outSpec, tags: newTags}
+	result, err := NewCapUrnWithEffect(other.inSpec, other.outSpec, other.effect, newTags)
+	if err != nil {
+		panic(fmt.Sprintf("CapUrn::Merge produced an illegal cap declaration: %v", err))
+	}
+	return result
 }
 
 // ToString returns the canonical string representation of this cap URN.
@@ -899,18 +1205,19 @@ func (c *CapUrn) Merge(other *CapUrn) *CapUrn {
 // implementations.
 //
 // `in` and `out` segments are emitted only when they refine beyond the
-// trivial wildcard `media:`. A cap whose `in`/`out` are both `media:`
-// and which has no other tags has the canonical form `cap:` — the bare
-// identity URN. The canonicalizer collapses both written forms
-// (`cap:` and `cap:in=media:;out=media:`) to the same representative so
-// byte-equality matches semantic identity across language ports.
+// trivial wildcard `media:`. `effect=declared` is omitted because it is the
+// default on admissible caps. `effect=none` is never omitted; identity is the
+// explicit `cap:effect=none`, never bare `cap:`.
 func (c *CapUrn) ToString() string {
-	allTags := make(map[string]string, len(c.tags)+2)
+	allTags := make(map[string]string, len(c.tags)+3)
 	if c.inSpec != "media:" {
 		allTags["in"] = c.inSpec
 	}
 	if c.outSpec != "media:" {
 		allTags["out"] = c.outSpec
+	}
+	if c.effect != string(CapEffectDeclared) {
+		allTags["effect"] = c.effect
 	}
 	for k, v := range c.tags {
 		allTags[k] = v
@@ -932,7 +1239,7 @@ func (c *CapUrn) Equals(other *CapUrn) bool {
 	}
 
 	// Check direction specs
-	if c.inSpec != other.inSpec || c.outSpec != other.outSpec {
+	if c.inSpec != other.inSpec || c.outSpec != other.outSpec || c.effect != other.effect {
 		return false
 	}
 
@@ -978,6 +1285,7 @@ func (c *CapUrn) UnmarshalJSON(data []byte) error {
 
 	c.inSpec = capUrn.inSpec
 	c.outSpec = capUrn.outSpec
+	c.effect = capUrn.effect
 	c.tags = capUrn.tags
 	return nil
 }
@@ -1041,6 +1349,7 @@ func (m *CapMatcher) AreCompatible(caps1, caps2 []*CapUrn) bool {
 type CapUrnBuilder struct {
 	inSpec  *string
 	outSpec *string
+	effect  *string
 	tags    map[string]string
 }
 
@@ -1063,13 +1372,19 @@ func (b *CapUrnBuilder) OutSpec(spec string) *CapUrnBuilder {
 	return b
 }
 
+func (b *CapUrnBuilder) Effect(effect CapEffect) *CapUrnBuilder {
+	value := string(effect)
+	b.effect = &value
+	return b
+}
+
 // Tag adds or updates a tag
 // Key is normalized to lowercase; value is preserved as-is
-// Note: 'in' and 'out' are ignored here - use InSpec() and OutSpec()
+// Note: structural coordinates are not set here.
 func (b *CapUrnBuilder) Tag(key, value string) *CapUrnBuilder {
 	keyLower := strings.ToLower(key)
-	if keyLower == "in" || keyLower == "out" {
-		return b
+	if keyLower == "in" || keyLower == "out" || keyLower == "effect" {
+		panic(fmt.Sprintf("CapUrnBuilder::Tag cannot set reserved structural key '%s'; use InSpec/OutSpec/Effect", keyLower))
 	}
 	b.tags[keyLower] = value
 	return b
@@ -1078,12 +1393,11 @@ func (b *CapUrnBuilder) Tag(key, value string) *CapUrnBuilder {
 // Marker adds a marker tag (a wildcard-valued tag that serializes as just the key).
 // Equivalent to Tag(key, "*") but expresses authorial intent: this tag is
 // present as a marker, not a key=value pair.
-// Attempts to use 'in' or 'out' as a marker key are silently ignored —
-// direction specs are set via InSpec()/OutSpec().
+// Structural coordinates cannot be set as marker keys.
 func (b *CapUrnBuilder) Marker(key string) *CapUrnBuilder {
 	keyLower := strings.ToLower(key)
-	if keyLower == "in" || keyLower == "out" {
-		return b
+	if keyLower == "in" || keyLower == "out" || keyLower == "effect" {
+		panic(fmt.Sprintf("CapUrnBuilder::Marker cannot set reserved structural key '%s'; use InSpec/OutSpec/Effect", keyLower))
 	}
 	b.tags[keyLower] = "*"
 	return b
@@ -1105,5 +1419,9 @@ func (b *CapUrnBuilder) Build() (*CapUrn, error) {
 		}
 	}
 
-	return &CapUrn{inSpec: *b.inSpec, outSpec: *b.outSpec, tags: b.tags}, nil
+	effect := string(CapEffectDeclared)
+	if b.effect != nil {
+		effect = *b.effect
+	}
+	return NewCapUrnWithEffect(*b.inSpec, *b.outSpec, effect, b.tags)
 }

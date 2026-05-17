@@ -14,6 +14,7 @@ import (
 	cborlib "github.com/fxamacker/cbor/v2"
 
 	"github.com/machinefabric/capdag-go/cap"
+	"github.com/machinefabric/capdag-go/standard"
 	"github.com/machinefabric/capdag-go/urn"
 )
 
@@ -257,14 +258,14 @@ func NewCartridgeRuntime(manifestJSON []byte) (*CartridgeRuntime, error) {
 // IMPORTANT: Manifest MUST declare CAP_IDENTITY - fails hard if missing
 func NewCartridgeRuntimeWithManifest(manifest *CapManifest) (*CartridgeRuntime, error) {
 	// Validate manifest - FAIL HARD if CAP_IDENTITY not declared
-	identityUrn, err := urn.NewCapUrnFromString("cap:")
+	identityUrn, err := urn.NewCapUrnFromString(standard.CapIdentity)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse CAP_IDENTITY URN: %w", err)
 	}
 
 	hasIdentity := false
 	for _, cap := range manifest.AllCaps() {
-		if identityUrn.ConformsTo(cap.Urn) || cap.Urn.ConformsTo(identityUrn) {
+		if identityUrn.IsEquivalent(cap.Urn) {
 			hasIdentity = true
 			break
 		}
@@ -272,7 +273,7 @@ func NewCartridgeRuntimeWithManifest(manifest *CapManifest) (*CartridgeRuntime, 
 
 	if !hasIdentity {
 		return nil, fmt.Errorf(
-			"manifest validation failed - cartridge MUST declare CAP_IDENTITY (cap:). " +
+			"manifest validation failed - cartridge MUST declare CAP_IDENTITY (cap:effect=none). " +
 			"All cartridges must explicitly declare capabilities, no implicit fallbacks allowed",
 		)
 	}
@@ -304,9 +305,9 @@ func (pr *CartridgeRuntime) autoRegisterIdentity() {
 	defer pr.mu.Unlock()
 
 	// Check if identity handler already registered
-	if _, exists := pr.handlers["cap:"]; !exists {
+	if _, exists := pr.handlers[standard.CapIdentity]; !exists {
 		// Register default identity handler (echo - returns input as-is)
-		pr.handlers["cap:"] = func(input <-chan Frame, output StreamEmitter, peer PeerInvoker) error {
+		pr.handlers[standard.CapIdentity] = func(input <-chan Frame, output StreamEmitter, peer PeerInvoker) error {
 			// Collect all incoming frames
 			var chunks []interface{}
 			for frame := range input {

@@ -16,6 +16,10 @@ type MediaUrn struct {
 	inner *taggedurn.TaggedUrn
 }
 
+type MediaUrnCoordinateDelta struct {
+	inner *taggedurn.TaggedUrnCoordinateDelta
+}
+
 // MediaUrnError represents errors that can occur during media URN operations.
 type MediaUrnError struct {
 	Code    int
@@ -201,17 +205,49 @@ func (m *MediaUrn) Equals(other *MediaUrn) bool {
 	return m.inner.Equals(other.inner)
 }
 
-// Compare returns -1, 0, or 1 for ordering two MediaUrns lexicographically by string.
+// Compare returns -1, 0, or 1 for structural ordering of two MediaUrns.
 func (m *MediaUrn) Compare(other *MediaUrn) int {
-	a := m.String()
-	b := other.String()
-	if a < b {
+	if m == nil && other == nil {
+		return 0
+	}
+	if m == nil {
 		return -1
 	}
-	if a > b {
+	if other == nil {
 		return 1
 	}
-	return 0
+	return m.inner.Compare(other.inner)
+}
+
+// DeltaFrom computes the coordinate-space delta from base to m.
+func (m *MediaUrn) DeltaFrom(base *MediaUrn) (*MediaUrnCoordinateDelta, error) {
+	if m == nil || m.inner == nil {
+		return nil, fmt.Errorf("cannot derive delta from nil media URN")
+	}
+	if base == nil || base.inner == nil {
+		return nil, fmt.Errorf("cannot derive delta from nil base media URN")
+	}
+	delta, err := m.inner.DeltaFrom(base.inner)
+	if err != nil {
+		return nil, err
+	}
+	return &MediaUrnCoordinateDelta{inner: delta}, nil
+}
+
+// ApplyDelta applies a coordinate-space delta to this media URN and validates
+// the result through MediaUrn parsing.
+func (m *MediaUrn) ApplyDelta(delta *MediaUrnCoordinateDelta) (*MediaUrn, error) {
+	if m == nil || m.inner == nil {
+		return nil, fmt.Errorf("cannot apply delta to nil media URN")
+	}
+	if delta == nil || delta.inner == nil {
+		return nil, fmt.Errorf("cannot apply nil media delta")
+	}
+	next, err := m.inner.ApplyDelta(delta.inner)
+	if err != nil {
+		return nil, err
+	}
+	return NewMediaUrnFromString(next.String())
 }
 
 // Specificity returns the specificity score (number of tags)

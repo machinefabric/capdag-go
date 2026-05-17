@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/machinefabric/capdag-go/standard"
 	"github.com/machinefabric/capdag-go/urn"
 )
 
@@ -453,10 +454,10 @@ func ValidateCapCanonical(registry *FabricRegistry, cap *Cap) error {
 // It is mandatory in every capability set so the resolver's source-to-cap-arg
 // matching can route through identity in any notation.
 func identityCap() *Cap {
-	identityUrn := "cap:"
+	identityUrn := standard.CapIdentity
 	u, err := urn.NewCapUrnFromString(identityUrn)
 	if err != nil {
-		// "cap:" is always valid — this is a programming error
+		// CAP_IDENTITY must always be valid — this is a programming error
 		panic("identityCap: failed to parse identity URN: " + err.Error())
 	}
 	desc := "The categorical identity morphism. Echoes input as output unchanged. Mandatory in every capability set."
