@@ -351,10 +351,10 @@ func Test939_cap_urn_canonical_form_drops_wildcard_in_out(t *testing.T) {
 			"input %q canonicalized to %q, expected %q — wildcard in/out segments must be elided so the registry SHA-256 key is stable across input spellings",
 			v, parsed.ToString(), canonical)
 	}
-	// Bare-identity round-trip.
-	identity, err := NewCapUrnFromString("cap:in=media:;out=media:")
+	// Explicit identity round-trip.
+	identity, err := NewCapUrnFromString("cap:effect=none")
 	require.NoError(t, err)
-	assert.Equal(t, "cap:", identity.ToString())
+	assert.Equal(t, "cap:effect=none", identity.ToString())
 }
 
 // TEST017: Test tag matching: exact match, subset match, wildcard match, value mismatch
@@ -611,7 +611,7 @@ func Test026_merge_and_subset(t *testing.T) {
 	assert.Equal(t, standard.MediaObject, subset.OutSpec())
 }
 
-// TEST027: Test with_wildcard_tag sets tag to wildcard, including in/out
+// TEST027: Test with_wildcard_tag sets tag to wildcard and normalizes in/out to media:
 func Test027_wildcard_tag(t *testing.T) {
 	cap, err := NewCapUrnFromString(testUrn("ext=pdf"))
 	require.NoError(t, err)
@@ -622,28 +622,27 @@ func Test027_wildcard_tag(t *testing.T) {
 	assert.Equal(t, "*", ext)
 
 	wildcardIn := cap.WithWildcardTag("in")
-	assert.Equal(t, "*", wildcardIn.InSpec())
+	assert.Equal(t, "media:", wildcardIn.InSpec())
 
 	wildcardOut := cap.WithWildcardTag("out")
-	assert.Equal(t, "*", wildcardOut.OutSpec())
+	assert.Equal(t, "media:", wildcardOut.OutSpec())
 }
 
-// TEST028: Test empty cap URN defaults to media: wildcard
+// TEST028: Bare top cap is illegal; identity must be explicit effect=none
 func Test028_empty_cap_urn_defaults_to_wildcard(t *testing.T) {
-	// Empty cap URN defaults to media: for both in and out
 	result, err := NewCapUrnFromString("cap:")
-	require.NoError(t, err, "Empty cap should default to media: wildcard")
-	require.NotNil(t, result)
-	assert.Equal(t, "media:", result.InSpec())
-	assert.Equal(t, "media:", result.OutSpec())
-	assert.Equal(t, 0, len(result.tags))
+	assert.Nil(t, result)
+	assert.Error(t, err)
+	capError, ok := err.(*CapUrnError)
+	assert.True(t, ok)
+	assert.Equal(t, ErrorIllegalDeclaration, capError.Code)
 
-	// Trailing semicolon also works
 	result2, err := NewCapUrnFromString("cap:;")
-	require.NoError(t, err, "cap:; should default to media: wildcard")
-	require.NotNil(t, result2)
-	assert.Equal(t, "media:", result2.InSpec())
-	assert.Equal(t, "media:", result2.OutSpec())
+	assert.Nil(t, result2)
+	assert.Error(t, err)
+	capError, ok = err.(*CapUrnError)
+	assert.True(t, ok)
+	assert.Equal(t, ErrorIllegalDeclaration, capError.Code)
 }
 
 // TEST029: Test minimal valid cap URN has just in and out, empty tags
@@ -913,18 +912,17 @@ func Test047_matching_semantics_thumbnail_void_input(t *testing.T) {
 
 // TEST048: Matching semantics - wildcard direction matches anything
 func Test048_matching_semantics_wildcard_direction_matches_anything(t *testing.T) {
-	cap, err := NewCapUrnFromString("cap:in=*;out=*")
+	cap, err := NewCapUrnFromString("cap:generate")
 	require.NoError(t, err)
 
-	request, err := NewCapUrnFromString(`cap:in="media:string";generate;out="media:object";ext=pdf`)
+	request, err := NewCapUrnFromString(`cap:in="media:string";generate;out="media:object;record";ext=pdf`)
 	require.NoError(t, err)
 
-	// Wildcard cap (no tags) accepts any request - this is the identity/universal cap
-	assert.True(t, cap.Accepts(request), "Wildcard cap accepts request with any tags")
+	assert.True(t, cap.Accepts(request), "Generic declared directions should accept a more specific matching request")
 
-	request2, err := NewCapUrnFromString(`cap:in="media:string";out="media:object"`)
+	request2, err := NewCapUrnFromString(`cap:in="media:string";extract;out="media:object;record"`)
 	require.NoError(t, err)
-	assert.True(t, cap.Accepts(request2), "Wildcard cap also accepts simpler requests")
+	assert.False(t, cap.Accepts(request2), "Operation tags must still match")
 }
 
 // TEST049: Non-overlapping tags — neither direction accepts
@@ -1070,11 +1068,9 @@ func Test559_without_tag(t *testing.T) {
 	_, exists = removed2.GetTag("ext")
 	assert.False(t, exists)
 
-	// Removing in/out is silently ignored
-	same := cap.WithoutTag("in")
-	assert.Equal(t, "media:void", same.InSpec())
-	same2 := cap.WithoutTag("out")
-	assert.Equal(t, "media:void", same2.OutSpec())
+	assert.Panics(t, func() { cap.WithoutTag("in") })
+	assert.Panics(t, func() { cap.WithoutTag("out") })
+	assert.Panics(t, func() { cap.WithoutTag("effect") })
 
 	// Removing non-existent tag is no-op
 	same3 := cap.WithoutTag("nonexistent")
@@ -1102,7 +1098,7 @@ func Test560_with_in_out_spec(t *testing.T) {
 		WithInSpec("media:pdf").
 		WithOutSpec("media:txt;textable")
 	assert.Equal(t, "media:pdf", changedBoth.InSpec())
-	assert.Equal(t, "media:txt;textable", changedBoth.OutSpec())
+	assert.Equal(t, "media:textable;txt", changedBoth.OutSpec())
 }
 
 // TEST563: CapMatcher::find_all_matches returns all matching caps sorted by specificity
@@ -1174,18 +1170,15 @@ func Test565_tags_to_string(t *testing.T) {
 	assert.Contains(t, tagsStr, "test")
 }
 
-// TEST566: with_tag silently ignores in/out keys
+// TEST566: with_tag rejects reserved structural keys
 func Test566_with_tag_ignores_in_out(t *testing.T) {
 	cap, err := NewCapUrnFromString(
 		`cap:in="media:void";test;out="media:void"`,
 	)
 	require.NoError(t, err)
-	// Attempting to set in/out via WithTag is silently ignored
-	same := cap.WithTag("in", "media:")
-	assert.Equal(t, "media:void", same.InSpec(), "WithTag must not change InSpec")
-
-	same2 := cap.WithTag("out", "media:")
-	assert.Equal(t, "media:void", same2.OutSpec(), "WithTag must not change OutSpec")
+	assert.Panics(t, func() { cap.WithTag("in", "media:") })
+	assert.Panics(t, func() { cap.WithTag("out", "media:") })
+	assert.Panics(t, func() { cap.WithTag("effect", "none") })
 }
 
 // TEST567: conforms_to_str and accepts_str work with string arguments
@@ -1208,50 +1201,46 @@ func Test567_str_variants(t *testing.T) {
 	assert.False(t, cap.AcceptsStr("invalid"))
 }
 
-// TEST639: cap: (empty) defaults to in=media:;out=media:
+// TEST639: bare top cap is illegal; identity must be explicit effect=none
 func Test639_wildcard_empty_cap_defaults_to_media_wildcard(t *testing.T) {
-	// cap: without in/out defaults to wildcard media: for both
-	// This matches Rust behavior - empty cap is identity/wildcard
 	cap, err := NewCapUrnFromString("cap:")
-	require.NoError(t, err)
-	assert.Equal(t, "media:", cap.InSpec())
-	assert.Equal(t, "media:", cap.OutSpec())
+	assert.Nil(t, cap)
+	assert.Error(t, err)
+	capError, ok := err.(*CapUrnError)
+	assert.True(t, ok)
+	assert.Equal(t, ErrorIllegalDeclaration, capError.Code)
 }
 
-// TEST648: Wildcard in/out match specific caps
+// TEST648: Legal generic cap with marker-only y-axis matches specific caps
 func Test648_wildcard_accepts_specific(t *testing.T) {
-	// In Go, we can create wildcard caps via NewCapUrnFromTags
-	wildcard, err := NewCapUrnFromTags(map[string]string{})
+	wildcard, err := NewCapUrnFromString("cap:raw")
 	require.NoError(t, err)
-	assert.Equal(t, "media:", wildcard.InSpec())
-	assert.Equal(t, "media:", wildcard.OutSpec())
 
-	specific, err := NewCapUrnFromString("cap:in=media:pdf;out=media:text")
+	specific, err := NewCapUrnFromString("cap:out=media:text;raw")
 	require.NoError(t, err)
 
 	assert.True(t, wildcard.Accepts(specific), "Wildcard should accept specific")
 	assert.True(t, specific.ConformsTo(wildcard), "Specific should conform to wildcard")
 }
 
-// TEST649: Specificity - wildcard has 0, specific has tag count
+// TEST649: Specificity - marker-only wildcard scores on y-axis only
 func Test649_specificity_scoring(t *testing.T) {
-	wildcard, err := NewCapUrnFromTags(map[string]string{})
+	wildcard, err := NewCapUrnFromString("cap:raw")
 	require.NoError(t, err)
 
-	specific, err := NewCapUrnFromString("cap:in=media:pdf;out=media:text")
+	specific, err := NewCapUrnFromString("cap:out=media:text;raw")
 	require.NoError(t, err)
 
-	assert.Equal(t, 0, wildcard.Specificity(), "Wildcard cap should have zero specificity")
+	assert.Equal(t, 2, wildcard.Specificity(), "Marker-only wildcard cap should have y-axis specificity only")
 	assert.True(t, specific.Specificity() > 0, "Specific cap should have non-zero specificity")
 }
 
-// TEST651: All identity forms produce the same CapUrn
+// TEST651: Long and short explicit identity forms are equivalent
 func Test651_identity_forms_equivalent(t *testing.T) {
-	// In Go, the identity form is created via NewCapUrnFromTags with empty map
-	identity1, err := NewCapUrnFromTags(map[string]string{})
+	identity1, err := NewCapUrnFromString("cap:effect=none")
 	require.NoError(t, err)
 
-	identity2, err := NewCapUrnFromTags(map[string]string{"in": "*", "out": "*"})
+	identity2, err := NewCapUrnFromString("cap:in=*;out=*;effect=none")
 	require.NoError(t, err)
 
 	assert.Equal(t, identity1.InSpec(), identity2.InSpec())
@@ -1261,22 +1250,20 @@ func Test651_identity_forms_equivalent(t *testing.T) {
 
 // TEST652: CAP_IDENTITY constant matches identity caps regardless of string form
 func Test652_cap_identity_constant_works(t *testing.T) {
-	// In Go, standard.CapIdentity = "cap:" which fails parsing
-	// Instead test via NewCapUrnFromTags
-	identity, err := NewCapUrnFromTags(map[string]string{})
+	identity, err := NewCapUrnFromString(standard.CapIdentity)
 	require.NoError(t, err)
 
-	specific, err := NewCapUrnFromString("cap:in=media:pdf;out=media:text;test")
+	specific, err := NewCapUrnFromString("cap:in=media:pdf;test;out=media:textable")
 	require.NoError(t, err)
 
-	// Identity accepts everything (no constraints)
-	assert.True(t, identity.Accepts(specific), "Identity accepts specific")
-	assert.True(t, specific.ConformsTo(identity), "Specific conforms to identity")
+	assert.Equal(t, "cap:effect=none", identity.ToString())
+	assert.False(t, identity.Accepts(specific), "Identity must not silently satisfy declared-effect requests")
+	assert.False(t, specific.ConformsTo(identity), "Declared-effect transforms are not equivalent to cap identity")
 }
 
-// TEST653: Identity (no tags) does not match specific requests via routing
+// TEST653: Cap identity does not route as a declared-effect provider
 func Test653_identity_routing_isolation(t *testing.T) {
-	identity, err := NewCapUrnFromTags(map[string]string{})
+	identity, err := NewCapUrnFromString("cap:effect=none")
 	require.NoError(t, err)
 
 	specificRequest, err := NewCapUrnFromString(`cap:in="media:void";test;out="media:void"`)
@@ -1287,11 +1274,11 @@ func Test653_identity_routing_isolation(t *testing.T) {
 	assert.False(t, specificRequest.Accepts(identity),
 		"Specific request must NOT accept identity (identity lacks test)")
 
-	// But identity request (no constraints) DOES accept specific cap
-	identityRequest, err := NewCapUrnFromTags(map[string]string{})
+	// An identity request still only accepts explicit identity providers.
+	identityRequest, err := NewCapUrnFromString("cap:effect=none")
 	require.NoError(t, err)
-	assert.True(t, identityRequest.Accepts(specificRequest),
-		"Identity request (no constraints) matches everything")
+	assert.False(t, identityRequest.Accepts(specificRequest),
+		"Identity request must not accept declared-effect transforms")
 }
 
 // TEST823: is_dispatchable — exact match provider dispatches request
@@ -1481,11 +1468,11 @@ func Test561_in_out_media_urn(t *testing.T) {
 	assert.True(t, outUrn.IsTextable())
 	assert.True(t, outUrn.HasTag("txt"))
 
-	// Bare media: should parse as valid MediaUrn
-	wildcardCap, err := NewCapUrnFromString("cap:")
+	// Identity's directional coordinates are still the top media URN.
+	wildcardCap, err := NewCapUrnFromString("cap:effect=none")
 	require.NoError(t, err)
 	wildcardIn, err := wildcardCap.InMediaUrn()
-	require.NoError(t, err, "bare media: should parse as valid MediaUrn")
+	require.NoError(t, err, "identity input media should parse as valid MediaUrn")
 	assert.NotNil(t, wildcardIn)
 }
 
@@ -1534,44 +1521,39 @@ func Test568_dispatch_output_tag_order(t *testing.T) {
 		"Provider should dispatch request with same tags in different order")
 }
 
-// TEST640: cap:in defaults out to media:
+// TEST640: cap:in without a non-vacuous axis/tag is illegal bare top
 func Test640_wildcard_002_in_only_defaults_out_to_media(t *testing.T) {
 	cap, err := NewCapUrnFromString("cap:in")
-	require.NoError(t, err, "in without out should default out to media:")
-	assert.Equal(t, "media:", cap.InSpec())
-	assert.Equal(t, "media:", cap.OutSpec())
+	assert.Nil(t, cap)
+	require.Error(t, err)
 }
 
-// TEST641: cap:out defaults in to media:
+// TEST641: cap:out without a non-vacuous axis/tag is illegal bare top
 func Test641_wildcard_003_out_only_defaults_in_to_media(t *testing.T) {
 	cap, err := NewCapUrnFromString("cap:out")
-	require.NoError(t, err, "out without in should default in to media:")
-	assert.Equal(t, "media:", cap.InSpec())
-	assert.Equal(t, "media:", cap.OutSpec())
+	assert.Nil(t, cap)
+	require.Error(t, err)
 }
 
-// TEST642: cap:in;out both become media:
+// TEST642: cap:in;out normalizes to illegal bare top
 func Test642_wildcard_004_in_out_no_values_become_media(t *testing.T) {
 	cap, err := NewCapUrnFromString("cap:in;out")
-	require.NoError(t, err, "in;out should both become media:")
-	assert.Equal(t, "media:", cap.InSpec())
-	assert.Equal(t, "media:", cap.OutSpec())
+	assert.Nil(t, cap)
+	require.Error(t, err)
 }
 
-// TEST643: cap:in=*;out=* becomes media:
+// TEST643: explicit wildcard in/out is still illegal bare top
 func Test643_wildcard_005_explicit_asterisk_becomes_media(t *testing.T) {
 	cap, err := NewCapUrnFromString("cap:in=*;out=*")
-	require.NoError(t, err, "in=*;out=* should become media:")
-	assert.Equal(t, "media:", cap.InSpec())
-	assert.Equal(t, "media:", cap.OutSpec())
+	assert.Nil(t, cap)
+	require.Error(t, err)
 }
 
-// TEST644: cap:in=media:;out=* has specific in, wildcard out
+// TEST644: top in plus wildcard out is still illegal bare top
 func Test644_wildcard_006_specific_in_wildcard_out(t *testing.T) {
 	cap, err := NewCapUrnFromString("cap:in=media:;out=*")
-	require.NoError(t, err)
-	assert.Equal(t, "media:", cap.InSpec())
-	assert.Equal(t, "media:", cap.OutSpec())
+	assert.Nil(t, cap)
+	require.Error(t, err)
 }
 
 // TEST645: cap:in=*;out=media:text has wildcard in, specific out
@@ -1596,7 +1578,7 @@ func Test647_wildcard_009_invalid_out_spec_fails(t *testing.T) {
 
 // TEST650: cap:in=media:;out=media:;test preserves other tags
 func Test650_wildcard_012_preserve_other_tags(t *testing.T) {
-	cap, err := NewCapUrnFromString("cap:in;out;test")
+	cap, err := NewCapUrnFromString("cap:in=media:;out=media:;test")
 	require.NoError(t, err)
 	assert.Equal(t, "media:", cap.InSpec())
 	assert.Equal(t, "media:", cap.OutSpec())
@@ -1612,30 +1594,30 @@ func Test650_wildcard_012_preserve_other_tags(t *testing.T) {
 // surface, not a per-port detail.
 // -------------------------------------------------------------------
 
-// TEST1800: Identity classifier — only the bare cap: form qualifies.
-// `cap:` is the fully generic morphism on every axis; adding any
+// TEST1800: Identity classifier — only explicit effect=none qualifies.
+// `cap:effect=none` is the fully generic identity on every axis; adding any
 // tag (even one that doesn't constrain in/out) demotes the cap to
 // Transform because the operation/metadata axis is no longer fully
 // generic.
 func Test1800_kind_identity_only_for_bare_cap(t *testing.T) {
-	identity, err := NewCapUrnFromString("cap:")
+	identity, err := NewCapUrnFromString("cap:effect=none")
 	require.NoError(t, err)
 	kind, err := identity.Kind()
 	require.NoError(t, err)
 	assert.Equal(t, CapKindIdentity, kind)
 
 	for _, spelling := range []string{
-		"cap:in=media:;out=media:",
-		"cap:in=*;out=*",
-		"cap:in=media:",
-		"cap:out=media:",
+		"cap:in=media:;out=media:;effect=none",
+		"cap:in=*;out=*;effect=none",
+		"cap:effect=none;in=media:",
+		"cap:effect=none;out=media:",
 	} {
 		cap, err := NewCapUrnFromString(spelling)
 		require.NoError(t, err, spelling)
 		k, err := cap.Kind()
 		require.NoError(t, err)
 		assert.Equal(t, CapKindIdentity, k,
-			"%s should classify as Identity (canonical form is `cap:`)", spelling)
+			"%s should classify as Identity (canonical form is `cap:effect=none`)", spelling)
 	}
 
 	withOp, err := NewCapUrnFromString("cap:passthrough")
@@ -1719,7 +1701,7 @@ func Test1805_kind_invariant_under_canonical_spellings(t *testing.T) {
 		a, b     string
 		expected CapKind
 	}{
-		{"cap:", "cap:in=media:;out=media:", CapKindIdentity},
+		{"cap:effect=none", "cap:in=media:;out=media:;effect=none", CapKindIdentity},
 		{
 			"cap:extract;in=media:pdf;out=media:textable",
 			`cap:extract;in="media:pdf";out="media:textable"`,
@@ -1765,7 +1747,7 @@ func Test1805_kind_invariant_under_canonical_spellings(t *testing.T) {
 
 // TEST1820: A `?`-valued cap-tag scores 0. Same as missing.
 func Test1820_specificity_question_is_zero(t *testing.T) {
-	bare, err := NewCapUrnFromString("cap:")
+	bare, err := NewCapUrnFromString("cap:effect=none")
 	require.NoError(t, err)
 	assert.Equal(t, 0, bare.Specificity())
 
@@ -1928,13 +1910,13 @@ func Test1842_truth_table_full_cross_product(t *testing.T) {
 	}
 	for i, instForm := range forms {
 		for j, pattForm := range forms {
-			instStr := "cap:"
+			instStr := "cap:base"
 			if instForm != "" {
-				instStr = "cap:" + instForm
+				instStr = "cap:base;" + instForm
 			}
-			pattStr := "cap:"
+			pattStr := "cap:base"
 			if pattForm != "" {
-				pattStr = "cap:" + pattForm
+				pattStr = "cap:base;" + pattForm
 			}
 			inst, err := NewCapUrnFromString(instStr)
 			require.NoError(t, err)

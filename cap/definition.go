@@ -252,7 +252,7 @@ func (a *CapArg) GetCliFlag() *string {
 }
 
 // Resolve resolves the argument's media URN through the FabricRegistry.
-func (a *CapArg) Resolve(registry *media.FabricRegistry) (*media.ResolvedMediaSpec, error) {
+func (a *CapArg) Resolve(registry *media.FabricRegistry) (*media.ResolvedMediaDef, error) {
 	return media.ResolveMediaUrn(a.MediaUrn, registry)
 }
 
@@ -292,7 +292,7 @@ type CapOutput struct {
 }
 
 // Resolve resolves the output's media URN through the FabricRegistry.
-func (co *CapOutput) Resolve(registry *media.FabricRegistry) (*media.ResolvedMediaSpec, error) {
+func (co *CapOutput) Resolve(registry *media.FabricRegistry) (*media.ResolvedMediaDef, error) {
 	return media.ResolveMediaUrn(co.MediaUrn, registry)
 }
 
@@ -401,7 +401,7 @@ func NewMediaValidationAllowedValues(values []string) *media.MediaValidation {
 
 // Cap represents a formal cap definition.
 //
-// Caps do not carry inline media specs; every media URN is resolved
+// Caps do not carry inline media defs; every media URN is resolved
 // through the unified FabricRegistry.
 type Cap struct {
 	Urn            *urn.CapUrn          `json:"urn"`

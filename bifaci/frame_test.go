@@ -1946,7 +1946,7 @@ func Test526_relay_state_empty_payload(t *testing.T) {
 
 // TEST527: RelayNotify with large manifest roundtrips correctly
 func Test527_relay_notify_large_manifest(t *testing.T) {
-	largeManifest := `{"name":"Large","version":"1.0","description":"Large test","cap_groups":[{"name":"default","caps":[{"urn":"cap:in=media:;out=media:","title":"Identity","command":"identity"}`
+	largeManifest := `{"name":"Large","version":"1.0","description":"Large test","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity"}`
 	for i := 0; i < 99; i++ {
 		largeManifest += fmt.Sprintf(`,{"urn":"cap:in=\"media:void\";op%d;out=\"media:void\"","title":"Op%d","command":"op%d"}`, i, i, i)
 	}
@@ -1988,4 +1988,3 @@ func Test460_reorder_buffer_err_frame(t *testing.T) {
 	assert.Equal(t, FrameTypeErr, r[0].FrameType)
 	assert.Equal(t, uint64(1), r[0].Seq)
 }
-

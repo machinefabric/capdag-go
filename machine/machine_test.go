@@ -69,7 +69,7 @@ func foreachStep(mediaUrnStr string) *planner.StrandStep {
 		StepType:  planner.StepTypeForEach,
 		FromSpec:  u,
 		ToSpec:    u,
-		MediaSpec: u,
+		MediaDef: u,
 	}
 }
 
@@ -80,7 +80,7 @@ func collectStep(mediaUrnStr string) *planner.StrandStep {
 		StepType:  planner.StepTypeCollect,
 		FromSpec:  u,
 		ToSpec:    u,
-		MediaSpec: u,
+		MediaDef: u,
 	}
 }
 
@@ -104,12 +104,12 @@ func strandFromSteps(steps []*planner.StrandStep, description string) *planner.S
 			capStepCount++
 		}
 	}
-	sourceSpec := steps[0].FromSpec
-	targetSpec := steps[len(steps)-1].ToSpec
+	sourceMediaUrn := steps[0].FromSpec
+	targetMediaUrn := steps[len(steps)-1].ToSpec
 	return &planner.Strand{
 		Steps:        steps,
-		SourceSpec:   sourceSpec,
-		TargetSpec:   targetSpec,
+		SourceMediaUrn:   sourceMediaUrn,
+		TargetMediaUrn:   targetMediaUrn,
 		TotalSteps:   totalSteps,
 		CapStepCount: capStepCount,
 		Description:  description,
@@ -323,7 +323,7 @@ func Test1169_ForEachSetsIsLoop(t *testing.T) {
 			StepType:  planner.StepTypeForEach,
 			FromSpec:  mediaUrn("media:pdf"),
 			ToSpec:    mediaUrn("media:pdf"),
-			MediaSpec: mediaUrn("media:pdf"),
+			MediaDef: mediaUrn("media:pdf"),
 		},
 		capStep(
 			`cap:in=media:pdf;extract;out="media:txt;textable"`,
@@ -366,7 +366,7 @@ func Test1170_CollectIsElided(t *testing.T) {
 			StepType:  planner.StepTypeCollect,
 			FromSpec:  mediaUrn(`media:txt;textable`),
 			ToSpec:    mediaUrn(`media:txt;textable`),
-			MediaSpec: mediaUrn(`media:txt;textable`),
+			MediaDef: mediaUrn(`media:txt;textable`),
 		},
 	}
 	strand := strandFromSteps(steps, "extract then collect")

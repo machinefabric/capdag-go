@@ -16,7 +16,7 @@ func testRegistry(t *testing.T) *media.FabricRegistry {
 	registry, err := media.NewFabricRegistry()
 	require.NoError(t, err)
 	// Seed the baseline standard specs the cap-package tests resolve against.
-	for _, def := range []media.MediaSpecDef{
+	for _, def := range []media.MediaDef{
 		{Urn: "media:textable", MediaType: "text/plain", ProfileURI: media.ProfileStr},
 		{Urn: "media:record;textable", MediaType: "application/json", ProfileURI: media.ProfileObj},
 		{Urn: "media:json;record;textable", MediaType: "application/json", ProfileURI: media.ProfileObj},

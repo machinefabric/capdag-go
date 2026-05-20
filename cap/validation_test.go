@@ -68,7 +68,7 @@ func Test051_input_validation_success(t *testing.T) {
 	require.NoError(t, err)
 	// The unified registry resolves the cap's referenced media URNs
 	// at validation time; seed the spec the cap references.
-	registry.AddSpec(media.MediaSpecDef{
+	registry.AddSpec(media.MediaDef{
 		Urn:        standard.MediaString,
 		MediaType:  "text/plain",
 		Title:      "String",
@@ -105,7 +105,7 @@ func Test053_input_validation_wrong_type(t *testing.T) {
 
 	registry, err := media.NewFabricRegistry()
 	require.NoError(t, err)
-	registry.AddSpec((media.NewMediaSpecDefWithSchema(
+	registry.AddSpec((media.NewMediaDefWithSchema(
 		standard.MediaInteger,
 		"text/plain",
 		"https://capdag.com/schema/integer",

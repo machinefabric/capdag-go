@@ -57,8 +57,8 @@ type StepArgumentRequirements struct {
 
 // PathArgumentRequirements holds argument info for an entire path.
 type PathArgumentRequirements struct {
-	SourceSpec              string                      `json:"source_spec"`
-	TargetSpec              string                      `json:"target_spec"`
+	SourceMediaUrn          string                      `json:"source_media_urn"`
+	TargetMediaUrn          string                      `json:"target_media_urn"`
 	Steps                   []*StepArgumentRequirements `json:"steps"`
 	CanExecuteWithoutInput  bool                        `json:"can_execute_without_input"`
 }
@@ -143,9 +143,9 @@ func (b *MachinePlanBuilder) BuildPlanFromPath(
 		}
 	}
 
-	sourceSpecStr := path.SourceSpec.String()
+	sourceMediaUrnStr := path.SourceMediaUrn.String()
 	inputSlotID := "input_slot"
-	plan.AddNode(NewInputSlotNode(inputSlotID, "input", sourceSpecStr, inputCardinality))
+	plan.AddNode(NewInputSlotNode(inputSlotID, "input", sourceMediaUrnStr, inputCardinality))
 
 	prevNodeID := inputSlotID
 	capStepCount := 0
@@ -329,8 +329,8 @@ func (b *MachinePlanBuilder) BuildPlanFromPath(
 
 	// Metadata
 	plan.Metadata = map[string]any{
-		"source_spec": sourceSpecStr,
-		"target_spec": path.TargetSpec.String(),
+		"source_media_urn": sourceMediaUrnStr,
+		"target_media_urn": path.TargetMediaUrn.String(),
 	}
 
 	// Validate
@@ -412,8 +412,8 @@ func (b *MachinePlanBuilder) AnalyzePathArguments(
 	}
 
 	return &PathArgumentRequirements{
-		SourceSpec:             path.SourceSpec.String(),
-		TargetSpec:             path.TargetSpec.String(),
+		SourceMediaUrn:         path.SourceMediaUrn.String(),
+		TargetMediaUrn:         path.TargetMediaUrn.String(),
 		Steps:                  stepRequirements,
 		CanExecuteWithoutInput: canExec,
 	}, nil

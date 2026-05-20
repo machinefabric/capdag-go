@@ -29,9 +29,9 @@ type CapResult = cap.CapResult
 type CapResultKind = cap.CapResultKind
 
 // Media types
-type MediaSpecDef = media.MediaSpecDef
+type MediaDef = media.MediaDef
 type FabricRegistry = media.FabricRegistry
-type ResolvedMediaSpec = media.ResolvedMediaSpec
+type ResolvedMediaDef = media.ResolvedMediaDef
 
 // Bifaci (protocol) types - core frame types
 type Frame = bifaci.Frame

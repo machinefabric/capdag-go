@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TEST307: Test model_availability_urn builds valid cap URN with correct op and media specs
+// TEST307: Test model_availability_urn builds valid cap URN with correct op and media defs
 func Test307_model_availability_urn(t *testing.T) {
 	urnStr := ModelAvailabilityUrn()
 	assert.True(t, strings.Contains(urnStr, "model-availability"), "URN must have model-availability")
@@ -15,7 +15,7 @@ func Test307_model_availability_urn(t *testing.T) {
 	assert.True(t, strings.Contains(urnStr, "out=media:availability-output"), "output must be availability output")
 }
 
-// TEST308: Test model_path_urn builds valid cap URN with correct op and media specs
+// TEST308: Test model_path_urn builds valid cap URN with correct op and media defs
 func Test308_model_path_urn(t *testing.T) {
 	urnStr := ModelPathUrn()
 	assert.True(t, strings.Contains(urnStr, "model-path"), "URN must have model-path")

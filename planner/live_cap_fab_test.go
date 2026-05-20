@@ -81,7 +81,7 @@ func Test774_get_reachable_targets_finds_all_targets(t *testing.T) {
 
 	reaches := func(needle *urn.MediaUrn) bool {
 		for _, t := range targets {
-			if t.MediaSpec.IsEquivalent(needle) {
+			if t.MediaDef.IsEquivalent(needle) {
 				return true
 			}
 		}
@@ -137,7 +137,7 @@ func Test779_get_reachable_targets_respects_type_matching(t *testing.T) {
 
 	reaches := func(targets []ReachableTargetInfo, needle *urn.MediaUrn) bool {
 		for _, t := range targets {
-			if t.MediaSpec.IsEquivalent(needle) {
+			if t.MediaDef.IsEquivalent(needle) {
 				return true
 			}
 		}
@@ -281,9 +281,9 @@ func Test1111_foreach_for_user_provided_list_source(t *testing.T) {
 		"Should find path: ForEach → make_decision. User-provided list source media:list;textable;txt must be iterable. Found %d paths.",
 		len(paths))
 
-	// ForEach step media spec should be equivalent to source
+	// ForEach step media def should be equivalent to source
 	foreachStep := foundPath.Steps[0]
-	assert.True(t, foreachStep.MediaSpec.IsEquivalent(source), "ForEach MediaSpec should be equivalent to source")
+	assert.True(t, foreachStep.MediaDef.IsEquivalent(source), "ForEach MediaDef should be equivalent to source")
 }
 
 // TEST1112: Collect is not synthesized during path finding.
@@ -469,7 +469,7 @@ func Test1289_bfs_reachable_includes_source_roundtrip(t *testing.T) {
 
 	hasSelf := false
 	for _, tgt := range targets {
-		if tgt.MediaSpec.IsEquivalent(source) {
+		if tgt.MediaDef.IsEquivalent(source) {
 			hasSelf = true
 			break
 		}
@@ -560,7 +560,7 @@ func Test1292_bfs_iddfs_roundtrip_consistency(t *testing.T) {
 	bfsTargets := graph.GetReachableTargets(source, false, 5)
 	bfsHasSelf := false
 	for _, tgt := range bfsTargets {
-		if tgt.MediaSpec.IsEquivalent(source) {
+		if tgt.MediaDef.IsEquivalent(source) {
 			bfsHasSelf = true
 			break
 		}
@@ -627,11 +627,12 @@ func Test789_cap_from_json_has_valid_specs(t *testing.T) {
 
 // TEST790: Tests identity_urn is specific and doesn't match everything
 func Test790_identity_urn_is_specific(t *testing.T) {
-	// The identity CapUrn has wildcard in/out specs ("media:")
-	identityUrn := urn.NewCapUrn("media:", "media:", map[string]string{})
+	identityUrn, err := urn.NewCapUrnWithEffect("media:", "media:", string(urn.CapEffectNone), map[string]string{})
+	require.NoError(t, err)
 
 	assert.Equal(t, "media:", identityUrn.InSpec())
 	assert.Equal(t, "media:", identityUrn.OutSpec())
+	assert.Equal(t, urn.CapEffectNone, identityUrn.Effect())
 
 	// A specific cap should NOT be equivalent to identity
 	specificCap, err := urn.NewCapUrnFromString(`cap:in=media:pdf;disbind;out="media:disbound-page;textable"`)
@@ -660,7 +661,7 @@ func Test1150_add_cap_and_basic_traversal(t *testing.T) {
 
 	var found *ReachableTargetInfo
 	for i := range targets {
-		if targets[i].MediaSpec.IsEquivalent(extractedText) {
+		if targets[i].MediaDef.IsEquivalent(extractedText) {
 			found = &targets[i]
 			break
 		}

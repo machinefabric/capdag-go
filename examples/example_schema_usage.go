@@ -36,7 +36,7 @@ func main() {
 		"required": []interface{}{"name", "age"},
 	}
 
-	// Add custom media spec with schema
+	// Add custom media def with schema
 	// Add argument with schema using new CapArg architecture
 	cliFlag := "--user"
 	pos := 0
@@ -125,7 +125,7 @@ func main() {
 		"required": []interface{}{"status", "total"},
 	}
 
-	// Add custom media spec for output with schema
+	// Add custom media def for output with schema
 	output := capdag.NewCapOutput("media:query-result;textable;record", "Query results")
 	cap.SetOutput(output)
 
@@ -192,7 +192,7 @@ func main() {
 		"maxItems": 10,
 	}
 
-	// Add custom media spec for array with schema
+	// Add custom media def for array with schema
 	cliFlag2 := "--items"
 	pos2 := 1
 	itemsArg := capdag.CapArg{

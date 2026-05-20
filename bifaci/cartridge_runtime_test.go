@@ -19,7 +19,7 @@ import (
 	"github.com/machinefabric/capdag-go/urn"
 )
 
-const testManifest = `{"name":"TestCartridge","version":"1.0.0","channel":"release","description":"Test cartridge","cap_groups":[{"name":"default","caps":[{"urn":"cap:","title":"Identity","command":"identity"},{"urn":"cap:in=\"media:void\";test;out=\"media:void\"","title":"Test","command":"test"}]}]}`
+const testManifest = `{"name":"TestCartridge","version":"1.0.0","channel":"release","description":"Test cartridge","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity"},{"urn":"cap:in=\"media:void\";test;out=\"media:void\"","title":"Test","command":"test"}]}]}`
 
 // Mock emitter that captures emitted data for testing
 type mockStreamEmitter struct {
@@ -710,6 +710,24 @@ func createTestManifest(name, version, description string, caps []*cap.Cap) *Cap
 	capSlice := make([]cap.Cap, len(caps))
 	for i, cap := range caps {
 		capSlice[i] = *cap
+	}
+	identity, err := urn.NewCapUrnFromString(standard.CapIdentity)
+	if err != nil {
+		panic(fmt.Sprintf("Invalid CAP_IDENTITY constant: %v", err))
+	}
+	hasIdentity := false
+	for i := range capSlice {
+		if capSlice[i].Urn.ToString() == identity.ToString() {
+			hasIdentity = true
+			break
+		}
+	}
+	if !hasIdentity {
+		capSlice = append(capSlice, cap.Cap{
+			Urn:     identity,
+			Title:   "Identity",
+			Command: "identity",
+		})
 	}
 	return NewCapManifest(name, version, "release", nil, description, []CapGroup{DefaultGroup(capSlice)})
 }
@@ -3186,7 +3204,7 @@ func Test845_progress_sender_independent_of_emitter(t *testing.T) {
 
 // TEST1282: AdapterSelectionOp is auto-registered by CartridgeRuntime
 func Test1282_adapter_selection_auto_registered(t *testing.T) {
-	identity := createTestCap("cap:", "Identity", "identity", nil)
+	identity := createTestCap(standard.CapIdentity, "Identity", "identity", nil)
 	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{identity})
 	rt, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {
@@ -3200,7 +3218,7 @@ func Test1282_adapter_selection_auto_registered(t *testing.T) {
 
 // TEST1283: Custom adapter selection handler overrides the default
 func Test1283_adapter_selection_custom_override(t *testing.T) {
-	identity := createTestCap("cap:", "Identity", "identity", nil)
+	identity := createTestCap(standard.CapIdentity, "Identity", "identity", nil)
 	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{identity})
 	rt, err := NewCartridgeRuntimeWithManifest(manifest)
 	if err != nil {

@@ -56,7 +56,7 @@ func main() {
 		"required": []interface{}{"search_terms"},
 	}
 
-	// Add a custom media spec with the schema
+	// Add a custom media def with the schema
 	// Add schema-enabled argument using new CapArg architecture
 	cliFlag := "--query"
 	pos := 0
@@ -107,7 +107,7 @@ func main() {
 		"required": []interface{}{"documents", "total_found", "query_time"},
 	}
 
-	// Add custom media spec for output with schema
+	// Add custom media def for output with schema
 	// Set output
 	cap.SetOutput(capdag.NewCapOutput("media:query-results;textable;record", "Document search results"))
 

@@ -75,7 +75,7 @@ func NewSchemaValidatorWithResolver(resolver SchemaResolver) *SchemaValidator {
 }
 
 // ValidateArgumentWithSchema validates an argument value against a provided schema
-// The schema comes from the resolved media spec
+// The schema comes from the resolved media def
 func (sv *SchemaValidator) ValidateArgumentWithSchema(arg *CapArg, schema interface{}, value interface{}) error {
 	if schema == nil {
 		return nil // No schema to validate against
@@ -84,7 +84,7 @@ func (sv *SchemaValidator) ValidateArgumentWithSchema(arg *CapArg, schema interf
 }
 
 // ValidateOutputWithSchema validates output value against a provided schema
-// The schema comes from the resolved media spec
+// The schema comes from the resolved media def
 func (sv *SchemaValidator) ValidateOutputWithSchema(output *CapOutput, schema interface{}, value interface{}) error {
 	if schema == nil {
 		return nil // No schema to validate against
@@ -92,7 +92,7 @@ func (sv *SchemaValidator) ValidateOutputWithSchema(output *CapOutput, schema in
 	return sv.validateValueAgainstSchema("output", value, schema, "output")
 }
 
-// ValidateArguments validates all arguments for a capability using media specs
+// ValidateArguments validates all arguments for a capability using media defs
 func (sv *SchemaValidator) ValidateArguments(cap *Cap, arguments []interface{}, namedArgs map[string]interface{}, registry *media.FabricRegistry) error {
 	args := cap.GetArgs()
 	if len(args) == 0 {

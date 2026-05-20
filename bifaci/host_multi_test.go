@@ -7,11 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/machinefabric/capdag-go/standard"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-const testHostManifest = `{"name":"Test","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:in=media:;out=media:","title":"in-media-out-media","command":"in-media-out-media"}]}]}`
+const testHostManifest = `{"name":"Test","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"}]}]}`
 
 // simulateCartridge runs a fake cartridge: handshake + handler on the cartridge side of a pipe.
 // handler receives the FrameReader/FrameWriter after handshake and can read/write frames.
@@ -98,7 +99,7 @@ func Test415_req_triggers_spawn(t *testing.T) {
 
 // TEST416: Attach cartridge performs HELLO handshake, extracts manifest, updates capabilities
 func Test416_attach_cartridge_handshake(t *testing.T) {
-	manifest := `{"name":"Test","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:in=media:;out=media:","title":"in-media-out-media","command":"in-media-out-media"}]}]}`
+	manifest := `{"name":"Test","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"}]}]}`
 
 	hostRead, cartridgeWrite := net.Pipe()
 	cartridgeRead, hostWrite := net.Pipe()
@@ -121,14 +122,14 @@ func Test416_attach_cartridge_handshake(t *testing.T) {
 
 	host.mu.Lock()
 	assert.True(t, host.cartridges[0].running, "attached cartridge must be running")
-	// `cap:in=media:;out=media:` canonicalizes to bare identity `cap:`
+	// `cap:in=media:;out=media:;effect=none` canonicalizes to `cap:effect=none`
 	// (in/out at top of order, no y-tags).
-	assert.Equal(t, []string{"cap:"}, host.cartridges[0].caps)
+	assert.Equal(t, []string{standard.CapIdentity}, host.cartridges[0].caps)
 	host.mu.Unlock()
 
 	caps := host.Capabilities()
 	assert.NotNil(t, caps, "running cartridge must produce capabilities")
-	assert.Contains(t, string(caps), `"cap:"`)
+	assert.Contains(t, string(caps), `"`+standard.CapIdentity+`"`)
 
 	// Clean up
 	hostRead.Close()

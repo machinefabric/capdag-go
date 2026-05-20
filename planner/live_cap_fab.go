@@ -82,7 +82,7 @@ type StrandStep struct {
 	CapUrnVal        *urn.CapUrn
 	StepTitle        string
 	SpecificityVal   int
-	MediaSpec        *urn.MediaUrn
+	MediaDef        *urn.MediaUrn
 	InputIsSequence  bool
 	OutputIsSequence bool
 }
@@ -124,8 +124,8 @@ func (s *StrandStep) IsCap() bool {
 // Strand contains information about a complete capability chain path.
 type Strand struct {
 	Steps        []*StrandStep
-	SourceSpec   *urn.MediaUrn
-	TargetSpec   *urn.MediaUrn
+	SourceMediaUrn *urn.MediaUrn
+	TargetMediaUrn *urn.MediaUrn
 	TotalSteps   int
 	CapStepCount int
 	Description  string
@@ -133,7 +133,7 @@ type Strand struct {
 
 // ReachableTargetInfo contains information about a reachable target.
 type ReachableTargetInfo struct {
-	MediaSpec     *urn.MediaUrn
+	MediaDef     *urn.MediaUrn
 	DisplayName   string
 	MinPathLength int
 	PathCount     int
@@ -378,7 +378,7 @@ func (g *LiveCapFab) GetReachableTargets(source *urn.MediaUrn, isSequence bool, 
 			}
 		} else {
 			visited[key] = &ReachableTargetInfo{
-				MediaSpec:     item.urn,
+				MediaDef:     item.urn,
 				DisplayName:   key,
 				MinPathLength: item.depth,
 				PathCount:     1,
@@ -517,7 +517,7 @@ func (g *LiveCapFab) FindPathsStreaming(
 }
 
 // iddfsFind performs depth-limited DFS from current toward target.
-// originalSource is the root source used to construct Strand.SourceSpec.
+// originalSource is the root source used to construct Strand.SourceMediaUrn.
 func (g *LiveCapFab) iddfsFind(
 	originalSource *urn.MediaUrn,
 	current *urn.MediaUrn,
@@ -560,8 +560,8 @@ func (g *LiveCapFab) iddfsFind(
 				}
 				*results = append(*results, &Strand{
 					Steps:        steps,
-					SourceSpec:   originalSource,
-					TargetSpec:   target,
+					SourceMediaUrn: originalSource,
+					TargetMediaUrn: target,
 					TotalSteps:   len(steps),
 					CapStepCount: capCount,
 					Description:  strings.Join(titles, " → "),
@@ -623,14 +623,14 @@ func edgeToStep(edge *LiveMachinePlanEdge) *StrandStep {
 			StepType:  StepTypeForEach,
 			FromSpec:  edge.FromSpec,
 			ToSpec:    edge.ToSpec,
-			MediaSpec: edge.FromSpec,
+			MediaDef: edge.FromSpec,
 		}
 	case EdgeTypeCollect:
 		return &StrandStep{
 			StepType:  StepTypeCollect,
 			FromSpec:  edge.FromSpec,
 			ToSpec:    edge.ToSpec,
-			MediaSpec: edge.FromSpec,
+			MediaDef: edge.FromSpec,
 		}
 	}
 	return nil

@@ -22,7 +22,7 @@ func createTestRegistry(t *testing.T) *media.FabricRegistry {
 	t.Helper()
 	registry, err := media.NewFabricRegistry()
 	require.NoError(t, err)
-	for _, def := range []media.MediaSpecDef{
+	for _, def := range []media.MediaDef{
 		{Urn: "media:textable", MediaType: "text/plain", ProfileURI: media.ProfileStr},
 		{Urn: "media:record;textable", MediaType: "application/json", ProfileURI: media.ProfileObj},
 		{Urn: "media:json;record;textable", MediaType: "application/json", ProfileURI: media.ProfileObj},
@@ -127,7 +127,7 @@ func TestIntegrationCapValidation(t *testing.T) {
 	capDef := cap.NewCap(urn, "Data Processor", "process-data")
 
 	// Seed the registry for resolution
-	for _, def := range []media.MediaSpecDef{
+	for _, def := range []media.MediaDef{
 		{Urn: standard.MediaJSON, MediaType: "application/json", ProfileURI: media.ProfileObj},
 		{Urn: standard.MediaString, MediaType: "text/plain", ProfileURI: media.ProfileStr},
 	} {
@@ -164,7 +164,7 @@ func TestIntegrationMediaUrnResolution(t *testing.T) {
 	registry := createTestRegistry(t)
 
 	// Seed registry with the specs we resolve below.
-	for _, def := range []media.MediaSpecDef{
+	for _, def := range []media.MediaDef{
 		{Urn: standard.MediaString, MediaType: "text/plain", ProfileURI: media.ProfileStr},
 		{Urn: standard.MediaJSON, MediaType: "application/json", ProfileURI: media.ProfileObj},
 		{Urn: standard.MediaIdentity, MediaType: "application/octet-stream"},
@@ -195,7 +195,7 @@ func TestIntegrationMediaUrnResolution(t *testing.T) {
 	assert.True(t, resolved.IsBinary())
 
 	// Test custom media URN resolution
-	registry.AddSpec(media.MediaSpecDef{
+	registry.AddSpec(media.MediaDef{
 		Urn:        "media:custom;textable",
 		MediaType:  "text/html",
 		ProfileURI: "https://example.com/schema/html",
@@ -211,21 +211,21 @@ func TestIntegrationMediaUrnResolution(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// TestIntegrationMediaSpecDefConstruction verifies media.MediaSpecDef construction
-func TestIntegrationMediaSpecDefConstruction(t *testing.T) {
+// TestIntegrationMediaDefConstruction verifies media.MediaDef construction
+func TestIntegrationMediaDefConstruction(t *testing.T) {
 	// Test basic construction
-	def := media.NewMediaSpecDef("media:test;textable", "text/plain", "https://capdag.com/schema/str")
+	def := media.NewMediaDef("media:test;textable", "text/plain", "https://capdag.com/schema/str")
 	assert.Equal(t, "media:test;textable", def.Urn)
 	assert.Equal(t, "text/plain", def.MediaType)
 	assert.Equal(t, "https://capdag.com/schema/str", def.ProfileURI)
 
 	// Test with title
-	defWithTitle := media.NewMediaSpecDefWithTitle("media:test;textable", "text/plain", "https://example.com/schema", "Test Title")
+	defWithTitle := media.NewMediaDefWithTitle("media:test;textable", "text/plain", "https://example.com/schema", "Test Title")
 	assert.Equal(t, "Test Title", defWithTitle.Title)
 
 	// Test object form with schema
 	schema := map[string]interface{}{"type": "object"}
-	schemaDef := media.NewMediaSpecDefWithSchema("media:test;json", "application/json", "https://example.com/schema", schema)
+	schemaDef := media.NewMediaDefWithSchema("media:test;json", "application/json", "https://example.com/schema", schema)
 	assert.NotNil(t, schemaDef.Schema)
 }
 
@@ -331,7 +331,7 @@ func Test285_RequestResponseSimple(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, FrameTypeReq, frame.FrameType)
 		assert.NotNil(t, frame.Cap)
-		assert.Equal(t, "cap:in=media:;out=media:", *frame.Cap)
+		assert.Equal(t, "cap:echo", *frame.Cap)
 		assert.Equal(t, []byte("hello"), frame.Payload)
 
 		// Send response
@@ -352,7 +352,7 @@ func Test285_RequestResponseSimple(t *testing.T) {
 
 	// Send request
 	requestID := NewMessageIdRandom()
-	request := NewReq(requestID, "cap:in=media:;out=media:", []byte("hello"), "application/json")
+	request := NewReq(requestID, "cap:echo", []byte("hello"), "application/json")
 	err = writer.WriteFrame(request)
 	require.NoError(t, err)
 

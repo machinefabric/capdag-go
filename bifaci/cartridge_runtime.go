@@ -2409,9 +2409,12 @@ func (pr *CartridgeRuntime) extractArgValue(argDef *cap.CapArg, cliArgs []string
 	// would produce. Composite defaults (array, object) ARE JSON
 	// on the wire by design and pass through unchanged.
 	if argDef.DefaultValue != nil {
-		raw := []byte(argDef.DefaultValue)
-		// `json.RawMessage` carries the registry's JSON encoding
-		// verbatim. Peek the first non-whitespace byte to dispatch.
+		raw, err := json.Marshal(argDef.DefaultValue)
+		if err != nil {
+			return nil, false, fmt.Errorf("failed to encode default value as JSON: %w", err)
+		}
+		// Peek the first non-whitespace byte of the canonical JSON
+		// encoding to dispatch to the wire form.
 		// We also trim trailing whitespace so a number/bool default
 		// with stray formatting becomes a clean lexical token on
 		// the wire.

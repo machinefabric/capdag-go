@@ -87,21 +87,21 @@ This catalog lists all tests in the Go codebase.
 | test077 | `Test077_serde_roundtrip` | TEST077: Test serde roundtrip serializes to JSON string and deserializes back correctly | urn/media_urn_test.go:349 |
 | test078 | `Test078_object_does_not_conform_to_string` | TEST078: conforms_to behavior between MEDIA_OBJECT and MEDIA_STRING | urn/media_urn_test.go:366 |
 | test088 | `Test088_resolve_seeded_spec` | TEST088: Resolving a media URN seeded into the registry returns the seeded spec verbatim. A regression in the registry-resolution path would surface as a missing or empty result here, since there is no local-override fallback to mask it. Mirrors Rust test088. | media/spec_test.go:45 |
-| test089 | `Test089_resolve_seeded_record_spec` | TEST089: A seeded record-shaped media spec carries its schema and profile_uri intact through resolution. Catches a regression that dropped optional fields when copying into ResolvedMediaSpec. Mirrors Rust test089. | media/spec_test.go:62 |
+| test089 | `Test089_resolve_seeded_record_spec` | TEST089: A seeded record-shaped media def carries its schema and profile_uri intact through resolution. Catches a regression that dropped optional fields when copying into ResolvedMediaDef. Mirrors Rust test089. | media/spec_test.go:62 |
 | test093 | `Test093_resolve_unresolvable_fails_hard` | TEST093: Test resolving unknown media URN fails with UnresolvableMediaUrn error | media/spec_test.go:92 |
-| test095 | `Test095_media_spec_def_serialize` | TEST095: Test MediaSpecDef serializes with required fields and skips None fields | media/spec_test.go:109 |
-| test096 | `Test096_media_spec_def_deserialize` | TEST096: Test deserializing MediaSpecDef from JSON object | media/spec_test.go:135 |
+| test095 | `Test095_media_def_def_serialize` | TEST095: Test MediaDef serializes with required fields and skips None fields | media/spec_test.go:109 |
+| test096 | `Test096_media_def_def_deserialize` | TEST096: Test deserializing MediaDef from JSON object | media/spec_test.go:135 |
 | test097 | `Test097_validate_no_duplicate_urns_catches_duplicates` | TEST097: Test duplicate URN validation catches duplicates | media/spec_test.go:151 |
 | test098 | `Test098_validate_no_duplicate_urns_passes_for_unique` | TEST098: Test duplicate URN validation passes for unique URNs | media/spec_test.go:163 |
-| test099 | `Test099_resolved_is_binary` | TEST099: Test ResolvedMediaSpec is_binary returns true when textable tag is absent | media/spec_test.go:177 |
-| test100 | `Test100_resolved_is_map` | TEST100: Test ResolvedMediaSpec is_record returns true when record marker is present | media/spec_test.go:195 |
-| test101 | `Test101_resolved_is_scalar` | TEST101: Test ResolvedMediaSpec is_scalar returns true when list marker is absent | media/spec_test.go:215 |
-| test102 | `Test102_resolved_is_list` | TEST102: Test ResolvedMediaSpec is_list returns true when list marker is present | media/spec_test.go:233 |
-| test103 | `Test103_resolved_is_json` | TEST103: Test ResolvedMediaSpec is_json returns true when json tag is present | media/spec_test.go:251 |
-| test104 | `Test104_resolved_is_text` | TEST104: Test ResolvedMediaSpec is_text returns true when textable tag is present | media/spec_test.go:269 |
-| test105 | `Test105_metadata_propagation` | TEST105: Test metadata propagates from media spec def to resolved media spec | media/spec_test.go:291 |
-| test106 | `Test106_metadata_with_validation` | TEST106: Test metadata and validation can coexist in media spec definition | media/spec_test.go:319 |
-| test107 | `Test107_extensions_propagation` | TEST107: Test extensions field propagates from media spec def to resolved | media/spec_test.go:362 |
+| test099 | `Test099_resolved_is_binary` | TEST099: Test ResolvedMediaDef is_binary returns true when textable tag is absent | media/spec_test.go:177 |
+| test100 | `Test100_resolved_is_map` | TEST100: Test ResolvedMediaDef is_record returns true when record marker is present | media/spec_test.go:195 |
+| test101 | `Test101_resolved_is_scalar` | TEST101: Test ResolvedMediaDef is_scalar returns true when list marker is absent | media/spec_test.go:215 |
+| test102 | `Test102_resolved_is_list` | TEST102: Test ResolvedMediaDef is_list returns true when list marker is present | media/spec_test.go:233 |
+| test103 | `Test103_resolved_is_json` | TEST103: Test ResolvedMediaDef is_json returns true when json tag is present | media/spec_test.go:251 |
+| test104 | `Test104_resolved_is_text` | TEST104: Test ResolvedMediaDef is_text returns true when textable tag is present | media/spec_test.go:269 |
+| test105 | `Test105_metadata_propagation` | TEST105: Test metadata propagates from media def def to resolved media def | media/spec_test.go:291 |
+| test106 | `Test106_metadata_with_validation` | TEST106: Test metadata and validation can coexist in media definition | media/spec_test.go:319 |
+| test107 | `Test107_extensions_propagation` | TEST107: Test extensions field propagates from media def def to resolved | media/spec_test.go:362 |
 | test108 | `Test108_cap_creation` | TEST108: Test creating new cap with URN, title, and command verifies correct initialization | cap/definition_test.go:23 |
 | test109 | `Test109_cap_with_metadata` | TEST109: Test creating cap with metadata initializes and retrieves metadata correctly | cap/definition_test.go:42 |
 | test110 | `Test110_cap_matching` | TEST110: Test cap matching with subset semantics for request fulfillment | cap/definition_test.go:68 |
@@ -134,7 +134,7 @@ This catalog lists all tests in the Go codebase.
 | test163 | `Test163_schema_validator_validate_argument_with_schema_success` | TEST163: Test argument schema validation succeeds with valid JSON matching schema | cap/schema_validation_test.go:14 |
 | test164 | `Test164_schema_validator_validate_argument_with_schema_failure` | TEST164: Test argument schema validation fails with JSON missing required fields | cap/schema_validation_test.go:53 |
 | test165 | `Test165_schema_validator_validate_output_with_schema_success` | TEST165: Test output schema validation succeeds with valid JSON matching schema | cap/schema_validation_test.go:116 |
-| test166 | `Test166_schema_validator_skip_validation_without_schema` | TEST166: Test validation skipped when resolved media spec has no schema | cap/schema_validation_test.go:676 |
+| test166 | `Test166_schema_validator_skip_validation_without_schema` | TEST166: Test validation skipped when resolved media def has no schema | cap/schema_validation_test.go:676 |
 | test167 | `Test167_schema_validator_unresolvable_media_urn_fails_hard` | TEST167: Test validation fails hard when media URN cannot be resolved from any source | cap/schema_validation_test.go:701 |
 | test168 | `Test168_response_wrapper_from_json` | TEST168: Test ResponseWrapper from JSON deserializes to correct structured type | cap/response_test.go:22 |
 | test169 | `Test169_response_wrapper_as_int` | TEST169: Test ResponseWrapper converts to primitive types integer, float, boolean, string | cap/response_test.go:75 |
@@ -247,8 +247,8 @@ This catalog lists all tests in the Go codebase.
 | test304 | `Test304_media_availability_output_constant` | TEST304: Test MEDIA_AVAILABILITY_OUTPUT constant parses as valid media URN with correct tags | urn/media_urn_test.go:378 |
 | test305 | `Test305_media_path_output_constant` | TEST305: Test MEDIA_PATH_OUTPUT constant parses as valid media URN with correct tags | urn/media_urn_test.go:387 |
 | test306 | `Test306_availability_and_path_output_distinct` | TEST306: Test MEDIA_AVAILABILITY_OUTPUT and MEDIA_PATH_OUTPUT are distinct URNs | urn/media_urn_test.go:396 |
-| test307 | `Test307_model_availability_urn` | TEST307: Test model_availability_urn builds valid cap URN with correct op and media specs | standard/caps_test.go:11 |
-| test308 | `Test308_model_path_urn` | TEST308: Test model_path_urn builds valid cap URN with correct op and media specs | standard/caps_test.go:19 |
+| test307 | `Test307_model_availability_urn` | TEST307: Test model_availability_urn builds valid cap URN with correct op and media defs | standard/caps_test.go:11 |
+| test308 | `Test308_model_path_urn` | TEST308: Test model_path_urn builds valid cap URN with correct op and media defs | standard/caps_test.go:19 |
 | test309 | `Test309_model_availability_and_path_are_distinct` | TEST309: Test model_availability_urn and model_path_urn produce distinct URNs | standard/caps_test.go:27 |
 | test310 | `Test310_llm_generate_text_urn_shape` | TEST310: llm_generate_text_urn() produces a valid cap URN with textable in/out specs | standard/caps_test.go:35 |
 | test312 | `Test312_all_urn_builders_produce_valid_urns` | TEST312: Test all URN builders produce parseable cap URNs | standard/caps_test.go:46 |
@@ -472,7 +472,7 @@ This catalog lists all tests in the Go codebase.
 | test612 | `Test612_clear_cache` | TEST612: ClearCache empties all in-memory schemas | media/profile_test.go:82 |
 | test613 | `Test613_validate_cached` | TEST613: ValidateCached validates against seeded schemas | media/profile_test.go:90 |
 | test614 | `Test614_registry_creation` | TEST614: Verify registry creation succeeds and cache directory exists | media/spec_test.go:560 |
-| test616 | `Test616_stored_media_spec_to_def` | TEST616: Verify StoredMediaSpec converts to MediaSpecDef preserving all fields | media/spec_test.go:572 |
+| test616 | `Test616_stored_media_def_to_def` | TEST616: Verify StoredMediaDef converts to MediaDef preserving all fields | media/spec_test.go:572 |
 | test617 | `Test617_normalize_media_urn` | TEST617: Verify normalize_media_urn produces consistent non-empty results | media/spec_test.go:591 |
 | test618 | `Test618_registry_creation` | TEST618: A freshly constructed registry is operational and reports an empty cache. Schemas must be inserted explicitly — none are bundled. | media/profile_test.go:107 |
 | test619 | `Test619_fresh_registry_cache_is_empty` | TEST619: A freshly constructed registry has no cached schemas. The well-known profile URLs are not bundled into the library; callers must seed them. | media/profile_test.go:114 |
@@ -677,9 +677,9 @@ This catalog lists all tests in the Go codebase.
 | test887 | `Test887_no_duplicates_with_unique_caps` | TEST887: Tests duplicate detection passes for caps with unique URN combinations Verifies that checkForDuplicateCaps() correctly accepts caps with different op/in/out combinations | planner/plan_builder_test.go:196 |
 | test890 | `Test890_direction_semantic_matching` | TEST890: Semantic direction matching - generic provider matches specific request | urn/cap_urn_test.go:959 |
 | test891 | `Test891_direction_semantic_specificity` | TEST891: Semantic direction specificity — more constraints in either axis means a higher score under the truth-table-driven sum. media: (top, no tags) scores 0; each marker tag scores 2; each exact tag scores 3. | urn/cap_urn_test.go:1019 |
-| test892 | `Test892_extensions_serialization` | TEST892: Test extensions serializes/deserializes correctly in MediaSpecDef | media/spec_test.go:385 |
+| test892 | `Test892_extensions_serialization` | TEST892: Test extensions serializes/deserializes correctly in MediaDef | media/spec_test.go:385 |
 | test893 | `Test893_extensions_with_metadata_and_validation` | TEST893: Test extensions can coexist with metadata and validation | media/spec_test.go:410 |
-| test894 | `Test894_multiple_extensions` | TEST894: Test multiple extensions in a media spec | media/spec_test.go:444 |
+| test894 | `Test894_multiple_extensions` | TEST894: Test multiple extensions in a media def | media/spec_test.go:444 |
 | test920 | `Test920_single_cap_plan` | TEST920: SingleCap creates a valid plan with input_slot, cap node, and output node. | planner/plan_test.go:520 |
 | test921 | `Test921_linear_chain_plan` | TEST921: LinearChain creates a plan with correct nodes and edges in topological order. | planner/plan_test.go:530 |
 | test922 | `Test922_empty_plan` | TEST922: An empty MachinePlan is valid with zero nodes. | planner/plan_test.go:549 |
@@ -766,9 +766,9 @@ This catalog lists all tests in the Go codebase.
 | test1128 | `Test1128_cap_documentation_omitted_when_none` | TEST1128: When Documentation is nil, the serializer must omit the field entirely. There must be no "documentation":null — only absence. | cap/definition_test.go:555 |
 | test1129 | `Test1129_cap_documentation_parses_from_capfab_json` | TEST1129: A capfab-shaped JSON document with a documentation field must deserialize into a Cap with the body intact. | cap/definition_test.go:573 |
 | test1130 | `Test1130_cap_documentation_set_and_clear_lifecycle` | TEST1130: Documentation set/clear lifecycle must not cross-contaminate cap_description. | cap/definition_test.go:590 |
-| test1131 | `Test1131_media_documentation_propagates_through_resolve` | TEST1131: Documentation propagates from MediaSpecDef through ResolveMediaUrn into ResolvedMediaSpec. Verifies description and documentation remain distinct. | media/spec_test.go:601 |
-| test1132 | `Test1132_media_spec_def_documentation_round_trip` | TEST1132: MediaSpecDef serializes documentation only when present and round-trips losslessly. When nil, the field must be omitted entirely. | media/spec_test.go:626 |
-| test1133 | `Test1133_media_spec_def_documentation_lifecycle` | TEST1133: MediaSpecDef set/clear lifecycle for documentation. Setter and clearer must not cross-contaminate the description field. | media/spec_test.go:656 |
+| test1131 | `Test1131_media_documentation_propagates_through_resolve` | TEST1131: Documentation propagates from MediaDef through ResolveMediaUrn into ResolvedMediaDef. Verifies description and documentation remain distinct. | media/spec_test.go:601 |
+| test1132 | `Test1132_media_def_def_documentation_round_trip` | TEST1132: MediaDef serializes documentation only when present and round-trips losslessly. When nil, the field must be omitted entirely. | media/spec_test.go:626 |
+| test1133 | `Test1133_media_def_def_documentation_lifecycle` | TEST1133: MediaDef set/clear lifecycle for documentation. Setter and clearer must not cross-contaminate the description field. | media/spec_test.go:656 |
 | test1142 | `Test1142_resolved_graph_to_mermaid_renders_shapes_dedupes_edges_and_escapes` | TEST1142: ResolvedGraph.to_mermaid() renders node shapes, deduplicates edges, and escapes labels | orchestrator/orchestrator_test.go:68 |
 | test1143 | `Test1143_InputItemFromStringDistinguishesGlobDirectoryAndFile` | TEST1143: InputItem::from_string distinguishes glob patterns, directories, and files | input_resolver/types_test.go:11 |
 | test1144 | `Test1144_ContentStructureHelpersAndDisplay` | TEST1144: ContentStructure is_list/is_record helpers and Display implementation are correct | input_resolver/types_test.go:43 |
@@ -883,7 +883,7 @@ This catalog lists all tests in the Go codebase.
 | unnumbered | `TestCapRequestHandling` | Additional existing tests below (not part of TEST108-116 sequence) | cap/definition_test.go:450 |
 | unnumbered | `TestCapUrn_JSONSerialization` | JSON serialization test (not numbered in Rust) | urn/cap_urn_test.go:1455 |
 | unnumbered | `TestCapValidationCoordinator_EndToEnd` |  | cap/schema_validation_test.go:406 |
-| unnumbered | `TestCapWithMediaSpecs` |  | cap/definition_test.go:478 |
+| unnumbered | `TestCapWithMediaDefs` |  | cap/definition_test.go:478 |
 | unnumbered | `TestCartridgeAttachmentErrorDecodesProtoSnakeCaseStrings` | TestCartridgeAttachmentErrorDecodesProtoSnakeCaseStrings is the engine→Go-host (or Swift→Go-host) decode path: incoming JSON uses the snake_case wire format, and the Go side must resolve each string into the matching variant. CartridgeAttachmentErrorKind is just `type ... string`, so this test is also a check that the JSON unmarshaller doesn't normalise/lowercase/etc the bytes behind our backs. | bifaci/relay_switch_test.go:924 |
 | unnumbered | `TestCartridgeAttachmentErrorJSONRoundTrips` | TestCartridgeAttachmentErrorJSONRoundTrips verifies a CartridgeAttachmentError marshals to JSON and unmarshals back without changing the kind for every variant. RelayNotify wire payload is JSON; a single-variant regression breaks the entire per-master parse. | bifaci/relay_switch_test.go:876 |
 | unnumbered | `TestCartridgeAttachmentErrorKindMatchesProtoSnakeCase` | TestCartridgeAttachmentErrorKindMatchesProtoSnakeCase pins every variant's string value against its proto snake_case name. New variants must be added here AND in the Rust / Swift / proto sides. | bifaci/relay_switch_test.go:848 |
@@ -902,7 +902,7 @@ This catalog lists all tests in the Go codebase.
 | unnumbered | `TestInputValidator_WithSchemaValidation` |  | cap/schema_validation_test.go:292 |
 | unnumbered | `TestIntegrationCapValidation` | TestIntegrationCapValidation verifies cap schema validation | bifaci/integration_test.go:119 |
 | unnumbered | `TestIntegrationCaseInsensitiveUrns` | TestIntegrationCaseInsensitiveUrns verifies URNs are case-insensitive | bifaci/integration_test.go:75 |
-| unnumbered | `TestIntegrationMediaSpecDefConstruction` | TestIntegrationMediaSpecDefConstruction verifies media.MediaSpecDef construction | bifaci/integration_test.go:215 |
+| unnumbered | `TestIntegrationMediaDefConstruction` | TestIntegrationMediaDefConstruction verifies media.MediaDef construction | bifaci/integration_test.go:215 |
 | unnumbered | `TestIntegrationMediaUrnResolution` | TestIntegrationMediaUrnResolution verifies media URN resolution | bifaci/integration_test.go:163 |
 | unnumbered | `TestIntegrationVersionlessCapCreation` | TestIntegrationVersionlessCapCreation verifies caps can be created without version fields | bifaci/integration_test.go:47 |
 | unnumbered | `TestLogFramesDuringRequest` | Mirror-specific coverage: Test LOG frames sent during a request are transparently skipped by host | bifaci/integration_test.go:562 |
@@ -951,7 +951,7 @@ The following tests are cataloged but do not currently participate in numeric te
 - `TestCapRequestHandling` — cap/definition_test.go:450
 - `TestCapUrn_JSONSerialization` — urn/cap_urn_test.go:1455
 - `TestCapValidationCoordinator_EndToEnd` — cap/schema_validation_test.go:406
-- `TestCapWithMediaSpecs` — cap/definition_test.go:478
+- `TestCapWithMediaDefs` — cap/definition_test.go:478
 - `TestCartridgeAttachmentErrorDecodesProtoSnakeCaseStrings` — bifaci/relay_switch_test.go:924
 - `TestCartridgeAttachmentErrorJSONRoundTrips` — bifaci/relay_switch_test.go:876
 - `TestCartridgeAttachmentErrorKindMatchesProtoSnakeCase` — bifaci/relay_switch_test.go:848
@@ -970,7 +970,7 @@ The following tests are cataloged but do not currently participate in numeric te
 - `TestInputValidator_WithSchemaValidation` — cap/schema_validation_test.go:292
 - `TestIntegrationCapValidation` — bifaci/integration_test.go:119
 - `TestIntegrationCaseInsensitiveUrns` — bifaci/integration_test.go:75
-- `TestIntegrationMediaSpecDefConstruction` — bifaci/integration_test.go:215
+- `TestIntegrationMediaDefConstruction` — bifaci/integration_test.go:215
 - `TestIntegrationMediaUrnResolution` — bifaci/integration_test.go:163
 - `TestIntegrationVersionlessCapCreation` — bifaci/integration_test.go:47
 - `TestLogFramesDuringRequest` — bifaci/integration_test.go:562

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/machinefabric/capdag-go/standard"
 )
 
 // testManifestWithCaps builds a RelayNotify-shaped manifest JSON map
@@ -24,6 +26,11 @@ import (
 // dedup-by-(id, version) rule, identical ids would silently collapse
 // into a single entry, so each manifest must carry its own.
 var testManifestCounter int64
+
+const (
+	testCapIdentity = standard.CapIdentity
+	testCapEcho     = "cap:echo"
+)
 
 func testManifestWithCaps(capURNs []string) map[string]interface{} {
 	id := atomic.AddInt64(&testManifestCounter, 1)
@@ -82,7 +89,7 @@ func Test426_relay_switch_single_master_req_response(t *testing.T) {
 		writer := NewFrameWriter(slaveWrite)
 
 		// Send initial RelayNotify
-		manifest := testManifestWithCaps([]string{`cap:in=media:;out=media:`})
+		manifest := testManifestWithCaps([]string{testCapEcho})
 		manifestJSON, _ := json.Marshal(manifest)
 		limits := DefaultLimits()
 		if err := SendNotify(writer, manifestJSON, limits); err != nil {
@@ -110,7 +117,7 @@ func Test426_relay_switch_single_master_req_response(t *testing.T) {
 	// Send REQ
 	req := NewReq(
 		NewMessageIdFromUint(1),
-		`cap:in=media:;out=media:`,
+		testCapEcho,
 		[]byte{1, 2, 3},
 		"text/plain",
 	)
@@ -146,7 +153,7 @@ func Test427_relay_switch_multi_master_cap_routing(t *testing.T) {
 		reader := NewFrameReader(slaveRead1)
 		writer := NewFrameWriter(slaveWrite1)
 
-		manifest := testManifestWithCaps([]string{`cap:in=media:;out=media:`})
+		manifest := testManifestWithCaps([]string{testCapEcho})
 		manifestJSON, _ := json.Marshal(manifest)
 		SendNotify(writer, manifestJSON, DefaultLimits())
 
@@ -194,7 +201,7 @@ func Test427_relay_switch_multi_master_cap_routing(t *testing.T) {
 	// Send REQ for echo
 	req1 := NewReq(
 		NewMessageIdFromUint(1),
-		`cap:in=media:;out=media:`,
+		testCapEcho,
 		[]byte{},
 		"text/plain",
 	)
@@ -227,7 +234,7 @@ func Test428_relay_switch_unknown_cap_returns_error(t *testing.T) {
 		reader := NewFrameReader(slaveRead)
 		writer := NewFrameWriter(slaveWrite)
 
-		manifest := testManifestWithCaps([]string{`cap:in=media:;out=media:`})
+		manifest := testManifestWithCaps([]string{testCapEcho})
 		manifestJSON, _ := json.Marshal(manifest)
 		SendNotify(writer, manifestJSON, DefaultLimits())
 
@@ -271,7 +278,7 @@ func Test429_relay_switch_find_master_for_cap(t *testing.T) {
 	go func() {
 		reader := NewFrameReader(slaveRead1)
 		writer := NewFrameWriter(slaveWrite1)
-		manifest := testManifestWithCaps([]string{`cap:in=media:;out=media:`})
+		manifest := testManifestWithCaps([]string{testCapEcho})
 		manifestJSON, _ := json.Marshal(manifest)
 		SendNotify(writer, manifestJSON, DefaultLimits())
 		for {
@@ -306,7 +313,7 @@ func Test429_relay_switch_find_master_for_cap(t *testing.T) {
 	defer sw.mu.Unlock()
 
 	// Verify routing
-	idx1, err := sw.findMasterForCap(`cap:in=media:;out=media:`, nil)
+	idx1, err := sw.findMasterForCap(testCapEcho, nil)
 	if err != nil || idx1 != 0 {
 		t.Errorf("Expected master 0 for echo, got %d (err=%v)", idx1, err)
 	}
@@ -354,7 +361,7 @@ func Test430_relay_switch_tie_breaking(t *testing.T) {
 	engineRead2, slaveWrite2 := net.Pipe()
 	slaveRead2, engineWrite2 := net.Pipe()
 
-	sameCap := `cap:in=media:;out=media:`
+	sameCap := testCapEcho
 
 	// Slave 1 responds with [1]
 	go func() {
@@ -519,7 +526,7 @@ func Test433_relay_switch_capability_aggregation_deduplicates(t *testing.T) {
 		reader := NewFrameReader(slaveRead1)
 		writer := NewFrameWriter(slaveWrite1)
 		manifest := testManifestWithCaps([]string{
-			`cap:in=media:;out=media:`,
+			testCapEcho,
 			`cap:in="media:void";double;out="media:void"`,
 		})
 		manifestJSON, _ := json.Marshal(manifest)
@@ -535,7 +542,7 @@ func Test433_relay_switch_capability_aggregation_deduplicates(t *testing.T) {
 		reader := NewFrameReader(slaveRead2)
 		writer := NewFrameWriter(slaveWrite2)
 		manifest := testManifestWithCaps([]string{
-			`cap:in=media:;out=media:`, // Duplicate
+			testCapEcho, // Duplicate
 			`cap:in="media:void";triple;out="media:void"`,
 		})
 		manifestJSON, _ := json.Marshal(manifest)
@@ -709,9 +716,9 @@ func Test437_preferred_cap_routes_to_generic(t *testing.T) {
 		}()
 	}
 	// Master 0 has identity + generic cap
-	spawnSlave(slaveRead0, slaveWrite0, []string{`cap:in=media:;out=media:`, genericCap})
+	spawnSlave(slaveRead0, slaveWrite0, []string{testCapIdentity, genericCap})
 	// Master 1 has identity + specific cap
-	spawnSlave(slaveRead1, slaveWrite1, []string{`cap:in=media:;out=media:`, specificCap})
+	spawnSlave(slaveRead1, slaveWrite1, []string{testCapIdentity, specificCap})
 
 	sw, err := NewRelaySwitch([]SocketPair{
 		{ID: "test-master-14", Read: engineRead0, Write: engineWrite0},
@@ -756,7 +763,7 @@ func Test438_preferred_cap_falls_back_when_not_comparable(t *testing.T) {
 	go func() {
 		reader := NewFrameReader(slaveRead)
 		writer := NewFrameWriter(slaveWrite)
-		manifest := testManifestWithCaps([]string{`cap:in=media:;out=media:`, registered})
+		manifest := testManifestWithCaps([]string{testCapIdentity, registered})
 		manifestJSON, _ := json.Marshal(manifest)
 		SendNotify(writer, manifestJSON, DefaultLimits())
 		for {
@@ -796,7 +803,7 @@ func Test439_generic_provider_can_dispatch_specific_request(t *testing.T) {
 	go func() {
 		reader := NewFrameReader(slaveRead)
 		writer := NewFrameWriter(slaveWrite)
-		manifest := testManifestWithCaps([]string{`cap:in=media:;out=media:`, genericCap})
+		manifest := testManifestWithCaps([]string{testCapIdentity, genericCap})
 		manifestJSON, _ := json.Marshal(manifest)
 		SendNotify(writer, manifestJSON, DefaultLimits())
 		for {
@@ -965,7 +972,7 @@ func TestReattachByIDPreservesSlotIndex(t *testing.T) {
 	// Slave 1: send RelayNotify and stay alive until pipe closes.
 	go func() {
 		writer := NewFrameWriter(slaveWrite)
-		manifest := testManifestWithCaps([]string{`cap:in=media:;out=media:`})
+		manifest := testManifestWithCaps([]string{testCapIdentity})
 		manifestJSON, _ := json.Marshal(manifest)
 		limits := DefaultLimits()
 		if err := SendNotify(writer, manifestJSON, limits); err != nil {
@@ -1011,7 +1018,7 @@ func TestReattachByIDPreservesSlotIndex(t *testing.T) {
 
 	go func() {
 		writer := NewFrameWriter(slaveWrite2)
-		manifest := testManifestWithCaps([]string{`cap:in=media:;out=media:`})
+		manifest := testManifestWithCaps([]string{testCapIdentity})
 		manifestJSON, _ := json.Marshal(manifest)
 		limits := DefaultLimits()
 		if err := SendNotify(writer, manifestJSON, limits); err != nil {
@@ -1050,7 +1057,7 @@ func TestAddMasterWithDuplicateHealthyIDErrors(t *testing.T) {
 
 	go func() {
 		writer := NewFrameWriter(slaveWrite)
-		manifest := testManifestWithCaps([]string{`cap:in=media:;out=media:`})
+		manifest := testManifestWithCaps([]string{testCapIdentity})
 		manifestJSON, _ := json.Marshal(manifest)
 		limits := DefaultLimits()
 		if err := SendNotify(writer, manifestJSON, limits); err != nil {

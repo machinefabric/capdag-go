@@ -334,16 +334,16 @@ const MediaAdapterSelection = "media:adapter-selection;json;record"
 const MediaCapURN = "media:cap-urn;textable"
 
 // MediaMediaURN is the media URN for a canonical media URN string carried as data.
-// Consumed by cap:lookup-media-spec;fabric.
+// Consumed by cap:lookup-media-def;fabric.
 const MediaMediaURN = "media:media-urn;textable"
 
 // MediaCapDefinition is the media URN for the full flattened cap definition
 // produced by cap:lookup-cap;fabric.
 const MediaCapDefinition = "media:cap-definition;json;record;textable"
 
-// MediaMediaSpecDefinition is the media URN for the full media spec definition
-// produced by cap:lookup-media-spec;fabric.
-const MediaMediaSpecDefinition = "media:media-spec-definition;json;record;textable"
+// MediaMediaDefinition is the media URN for the full media definition
+// produced by cap:lookup-media-def;fabric.
+const MediaMediaDefinition = "media:media-definition;json;record;textable"
 
 // MediaCollectionList is the media URN for a list of collections
 const MediaCollectionList = "media:collection;list;record;textable"

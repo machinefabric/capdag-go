@@ -14,7 +14,7 @@ import (
 // Media URN resolution tests
 // -------------------------------------------------------------------------
 
-// Helper to create a test registry pre-seeded with the baseline media specs
+// Helper to create a test registry pre-seeded with the baseline media defs
 // Returns a FabricRegistry pre-seeded with the small set of
 // abstract value-type specs the bulk of the spec_test suite refers
 // to. Tests that exercise specific seeded-spec roundtrip semantics
@@ -28,7 +28,7 @@ func testRegistry(t *testing.T) *FabricRegistry {
 	t.Helper()
 	registry, err := NewFabricRegistry()
 	require.NoError(t, err, "Failed to create test registry")
-	for _, def := range []MediaSpecDef{
+	for _, def := range []MediaDef{
 		{Urn: "media:textable", MediaType: "text/plain", ProfileURI: "https://capdag.com/schema/string"},
 		{Urn: "media:record;textable", MediaType: "application/json", ProfileURI: "https://capdag.com/schema/object"},
 		{Urn: "media:", MediaType: "application/octet-stream"},
@@ -44,7 +44,7 @@ func testRegistry(t *testing.T) *FabricRegistry {
 // is no local-override fallback to mask it. Mirrors Rust test088.
 func Test088_resolve_seeded_spec(t *testing.T) {
 	registry := testRegistry(t)
-	registry.AddSpec(MediaSpecDef{
+	registry.AddSpec(MediaDef{
 		Urn:       "media:textable",
 		MediaType: "text/plain",
 		Title:     "Textable",
@@ -55,9 +55,9 @@ func Test088_resolve_seeded_spec(t *testing.T) {
 	assert.Empty(t, resolved.ProfileURI, "abstract value-type spec carries no profile_uri")
 }
 
-// TEST089: A seeded record-shaped media spec carries its schema and
+// TEST089: A seeded record-shaped media def carries its schema and
 // profile_uri intact through resolution. Catches a regression that
-// dropped optional fields when copying into ResolvedMediaSpec.
+// dropped optional fields when copying into ResolvedMediaDef.
 // Mirrors Rust test089.
 func Test089_resolve_seeded_record_spec(t *testing.T) {
 	registry := testRegistry(t)
@@ -65,7 +65,7 @@ func Test089_resolve_seeded_record_spec(t *testing.T) {
 		"type":       "object",
 		"properties": map[string]any{"name": map[string]any{"type": "string"}},
 	}
-	registry.AddSpec(MediaSpecDef{
+	registry.AddSpec(MediaDef{
 		Urn:        "media:json;output-spec;record",
 		MediaType:  "application/json",
 		Title:      "Output Spec",
@@ -80,18 +80,18 @@ func Test089_resolve_seeded_record_spec(t *testing.T) {
 }
 
 // TESTs 090-092, 094 (deleted): exercised the legacy "local
-// `media_specs` overrides registry" path. The unified registry is
-// the only source of media specs in the new regime — there is no
+// `media_defs` overrides registry" path. The unified registry is
+// the only source of media defs in the new regime — there is no
 // override layer to test. The seeded-spec roundtrip property is
 // already covered by Test088 (above) and Test089 in the
-// MediaSpecDef block below. Rust dropped these for the same
+// MediaDef block below. Rust dropped these for the same
 // reason; this deletion keeps the Go mirror in parity with the
 // Rust reference and the Python mirror.
 
 // TEST093: Test resolving unknown media URN fails with UnresolvableMediaUrn error
 func Test093_resolve_unresolvable_fails_hard(t *testing.T) {
 	registry := testRegistry(t)
-	// URN not in local media_specs and not in registry - FAIL HARD
+	// URN not in local media_defs and not in registry - FAIL HARD
 	_, err := ResolveMediaUrn("media:completely-unknown-urn-not-in-registry", registry)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "media:completely-unknown-urn-not-in-registry")
@@ -102,12 +102,12 @@ func Test093_resolve_unresolvable_fails_hard(t *testing.T) {
 // 090-092 — the override semantics it tested no longer exist.
 
 // -------------------------------------------------------------------------
-// MediaSpecDef serialization tests
+// MediaDef serialization tests
 // -------------------------------------------------------------------------
 
-// TEST095: Test MediaSpecDef serializes with required fields and skips None fields
-func Test095_media_spec_def_serialize(t *testing.T) {
-	def := MediaSpecDef{
+// TEST095: Test MediaDef serializes with required fields and skips None fields
+func Test095_media_def_def_serialize(t *testing.T) {
+	def := MediaDef{
 		Urn:         "media:test;json",
 		MediaType:   "application/json",
 		Title:       "Test Media",
@@ -131,10 +131,10 @@ func Test095_media_spec_def_serialize(t *testing.T) {
 	// Description is empty string - may or may not be omitted depending on tag
 }
 
-// TEST096: Test deserializing MediaSpecDef from JSON object
-func Test096_media_spec_def_deserialize(t *testing.T) {
+// TEST096: Test deserializing MediaDef from JSON object
+func Test096_media_def_def_deserialize(t *testing.T) {
 	jsonStr := `{"urn":"media:test;json","media_type":"application/json","title":"Test"}`
-	var def MediaSpecDef
+	var def MediaDef
 	err := json.Unmarshal([]byte(jsonStr), &def)
 	require.NoError(t, err)
 	assert.Equal(t, "media:test;json", def.Urn)
@@ -149,11 +149,11 @@ func Test096_media_spec_def_deserialize(t *testing.T) {
 
 // TEST097: Test duplicate URN validation catches duplicates
 func Test097_validate_no_duplicate_urns_catches_duplicates(t *testing.T) {
-	mediaSpecs := []MediaSpecDef{
-		NewMediaSpecDefWithTitle("media:dup;json", "application/json", "", "First"),
-		NewMediaSpecDefWithTitle("media:dup;json", "application/json", "", "Second"), // duplicate
+	mediaDefs := []MediaDef{
+		NewMediaDefWithTitle("media:dup;json", "application/json", "", "First"),
+		NewMediaDefWithTitle("media:dup;json", "application/json", "", "Second"), // duplicate
 	}
-	err := ValidateNoMediaSpecDuplicates(mediaSpecs)
+	err := ValidateNoMediaDefDuplicates(mediaDefs)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "media:dup;json")
 	assert.Contains(t, err.Error(), "duplicate")
@@ -161,21 +161,21 @@ func Test097_validate_no_duplicate_urns_catches_duplicates(t *testing.T) {
 
 // TEST098: Test duplicate URN validation passes for unique URNs
 func Test098_validate_no_duplicate_urns_passes_for_unique(t *testing.T) {
-	mediaSpecs := []MediaSpecDef{
-		NewMediaSpecDefWithTitle("media:first;json", "application/json", "", "First"),
-		NewMediaSpecDefWithTitle("media:second;json", "application/json", "", "Second"),
+	mediaDefs := []MediaDef{
+		NewMediaDefWithTitle("media:first;json", "application/json", "", "First"),
+		NewMediaDefWithTitle("media:second;json", "application/json", "", "Second"),
 	}
-	err := ValidateNoMediaSpecDuplicates(mediaSpecs)
+	err := ValidateNoMediaDefDuplicates(mediaDefs)
 	require.NoError(t, err)
 }
 
 // -------------------------------------------------------------------------
-// ResolvedMediaSpec tests
+// ResolvedMediaDef tests
 // -------------------------------------------------------------------------
 
-// TEST099: Test ResolvedMediaSpec is_binary returns true when textable tag is absent
+// TEST099: Test ResolvedMediaDef is_binary returns true when textable tag is absent
 func Test099_resolved_is_binary(t *testing.T) {
-	resolved := &ResolvedMediaSpec{
+	resolved := &ResolvedMediaDef{
 		SpecID:      "media:",
 		MediaType:   "application/octet-stream",
 		ProfileURI:  "",
@@ -191,9 +191,9 @@ func Test099_resolved_is_binary(t *testing.T) {
 	assert.False(t, resolved.IsJSON())
 }
 
-// TEST100: Test ResolvedMediaSpec is_record returns true when record marker is present
+// TEST100: Test ResolvedMediaDef is_record returns true when record marker is present
 func Test100_resolved_is_map(t *testing.T) {
-	resolved := &ResolvedMediaSpec{
+	resolved := &ResolvedMediaDef{
 		SpecID:      standard.MediaJSON, // "media:json;record;textable"
 		MediaType:   "application/json",
 		ProfileURI:  "",
@@ -211,9 +211,9 @@ func Test100_resolved_is_map(t *testing.T) {
 	assert.False(t, resolved.IsList())
 }
 
-// TEST101: Test ResolvedMediaSpec is_scalar returns true when list marker is absent
+// TEST101: Test ResolvedMediaDef is_scalar returns true when list marker is absent
 func Test101_resolved_is_scalar(t *testing.T) {
-	resolved := &ResolvedMediaSpec{
+	resolved := &ResolvedMediaDef{
 		SpecID:      "media:textable",
 		MediaType:   "text/plain",
 		ProfileURI:  "",
@@ -229,9 +229,9 @@ func Test101_resolved_is_scalar(t *testing.T) {
 	assert.False(t, resolved.IsList())
 }
 
-// TEST102: Test ResolvedMediaSpec is_list returns true when list marker is present
+// TEST102: Test ResolvedMediaDef is_list returns true when list marker is present
 func Test102_resolved_is_list(t *testing.T) {
-	resolved := &ResolvedMediaSpec{
+	resolved := &ResolvedMediaDef{
 		SpecID:      "media:textable;list",
 		MediaType:   "application/json",
 		ProfileURI:  "",
@@ -247,9 +247,9 @@ func Test102_resolved_is_list(t *testing.T) {
 	assert.False(t, resolved.IsScalar())
 }
 
-// TEST103: Test ResolvedMediaSpec is_json returns true when json tag is present
+// TEST103: Test ResolvedMediaDef is_json returns true when json tag is present
 func Test103_resolved_is_json(t *testing.T) {
-	resolved := &ResolvedMediaSpec{
+	resolved := &ResolvedMediaDef{
 		SpecID:      "media:json;textable;record",
 		MediaType:   "application/json",
 		ProfileURI:  "",
@@ -265,9 +265,9 @@ func Test103_resolved_is_json(t *testing.T) {
 	assert.False(t, resolved.IsBinary())
 }
 
-// TEST104: Test ResolvedMediaSpec is_text returns true when textable tag is present
+// TEST104: Test ResolvedMediaDef is_text returns true when textable tag is present
 func Test104_resolved_is_text(t *testing.T) {
-	resolved := &ResolvedMediaSpec{
+	resolved := &ResolvedMediaDef{
 		SpecID:      "media:textable",
 		MediaType:   "text/plain",
 		ProfileURI:  "",
@@ -287,9 +287,9 @@ func Test104_resolved_is_text(t *testing.T) {
 // Metadata propagation tests
 // -------------------------------------------------------------------------
 
-// TEST105: Test metadata propagates from media spec def to resolved media spec
+// TEST105: Test metadata propagates from media def def to resolved media def
 func Test105_metadata_propagation(t *testing.T) {
-	mediaSpecs := []MediaSpecDef{
+	mediaDefs := []MediaDef{
 		{
 			Urn:         "media:custom-setting",
 			MediaType:   "text/plain",
@@ -307,7 +307,7 @@ func Test105_metadata_propagation(t *testing.T) {
 	}
 
 	registry := testRegistry(t)
-	for _, d := range mediaSpecs { registry.AddSpec(d.ToStored()) }
+	for _, d := range mediaDefs { registry.AddSpec(d.ToStored()) }
 	resolved, err := ResolveMediaUrn("media:custom-setting", registry)
 	require.NoError(t, err)
 	require.NotNil(t, resolved.Metadata)
@@ -315,11 +315,11 @@ func Test105_metadata_propagation(t *testing.T) {
 	assert.Equal(t, "SETTING_UI_TYPE_CHECKBOX", resolved.Metadata["ui_type"])
 }
 
-// TEST106: Test metadata and validation can coexist in media spec definition
+// TEST106: Test metadata and validation can coexist in media definition
 func Test106_metadata_with_validation(t *testing.T) {
 	minVal := 0.0
 	maxVal := 100.0
-	mediaSpecs := []MediaSpecDef{
+	mediaDefs := []MediaDef{
 		{
 			Urn:         "media:bounded-number;numeric",
 			MediaType:   "text/plain",
@@ -340,7 +340,7 @@ func Test106_metadata_with_validation(t *testing.T) {
 	}
 
 	registry := testRegistry(t)
-	for _, d := range mediaSpecs { registry.AddSpec(d.ToStored()) }
+	for _, d := range mediaDefs { registry.AddSpec(d.ToStored()) }
 	resolved, err := ResolveMediaUrn("media:bounded-number;numeric", registry)
 	require.NoError(t, err)
 
@@ -358,9 +358,9 @@ func Test106_metadata_with_validation(t *testing.T) {
 // Extension field tests
 // -------------------------------------------------------------------------
 
-// TEST107: Test extensions field propagates from media spec def to resolved
+// TEST107: Test extensions field propagates from media def def to resolved
 func Test107_extensions_propagation(t *testing.T) {
-	mediaSpecs := []MediaSpecDef{
+	mediaDefs := []MediaDef{
 		{
 			Urn:         "media:custom-pdf",
 			MediaType:   "application/pdf",
@@ -375,15 +375,15 @@ func Test107_extensions_propagation(t *testing.T) {
 	}
 
 	registry := testRegistry(t)
-	for _, d := range mediaSpecs { registry.AddSpec(d.ToStored()) }
+	for _, d := range mediaDefs { registry.AddSpec(d.ToStored()) }
 	resolved, err := ResolveMediaUrn("media:custom-pdf", registry)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"pdf"}, resolved.Extensions)
 }
 
-// TEST892: Test extensions serializes/deserializes correctly in MediaSpecDef
+// TEST892: Test extensions serializes/deserializes correctly in MediaDef
 func Test892_extensions_serialization(t *testing.T) {
-	def := MediaSpecDef{
+	def := MediaDef{
 		Urn:         "media:json-data",
 		MediaType:   "application/json",
 		Title:       "JSON Data",
@@ -400,7 +400,7 @@ func Test892_extensions_serialization(t *testing.T) {
 	assert.Contains(t, jsonStr, `"extensions":["json"]`)
 
 	// Deserialize and verify
-	var parsed MediaSpecDef
+	var parsed MediaDef
 	err = json.Unmarshal(jsonBytes, &parsed)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"json"}, parsed.Extensions)
@@ -410,7 +410,7 @@ func Test892_extensions_serialization(t *testing.T) {
 func Test893_extensions_with_metadata_and_validation(t *testing.T) {
 	minLen := 1
 	maxLen := 1000
-	mediaSpecs := []MediaSpecDef{
+	mediaDefs := []MediaDef{
 		{
 			Urn:         "media:custom-output;json",
 			MediaType:   "application/json",
@@ -430,7 +430,7 @@ func Test893_extensions_with_metadata_and_validation(t *testing.T) {
 	}
 
 	registry := testRegistry(t)
-	for _, d := range mediaSpecs { registry.AddSpec(d.ToStored()) }
+	for _, d := range mediaDefs { registry.AddSpec(d.ToStored()) }
 	resolved, err := ResolveMediaUrn("media:custom-output;json", registry)
 	require.NoError(t, err)
 
@@ -440,9 +440,9 @@ func Test893_extensions_with_metadata_and_validation(t *testing.T) {
 	assert.Equal(t, []string{"json"}, resolved.Extensions)
 }
 
-// TEST894: Test multiple extensions in a media spec
+// TEST894: Test multiple extensions in a media def
 func Test894_multiple_extensions(t *testing.T) {
-	mediaSpecs := []MediaSpecDef{
+	mediaDefs := []MediaDef{
 		{
 			Urn:         "media:image;jpeg",
 			MediaType:   "image/jpeg",
@@ -457,7 +457,7 @@ func Test894_multiple_extensions(t *testing.T) {
 	}
 
 	registry := testRegistry(t)
-	for _, d := range mediaSpecs { registry.AddSpec(d.ToStored()) }
+	for _, d := range mediaDefs { registry.AddSpec(d.ToStored()) }
 	resolved, err := ResolveMediaUrn("media:image;jpeg", registry)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"jpg", "jpeg"}, resolved.Extensions)
@@ -483,7 +483,7 @@ func Test608_media_urns_for_extension_populated(t *testing.T) {
 	registry, err := NewFabricRegistryForTest()
 	require.NoError(t, err)
 
-	registry.AddSpec(StoredMediaSpec{
+	registry.AddSpec(StoredMediaDef{
 		Urn:        "media:pdf",
 		MediaType:  "application/pdf",
 		Title:      "PDF Document",
@@ -514,13 +514,13 @@ func Test609_get_extension_mappings(t *testing.T) {
 	registry, err := NewFabricRegistryForTest()
 	require.NoError(t, err)
 
-	registry.AddSpec(StoredMediaSpec{
+	registry.AddSpec(StoredMediaDef{
 		Urn:        "media:pdf",
 		MediaType:  "application/octet-stream",
 		Title:      "Test",
 		Extensions: []string{"pdf"},
 	})
-	registry.AddSpec(StoredMediaSpec{
+	registry.AddSpec(StoredMediaDef{
 		Urn:        "media:epub",
 		MediaType:  "application/octet-stream",
 		Title:      "Test",
@@ -542,16 +542,16 @@ func Test610_get_cached_spec(t *testing.T) {
 	require.NoError(t, err)
 
 	// Unknown spec
-	assert.Nil(t, registry.GetCachedMediaSpec("media:nonexistent;xyzzy"))
+	assert.Nil(t, registry.GetCachedMediaDef("media:nonexistent;xyzzy"))
 
 	// Add a spec and verify retrieval
-	registry.AddSpec(StoredMediaSpec{
+	registry.AddSpec(StoredMediaDef{
 		Urn:       "media:test;spec;textable",
 		MediaType: "text/plain",
 		Title:     "Test Spec",
 	})
 
-	retrieved := registry.GetCachedMediaSpec("media:test;spec;textable")
+	retrieved := registry.GetCachedMediaDef("media:test;spec;textable")
 	require.NotNil(t, retrieved, "Should find spec by URN")
 	assert.Equal(t, "Test Spec", retrieved.Title)
 }
@@ -568,9 +568,9 @@ func Test614_registry_creation(t *testing.T) {
 // behavior. Rust and Python dropped this for the same reason; this
 // deletion keeps the Go mirror in parity.
 
-// TEST616: Verify StoredMediaSpec converts to MediaSpecDef preserving all fields
-func Test616_stored_media_spec_to_def(t *testing.T) {
-	spec := StoredMediaSpec{
+// TEST616: Verify StoredMediaDef converts to MediaDef preserving all fields
+func Test616_stored_media_def_to_def(t *testing.T) {
+	spec := StoredMediaDef{
 		Urn:         "media:pdf",
 		MediaType:   "application/pdf",
 		Title:       "PDF Document",
@@ -579,7 +579,7 @@ func Test616_stored_media_spec_to_def(t *testing.T) {
 		Extensions:  []string{"pdf"},
 	}
 
-	def := spec.ToMediaSpecDef()
+	def := spec.ToMediaDef()
 	assert.Equal(t, "media:pdf", def.Urn)
 	assert.Equal(t, "application/pdf", def.MediaType)
 	assert.Equal(t, "PDF Document", def.Title)
@@ -596,13 +596,13 @@ func Test617_normalize_media_urn(t *testing.T) {
 	assert.Equal(t, urn1, urn2)
 }
 
-// TEST1131: Documentation propagates from MediaSpecDef through ResolveMediaUrn
-// into ResolvedMediaSpec. Verifies description and documentation remain distinct.
+// TEST1131: Documentation propagates from MediaDef through ResolveMediaUrn
+// into ResolvedMediaDef. Verifies description and documentation remain distinct.
 func Test1131_media_documentation_propagates_through_resolve(t *testing.T) {
 	registry := testRegistry(t)
 	body := "## Markdown body\n\nWith `code` and a [link](https://example.com)."
 	docUrn := "media:doc-test-1131;textable"
-	spec := MediaSpecDef{
+	spec := MediaDef{
 		Urn:           docUrn,
 		MediaType:     "text/plain",
 		Title:         "Documented",
@@ -610,22 +610,22 @@ func Test1131_media_documentation_propagates_through_resolve(t *testing.T) {
 		Documentation: &body,
 	}
 
-	for _, d := range []MediaSpecDef{spec} { registry.AddSpec(d.ToStored()) }
+	for _, d := range []MediaDef{spec} { registry.AddSpec(d.ToStored()) }
 
 	resolved, err := ResolveMediaUrn(docUrn, registry)
 	require.NoError(t, err)
 	require.NotNil(t, resolved.Documentation,
-		"documentation must propagate from MediaSpecDef into ResolvedMediaSpec")
+		"documentation must propagate from MediaDef into ResolvedMediaDef")
 	assert.Equal(t, body, *resolved.Documentation)
 	// description and documentation must remain distinct fields
 	assert.Equal(t, "short desc", resolved.Description)
 }
 
-// TEST1132: MediaSpecDef serializes documentation only when present and
+// TEST1132: MediaDef serializes documentation only when present and
 // round-trips losslessly. When nil, the field must be omitted entirely.
-func Test1132_media_spec_def_documentation_round_trip(t *testing.T) {
+func Test1132_media_def_def_documentation_round_trip(t *testing.T) {
 	body := "Body with newline\nand backslash \\"
-	withDoc := MediaSpecDef{
+	withDoc := MediaDef{
 		Urn:           "media:rt-test-1132",
 		MediaType:     "text/plain",
 		Title:         "Round Trip",
@@ -635,12 +635,12 @@ func Test1132_media_spec_def_documentation_round_trip(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(data), `"documentation"`)
 
-	var parsed MediaSpecDef
+	var parsed MediaDef
 	require.NoError(t, json.Unmarshal(data, &parsed))
 	require.NotNil(t, parsed.Documentation)
 	assert.Equal(t, body, *parsed.Documentation)
 
-	withoutDoc := MediaSpecDef{
+	withoutDoc := MediaDef{
 		Urn:       "media:rt-test-1132b",
 		MediaType: "text/plain",
 		Title:     "No Doc",
@@ -648,13 +648,13 @@ func Test1132_media_spec_def_documentation_round_trip(t *testing.T) {
 	data2, err := json.Marshal(withoutDoc)
 	require.NoError(t, err)
 	assert.NotContains(t, string(data2), "documentation",
-		"documentation must be omitted from MediaSpecDef JSON when nil, got: %s", string(data2))
+		"documentation must be omitted from MediaDef JSON when nil, got: %s", string(data2))
 }
 
-// TEST1133: MediaSpecDef set/clear lifecycle for documentation.
+// TEST1133: MediaDef set/clear lifecycle for documentation.
 // Setter and clearer must not cross-contaminate the description field.
-func Test1133_media_spec_def_documentation_lifecycle(t *testing.T) {
-	spec := MediaSpecDef{
+func Test1133_media_def_def_documentation_lifecycle(t *testing.T) {
+	spec := MediaDef{
 		Urn:         "media:doc-test-1133",
 		MediaType:   "text/plain",
 		Title:       "Doc Test",
@@ -683,7 +683,7 @@ func Test629_profile_constants_format(t *testing.T) {
 		"PROFILE_OBJ must start with %s", prefix)
 }
 
-// TEST895/896/897 (cap I/O media spec extension regression checks)
+// TEST895/896/897 (cap I/O media def extension regression checks)
 // were removed: they queried `NewFabricRegistry()` for hardcoded URN
 // lists and asserted each spec carried file extensions. The unified
 // FabricRegistry no longer bundles standard specs — it hydrates from

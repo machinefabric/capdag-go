@@ -1,13 +1,13 @@
-// Package capdag provides MediaSpec parsing and media URN resolution
+// Package capdag provides MediaDef parsing and media URN resolution
 //
-// Media URNs reference media type definitions in the media_specs array.
+// Media URNs reference media type definitions in the media_defs array.
 // Format: `media:<type>` with optional tags.
 //
 // Examples:
 // - `media:textable`
 // - `media:pdf`
 //
-// MediaSpecDef is always a structured object - NO string form parsing.
+// MediaDef is always a structured object - NO string form parsing.
 package media
 
 import (
@@ -130,9 +130,9 @@ func GetProfileURL(profileName string) string {
 	return GetSchemaBase() + "/" + profileName
 }
 
-// MediaSpecDef represents a media spec definition - always a structured object
-// The Urn field identifies the media spec within a cap's media_specs array
-type MediaSpecDef struct {
+// MediaDef represents a media definition - always a structured object
+// The Urn field identifies the media def within a cap's media_defs array
+type MediaDef struct {
 	Urn           string                 `json:"urn"`
 	MediaType     string                 `json:"media_type"`
 	ProfileURI    string                 `json:"profile_uri,omitempty"`
@@ -145,10 +145,10 @@ type MediaSpecDef struct {
 	Extensions    []string               `json:"extensions,omitempty"`
 }
 
-// ToStored converts a MediaSpecDef to a StoredMediaSpec for use in the
+// ToStored converts a MediaDef to a StoredMediaDef for use in the
 // FabricRegistry. They have the same shape; this is a typed conversion.
-func (m MediaSpecDef) ToStored() StoredMediaSpec {
-	return StoredMediaSpec{
+func (m MediaDef) ToStored() StoredMediaDef {
+	return StoredMediaDef{
 		Urn:           m.Urn,
 		MediaType:     m.MediaType,
 		Title:         m.Title,
@@ -162,9 +162,9 @@ func (m MediaSpecDef) ToStored() StoredMediaSpec {
 	}
 }
 
-// NewMediaSpecDef creates a media spec def with required fields
-func NewMediaSpecDef(urn, mediaType, profileURI string) MediaSpecDef {
-	return MediaSpecDef{
+// NewMediaDef creates a media def def with required fields
+func NewMediaDef(urn, mediaType, profileURI string) MediaDef {
+	return MediaDef{
 		Urn:        urn,
 		MediaType:  mediaType,
 		ProfileURI: profileURI,
@@ -172,17 +172,17 @@ func NewMediaSpecDef(urn, mediaType, profileURI string) MediaSpecDef {
 }
 
 // GetDocumentation returns the long-form markdown documentation, if any.
-func (m *MediaSpecDef) GetDocumentation() *string { return m.Documentation }
+func (m *MediaDef) GetDocumentation() *string { return m.Documentation }
 
 // SetDocumentation sets the long-form markdown documentation.
-func (m *MediaSpecDef) SetDocumentation(doc string) { m.Documentation = &doc }
+func (m *MediaDef) SetDocumentation(doc string) { m.Documentation = &doc }
 
 // ClearDocumentation clears the long-form markdown documentation.
-func (m *MediaSpecDef) ClearDocumentation() { m.Documentation = nil }
+func (m *MediaDef) ClearDocumentation() { m.Documentation = nil }
 
-// NewMediaSpecDefWithTitle creates a media spec def with title
-func NewMediaSpecDefWithTitle(urn, mediaType, profileURI, title string) MediaSpecDef {
-	return MediaSpecDef{
+// NewMediaDefWithTitle creates a media def def with title
+func NewMediaDefWithTitle(urn, mediaType, profileURI, title string) MediaDef {
+	return MediaDef{
 		Urn:        urn,
 		MediaType:  mediaType,
 		ProfileURI: profileURI,
@@ -190,9 +190,9 @@ func NewMediaSpecDefWithTitle(urn, mediaType, profileURI, title string) MediaSpe
 	}
 }
 
-// NewMediaSpecDefWithSchema creates a media spec def with schema
-func NewMediaSpecDefWithSchema(urn, mediaType, profileURI string, schema interface{}) MediaSpecDef {
-	return MediaSpecDef{
+// NewMediaDefWithSchema creates a media def def with schema
+func NewMediaDefWithSchema(urn, mediaType, profileURI string, schema interface{}) MediaDef {
+	return MediaDef{
 		Urn:        urn,
 		MediaType:  mediaType,
 		ProfileURI: profileURI,
@@ -200,8 +200,8 @@ func NewMediaSpecDefWithSchema(urn, mediaType, profileURI string, schema interfa
 	}
 }
 
-// ResolvedMediaSpec represents a fully resolved media spec with all fields populated
-type ResolvedMediaSpec struct {
+// ResolvedMediaDef represents a fully resolved media def with all fields populated
+type ResolvedMediaDef struct {
 	SpecID        string
 	MediaType     string
 	ProfileURI    string
@@ -217,70 +217,70 @@ type ResolvedMediaSpec struct {
 }
 
 // IsBinary returns true if the "textable" marker tag is NOT present in the source media URN.
-func (r *ResolvedMediaSpec) IsBinary() bool {
+func (r *ResolvedMediaDef) IsBinary() bool {
 	return !HasMediaUrnTag(r.SpecID, "textable")
 }
 
 // IsRecord returns true if record marker tag is present (has internal key-value structure).
-func (r *ResolvedMediaSpec) IsRecord() bool {
+func (r *ResolvedMediaDef) IsRecord() bool {
 	return HasMediaUrnMarkerTag(r.SpecID, "record")
 }
 
 // IsOpaque returns true if no record marker is present (opaque = default structure).
-func (r *ResolvedMediaSpec) IsOpaque() bool {
+func (r *ResolvedMediaDef) IsOpaque() bool {
 	return !r.IsRecord()
 }
 
 // IsScalar returns true if no list marker is present (scalar = default cardinality).
-func (r *ResolvedMediaSpec) IsScalar() bool {
+func (r *ResolvedMediaDef) IsScalar() bool {
 	return !r.IsList()
 }
 
 // IsList returns true if list marker tag is present (array/list cardinality).
-func (r *ResolvedMediaSpec) IsList() bool {
+func (r *ResolvedMediaDef) IsList() bool {
 	return HasMediaUrnMarkerTag(r.SpecID, "list")
 }
 
 // IsJSON returns true if the "json" marker tag is present in the source media URN.
 // Note: This checks for JSON representation specifically, not record structure (use IsRecord for that).
-func (r *ResolvedMediaSpec) IsJSON() bool {
+func (r *ResolvedMediaDef) IsJSON() bool {
 	return HasMediaUrnTag(r.SpecID, "json")
 }
 
 // IsStructured returns true if this represents structured data (has record marker).
 // Structured data has internal key-value fields that can be accessed.
 // Note: This does NOT check for the explicit `json` tag - use IsJSON() for that.
-func (r *ResolvedMediaSpec) IsStructured() bool {
+func (r *ResolvedMediaDef) IsStructured() bool {
 	return r.IsRecord()
 }
 
 // IsText returns true if the "textable" marker tag is present in the source media URN.
-func (r *ResolvedMediaSpec) IsText() bool {
+func (r *ResolvedMediaDef) IsText() bool {
 	return HasMediaUrnTag(r.SpecID, "textable")
 }
 
 // IsImage returns true if the "image" marker tag is present in the source media URN.
-func (r *ResolvedMediaSpec) IsImage() bool {
+func (r *ResolvedMediaDef) IsImage() bool {
 	return HasMediaUrnTag(r.SpecID, "image")
 }
 
 // IsAudio returns true if the "audio" marker tag is present in the source media URN.
-func (r *ResolvedMediaSpec) IsAudio() bool {
+func (r *ResolvedMediaDef) IsAudio() bool {
 	return HasMediaUrnTag(r.SpecID, "audio")
 }
 
 // IsVideo returns true if the "video" marker tag is present in the source media URN.
-func (r *ResolvedMediaSpec) IsVideo() bool {
+func (r *ResolvedMediaDef) IsVideo() bool {
 	return HasMediaUrnTag(r.SpecID, "video")
 }
 
 // IsNumeric returns true if the "numeric" marker tag is present in the source media URN.
-func (r *ResolvedMediaSpec) IsNumeric() bool {
+func (r *ResolvedMediaDef) IsNumeric() bool {
 	return HasMediaUrnTag(r.SpecID, "numeric")
 }
 
 // IsBool returns true if the "bool" marker tag is present in the source media URN.
-func (r *ResolvedMediaSpec) IsBool() bool {
+func (r *ResolvedMediaDef) IsBool() bool {
 	return HasMediaUrnTag(r.SpecID, "bool")
 }
 
@@ -289,7 +289,7 @@ func (r *ResolvedMediaSpec) IsBool() bool {
 // Requires a valid, non-empty media URN - panics otherwise.
 func HasMediaUrnTag(mediaUrn, tagName string) bool {
 	if mediaUrn == "" {
-		panic("HasMediaUrnTag called with empty mediaUrn - this indicates the MediaSpec was not resolved via ResolveMediaUrn")
+		panic("HasMediaUrnTag called with empty mediaUrn - this indicates the MediaDef was not resolved via ResolveMediaUrn")
 	}
 	parsed, err := taggedurn.NewTaggedUrnFromString(mediaUrn)
 	if err != nil {
@@ -304,7 +304,7 @@ func HasMediaUrnTag(mediaUrn, tagName string) bool {
 // Requires a valid, non-empty media URN - panics otherwise.
 func HasMediaUrnTagValue(mediaUrn, tagKey, tagValue string) bool {
 	if mediaUrn == "" {
-		panic("HasMediaUrnTagValue called with empty mediaUrn - this indicates the MediaSpec was not resolved via ResolveMediaUrn")
+		panic("HasMediaUrnTagValue called with empty mediaUrn - this indicates the MediaDef was not resolved via ResolveMediaUrn")
 	}
 	parsed, err := taggedurn.NewTaggedUrnFromString(mediaUrn)
 	if err != nil {
@@ -320,7 +320,7 @@ func HasMediaUrnTagValue(mediaUrn, tagKey, tagValue string) bool {
 // Requires a valid, non-empty media URN - panics otherwise.
 func HasMediaUrnMarkerTag(mediaUrn, tagName string) bool {
 	if mediaUrn == "" {
-		panic("HasMediaUrnMarkerTag called with empty mediaUrn - this indicates the MediaSpec was not resolved via ResolveMediaUrn")
+		panic("HasMediaUrnMarkerTag called with empty mediaUrn - this indicates the MediaDef was not resolved via ResolveMediaUrn")
 	}
 	parsed, err := taggedurn.NewTaggedUrnFromString(mediaUrn)
 	if err != nil {
@@ -331,13 +331,13 @@ func HasMediaUrnMarkerTag(mediaUrn, tagName string) bool {
 }
 
 // PrimaryType returns the primary type (e.g., "image" from "image/png")
-func (r *ResolvedMediaSpec) PrimaryType() string {
+func (r *ResolvedMediaDef) PrimaryType() string {
 	parts := strings.SplitN(r.MediaType, "/", 2)
 	return parts[0]
 }
 
 // Subtype returns the subtype (e.g., "png" from "image/png")
-func (r *ResolvedMediaSpec) Subtype() string {
+func (r *ResolvedMediaDef) Subtype() string {
 	parts := strings.SplitN(r.MediaType, "/", 2)
 	if len(parts) > 1 {
 		return parts[1]
@@ -346,46 +346,46 @@ func (r *ResolvedMediaSpec) Subtype() string {
 }
 
 // String returns the canonical string representation
-func (r *ResolvedMediaSpec) String() string {
+func (r *ResolvedMediaDef) String() string {
 	if r.ProfileURI != "" {
 		return fmt.Sprintf("%s; profile=%s", r.MediaType, r.ProfileURI)
 	}
 	return r.MediaType
 }
 
-// MediaSpecError represents an error in media spec operations
-type MediaSpecError struct {
+// MediaDefError represents an error in media def operations
+type MediaDefError struct {
 	Message string
 }
 
-func (e *MediaSpecError) Error() string {
+func (e *MediaDefError) Error() string {
 	return e.Message
 }
 
 var (
-	ErrUnresolvableMediaUrn = &MediaSpecError{"media URN cannot be resolved"}
-	ErrInvalidMediaUrn      = &MediaSpecError{"invalid media URN - must start with 'media:'"}
-	ErrDuplicateMediaUrn    = &MediaSpecError{"duplicate media URN in media_specs array"}
+	ErrUnresolvableMediaUrn = &MediaDefError{"media URN cannot be resolved"}
+	ErrInvalidMediaUrn      = &MediaDefError{"invalid media URN - must start with 'media:'"}
+	ErrDuplicateMediaUrn    = &MediaDefError{"duplicate media URN in media_defs array"}
 )
 
 // NewUnresolvableMediaUrnError creates an error for unresolvable media URNs
 func NewUnresolvableMediaUrnError(mediaUrn string) error {
-	return &MediaSpecError{
+	return &MediaDefError{
 		Message: fmt.Sprintf("media URN '%s' cannot be resolved - not found in registry", mediaUrn),
 	}
 }
 
-// NewDuplicateMediaUrnError creates an error for duplicate URNs in media_specs
+// NewDuplicateMediaUrnError creates an error for duplicate URNs in media_defs
 func NewDuplicateMediaUrnError(mediaUrn string) error {
-	return &MediaSpecError{
-		Message: fmt.Sprintf("duplicate media URN '%s' in media_specs array", mediaUrn),
+	return &MediaDefError{
+		Message: fmt.Sprintf("duplicate media URN '%s' in media_defs array", mediaUrn),
 	}
 }
 
-// ValidateNoMediaSpecDuplicates checks for duplicate URNs in the media_specs array
-func ValidateNoMediaSpecDuplicates(mediaSpecs []MediaSpecDef) error {
+// ValidateNoMediaDefDuplicates checks for duplicate URNs in the media_defs array
+func ValidateNoMediaDefDuplicates(mediaDefs []MediaDef) error {
 	seen := make(map[string]bool)
-	for _, spec := range mediaSpecs {
+	for _, spec := range mediaDefs {
 		if seen[spec.Urn] {
 			return NewDuplicateMediaUrnError(spec.Urn)
 		}
@@ -394,7 +394,7 @@ func ValidateNoMediaSpecDuplicates(mediaSpecs []MediaSpecDef) error {
 	return nil
 }
 
-// ResolveMediaUrn resolves a media URN to a ResolvedMediaSpec via the registry.
+// ResolveMediaUrn resolves a media URN to a ResolvedMediaDef via the registry.
 //
 // This is the SINGLE resolution path for all media URN lookups.
 //
@@ -403,26 +403,26 @@ func ValidateNoMediaSpecDuplicates(mediaSpecs []MediaSpecDef) error {
 //   - registry: The FabricRegistry for spec lookups
 //
 // Returns:
-//   - ResolvedMediaSpec if found
+//   - ResolvedMediaDef if found
 //   - Error if media URN cannot be resolved
-func ResolveMediaUrn(mediaUrn string, registry *FabricRegistry) (*ResolvedMediaSpec, error) {
+func ResolveMediaUrn(mediaUrn string, registry *FabricRegistry) (*ResolvedMediaDef, error) {
 	if !strings.HasPrefix(mediaUrn, "media:") {
 		return nil, ErrInvalidMediaUrn
 	}
 
 	if registry == nil {
-		return nil, &MediaSpecError{
+		return nil, &MediaDefError{
 			Message: fmt.Sprintf("cannot resolve media URN '%s' - no registry provided", mediaUrn),
 		}
 	}
 
-	storedSpec, err := registry.GetMediaSpec(mediaUrn)
+	storedSpec, err := registry.GetMediaDef(mediaUrn)
 	if err != nil {
-		return nil, &MediaSpecError{
+		return nil, &MediaDefError{
 			Message: fmt.Sprintf("cannot resolve media URN '%s' - not found in registry: %v", mediaUrn, err),
 		}
 	}
-	return &ResolvedMediaSpec{
+	return &ResolvedMediaDef{
 		SpecID:        mediaUrn,
 		MediaType:     storedSpec.MediaType,
 		ProfileURI:    storedSpec.ProfileURI,
@@ -491,8 +491,8 @@ func GetTypeFromMediaUrn(mediaUrn string) string {
 	return "unknown"
 }
 
-// GetTypeFromResolvedMediaSpec determines the type from a resolved media spec
-func GetTypeFromResolvedMediaSpec(resolved *ResolvedMediaSpec) string {
+// GetTypeFromResolvedMediaDef determines the type from a resolved media def
+func GetTypeFromResolvedMediaDef(resolved *ResolvedMediaDef) string {
 	if resolved.IsBinary() {
 		return "binary"
 	}
@@ -511,9 +511,9 @@ func GetTypeFromResolvedMediaSpec(resolved *ResolvedMediaSpec) string {
 	return "unknown"
 }
 
-// GetMediaSpecFromCapUrn extracts media spec from a CapUrn using the 'out' tag
+// GetMediaDefFromCapUrn extracts media def from a CapUrn using the 'out' tag
 // The 'out' tag contains a media URN
-func GetMediaSpecFromCapUrn(urn *urn.CapUrn, registry *FabricRegistry) (*ResolvedMediaSpec, error) {
+func GetMediaDefFromCapUrn(urn *urn.CapUrn, registry *FabricRegistry) (*ResolvedMediaDef, error) {
 	outUrn := urn.OutSpec()
 	if outUrn == "" {
 		return nil, errors.New("no 'out' tag found in cap URN")

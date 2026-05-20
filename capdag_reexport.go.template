@@ -36,7 +36,7 @@ type CapManifest = cap.CapManifest
 type CapResponse = cap.CapResponse
 
 // Media types
-type MediaSpec = media.MediaSpec
+type MediaDef = media.MediaDef
 type MediaRegistry = media.MediaRegistry
 
 // Bifaci (protocol) types - core frame types

@@ -158,10 +158,10 @@ func TestResponseWrapperGetContentType(t *testing.T) {
 
 func TestResponseWrapperMatchesOutputType(t *testing.T) {
 	registry := testRegistry(t)
-	// Common mediaSpecs for all caps - resolution requires this table
+	// Common mediaDefs for all caps - resolution requires this table
 	// Use the constant values directly since the cap URNs reference these specific media URN strings
-	// Seed the registry with the media specs the test caps reference.
-	for _, def := range []media.MediaSpecDef{
+	// Seed the registry with the media defs the test caps reference.
+	for _, def := range []media.MediaDef{
 		{Urn: "media:textable", MediaType: "text/plain", ProfileURI: media.ProfileStr},
 		{Urn: "media:", MediaType: "application/octet-stream"},
 		{Urn: "media:json;record;textable", MediaType: "application/json", ProfileURI: media.ProfileObj},
@@ -249,7 +249,7 @@ func TestResponseWrapperValidateAgainstCap(t *testing.T) {
 	cap := NewCap(capUrn, "Test Cap", "test")
 
 	// Add custom spec with schema - needs map tag for JSON
-	registry.AddSpec((media.NewMediaSpecDefWithSchema(
+	registry.AddSpec((media.NewMediaDefWithSchema(
 		"media:result;textable;record",
 		"application/json",
 		"https://example.com/schema/result",

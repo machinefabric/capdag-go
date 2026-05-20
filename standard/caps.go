@@ -26,10 +26,10 @@ const CapAdapterSelection = `cap:in="media:";out="media:adapter-selection;json;r
 // by fetchcartridge.
 const CapLookupCapFabric = `cap:in="media:cap-urn;textable";fabric;lookup-cap;out="media:cap-definition;json;record;textable"`
 
-// CapLookupMediaSpecFabric resolves a canonical media URN to its full
-// media spec definition by fetching from the public fabric registry.
+// CapLookupMediaDefFabric resolves a canonical media URN to its full
+// media definition by fetching from the public fabric registry.
 // Implemented by fetchcartridge.
-const CapLookupMediaSpecFabric = `cap:in="media:media-urn;textable";fabric;lookup-media-spec;out="media:media-spec-definition;json;record;textable"`
+const CapLookupMediaDefFabric = `cap:in="media:media-urn;textable";fabric;lookup-media-def;out="media:media-definition;json;record;textable"`
 
 // =============================================================================
 // STANDARD CAP URN BUILDERS

@@ -85,7 +85,7 @@ func (e *CacheEntry) isExpired() bool {
 // RegistryCapResponse represents the per-cap JSON body served at
 // /caps/<sha256>. The wire shape is the flattened cap entry; fields
 // beyond what we explicitly model below (urn_tags, in_spec, out_spec,
-// in_media_title, out_media_title, media_specs, registered_by,
+// in_media_title, out_media_title, media_defs, registered_by,
 // documentation) are silently ignored by Go's JSON unmarshaller — the
 // Go Cap type only carries the subset below.
 type RegistryCapResponse struct {

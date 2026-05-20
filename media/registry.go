@@ -29,8 +29,8 @@ func DefaultRegistryConfig() RegistryConfig {
 	return RegistryConfig{}
 }
 
-// StoredMediaSpec represents a media spec from the registry (matches Rust StoredMediaSpec)
-type StoredMediaSpec struct {
+// StoredMediaDef represents a media def from the registry (matches Rust StoredMediaDef)
+type StoredMediaDef struct {
 	Urn           string           `json:"urn"`
 	MediaType     string           `json:"media_type"`
 	Title         string           `json:"title"`
@@ -43,9 +43,9 @@ type StoredMediaSpec struct {
 	Extensions    []string         `json:"extensions,omitempty"`
 }
 
-// ToMediaSpecDef converts StoredMediaSpec to MediaSpecDef
-func (s *StoredMediaSpec) ToMediaSpecDef() MediaSpecDef {
-	return MediaSpecDef{
+// ToMediaDef converts StoredMediaDef to MediaDef
+func (s *StoredMediaDef) ToMediaDef() MediaDef {
+	return MediaDef{
 		Urn:           s.Urn,
 		MediaType:     s.MediaType,
 		Title:         s.Title,
@@ -59,14 +59,14 @@ func (s *StoredMediaSpec) ToMediaSpecDef() MediaSpecDef {
 	}
 }
 
-// FabricRegistry provides media spec lookups against an in-memory cache
+// FabricRegistry provides media def lookups against an in-memory cache
 // hydrated from disk (and, in callers that wire it up, the remote registry
 // catalogue at fetch time). The Go implementation does not currently
 // fetch from the remote catalogue — callers populate the cache via
 // AddSpec or load it from a previously persisted state.
 type FabricRegistry struct {
 	mu          sync.RWMutex
-	cachedSpecs map[string]StoredMediaSpec
+	cachedSpecs map[string]StoredMediaDef
 	extIndex    map[string][]string // lowercase extension -> list of URNs
 	config      RegistryConfig
 }
@@ -85,7 +85,7 @@ func (e *FabricRegistryError) Error() string {
 // a not-found error.
 func NewFabricRegistry() (*FabricRegistry, error) {
 	return &FabricRegistry{
-		cachedSpecs: make(map[string]StoredMediaSpec),
+		cachedSpecs: make(map[string]StoredMediaDef),
 		extIndex:    make(map[string][]string),
 		config:      DefaultRegistryConfig(),
 	}, nil
@@ -97,8 +97,8 @@ func NewFabricRegistryForTest() (*FabricRegistry, error) {
 	return NewFabricRegistry()
 }
 
-// GetMediaSpec retrieves a media spec by URN from the registry's cache.
-func (r *FabricRegistry) GetMediaSpec(urn string) (*StoredMediaSpec, error) {
+// GetMediaDef retrieves a media def by URN from the registry's cache.
+func (r *FabricRegistry) GetMediaDef(urn string) (*StoredMediaDef, error) {
 	normalizedUrn := normalizeMediaUrn(urn)
 
 	r.mu.RLock()
@@ -131,8 +131,8 @@ func toLower(s string) string {
 	return strings.ToLower(s)
 }
 
-// AddSpec adds a media spec to the registry (for testing)
-func (r *FabricRegistry) AddSpec(spec StoredMediaSpec) {
+// AddSpec adds a media def to the registry (for testing)
+func (r *FabricRegistry) AddSpec(spec StoredMediaDef) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -146,9 +146,9 @@ func (r *FabricRegistry) AddSpec(spec StoredMediaSpec) {
 	}
 }
 
-// GetCachedMediaSpec retrieves a cached spec by URN without network access.
+// GetCachedMediaDef retrieves a cached spec by URN without network access.
 // Returns nil if not found (no error — absence is expected).
-func (r *FabricRegistry) GetCachedMediaSpec(urnStr string) *StoredMediaSpec {
+func (r *FabricRegistry) GetCachedMediaDef(urnStr string) *StoredMediaDef {
 	normalizedUrn := normalizeMediaUrn(urnStr)
 
 	r.mu.RLock()

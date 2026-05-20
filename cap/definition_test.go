@@ -475,7 +475,7 @@ func TestCapDescription(t *testing.T) {
 	assert.True(t, cap1.Equals(cap3))  // Same everything
 }
 
-func TestCapWithMediaSpecs(t *testing.T) {
+func TestCapWithMediaDefs(t *testing.T) {
 	// Use proper in/out in the URN - custom media URN in out
 	id, err := urn.NewCapUrnFromString(`cap:in="media:string";query;out="media:result";target=structured`)
 	require.NoError(t, err)
@@ -484,8 +484,8 @@ func TestCapWithMediaSpecs(t *testing.T) {
 
 	// Get test registry and seed the specs the cap references.
 	registry := testRegistry(t)
-	registry.AddSpec((media.NewMediaSpecDef(standard.MediaString, "text/plain", media.ProfileStr)).ToStored())
-	registry.AddSpec((media.NewMediaSpecDefWithSchema(
+	registry.AddSpec((media.NewMediaDef(standard.MediaString, "text/plain", media.ProfileStr)).ToStored())
+	registry.AddSpec((media.NewMediaDefWithSchema(
 		"media:result",
 		"application/json",
 		"https://example.com/schema/result",
