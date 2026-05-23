@@ -21,7 +21,7 @@ var cartridgeChannel string
 // when the cartridge is being built for a specific registry. Empty
 // (the default) ⇔ dev build; the cartridge can only be installed
 // under the on-disk `dev/` slot. Mirror of Rust's
-// `option_env!("MFR_REGISTRY_URL")`.
+// `option_env!("MFR_CARTRIDGE_REGISTRY_URL")`.
 var cartridgeRegistryURL string
 
 func main() {

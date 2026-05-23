@@ -176,10 +176,10 @@ func Test142_normalize_handles_different_tag_orders(t *testing.T) {
 }
 
 // TEST143: Default config points at https://fabric.capdag.com/ unless
-// overridden by CAPDAG_REGISTRY_URL.
+// overridden by CDG_FABRIC_REGISTRY_URL.
 func Test143_default_config(t *testing.T) {
 	config := DefaultRegistryConfig()
-	registryURL := os.Getenv("CAPDAG_REGISTRY_URL")
+	registryURL := os.Getenv("CDG_FABRIC_REGISTRY_URL")
 	if registryURL == "" {
 		assert.Equal(t, "https://fabric.capdag.com", config.RegistryBaseURL,
 			"Default registry URL is fabric.capdag.com")

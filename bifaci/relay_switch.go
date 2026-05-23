@@ -149,7 +149,7 @@ func NotRunning() CartridgeRuntimeStats {
 // coexist on disk under different top-level slug folders.
 //
 // RegistryURL is `*string` (Go's nullable form). nil ⇔ dev install
-// (cartridge built locally without MFR_REGISTRY_URL); non-nil ⇔
+// (cartridge built locally without MFR_CARTRIDGE_REGISTRY_URL); non-nil ⇔
 // the verbatim URL the cartridge was published from. Compared
 // byte-wise; never normalized. The JSON field is required-but-
 // nullable: missing key is a parse error so old-schema payloads

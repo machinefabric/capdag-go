@@ -118,7 +118,7 @@ This catalog lists all tests in the Go codebase.
 | test140 | `Test140_same_cap_different_spellings_same_url` | TEST140: Equivalent URNs (different tag order, etc.) hash to the same key. This is the property that makes cross-language lookups land at the same registry object regardless of which capdag implementation issued the request. | cap/registry_test.go:147 |
 | test141 | `Test141_per_cap_url_shape` | TEST141: URL has the right shape — protocol, host, /caps/ prefix, 64 hex chars, no extension. | cap/registry_test.go:155 |
 | test142 | `Test142_normalize_handles_different_tag_orders` | TEST142: Different tag orders normalise to the same URL — the canonicaliser strips the variation before hashing. | cap/registry_test.go:168 |
-| test143 | `Test143_default_config` | TEST143: Default config points at https://fabric.capdag.com/ unless overridden by CAPDAG_REGISTRY_URL. | cap/registry_test.go:180 |
+| test143 | `Test143_default_config` | TEST143: Default config points at https://fabric.capdag.com/ unless overridden by CDG_FABRIC_REGISTRY_URL. | cap/registry_test.go:180 |
 | test144 | `Test144_custom_registry_url` | TEST144: Test custom registry URL updates both registry and schema base URLs | cap/registry_test.go:193 |
 | test145 | `Test145_custom_registry_and_schema_url` | TEST145: Test custom registry and schema URLs set independently | cap/registry_test.go:201 |
 | test146 | `Test146_schema_url_not_overwritten_when_explicit` | TEST146: Test schema URL not overwritten when set explicitly before registry URL | cap/registry_test.go:210 |

@@ -52,7 +52,7 @@ const (
 //
 // RegistryURL is `*string` (Go's nullable string) — present-but-nil
 // means dev install (cartridge built locally without
-// MFR_REGISTRY_URL); present-and-non-nil means a registry URL the
+// MFR_CARTRIDGE_REGISTRY_URL); present-and-non-nil means a registry URL the
 // cartridge was published from. The on-disk top-level folder is
 // the SHA-256-prefix slug of the URL (or the literal "dev" when
 // nil); the host validates folder ⇔ provenance at scan time.

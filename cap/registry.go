@@ -31,15 +31,15 @@ type RegistryConfig struct {
 // DefaultRegistryConfig returns config from environment variables or defaults
 //
 // Environment variables:
-//   - CAPDAG_REGISTRY_URL: Base URL for the registry (default: https://fabric.capdag.com)
-//   - CAPDAG_SCHEMA_BASE_URL: Base URL for schemas (default: {registry_url}/schema)
+//   - CDG_FABRIC_REGISTRY_URL: Base URL for the registry (default: https://fabric.capdag.com)
+//   - CDG_SCHEMA_BASE_URL: Base URL for schemas (default: {registry_url}/schema)
 func DefaultRegistryConfig() RegistryConfig {
-	registryBase := os.Getenv("CAPDAG_REGISTRY_URL")
+	registryBase := os.Getenv("CDG_FABRIC_REGISTRY_URL")
 	if registryBase == "" {
 		registryBase = DefaultRegistryBaseURL
 	}
 
-	schemaBase := os.Getenv("CAPDAG_SCHEMA_BASE_URL")
+	schemaBase := os.Getenv("CDG_SCHEMA_BASE_URL")
 	if schemaBase == "" {
 		schemaBase = registryBase + "/schema"
 	}

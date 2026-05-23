@@ -75,7 +75,7 @@ type CapManifest struct {
 // (cartridge.json) matches the cartridge's self-report.
 // `registryURL` is `*string` — pass nil for dev builds; pass a
 // pointer to the URL string for cartridges built for a specific
-// registry (mirror of Rust's `option_env!("MFR_REGISTRY_URL")`).
+// registry (mirror of Rust's `option_env!("MFR_CARTRIDGE_REGISTRY_URL")`).
 func NewCapManifest(name, version, channel string, registryURL *string, description string, capGroups []CapGroup) *CapManifest {
 	return &CapManifest{
 		Name:        name,
