@@ -154,9 +154,9 @@ func Test579_rule2_empty_sources(t *testing.T) {
 // TEST580: RULE3 - multiple stdin sources with different URNs rejected
 func Test580_rule3_different_stdin_urns(t *testing.T) {
 	cap := makeTestCapWithUrnAndArgs(t,
-		`cap:in="media:txt;textable";test-cap;out="media:void";type=test`,
+		`cap:in="media:textable;txt";test-cap;out="media:void";type=test`,
 		[]CapArg{
-			NewCapArg(standard.MediaString, true, []ArgSource{stdinSource("media:txt;textable")}),
+			NewCapArg(standard.MediaString, true, []ArgSource{stdinSource("media:textable;txt")}),
 			NewCapArg(standard.MediaInteger, true, []ArgSource{stdinSource("media:")}),
 		},
 	)
@@ -168,10 +168,10 @@ func Test580_rule3_different_stdin_urns(t *testing.T) {
 // TEST581: RULE3 - multiple stdin sources with same URN is OK
 func Test581_rule3_same_stdin_urns_ok(t *testing.T) {
 	cap := makeTestCapWithUrnAndArgs(t,
-		`cap:in="media:txt;textable";test-cap;out="media:void";type=test`,
+		`cap:in="media:textable;txt";test-cap;out="media:void";type=test`,
 		[]CapArg{
-			NewCapArg(standard.MediaString, true, []ArgSource{stdinSource("media:txt;textable")}),
-			NewCapArg(standard.MediaInteger, true, []ArgSource{stdinSource("media:txt;textable")}),
+			NewCapArg(standard.MediaString, true, []ArgSource{stdinSource("media:textable;txt")}),
+			NewCapArg(standard.MediaInteger, true, []ArgSource{stdinSource("media:textable;txt")}),
 		},
 	)
 	err := ValidateCapArgs(cap)
@@ -263,11 +263,11 @@ func Test588_rule10_reserved_cli_flags(t *testing.T) {
 // TEST589: valid cap args with mixed sources pass all rules
 func Test589_all_rules_pass(t *testing.T) {
 	cap := makeTestCapWithUrnAndArgs(t,
-		`cap:in="media:txt;textable";test-cap;out="media:void";type=test`,
+		`cap:in="media:textable;txt";test-cap;out="media:void";type=test`,
 		[]CapArg{
 			NewCapArg(standard.MediaString, true, []ArgSource{
 				positionSource(0),
-				stdinSource("media:txt;textable"),
+				stdinSource("media:textable;txt"),
 			}),
 			NewCapArg(standard.MediaInteger, false, []ArgSource{
 				positionSource(1),
@@ -297,7 +297,7 @@ func Test1294_rule11_void_input_with_stdin_rejected(t *testing.T) {
 	cap := makeTestCapWithUrnAndArgs(t,
 		`cap:in="media:void";test;out="media:json;record;textable"`,
 		[]CapArg{
-			NewCapArg(standard.MediaString, true, []ArgSource{stdinSource("media:txt;textable")}),
+			NewCapArg(standard.MediaString, true, []ArgSource{stdinSource("media:textable;txt")}),
 		},
 	)
 	err := ValidateCapArgs(cap)
@@ -308,7 +308,7 @@ func Test1294_rule11_void_input_with_stdin_rejected(t *testing.T) {
 // TEST1295: RULE11 - non-void-input cap without stdin source rejected
 func Test1295_rule11_non_void_input_without_stdin_rejected(t *testing.T) {
 	cap := makeTestCapWithUrnAndArgs(t,
-		`cap:in="media:pdf";extract;out="media:txt;textable"`,
+		`cap:in="media:pdf";extract;out="media:textable;txt"`,
 		[]CapArg{
 			NewCapArg(standard.MediaString, true, []ArgSource{positionSource(0)}),
 		},
@@ -333,7 +333,7 @@ func Test1296_rule11_void_input_cli_flag_only_passes(t *testing.T) {
 // TEST1297: RULE11 - non-void-input cap with stdin source passes
 func Test1297_rule11_non_void_input_with_stdin_passes(t *testing.T) {
 	cap := makeTestCapWithUrnAndArgs(t,
-		`cap:in="media:pdf";extract;out="media:txt;textable"`,
+		`cap:in="media:pdf";extract;out="media:textable;txt"`,
 		[]CapArg{
 			NewCapArg(standard.MediaString, true, []ArgSource{stdinSource("media:pdf")}),
 		},

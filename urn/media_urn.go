@@ -503,21 +503,22 @@ func MediaUrnBoolean() *MediaUrn {
 }
 
 // BinaryMediaUrnForExt builds a binary media URN with the given file extension
+// on the keyed ext= axis so Extension() resolves correctly.
 func BinaryMediaUrnForExt(ext string) string {
 	return fmt.Sprintf("media:binary;ext=%s", ext)
 }
 
-// TextMediaUrnForExt builds a text media URN with the given file extension
+// TextMediaUrnForExt builds a text media URN with the given file extension.
 func TextMediaUrnForExt(ext string) string {
 	return fmt.Sprintf("media:ext=%s;textable", ext)
 }
 
-// ImageMediaUrnForExt builds an image media URN with the given file extension
+// ImageMediaUrnForExt builds an image media URN with the given file extension.
 func ImageMediaUrnForExt(ext string) string {
-	return fmt.Sprintf("media:image;ext=%s", ext)
+	return fmt.Sprintf("media:ext=%s;image", ext)
 }
 
-// AudioMediaUrnForExt builds an audio media URN with the given file extension
+// AudioMediaUrnForExt builds an audio media URN with the given file extension.
 func AudioMediaUrnForExt(ext string) string {
 	return fmt.Sprintf("media:audio;ext=%s", ext)
 }

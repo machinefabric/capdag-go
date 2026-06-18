@@ -14,7 +14,7 @@ import (
 
 // makeTestCap creates a test cap with given op/in/out specs.
 func makeTestCap(op, inSpec, outSpec, title string) (*cap.Cap, error) {
-	capUrnStr := fmt.Sprintf(`cap:%s;in=%s;out="%s"`, op, inSpec, outSpec)
+	capUrnStr := fmt.Sprintf(`cap:%s;in="%s";out="%s"`, op, inSpec, outSpec)
 	capUrnParsed, err := urn.NewCapUrnFromString(capUrnStr)
 	if err != nil {
 		return nil, err
@@ -69,7 +69,7 @@ func Test767_argument_resolution_string_representations(t *testing.T) {
 // cap's stdin arg media URN matches the cap's in_spec.
 func Test768_analyze_path_arguments_stdin_is_from_input_file(t *testing.T) {
 	// Build a cap whose stdin arg is the cap's in_spec (media:pdf) — should resolve as FromInputFile
-	capUrnStr := `cap:in="media:pdf";extract;out="media:txt;textable"`
+	capUrnStr := `cap:in="media:pdf";extract;out="media:textable;txt"`
 	capUrnParsed, err := urn.NewCapUrnFromString(capUrnStr)
 	require.NoError(t, err)
 
@@ -109,7 +109,7 @@ func Test768_analyze_path_arguments_stdin_is_from_input_file(t *testing.T) {
 // Verifies that caps with non-stdin, non-default arguments are identified as requiring user input,
 // appear in slots, and the requirements reflect that execution cannot proceed without them.
 func Test769_analyze_path_arguments_user_input_arg_appears_in_slots(t *testing.T) {
-	capUrnStr := `cap:in="media:txt;textable";translate;out="media:translated;textable"`
+	capUrnStr := `cap:in="media:textable;txt";translate;out="media:translated;textable"`
 	capUrnParsed, err := urn.NewCapUrnFromString(capUrnStr)
 	require.NoError(t, err)
 
@@ -239,7 +239,7 @@ func Test992_different_ops_same_types_not_duplicates(t *testing.T) {
 func Test993_same_op_different_input_types_not_duplicates(t *testing.T) {
 	c1, err := makeTestCap("extract_metadata", "media:pdf", "media:file-metadata;textable;record", "Extract PDF Metadata")
 	require.NoError(t, err)
-	c2, err := makeTestCap("extract_metadata", "media:txt;textable", "media:file-metadata;textable;record", "Extract TXT Metadata")
+	c2, err := makeTestCap("extract_metadata", "media:textable;txt", "media:file-metadata;textable;record", "Extract TXT Metadata")
 	require.NoError(t, err)
 
 	count, err := checkForDuplicateCaps([]*cap.Cap{c1, c2})

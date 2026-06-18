@@ -69,7 +69,7 @@ const MediaObjectList = "media:list;record"
 const MediaPNG = "media:image;png"
 
 // MediaJPEG is the media URN for JPEG image data
-const MediaJPEG = "media:jpeg;image"
+const MediaJPEG = "media:image;jpeg"
 
 // MediaGIF is the media URN for GIF image data
 const MediaGIF = "media:gif;image"
@@ -78,37 +78,37 @@ const MediaGIF = "media:gif;image"
 const MediaBMP = "media:bmp;image"
 
 // MediaTIFF is the media URN for TIFF image data
-const MediaTIFF = "media:tiff;image"
+const MediaTIFF = "media:image;tiff"
 
 // MediaWEBP is the media URN for WebP image data
-const MediaWEBP = "media:webp;image"
+const MediaWEBP = "media:image;webp"
 
 // MediaAudio is the media URN for audio data (wav, mp3, flac, etc.)
-const MediaAudio = "media:wav;audio"
+const MediaAudio = "media:audio;wav"
 
 // MediaMP3 is the media URN for MP3 audio data
-const MediaMP3 = "media:mp3;audio"
+const MediaMP3 = "media:audio;mp3"
 
 // MediaWAV is the media URN for WAV audio data
-const MediaWAV = "media:wav;audio"
+const MediaWAV = "media:audio;wav"
 
 // MediaFLAC is the media URN for FLAC audio data
-const MediaFLAC = "media:flac;audio"
+const MediaFLAC = "media:audio;flac"
 
 // MediaOGG is the media URN for OGG audio data
-const MediaOGG = "media:ogg;audio"
+const MediaOGG = "media:audio;ogg"
 
 // MediaAAC is the media URN for AAC audio data
 const MediaAAC = "media:aac;audio"
 
 // MediaM4A is the media URN for M4A audio data
-const MediaM4A = "media:m4a;audio"
+const MediaM4A = "media:audio;m4a"
 
 // MediaAIFF is the media URN for AIFF audio data
 const MediaAIFF = "media:aiff;audio"
 
 // MediaOpus is the media URN for Opus audio data
-const MediaOpus = "media:opus;audio"
+const MediaOpus = "media:audio;opus"
 
 // MediaVideo is the media URN for video data (mp4, webm, mov, etc.)
 const MediaVideo = "media:video"
@@ -120,7 +120,7 @@ const MediaMP4 = "media:mp4;video"
 const MediaMOV = "media:mov;video"
 
 // MediaWEBM is the media URN for WebM video data
-const MediaWEBM = "media:webm;video"
+const MediaWEBM = "media:video;webm"
 
 // MediaMKV is the media URN for MKV video data
 const MediaMKV = "media:mkv;video"
@@ -128,7 +128,7 @@ const MediaMKV = "media:mkv;video"
 // Semantic AI input types - distinguished by their purpose/context
 
 // MediaAudioSpeech is the media URN for audio input containing speech for transcription (Whisper)
-const MediaAudioSpeech = "media:audio;wav;speech"
+const MediaAudioSpeech = "media:audio;speech;wav"
 
 // Document types (PRIMARY naming - type IS the format)
 
@@ -144,7 +144,7 @@ const MediaEPUB = "media:epub"
 const MediaMarkdown = "media:md;textable"
 
 // MediaTXT is the media URN for plain text
-const MediaTXT = "media:txt;textable"
+const MediaTXT = "media:textable;txt"
 
 // MediaRST is the media URN for reStructuredText
 const MediaRST = "media:rst;textable"
@@ -156,7 +156,7 @@ const MediaLog = "media:log;textable"
 const MediaHTML = "media:html;textable"
 
 // MediaXML is the media URN for XML documents
-const MediaXML = "media:xml;textable"
+const MediaXML = "media:textable;xml"
 
 // MediaJSON is the media URN for JSON data - has record marker (structured key-value)
 const MediaJSON = "media:json;record;textable"

@@ -465,7 +465,7 @@ func Test548_is_video(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, videoUrn.IsVideo())
 
-	customVideo, err := NewMediaUrnFromString("media:video;mp4")
+	customVideo, err := NewMediaUrnFromString("media:mp4;video")
 	require.NoError(t, err)
 	assert.True(t, customVideo.IsVideo())
 
@@ -759,7 +759,7 @@ func Test1810_media_void_is_atomic(t *testing.T) {
 
 	badInputs := []string{
 		"media:void;text",
-		"media:void;pdf",
+		"media:pdf;void",
 		"media:void;audio",
 		"media:void;reason=warmup",
 		"media:void;heartbeat",

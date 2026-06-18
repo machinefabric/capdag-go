@@ -39,22 +39,22 @@ const (
 	MediaObjectList   = "media:list;record"
 	// Semantic content types
 	MediaImage = "media:image;png"
-	MediaAudio = "media:wav;audio"
+	MediaAudio = "media:audio;wav"
 	MediaVideo = "media:video"
 	// Semantic AI input types
-	MediaAudioSpeech = "media:audio;wav;speech"
+	MediaAudioSpeech = "media:audio;speech;wav"
 	// Document types (PRIMARY naming - type IS the format)
 	MediaPdf  = "media:pdf"
 	MediaEpub = "media:epub"
 	// Text format types (PRIMARY naming - type IS the format)
 	MediaMd         = "media:md;textable"
-	MediaTxt        = "media:txt;textable"
+	MediaTxt        = "media:textable;txt"
 	MediaRst        = "media:rst;textable"
 	MediaLog        = "media:log;textable"
 	MediaHtml       = "media:html;textable"
-	MediaXml        = "media:xml;textable"
+	MediaXml        = "media:textable;xml"
 	MediaJson       = "media:json;textable;record"
-	MediaJsonSchema = "media:json;json-schema;textable;record"
+	MediaJsonSchema = "media:json;json-schema;record;textable"
 	MediaYaml       = "media:yaml;textable;record"
 	// Semantic input types
 	MediaModelSpec = "media:model-spec;textable"

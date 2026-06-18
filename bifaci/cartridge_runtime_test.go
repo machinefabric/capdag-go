@@ -2943,7 +2943,7 @@ func Test678_find_stream_equivalent_urn(t *testing.T) {
 	streams := streamsToSlice([]testStream{
 		{"media:textable;txt", []byte("hello world")},
 	})
-	result, err := FindStream(streams, "media:txt;textable")
+	result, err := FindStream(streams, "media:textable;txt")
 	if err != nil {
 		t.Fatalf("FindStream error: %v", err)
 	}
@@ -3001,7 +3001,7 @@ func Test682_require_stream_returns_data(t *testing.T) {
 	streams := streamsToSlice([]testStream{
 		{"media:textable;txt", []byte("hello text")},
 	})
-	result, err := RequireStream(streams, "media:txt;textable")
+	result, err := RequireStream(streams, "media:textable;txt")
 	if err != nil {
 		t.Fatalf("RequireStream failed: %v", err)
 	}

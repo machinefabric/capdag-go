@@ -602,7 +602,7 @@ func Test333_cartridge_repo_client_get_all_caps(t *testing.T) {
 	repo := NewCartridgeRepo(3600)
 
 	cap1 := `cap:in="media:pdf";disbind;out="media:disbound-page;textable;list"`
-	cap2 := `cap:in="media:txt;textable";disbind;out="media:disbound-page;textable;list"`
+	cap2 := `cap:in="media:textable;txt";disbind;out="media:disbound-page;textable;list"`
 
 	registry := &CartridgeRegistryResponse{
 		Cartridges: []CartridgeInfo{
