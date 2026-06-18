@@ -607,6 +607,40 @@ func Test1130_cap_documentation_set_and_clear_lifecycle(t *testing.T) {
 	assert.Equal(t, "short", *c.CapDescription)
 }
 
+// TEST1131: Cap.Version zero value is omitted on serialize and defaults to 0 on deserialize.
+func Test1131_cap_version_zero_round_trip(t *testing.T) {
+	u, err := urn.NewCapUrnFromString(defTestUrn("versioned"))
+	require.NoError(t, err)
+	c := NewCap(u, "Versioned Cap", "versioned")
+	require.Equal(t, uint32(0), c.Version, "new cap must have Version 0")
+
+	data, err := json.Marshal(c)
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), `"version"`,
+		"version must be omitted when 0, got: %s", string(data))
+
+	var restored Cap
+	require.NoError(t, json.Unmarshal(data, &restored))
+	assert.Equal(t, uint32(0), restored.Version, "deserialized cap must have Version 0 when field absent")
+}
+
+// TEST1132: Cap.Version non-zero value round-trips through JSON serialize/deserialize.
+func Test1132_cap_version_nonzero_round_trip(t *testing.T) {
+	u, err := urn.NewCapUrnFromString(defTestUrn("versioned"))
+	require.NoError(t, err)
+	c := NewCap(u, "Versioned Cap", "versioned")
+	c.Version = 3
+
+	data, err := json.Marshal(c)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `"version":3`,
+		"version must be present when non-zero, got: %s", string(data))
+
+	var restored Cap
+	require.NoError(t, json.Unmarshal(data, &restored))
+	assert.Equal(t, uint32(3), restored.Version, "deserialized cap must have Version 3")
+}
+
 func TestCapJSONRoundTrip(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(capTestUrn("test"))
 	require.NoError(t, err)

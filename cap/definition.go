@@ -405,6 +405,7 @@ func NewMediaValidationAllowedValues(values []string) *media.MediaValidation {
 // through the unified FabricRegistry.
 type Cap struct {
 	Urn            *urn.CapUrn          `json:"urn"`
+	Version        uint32               `json:"version,omitempty"`
 	Title          string               `json:"title"`
 	CapDescription *string              `json:"cap_description,omitempty"`
 	Documentation  *string              `json:"documentation,omitempty"`
@@ -803,6 +804,10 @@ func (c *Cap) MarshalJSON() ([]byte, error) {
 		"command": c.Command,
 	}
 
+	if c.Version != 0 {
+		capData["version"] = c.Version
+	}
+
 	if c.CapDescription != nil {
 		capData["cap_description"] = *c.CapDescription
 	}
@@ -866,6 +871,20 @@ func (c *Cap) UnmarshalJSON(data []byte) error {
 	}
 
 	c.Urn = urn
+
+	// Handle version (optional, defaults to 0)
+	if versionRaw, ok := raw["version"]; ok && versionRaw != nil {
+		switch v := versionRaw.(type) {
+		case float64:
+			c.Version = uint32(v)
+		case json.Number:
+			n, err := v.Int64()
+			if err != nil {
+				return fmt.Errorf("invalid 'version' field: %w", err)
+			}
+			c.Version = uint32(n)
+		}
+	}
 
 	// Handle required fields
 	if title, ok := raw["title"].(string); ok {

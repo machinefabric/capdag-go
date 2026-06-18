@@ -89,6 +89,10 @@ type CartridgeJson struct {
 	PackageSha256 string `json:"package_sha256,omitempty"`
 	// PackageSize is the size in bytes of the original package.
 	PackageSize uint64 `json:"package_size,omitempty"`
+	// FabricManifestVersion is the fabric registry manifest version this cartridge was built against.
+	// 0 (absent on wire) means the cartridge predates the fabric registry's versioning protocol.
+	// >= 1 means the cartridge was built against manifest version N.
+	FabricManifestVersion uint32 `json:"fabric_manifest_version,omitempty"`
 }
 
 // UnmarshalJSON enforces "required-but-nullable" for RegistryURL:
@@ -125,28 +129,30 @@ func (c *CartridgeJson) UnmarshalJSON(data []byte) error {
 // would elide it, but the consumer requires presence.
 func (c CartridgeJson) MarshalJSON() ([]byte, error) {
 	type withReg struct {
-		Name          string                 `json:"name"`
-		Version       string                 `json:"version"`
-		Channel       string                 `json:"channel"`
-		RegistryURL   *string                `json:"registry_url"`
-		Entry         string                 `json:"entry"`
-		InstalledAt   string                 `json:"installed_at"`
-		InstalledFrom *CartridgeInstallSource `json:"installed_from,omitempty"`
-		SourceURL     string                 `json:"source_url,omitempty"`
-		PackageSha256 string                 `json:"package_sha256,omitempty"`
-		PackageSize   uint64                 `json:"package_size,omitempty"`
+		Name                  string                  `json:"name"`
+		Version               string                  `json:"version"`
+		Channel               string                  `json:"channel"`
+		RegistryURL           *string                 `json:"registry_url"`
+		Entry                 string                  `json:"entry"`
+		InstalledAt           string                  `json:"installed_at"`
+		InstalledFrom         *CartridgeInstallSource `json:"installed_from,omitempty"`
+		SourceURL             string                  `json:"source_url,omitempty"`
+		PackageSha256         string                  `json:"package_sha256,omitempty"`
+		PackageSize           uint64                  `json:"package_size,omitempty"`
+		FabricManifestVersion uint32                  `json:"fabric_manifest_version,omitempty"`
 	}
 	return json.Marshal(withReg{
-		Name:          c.Name,
-		Version:       c.Version,
-		Channel:       c.Channel,
-		RegistryURL:   c.RegistryURL,
-		Entry:         c.Entry,
-		InstalledAt:   c.InstalledAt,
-		InstalledFrom: c.InstalledFrom,
-		SourceURL:     c.SourceURL,
-		PackageSha256: c.PackageSha256,
-		PackageSize:   c.PackageSize,
+		Name:                  c.Name,
+		Version:               c.Version,
+		Channel:               c.Channel,
+		RegistryURL:           c.RegistryURL,
+		Entry:                 c.Entry,
+		InstalledAt:           c.InstalledAt,
+		InstalledFrom:         c.InstalledFrom,
+		SourceURL:             c.SourceURL,
+		PackageSha256:         c.PackageSha256,
+		PackageSize:           c.PackageSize,
+		FabricManifestVersion: c.FabricManifestVersion,
 	})
 }
 

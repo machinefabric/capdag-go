@@ -66,97 +66,97 @@ const MediaObjectList = "media:list;record"
 // Semantic media types for specialized content
 
 // MediaPNG is the media URN for PNG image data
-const MediaPNG = "media:image;png"
+const MediaPNG = "media:ext=png;image"
 
 // MediaJPEG is the media URN for JPEG image data
-const MediaJPEG = "media:image;jpeg"
+const MediaJPEG = "media:ext=jpeg;image"
 
 // MediaGIF is the media URN for GIF image data
-const MediaGIF = "media:gif;image"
+const MediaGIF = "media:ext=gif;image"
 
 // MediaBMP is the media URN for BMP image data
-const MediaBMP = "media:bmp;image"
+const MediaBMP = "media:ext=bmp;image"
 
 // MediaTIFF is the media URN for TIFF image data
-const MediaTIFF = "media:image;tiff"
+const MediaTIFF = "media:ext=tiff;image"
 
 // MediaWEBP is the media URN for WebP image data
-const MediaWEBP = "media:image;webp"
+const MediaWEBP = "media:ext=webp;image"
 
 // MediaAudio is the media URN for audio data (wav, mp3, flac, etc.)
-const MediaAudio = "media:audio;wav"
+const MediaAudio = "media:audio;ext=wav"
 
 // MediaMP3 is the media URN for MP3 audio data
-const MediaMP3 = "media:audio;mp3"
+const MediaMP3 = "media:audio;ext=mp3"
 
 // MediaWAV is the media URN for WAV audio data
-const MediaWAV = "media:audio;wav"
+const MediaWAV = "media:audio;ext=wav"
 
 // MediaFLAC is the media URN for FLAC audio data
-const MediaFLAC = "media:audio;flac"
+const MediaFLAC = "media:audio;ext=flac"
 
 // MediaOGG is the media URN for OGG audio data
-const MediaOGG = "media:audio;ogg"
+const MediaOGG = "media:audio;ext=ogg"
 
 // MediaAAC is the media URN for AAC audio data
-const MediaAAC = "media:aac;audio"
+const MediaAAC = "media:audio;ext=aac"
 
 // MediaM4A is the media URN for M4A audio data
-const MediaM4A = "media:audio;m4a"
+const MediaM4A = "media:audio;ext=m4a"
 
 // MediaAIFF is the media URN for AIFF audio data
-const MediaAIFF = "media:aiff;audio"
+const MediaAIFF = "media:audio;ext=aiff"
 
 // MediaOpus is the media URN for Opus audio data
-const MediaOpus = "media:audio;opus"
+const MediaOpus = "media:audio;ext=opus"
 
 // MediaVideo is the media URN for video data (mp4, webm, mov, etc.)
 const MediaVideo = "media:video"
 
 // MediaMP4 is the media URN for MP4 video data
-const MediaMP4 = "media:mp4;video"
+const MediaMP4 = "media:ext=mp4;video"
 
 // MediaMOV is the media URN for MOV video data
-const MediaMOV = "media:mov;video"
+const MediaMOV = "media:ext=mov;video"
 
 // MediaWEBM is the media URN for WebM video data
-const MediaWEBM = "media:video;webm"
+const MediaWEBM = "media:ext=webm;video"
 
 // MediaMKV is the media URN for MKV video data
-const MediaMKV = "media:mkv;video"
+const MediaMKV = "media:ext=mkv;video"
 
 // Semantic AI input types - distinguished by their purpose/context
 
 // MediaAudioSpeech is the media URN for audio input containing speech for transcription (Whisper)
-const MediaAudioSpeech = "media:audio;speech;wav"
+const MediaAudioSpeech = "media:audio;ext=wav;speech"
 
 // Document types (PRIMARY naming - type IS the format)
 
 // MediaPDF is the media URN for PDF documents
-const MediaPDF = "media:pdf"
+const MediaPDF = "media:ext=pdf"
 
 // MediaEPUB is the media URN for EPUB documents
-const MediaEPUB = "media:epub"
+const MediaEPUB = "media:ext=epub"
 
 // Text format types (PRIMARY naming - type IS the format)
 
 // MediaMarkdown is the media URN for Markdown text
-const MediaMarkdown = "media:md;textable"
+const MediaMarkdown = "media:ext=md;textable"
 
 // MediaTXT is the media URN for plain text
-const MediaTXT = "media:textable;txt"
+const MediaTXT = "media:ext=txt;textable"
 
 // MediaRST is the media URN for reStructuredText
-const MediaRST = "media:rst;textable"
+const MediaRST = "media:ext=rst;textable"
 
 // MediaLog is the media URN for log files
-const MediaLog = "media:log;textable"
+const MediaLog = "media:ext=log;textable"
 
 // MediaHTML is the media URN for HTML documents
-const MediaHTML = "media:html;textable"
+const MediaHTML = "media:ext=html;textable"
 
 // MediaXML is the media URN for XML documents
-const MediaXML = "media:textable;xml"
+const MediaXML = "media:ext=xml;textable"
 
 // MediaJSON is the media URN for JSON data - has record marker (structured key-value)
 const MediaJSON = "media:json;record;textable"
@@ -194,10 +194,10 @@ const MediaYAMLList = "media:list;textable;yaml"
 const MediaYAMLListRecord = "media:list;record;textable;yaml"
 
 // MediaCSV is the media URN for CSV data — by definition a list of records (header row + data rows)
-const MediaCSV = "media:csv;list;record;textable"
+const MediaCSV = "media:ext=csv;list;record;textable"
 
 // MediaCSVList is the media URN for single-column CSV — list of values without record structure
-const MediaCSVList = "media:csv;list;record;textable"
+const MediaCSVList = "media:ext=csv;list;record;textable"
 
 // File path type — for arguments that represent filesystem paths.
 // There is a single media URN; cardinality (single file vs many files)
@@ -210,7 +210,7 @@ const MediaFilePath = "media:file-path;textable"
 // text extracted from a multi-page document (e.g. cap:disbind-pdf, one item
 // per page). Carries `role=page`, `plain-text` (the opt-in marker for
 // cap:save-as-txt's persistence path), and `file-type=txt`.
-const MediaTextablePage = "media:page;plain-text;textable;txt"
+const MediaTextablePage = "media:ext=txt;page;plain-text;textable"
 
 // MediaModelSpec is the media URN for model spec (provider:model format, HuggingFace name, etc.) - scalar by default
 // Generic, backend-agnostic — used by inference caps for download/status/path operations.
@@ -293,14 +293,14 @@ const MediaEmbeddingVector = "media:embedding-vector;record;textable"
 // marker), `plain-text` (the finalised-text marker that opts into
 // cap:save-as-txt's persistence path), and `file-type=txt` (binds the URN to
 // the `.txt` extension at the registry).
-const MediaImageDescription = "media:image-description;plain-text;textable;txt"
+const MediaImageDescription = "media:ext=txt;image-description;plain-text;textable"
 
 // MediaPlainText is the media URN for finalised plain text — the canonical
 // input/output of cap:save-as-txt. Producers of user-facing prose
 // (LLM text-generation, OCR's extracted text, summarisation) declare this
 // URN as their `out` so the planner restricts the .txt persistence path
 // to those caps. See fabric/media/plain-text.toml.
-const MediaPlainText = "media:plain-text;textable;txt"
+const MediaPlainText = "media:ext=txt;plain-text;textable"
 
 // MediaTranscriptionOutput is the media URN for transcription output - has record marker
 const MediaTranscriptionOutput = "media:record;textable;transcription"
@@ -344,6 +344,11 @@ const MediaCapDefinition = "media:cap-definition;json;record;textable"
 // MediaMediaDefinition is the media URN for the full media definition
 // produced by cap:lookup-media-def;fabric.
 const MediaMediaDefinition = "media:media-definition;json;record;textable"
+
+// MediaFabricDefver is the media URN for a fabric registry per-definition version (defver).
+// Carried as data alongside a URN when a cap looks up a definition pinned to a specific
+// manifest snapshot. Absent ⇒ defver 0 (legacy v0 flat-path lookup).
+const MediaFabricDefver = "media:defver;textable"
 
 // MediaCollectionList is the media URN for a list of collections
 const MediaCollectionList = "media:collection;list;record;textable"

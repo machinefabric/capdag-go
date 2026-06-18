@@ -38,24 +38,24 @@ const (
 	MediaBooleanList  = "media:bool;list;textable"
 	MediaObjectList   = "media:list;record"
 	// Semantic content types
-	MediaImage = "media:image;png"
-	MediaAudio = "media:audio;wav"
+	MediaImage = "media:ext=png;image"
+	MediaAudio = "media:audio;ext=wav"
 	MediaVideo = "media:video"
 	// Semantic AI input types
-	MediaAudioSpeech = "media:audio;speech;wav"
+	MediaAudioSpeech = "media:audio;ext=wav;speech"
 	// Document types (PRIMARY naming - type IS the format)
-	MediaPdf  = "media:pdf"
-	MediaEpub = "media:epub"
+	MediaPdf  = "media:ext=pdf"
+	MediaEpub = "media:ext=epub"
 	// Text format types (PRIMARY naming - type IS the format)
-	MediaMd         = "media:md;textable"
-	MediaTxt        = "media:textable;txt"
-	MediaRst        = "media:rst;textable"
-	MediaLog        = "media:log;textable"
-	MediaHtml       = "media:html;textable"
-	MediaXml        = "media:textable;xml"
-	MediaJson       = "media:json;textable;record"
+	MediaMd         = "media:ext=md;textable"
+	MediaTxt        = "media:ext=txt;textable"
+	MediaRst        = "media:ext=rst;textable"
+	MediaLog        = "media:ext=log;textable"
+	MediaHtml       = "media:ext=html;textable"
+	MediaXml        = "media:ext=xml;textable"
+	MediaJson       = "media:json;record;textable"
 	MediaJsonSchema = "media:json;json-schema;record;textable"
-	MediaYaml       = "media:yaml;textable;record"
+	MediaYaml       = "media:record;textable;yaml"
 	// Semantic input types
 	MediaModelSpec = "media:model-spec;textable"
 	MediaModelRepo = "media:model-repo;record;textable"
@@ -64,9 +64,9 @@ const (
 	// Semantic output types
 	MediaModelDim  = "media:model-dim;integer;textable;numeric"
 	MediaDecision  = "media:decision;json;record;textable"
-	MediaTextablePage = "media:page;plain-text;textable;txt"
+	MediaTextablePage = "media:ext=txt;page;plain-text;textable"
 	// MediaPlainText is the canonical input/output of cap:save-as-txt.
-	MediaPlainText = "media:plain-text;textable;txt"
+	MediaPlainText = "media:ext=txt;plain-text;textable"
 	// Semantic output types for model operations
 	MediaAvailabilityOutput = "media:model-availability;record;textable"
 	MediaPathOutput         = "media:model-path;record;textable"
