@@ -1,8 +1,8 @@
 # Go Test Catalog
 
-**Total Tests:** 914
+**Total Tests:** 918
 
-**Numbered Tests:** 852
+**Numbered Tests:** 856
 
 **Unnumbered Tests:** 62
 
@@ -10,7 +10,8 @@
 
 **Numbering Mismatches:** 0
 
-All numbered test numbers are unique.
+**⚠ Duplicate test numbers detected: 2 number(s) used more than once.**
+Unique numbered tests are listed first. Duplicate-number entries are grouped after them and marked with ⚠. Unnumbered tests are listed in their own group.
 
 This catalog lists all tests in the Go codebase.
 
@@ -766,8 +767,6 @@ This catalog lists all tests in the Go codebase.
 | test1128 | `Test1128_cap_documentation_omitted_when_none` | TEST1128: When Documentation is nil, the serializer must omit the field entirely. There must be no "documentation":null — only absence. | cap/definition_test.go:555 |
 | test1129 | `Test1129_cap_documentation_parses_from_capfab_json` | TEST1129: A capfab-shaped JSON document with a documentation field must deserialize into a Cap with the body intact. | cap/definition_test.go:573 |
 | test1130 | `Test1130_cap_documentation_set_and_clear_lifecycle` | TEST1130: Documentation set/clear lifecycle must not cross-contaminate cap_description. | cap/definition_test.go:590 |
-| test1131 | `Test1131_media_documentation_propagates_through_resolve` | TEST1131: Documentation propagates from MediaDef through ResolveMediaUrn into ResolvedMediaDef. Verifies description and documentation remain distinct. | media/spec_test.go:601 |
-| test1132 | `Test1132_media_def_def_documentation_round_trip` | TEST1132: MediaDef serializes documentation only when present and round-trips losslessly. When nil, the field must be omitted entirely. | media/spec_test.go:626 |
 | test1133 | `Test1133_media_def_def_documentation_lifecycle` | TEST1133: MediaDef set/clear lifecycle for documentation. Setter and clearer must not cross-contaminate the description field. | media/spec_test.go:656 |
 | test1142 | `Test1142_resolved_graph_to_mermaid_renders_shapes_dedupes_edges_and_escapes` | TEST1142: ResolvedGraph.to_mermaid() renders node shapes, deduplicates edges, and escapes labels | orchestrator/orchestrator_test.go:68 |
 | test1143 | `Test1143_InputItemFromStringDistinguishesGlobDirectoryAndFile` | TEST1143: InputItem::from_string distinguishes glob patterns, directories, and files | input_resolver/types_test.go:11 |
@@ -845,6 +844,8 @@ This catalog lists all tests in the Go codebase.
 | test1295 | `Test1295_rule11_non_void_input_without_stdin_rejected` | TEST1295: RULE11 - non-void-input cap without stdin source rejected | cap/validation_test.go:309 |
 | test1296 | `Test1296_rule11_void_input_cli_flag_only_passes` | TEST1296: RULE11 - void-input cap with only cli_flag sources passes | cap/validation_test.go:322 |
 | test1297 | `Test1297_rule11_non_void_input_with_stdin_passes` | TEST1297: RULE11 - non-void-input cap with stdin source passes | cap/validation_test.go:334 |
+| test1721 | `Test1721_cartridge_json_fabric_manifest_version_zero_round_trip` | TEST1721: CartridgeJson with FabricManifestVersion=0 (zero value) is absent on the wire. | bifaci/cartridge_json_test.go:13 |
+| test1722 | `Test1722_cartridge_json_fabric_manifest_version_nonzero_round_trip` | TEST1722: CartridgeJson with FabricManifestVersion>0 round-trips the value correctly. | bifaci/cartridge_json_test.go:44 |
 | test1800 | `Test1800_kind_identity_only_for_bare_cap` | TEST1800: Identity classifier — only explicit effect=none qualifies. `cap:effect=none` is the fully generic identity on every axis; adding any tag (even one that doesn't constrain in/out) demotes the cap to Transform because the operation/metadata axis is no longer fully generic. | urn/cap_urn_test.go:1602 |
 | test1801 | `Test1801_kind_source_when_input_is_void` | TEST1801: Source classifier — in=media:void, out non-void. The y dimension may carry any tags; void on the input alone is what matters. | urn/cap_urn_test.go:1634 |
 | test1802 | `Test1802_kind_sink_when_output_is_void` | TEST1802: Sink classifier — out=media:void, in non-void. | urn/cap_urn_test.go:1649 |
@@ -869,6 +870,11 @@ This catalog lists all tests in the Go codebase.
 | test1845 | `Test1845_axis_weighting_in_dominates_y` | TEST1845: With equal out, in-axis dominates over y-axis. | urn/cap_urn_test.go:1967 |
 | test1846 | `Test1846_axis_weighting_decoded_layout` | TEST1846: Decoded layout — 10000*out + 100*in + y. | urn/cap_urn_test.go:1978 |
 | | | | |
+| test1131 ⚠ | `Test1131_cap_version_zero_round_trip` | TEST1131: Cap.Version zero value is omitted on serialize and defaults to 0 on deserialize. | cap/definition_test.go:611 |
+| test1131 ⚠ | `Test1131_media_documentation_propagates_through_resolve` | TEST1131: Documentation propagates from MediaDef through ResolveMediaUrn into ResolvedMediaDef. Verifies description and documentation remain distinct. | media/spec_test.go:601 |
+| test1132 ⚠ | `Test1132_cap_version_nonzero_round_trip` | TEST1132: Cap.Version non-zero value round-trips through JSON serialize/deserialize. | cap/definition_test.go:628 |
+| test1132 ⚠ | `Test1132_media_def_def_documentation_round_trip` | TEST1132: MediaDef serializes documentation only when present and round-trips losslessly. When nil, the field must be omitted entirely. | media/spec_test.go:626 |
+| | | | |
 | unnumbered | `TestAddMasterWithDuplicateHealthyIDErrors` |  | bifaci/relay_switch_test.go:1054 |
 | unnumbered | `TestArgumentsMultiple` | Mirror-specific coverage: Test multiple arguments are correctly serialized in CBOR payload | bifaci/integration_test.go:1390 |
 | unnumbered | `TestArgumentsRoundtrip` | Mirror-specific coverage: Test host call with unified CBOR arguments sends correct content_type and payload | bifaci/integration_test.go:1030 |
@@ -876,7 +882,7 @@ This catalog lists all tests in the Go codebase.
 | unnumbered | `TestCacheOperations` |  | cap/registry_test.go:67 |
 | unnumbered | `TestCapDescription` |  | cap/definition_test.go:466 |
 | unnumbered | `TestCapExists` |  | cap/registry_test.go:110 |
-| unnumbered | `TestCapJSONRoundTrip` |  | cap/definition_test.go:610 |
+| unnumbered | `TestCapJSONRoundTrip` |  | cap/definition_test.go:644 |
 | unnumbered | `TestCapManifestCompatibility` |  | bifaci/manifest_test.go:282 |
 | unnumbered | `TestCapManifestValidation` |  | bifaci/manifest_test.go:253 |
 | unnumbered | `TestCapManifestWithPageURL` |  | bifaci/manifest_test.go:61 |
@@ -931,6 +937,27 @@ This catalog lists all tests in the Go codebase.
 | unnumbered | `TestSchemaValidator_ValidateOutputWithSchema_Failure` |  | cap/schema_validation_test.go:147 |
 | unnumbered | `TestStreamingSequenceNumbers` | Mirror-specific coverage: Test streaming response sequence numbers are contiguous and start from 0 | bifaci/integration_test.go:1271 |
 | unnumbered | `TestWithSubtypeConstructor` | Mirror-specific coverage: Test with_subtype constructor creates media URN with subtype | urn/media_urn_test.go:231 |
+
+---
+
+## ⚠ Duplicate Test Numbers
+
+The following test numbers are assigned to more than one function. Keep the first occurrence at the existing number and renumber the rest using the suggested free numbers below.
+
+### test1131 (2 occurrences)
+
+- `Test1131_cap_version_zero_round_trip` — cap/definition_test.go:611
+- `Test1131_media_documentation_propagates_through_resolve` — media/spec_test.go:601
+
+**Suggested free number(s):** test1134
+
+### test1132 (2 occurrences)
+
+- `Test1132_cap_version_nonzero_round_trip` — cap/definition_test.go:628
+- `Test1132_media_def_def_documentation_round_trip` — media/spec_test.go:626
+
+**Suggested free number(s):** test1135
+
 ---
 
 ## Unnumbered Tests
@@ -944,7 +971,7 @@ The following tests are cataloged but do not currently participate in numeric te
 - `TestCacheOperations` — cap/registry_test.go:67
 - `TestCapDescription` — cap/definition_test.go:466
 - `TestCapExists` — cap/registry_test.go:110
-- `TestCapJSONRoundTrip` — cap/definition_test.go:610
+- `TestCapJSONRoundTrip` — cap/definition_test.go:644
 - `TestCapManifestCompatibility` — bifaci/manifest_test.go:282
 - `TestCapManifestValidation` — bifaci/manifest_test.go:253
 - `TestCapManifestWithPageURL` — bifaci/manifest_test.go:61
@@ -1003,8 +1030,8 @@ The following tests are cataloged but do not currently participate in numeric te
 ---
 
 *Generated from Go source tree*
-*Total tests: 914*
-*Total numbered tests: 852*
+*Total tests: 918*
+*Total numbered tests: 856*
 *Total unnumbered tests: 62*
 *Total numbered tests missing descriptions: 0*
 *Total numbering mismatches: 0*
