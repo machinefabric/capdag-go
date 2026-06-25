@@ -473,8 +473,8 @@ func Test1171_ParseEmptyInputReturnsError(t *testing.T) {
 	}
 }
 
-// TestParseHeadersWithNoWiringsReturnsNoEdgesError verifies the ErrNoEdges case.
-func TestParseHeadersWithNoWiringsReturnsNoEdgesError(t *testing.T) {
+// Test0124_ParseHeadersWithNoWiringsReturnsNoEdgesError verifies the ErrNoEdges case.
+func Test0124_ParseHeadersWithNoWiringsReturnsNoEdgesError(t *testing.T) {
 	registry := registryWith([]*cap.Cap{extractCapDef()})
 	notation := `[extract cap:in=media:pdf;extract;out="media:textable;txt"]`
 	_, err := ParseMachine(notation, registry)

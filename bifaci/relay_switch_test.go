@@ -848,11 +848,11 @@ func Test439_generic_provider_can_dispatch_specific_request(t *testing.T) {
 // they're "test that the Go port hasn't drifted from the wire
 // contract" tests.
 
-// TestCartridgeAttachmentErrorKindMatchesProtoSnakeCase pins
+// Test0134_CartridgeAttachmentErrorKindMatchesProtoSnakeCase pins
 // every variant's string value against its proto snake_case
 // name. New variants must be added here AND in the Rust /
 // Swift / proto sides.
-func TestCartridgeAttachmentErrorKindMatchesProtoSnakeCase(t *testing.T) {
+func Test0134_CartridgeAttachmentErrorKindMatchesProtoSnakeCase(t *testing.T) {
 	cases := []struct {
 		kind     CartridgeAttachmentErrorKind
 		expected string
@@ -875,12 +875,12 @@ func TestCartridgeAttachmentErrorKindMatchesProtoSnakeCase(t *testing.T) {
 	}
 }
 
-// TestCartridgeAttachmentErrorJSONRoundTrips verifies a
+// Test0136_CartridgeAttachmentErrorJSONRoundTrips verifies a
 // CartridgeAttachmentError marshals to JSON and unmarshals back
 // without changing the kind for every variant. RelayNotify wire
 // payload is JSON; a single-variant regression breaks the entire
 // per-master parse.
-func TestCartridgeAttachmentErrorJSONRoundTrips(t *testing.T) {
+func Test0136_CartridgeAttachmentErrorJSONRoundTrips(t *testing.T) {
 	cases := []CartridgeAttachmentErrorKind{
 		CartridgeAttachmentErrorKindIncompatible,
 		CartridgeAttachmentErrorKindManifestInvalid,
@@ -921,14 +921,14 @@ func TestCartridgeAttachmentErrorJSONRoundTrips(t *testing.T) {
 	}
 }
 
-// TestCartridgeAttachmentErrorDecodesProtoSnakeCaseStrings is the
+// Test0156_CartridgeAttachmentErrorDecodesProtoSnakeCaseStrings is the
 // engine→Go-host (or Swift→Go-host) decode path: incoming JSON
 // uses the snake_case wire format, and the Go side must resolve
 // each string into the matching variant. CartridgeAttachmentErrorKind
 // is just `type ... string`, so this test is also a check that the
 // JSON unmarshaller doesn't normalise/lowercase/etc the bytes
 // behind our backs.
-func TestCartridgeAttachmentErrorDecodesProtoSnakeCaseStrings(t *testing.T) {
+func Test0156_CartridgeAttachmentErrorDecodesProtoSnakeCaseStrings(t *testing.T) {
 	cases := []struct {
 		raw          string
 		expectedKind CartridgeAttachmentErrorKind
@@ -965,7 +965,7 @@ func TestCartridgeAttachmentErrorDecodesProtoSnakeCaseStrings(t *testing.T) {
 // keyed by index. Accumulating zombie slots on each reconnect was
 // the bug class these tests guard against.
 
-func TestReattachByIDPreservesSlotIndex(t *testing.T) {
+func Test0157_ReattachByIDPreservesSlotIndex(t *testing.T) {
 	engineRead, slaveWrite := net.Pipe()
 	slaveRead, engineWrite := net.Pipe()
 
@@ -1051,7 +1051,8 @@ func TestReattachByIDPreservesSlotIndex(t *testing.T) {
 	}
 }
 
-func TestAddMasterWithDuplicateHealthyIDErrors(t *testing.T) {
+// TEST0158: Add master with duplicate healthy i d errors
+func Test0158_AddMasterWithDuplicateHealthyIDErrors(t *testing.T) {
 	engineRead, slaveWrite := net.Pipe()
 	slaveRead, engineWrite := net.Pipe()
 
@@ -1099,7 +1100,8 @@ func TestAddMasterWithDuplicateHealthyIDErrors(t *testing.T) {
 	}
 }
 
-func TestNewRelaySwitchRejectsDuplicateIDs(t *testing.T) {
+// TEST0159: New relay switch rejects duplicate i ds
+func Test0159_NewRelaySwitchRejectsDuplicateIDs(t *testing.T) {
 	a, _ := net.Pipe()
 	aOther, _ := net.Pipe()
 	b, _ := net.Pipe()

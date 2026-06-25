@@ -596,9 +596,9 @@ func Test617_normalize_media_urn(t *testing.T) {
 	assert.Equal(t, urn1, urn2)
 }
 
-// TEST1131: Documentation propagates from MediaDef through ResolveMediaUrn
+// TEST0288: Documentation propagates from MediaDef through ResolveMediaUrn
 // into ResolvedMediaDef. Verifies description and documentation remain distinct.
-func Test1131_media_documentation_propagates_through_resolve(t *testing.T) {
+func Test0288_media_documentation_propagates_through_resolve(t *testing.T) {
 	registry := testRegistry(t)
 	body := "## Markdown body\n\nWith `code` and a [link](https://example.com)."
 	docUrn := "media:doc-test-1131;textable"
@@ -621,9 +621,9 @@ func Test1131_media_documentation_propagates_through_resolve(t *testing.T) {
 	assert.Equal(t, "short desc", resolved.Description)
 }
 
-// TEST1132: MediaDef serializes documentation only when present and
+// TEST0289: MediaDef serializes documentation only when present and
 // round-trips losslessly. When nil, the field must be omitted entirely.
-func Test1132_media_def_def_documentation_round_trip(t *testing.T) {
+func Test0289_media_def_def_documentation_round_trip(t *testing.T) {
 	body := "Body with newline\nand backslash \\"
 	withDoc := MediaDef{
 		Urn:           "media:rt-test-1132",

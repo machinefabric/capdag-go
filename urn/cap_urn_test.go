@@ -1439,7 +1439,7 @@ func Test838_dispatch_request_wildcard_output(t *testing.T) {
 }
 
 // JSON serialization test (not numbered in Rust)
-func TestCapUrn_JSONSerialization(t *testing.T) {
+func Test0125_CapUrn_JSONSerialization(t *testing.T) {
 	original, err := NewCapUrnFromString(testUrn("generate"))
 	require.NoError(t, err)
 

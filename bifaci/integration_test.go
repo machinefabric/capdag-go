@@ -43,8 +43,8 @@ func intTestUrn(tags string) string {
 }
 
 
-// TestIntegrationVersionlessCapCreation verifies caps can be created without version fields
-func TestIntegrationVersionlessCapCreation(t *testing.T) {
+// Test0160_IntegrationVersionlessCapCreation verifies caps can be created without version fields
+func Test0160_IntegrationVersionlessCapCreation(t *testing.T) {
 	// Test case 1: Create cap without version parameter
 	// Use type=data_processing key=value instead of flag
 	capUrn, err := urn.NewCapUrnFromString(intTestUrn("transform;format=json;type=data_processing"))
@@ -71,8 +71,8 @@ func TestIntegrationVersionlessCapCreation(t *testing.T) {
 	assert.False(t, capDef.Equals(capDef3))
 }
 
-// TestIntegrationCaseInsensitiveUrns verifies URNs are case-insensitive
-func TestIntegrationCaseInsensitiveUrns(t *testing.T) {
+// Test0161_IntegrationCaseInsensitiveUrns verifies URNs are case-insensitive
+func Test0161_IntegrationCaseInsensitiveUrns(t *testing.T) {
 	// Test case 1: Different case inputs should produce same URN.
 	// Both URNs use the same tag shape (a `transform` marker plus
 	// keyed `format=json` and `type=data_processing`). Only the case
@@ -115,8 +115,8 @@ func TestIntegrationCaseInsensitiveUrns(t *testing.T) {
 
 // TestIntegrationCallerAndResponseSystem verifies the caller and response system
 
-// TestIntegrationCapValidation verifies cap schema validation
-func TestIntegrationCapValidation(t *testing.T) {
+// Test0162_IntegrationCapValidation verifies cap schema validation
+func Test0162_IntegrationCapValidation(t *testing.T) {
 	registry := createTestRegistry(t)
 	coordinator := cap.NewCapValidationCoordinator()
 
@@ -159,8 +159,8 @@ func TestIntegrationCapValidation(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// TestIntegrationMediaUrnResolution verifies media URN resolution
-func TestIntegrationMediaUrnResolution(t *testing.T) {
+// Test0183_IntegrationMediaUrnResolution verifies media URN resolution
+func Test0183_IntegrationMediaUrnResolution(t *testing.T) {
 	registry := createTestRegistry(t)
 
 	// Seed registry with the specs we resolve below.
@@ -211,8 +211,8 @@ func TestIntegrationMediaUrnResolution(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// TestIntegrationMediaDefConstruction verifies media.MediaDef construction
-func TestIntegrationMediaDefConstruction(t *testing.T) {
+// Test0209_IntegrationMediaDefConstruction verifies media.MediaDef construction
+func Test0209_IntegrationMediaDefConstruction(t *testing.T) {
 	// Test basic construction
 	def := media.NewMediaDef("media:test;textable", "text/plain", "https://capdag.com/schema/str")
 	assert.Equal(t, "media:test;textable", def.Urn)
@@ -502,7 +502,7 @@ func Test287_HeartbeatFromHost(t *testing.T) {
 }
 
 // Mirror-specific coverage: Test cartridge ERR frame is received by host as error
-func TestCartridgeErrorResponse(t *testing.T) {
+func Test0265_CartridgeErrorResponse(t *testing.T) {
 	hostWrite, cartridgeRead, cartridgeWrite, hostRead := createPipePair(t)
 	defer hostWrite.Close()
 	defer cartridgeRead.Close()
@@ -559,7 +559,7 @@ func TestCartridgeErrorResponse(t *testing.T) {
 }
 
 // Mirror-specific coverage: Test LOG frames sent during a request are transparently skipped by host
-func TestLogFramesDuringRequest(t *testing.T) {
+func Test0266_LogFramesDuringRequest(t *testing.T) {
 	hostWrite, cartridgeRead, cartridgeWrite, hostRead := createPipePair(t)
 	defer hostWrite.Close()
 	defer cartridgeRead.Close()
@@ -847,7 +847,7 @@ func Test293_CartridgeRuntimeHandlerRegistration(t *testing.T) {
 }
 
 // Mirror-specific coverage: Test cartridge-initiated heartbeat mid-stream is handled transparently by host
-func TestHeartbeatDuringStreaming(t *testing.T) {
+func Test0267_HeartbeatDuringStreaming(t *testing.T) {
 	hostWrite, cartridgeRead, cartridgeWrite, hostRead := createPipePair(t)
 	defer hostWrite.Close()
 	defer cartridgeRead.Close()
@@ -947,7 +947,7 @@ func TestHeartbeatDuringStreaming(t *testing.T) {
 }
 
 // Mirror-specific coverage: Test host does not echo back cartridge's heartbeat response (no infinite ping-pong)
-func TestHostInitiatedHeartbeatNoPingPong(t *testing.T) {
+func Test0268_HostInitiatedHeartbeatNoPingPong(t *testing.T) {
 	hostWrite, cartridgeRead, cartridgeWrite, hostRead := createPipePair(t)
 	defer hostWrite.Close()
 	defer cartridgeRead.Close()
@@ -1027,7 +1027,7 @@ func TestHostInitiatedHeartbeatNoPingPong(t *testing.T) {
 }
 
 // Mirror-specific coverage: Test host call with unified CBOR arguments sends correct content_type and payload
-func TestArgumentsRoundtrip(t *testing.T) {
+func Test0269_ArgumentsRoundtrip(t *testing.T) {
 	hostWrite, cartridgeRead, cartridgeWrite, hostRead := createPipePair(t)
 	defer hostWrite.Close()
 	defer cartridgeRead.Close()
@@ -1104,7 +1104,7 @@ func TestArgumentsRoundtrip(t *testing.T) {
 }
 
 // Mirror-specific coverage: Test host receives error when cartridge closes connection unexpectedly
-func TestCartridgeSuddenDisconnect(t *testing.T) {
+func Test0274_CartridgeSuddenDisconnect(t *testing.T) {
 	hostWrite, cartridgeRead, cartridgeWrite, hostRead := createPipePair(t)
 	defer hostWrite.Close()
 	defer hostRead.Close()
@@ -1212,7 +1212,7 @@ func Test299_EmptyPayloadRoundtrip(t *testing.T) {
 }
 
 // Mirror-specific coverage: Test END frame without payload is handled as complete response with empty data
-func TestEndFrameNoPayload(t *testing.T) {
+func Test0275_EndFrameNoPayload(t *testing.T) {
 	hostWrite, cartridgeRead, cartridgeWrite, hostRead := createPipePair(t)
 	defer hostWrite.Close()
 	defer cartridgeRead.Close()
@@ -1268,7 +1268,7 @@ func TestEndFrameNoPayload(t *testing.T) {
 }
 
 // Mirror-specific coverage: Test streaming response sequence numbers are contiguous and start from 0
-func TestStreamingSequenceNumbers(t *testing.T) {
+func Test0276_StreamingSequenceNumbers(t *testing.T) {
 	hostWrite, cartridgeRead, cartridgeWrite, hostRead := createPipePair(t)
 	defer hostWrite.Close()
 	defer cartridgeRead.Close()
@@ -1344,7 +1344,7 @@ func TestStreamingSequenceNumbers(t *testing.T) {
 }
 
 // Mirror-specific coverage: Test host request on a closed host returns error
-func TestRequestAfterShutdown(t *testing.T) {
+func Test0277_RequestAfterShutdown(t *testing.T) {
 	hostWrite, cartridgeRead, cartridgeWrite, hostRead := createPipePair(t)
 
 	var wg sync.WaitGroup
@@ -1387,7 +1387,7 @@ func TestRequestAfterShutdown(t *testing.T) {
 }
 
 // Mirror-specific coverage: Test multiple arguments are correctly serialized in CBOR payload
-func TestArgumentsMultiple(t *testing.T) {
+func Test0278_ArgumentsMultiple(t *testing.T) {
 	hostWrite, cartridgeRead, cartridgeWrite, hostRead := createPipePair(t)
 	defer hostWrite.Close()
 	defer cartridgeRead.Close()
@@ -1460,7 +1460,7 @@ func TestArgumentsMultiple(t *testing.T) {
 
 // Mirror-specific coverage: Test auto-chunking splits payload larger than max_chunk into CHUNK frames + END frame,
 // and host concatenated() reassembles the full original data
-func TestAutoChunkingReassembly(t *testing.T) {
+func Test0279_AutoChunkingReassembly(t *testing.T) {
 	hostWrite, cartridgeRead, cartridgeWrite, hostRead := createPipePair(t)
 	defer hostWrite.Close()
 	defer cartridgeRead.Close()
@@ -1546,7 +1546,7 @@ func TestAutoChunkingReassembly(t *testing.T) {
 }
 
 // Mirror-specific coverage: Test payload exactly equal to max_chunk produces single END frame (no CHUNK frames)
-func TestExactMaxChunkSingleEnd(t *testing.T) {
+func Test0280_ExactMaxChunkSingleEnd(t *testing.T) {
 	hostWrite, cartridgeRead, cartridgeWrite, hostRead := createPipePair(t)
 	defer hostWrite.Close()
 	defer cartridgeRead.Close()
@@ -1611,7 +1611,7 @@ func TestExactMaxChunkSingleEnd(t *testing.T) {
 }
 
 // Mirror-specific coverage: Test payload of max_chunk + 1 produces exactly one CHUNK frame + one END frame
-func TestMaxChunkPlusOneSplitsIntoTwo(t *testing.T) {
+func Test0281_MaxChunkPlusOneSplitsIntoTwo(t *testing.T) {
 	hostWrite, cartridgeRead, cartridgeWrite, hostRead := createPipePair(t)
 	defer hostWrite.Close()
 	defer cartridgeRead.Close()
@@ -1690,7 +1690,7 @@ func TestMaxChunkPlusOneSplitsIntoTwo(t *testing.T) {
 }
 
 // Mirror-specific coverage: Test that concatenated() returns full payload while final_payload() returns only last chunk
-func TestConcatenatedVsFinalPayloadDivergence(t *testing.T) {
+func Test0282_ConcatenatedVsFinalPayloadDivergence(t *testing.T) {
 	chunks := []*ResponseChunk{
 		{Payload: []byte("AAAA"), Seq: 0, IsEof: false},
 		{Payload: []byte("BBBB"), Seq: 1, IsEof: false},
@@ -1714,7 +1714,7 @@ func TestConcatenatedVsFinalPayloadDivergence(t *testing.T) {
 }
 
 // Mirror-specific coverage: Test auto-chunking preserves data integrity across chunk boundaries for 3x max_chunk payload
-func TestChunkingDataIntegrity3x(t *testing.T) {
+func Test0283_ChunkingDataIntegrity3x(t *testing.T) {
 	hostWrite, cartridgeRead, cartridgeWrite, hostRead := createPipePair(t)
 	defer hostWrite.Close()
 	defer cartridgeRead.Close()

@@ -58,7 +58,8 @@ func Test149_cap_manifest_with_author(t *testing.T) {
 	assert.Equal(t, "Test Author", *manifest.Author)
 }
 
-func TestCapManifestWithPageURL(t *testing.T) {
+// TEST0131: Cap manifest with page u r l
+func Test0131_CapManifestWithPageURL(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(manifestTestUrn("extract;target=metadata"))
 	require.NoError(t, err)
 
@@ -250,7 +251,8 @@ func Test155_component_metadata_interface(t *testing.T) {
 	assert.Contains(t, caps[0].UrnString(), "test")
 }
 
-func TestCapManifestValidation(t *testing.T) {
+// TEST0132: Cap manifest validation
+func Test0132_CapManifestValidation(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(manifestTestUrn("extract;target=metadata"))
 	require.NoError(t, err)
 
@@ -279,7 +281,8 @@ func TestCapManifestValidation(t *testing.T) {
 	assert.True(t, all[0].AcceptsStdin())
 }
 
-func TestCapManifestCompatibility(t *testing.T) {
+// TEST0133: Cap manifest compatibility
+func Test0133_CapManifestCompatibility(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(manifestTestUrn("process"))
 	require.NoError(t, err)
 	capDef := cap.NewCap(id, "Data Processor", "process")

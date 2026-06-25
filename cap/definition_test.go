@@ -447,7 +447,7 @@ func Test598_cap_output_lifecycle(t *testing.T) {
 
 // Additional existing tests below (not part of TEST108-116 sequence)
 
-func TestCapRequestHandling(t *testing.T) {
+func Test0070_CapRequestHandling(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(capTestUrn("extract;target=metadata"))
 	require.NoError(t, err)
 
@@ -463,7 +463,8 @@ func TestCapRequestHandling(t *testing.T) {
 	assert.False(t, cap1.AcceptsRequest(cap3.Urn))
 }
 
-func TestCapDescription(t *testing.T) {
+// TEST0079: Cap description
+func Test0079_CapDescription(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(capTestUrn("parse;format=json;data"))
 	require.NoError(t, err)
 
@@ -475,7 +476,8 @@ func TestCapDescription(t *testing.T) {
 	assert.True(t, cap1.Equals(cap3))  // Same everything
 }
 
-func TestCapWithMediaDefs(t *testing.T) {
+// TEST0080: Cap with media defs
+func Test0080_CapWithMediaDefs(t *testing.T) {
 	// Use proper in/out in the URN - custom media URN in out
 	id, err := urn.NewCapUrnFromString(`cap:in="media:string";query;out="media:result";target=structured`)
 	require.NoError(t, err)
@@ -607,8 +609,8 @@ func Test1130_cap_documentation_set_and_clear_lifecycle(t *testing.T) {
 	assert.Equal(t, "short", *c.CapDescription)
 }
 
-// TEST1131: Cap.Version zero value is omitted on serialize and defaults to 0 on deserialize.
-func Test1131_cap_version_zero_round_trip(t *testing.T) {
+// TEST0081: Cap.Version zero value is omitted on serialize and defaults to 0 on deserialize.
+func Test0081_cap_version_zero_round_trip(t *testing.T) {
 	u, err := urn.NewCapUrnFromString(defTestUrn("versioned"))
 	require.NoError(t, err)
 	c := NewCap(u, "Versioned Cap", "versioned")
@@ -624,8 +626,8 @@ func Test1131_cap_version_zero_round_trip(t *testing.T) {
 	assert.Equal(t, uint32(0), restored.Version, "deserialized cap must have Version 0 when field absent")
 }
 
-// TEST1132: Cap.Version non-zero value round-trips through JSON serialize/deserialize.
-func Test1132_cap_version_nonzero_round_trip(t *testing.T) {
+// TEST0082: Cap.Version non-zero value round-trips through JSON serialize/deserialize.
+func Test0082_cap_version_nonzero_round_trip(t *testing.T) {
 	u, err := urn.NewCapUrnFromString(defTestUrn("versioned"))
 	require.NoError(t, err)
 	c := NewCap(u, "Versioned Cap", "versioned")
@@ -641,7 +643,8 @@ func Test1132_cap_version_nonzero_round_trip(t *testing.T) {
 	assert.Equal(t, uint32(3), restored.Version, "deserialized cap must have Version 3")
 }
 
-func TestCapJSONRoundTrip(t *testing.T) {
+// TEST0083: Cap j s o n round trip
+func Test0083_CapJSONRoundTrip(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(capTestUrn("test"))
 	require.NoError(t, err)
 

@@ -11,7 +11,7 @@ import (
 )
 
 // Mirror-specific coverage: Test parsing simple media URN verifies correct structure with no version, subtype, or profile
-func TestParseSimple(t *testing.T) {
+func Test0126_ParseSimple(t *testing.T) {
 	urn, err := NewMediaUrnFromString("media:string")
 	require.NoError(t, err)
 	assert.True(t, urn.HasTag("string"))
@@ -19,7 +19,7 @@ func TestParseSimple(t *testing.T) {
 }
 
 // Mirror-specific coverage: Test parsing media URN with marker tags works correctly
-func TestParseWithSubtype(t *testing.T) {
+func Test0127_ParseWithSubtype(t *testing.T) {
 	urn, err := NewMediaUrnFromString("media:string")
 	require.NoError(t, err)
 	assert.True(t, urn.HasTag("string"))
@@ -29,7 +29,7 @@ func TestParseWithSubtype(t *testing.T) {
 }
 
 // Mirror-specific coverage: Test parsing media URN with profile extracts profile URL correctly
-func TestParseWithProfile(t *testing.T) {
+func Test0128_ParseWithProfile(t *testing.T) {
 	urn, err := NewMediaUrnFromString("media:string;textable")
 	require.NoError(t, err)
 	assert.True(t, urn.HasTag("textable"))
@@ -221,14 +221,14 @@ func Test068_is_void(t *testing.T) {
 }
 
 // Mirror-specific coverage: Test simple constructor creates media URN with type tag
-func TestConstructor(t *testing.T) {
+func Test0129_Constructor(t *testing.T) {
 	urn, err := NewMediaUrnFromString("media:string")
 	require.NoError(t, err)
 	assert.True(t, urn.HasTag("string"))
 }
 
 // Mirror-specific coverage: Test with_subtype constructor creates media URN with subtype
-func TestWithSubtypeConstructor(t *testing.T) {
+func Test0130_WithSubtypeConstructor(t *testing.T) {
 	urn, err := NewMediaUrnFromString("media:application;subtype=json")
 	require.NoError(t, err)
 	assert.True(t, urn.HasTag("application"))

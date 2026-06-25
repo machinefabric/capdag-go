@@ -37,7 +37,7 @@ func Test135_registry_creation(t *testing.T) {
 // Rust and Python dropped this; this deletion keeps the Go mirror
 // in parity.
 
-func TestRegistryGetCap(t *testing.T) {
+func Test0120_RegistryGetCap(t *testing.T) {
 	registry, err := NewFabricRegistry()
 	require.NoError(t, err)
 
@@ -50,7 +50,8 @@ func TestRegistryGetCap(t *testing.T) {
 	assert.Contains(t, err.Error(), "not found in registry")
 }
 
-func TestRegistryValidation(t *testing.T) {
+// TEST0121: Registry validation
+func Test0121_RegistryValidation(t *testing.T) {
 	registry, err := NewFabricRegistry()
 	require.NoError(t, err)
 
@@ -64,7 +65,8 @@ func TestRegistryValidation(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestCacheOperations(t *testing.T) {
+// TEST0122: Cache operations
+func Test0122_CacheOperations(t *testing.T) {
 	registry, err := NewFabricRegistry()
 	require.NoError(t, err)
 
@@ -107,7 +109,8 @@ func Test138_parse_registry_json_with_stdin(t *testing.T) {
 	assert.Equal(t, "media:pdf", *stdinUrn)
 }
 
-func TestCapExists(t *testing.T) {
+// TEST0123: Cap exists
+func Test0123_CapExists(t *testing.T) {
 	registry, err := NewFabricRegistry()
 	require.NoError(t, err)
 

@@ -41,7 +41,8 @@ func Test168_response_wrapper_from_json(t *testing.T) {
 	assert.Equal(t, float64(42), parsed["value"]) // JSON numbers are float64
 }
 
-func TestResponseWrapperFromText(t *testing.T) {
+// TEST0054: Response wrapper from text
+func Test0054_ResponseWrapperFromText(t *testing.T) {
 	testText := "Hello, World!"
 	response := NewResponseWrapperFromText([]byte(testText))
 
@@ -91,7 +92,8 @@ func Test169_response_wrapper_as_int(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestResponseWrapperAsFloat(t *testing.T) {
+// TEST0055: Response wrapper as float
+func Test0055_ResponseWrapperAsFloat(t *testing.T) {
 	// Test from text
 	response := NewResponseWrapperFromText([]byte("3.14"))
 	result, err := response.AsFloat()
@@ -105,7 +107,8 @@ func TestResponseWrapperAsFloat(t *testing.T) {
 	assert.Equal(t, 2.71, result2)
 }
 
-func TestResponseWrapperAsBool(t *testing.T) {
+// TEST0056: Response wrapper as bool
+func Test0056_ResponseWrapperAsBool(t *testing.T) {
 	testCases := []struct {
 		input    string
 		expected bool
@@ -135,7 +138,8 @@ func TestResponseWrapperAsBool(t *testing.T) {
 	}
 }
 
-func TestResponseWrapperIsEmpty(t *testing.T) {
+// TEST0057: Response wrapper is empty
+func Test0057_ResponseWrapperIsEmpty(t *testing.T) {
 	// Empty response
 	response := NewResponseWrapperFromText([]byte{})
 	assert.True(t, response.IsEmpty())
@@ -145,7 +149,8 @@ func TestResponseWrapperIsEmpty(t *testing.T) {
 	assert.False(t, response2.IsEmpty())
 }
 
-func TestResponseWrapperGetContentType(t *testing.T) {
+// TEST0058: Response wrapper get content type
+func Test0058_ResponseWrapperGetContentType(t *testing.T) {
 	jsonResponse := NewResponseWrapperFromJSON([]byte("{}"))
 	assert.Equal(t, "application/json", jsonResponse.GetContentType())
 
@@ -156,7 +161,8 @@ func TestResponseWrapperGetContentType(t *testing.T) {
 	assert.Equal(t, "application/octet-stream", binaryResponse.GetContentType())
 }
 
-func TestResponseWrapperMatchesOutputType(t *testing.T) {
+// TEST0059: Response wrapper matches output type
+func Test0059_ResponseWrapperMatchesOutputType(t *testing.T) {
 	registry := testRegistry(t)
 	// Common mediaDefs for all caps - resolution requires this table
 	// Use the constant values directly since the cap URNs reference these specific media URN strings
@@ -241,7 +247,8 @@ func TestResponseWrapperMatchesOutputType(t *testing.T) {
 	assert.Contains(t, err.Error(), "failed to resolve output media URN")
 }
 
-func TestResponseWrapperValidateAgainstCap(t *testing.T) {
+// TEST0069: Response wrapper validate against cap
+func Test0069_ResponseWrapperValidateAgainstCap(t *testing.T) {
 	registry := testRegistry(t)
 	// Setup cap with output schema
 	capUrn, err := urn.NewCapUrnFromString(respTestUrn("test"))
