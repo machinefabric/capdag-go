@@ -35,11 +35,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Convert empty registry URL to nil pointer (dev install).
-	var registryURL *string
+	// Derive the baked registry identity through the validated build-env path
+	// (mirror of Rust's
+	// `registry_url_from_build_env(option_env!("MFR_CARTRIDGE_REGISTRY_URL"))`).
+	// The build injects this var only for a published build; for a dev build the
+	// `-X main.cartridgeRegistryURL` ldflag is omitted, so the link-time string
+	// is empty — that empty is the "unset / dev" signal, passed as nil. A
+	// non-empty value is validated and passed through. RegistryURLFromBuildEnv
+	// panics on a pointer-to-empty (a build-script bug), so an empty registry
+	// identity can never be silently hashed into a fake slug.
+	var rawRegistry *string
 	if cartridgeRegistryURL != "" {
-		registryURL = &cartridgeRegistryURL
+		rawRegistry = &cartridgeRegistryURL
 	}
+	registryURL := capdag.RegistryURLFromBuildEnv(rawRegistry)
 
 	// Create manifest
 	manifest := capdag.NewCapManifest(

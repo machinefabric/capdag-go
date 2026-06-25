@@ -54,6 +54,7 @@ var NewFrameReader = bifaci.NewFrameReader
 var NewFrameWriter = bifaci.NewFrameWriter
 var NewCartridgeRuntime = bifaci.NewCartridgeRuntime
 var NewCapManifest = bifaci.NewCapManifest
+var RegistryURLFromBuildEnv = bifaci.RegistryURLFromBuildEnv
 var DefaultGroup = bifaci.DefaultGroup
 var DecodeChunkPayload = bifaci.DecodeChunkPayload
 var NewCapResultScalar = cap.NewCapResultScalar

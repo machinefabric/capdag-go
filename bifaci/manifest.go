@@ -87,6 +87,36 @@ func NewCapManifest(name, version, channel string, registryURL *string, descript
 	}
 }
 
+// RegistryURLFromBuildEnv validates a build-time cartridge registry URL,
+// mirroring Rust's `registry_url_from_build_env` (capdag/src/bifaci/manifest.rs).
+//
+// It encodes the registry-identity contract a cartridge or engine bakes in at
+// build time. The argument is the optional build-env value (mirror of Rust's
+// `option_env!("MFR_CARTRIDGE_REGISTRY_URL")` — `*string` here stands in for
+// `Option<&str>`):
+//
+//   - raw == nil               => dev build. Registry identity is absent; the
+//                                 build uses the on-disk `dev/` slot. Returns nil.
+//   - raw != nil, *raw != ""   => published-registry build. Returns raw unchanged.
+//   - raw != nil, *raw == ""   => INVALID. The variable was exported with an
+//                                 empty value — neither a dev build nor a valid
+//                                 registry identity. This MUST fail hard so the
+//                                 build cannot silently hash the empty string
+//                                 into a fake registry slug. Panics.
+//
+// Failing hard on the empty-but-set case is deliberate: a fallback that treated
+// "" as dev would hide a real build-script bug. Callers that genuinely mean a
+// dev build pass nil, never a pointer to "".
+func RegistryURLFromBuildEnv(raw *string) *string {
+	if raw == nil {
+		return nil
+	}
+	if *raw == "" {
+		panic("MFR_CARTRIDGE_REGISTRY_URL must be unset for dev builds or set to a non-empty registry URL for published builds; empty string is invalid")
+	}
+	return raw
+}
+
 // AllCaps returns all caps from all cap groups.
 func (cm *CapManifest) AllCaps() []cap.Cap {
 	var all []cap.Cap
