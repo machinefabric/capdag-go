@@ -698,8 +698,8 @@ func Test437_preferred_cap_routes_to_generic(t *testing.T) {
 	engineRead1, slaveWrite1 := net.Pipe()
 	slaveRead1, engineWrite1 := net.Pipe()
 
-	genericCap := `cap:in=media:;generate-thumbnail;out="media:image;png;thumbnail"`
-	specificCap := `cap:in="media:ext=pdf";generate-thumbnail;out="media:image;png;thumbnail"`
+	genericCap := `cap:in=media:;generate-thumbnail;out="media:ext=png;image;thumbnail"`
+	specificCap := `cap:in="media:ext=pdf";generate-thumbnail;out="media:ext=png;image;thumbnail"`
 
 	spawnSlave := func(r, w net.Conn, caps []string) {
 		go func() {
@@ -728,7 +728,7 @@ func Test437_preferred_cap_routes_to_generic(t *testing.T) {
 		t.Fatalf("Failed to create RelaySwitch: %v", err)
 	}
 
-	request := `cap:in="media:ext=pdf";generate-thumbnail;out="media:image;png;thumbnail"`
+	request := `cap:in="media:ext=pdf";generate-thumbnail;out="media:ext=png;image;thumbnail"`
 
 	sw.mu.Lock()
 	defer sw.mu.Unlock()
@@ -758,7 +758,7 @@ func Test438_preferred_cap_falls_back_when_not_comparable(t *testing.T) {
 	engineRead, slaveWrite := net.Pipe()
 	slaveRead, engineWrite := net.Pipe()
 
-	registered := `cap:in="media:ext=pdf";generate-thumbnail;out="media:image;png;thumbnail"`
+	registered := `cap:in="media:ext=pdf";generate-thumbnail;out="media:ext=png;image;thumbnail"`
 
 	go func() {
 		reader := NewFrameReader(slaveRead)
@@ -778,9 +778,9 @@ func Test438_preferred_cap_falls_back_when_not_comparable(t *testing.T) {
 		t.Fatalf("Failed to create RelaySwitch: %v", err)
 	}
 
-	request := `cap:in="media:ext=pdf";generate-thumbnail;out="media:image;png;thumbnail"`
+	request := `cap:in="media:ext=pdf";generate-thumbnail;out="media:ext=png;image;thumbnail"`
 	// Preference for an unrelated cap — no equivalent match, falls back to closest-specificity
-	unrelated := `cap:in="media:txt;enc=utf-8";generate-thumbnail;out="media:image;png;thumbnail"`
+	unrelated := `cap:in="media:txt;enc=utf-8";generate-thumbnail;out="media:ext=png;image;thumbnail"`
 
 	sw.mu.Lock()
 	defer sw.mu.Unlock()
@@ -798,7 +798,7 @@ func Test439_generic_provider_can_dispatch_specific_request(t *testing.T) {
 	engineRead, slaveWrite := net.Pipe()
 	slaveRead, engineWrite := net.Pipe()
 
-	genericCap := `cap:in=media:;generate-thumbnail;out="media:image;png;thumbnail"`
+	genericCap := `cap:in=media:;generate-thumbnail;out="media:ext=png;image;thumbnail"`
 
 	go func() {
 		reader := NewFrameReader(slaveRead)
@@ -819,7 +819,7 @@ func Test439_generic_provider_can_dispatch_specific_request(t *testing.T) {
 	}
 
 	// Specific PDF request — generic handler CAN dispatch it
-	request := `cap:in="media:ext=pdf";generate-thumbnail;out="media:image;png;thumbnail"`
+	request := `cap:in="media:ext=pdf";generate-thumbnail;out="media:ext=png;image;thumbnail"`
 
 	sw.mu.Lock()
 	defer sw.mu.Unlock()

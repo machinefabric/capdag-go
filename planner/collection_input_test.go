@@ -22,7 +22,7 @@ func Test716_empty_collection(t *testing.T) {
 func Test717_collection_with_files(t *testing.T) {
 	collection := NewCapInputCollection("folder-123", "Test Folder")
 	collection.Files = append(collection.Files, NewCollectionFile("listing-1", "/path/to/file1.pdf", "media:ext=pdf"))
-	collection.Files = append(collection.Files, NewCollectionFile("listing-2", "/path/to/file2.md", "media:md;enc=utf-8"))
+	collection.Files = append(collection.Files, NewCollectionFile("listing-2", "/path/to/file2.md", "media:enc=utf-8;ext=md"))
 
 	assert.False(t, collection.IsEmpty())
 	assert.Equal(t, 2, collection.TotalFileCount())

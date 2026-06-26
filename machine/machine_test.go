@@ -426,7 +426,7 @@ func Test1164_ParseTwoDisconnectedStrandsYieldsTwoMachineStrands(t *testing.T) {
 	convertB := buildCap(
 		"cap:in=media:html;convert-b;out=\"media:ext=txt\"",
 		"convert_b",
-		[]string{"media:html"},
+		[]string{"media:ext=html"},
 		"media:ext=txt",
 	)
 	registry := registryWith([]*cap.Cap{convertA, convertB})
@@ -850,9 +850,9 @@ func Test1180_match_unmatched_source_fails_hard(t *testing.T) {
 
 // TEST1181: matchSourcesToArgs disambiguates two sources by specificity.
 func Test1181_match_two_sources_disambiguated_by_specificity(t *testing.T) {
-	sources := []*urn.MediaUrn{mediaUrn("media:image;png"), mediaUrn("media:model-spec;enc=utf-8")}
-	args := []*urn.MediaUrn{mediaUrn("media:image;png"), mediaUrn("media:enc=utf-8")}
-	capUrnStr := `cap:in="media:image;png";describe;out="media:image-description;enc=utf-8"`
+	sources := []*urn.MediaUrn{mediaUrn("media:ext=png;image"), mediaUrn("media:model-spec;enc=utf-8")}
+	args := []*urn.MediaUrn{mediaUrn("media:ext=png;image"), mediaUrn("media:enc=utf-8")}
+	capUrnStr := `cap:in="media:ext=png;image";describe;out="media:image-description;enc=utf-8"`
 
 	pairs, err := matchSourcesToArgs(sources, args, capUrnStr, 0)
 	require.Nil(t, err, "two sources disambiguated by specificity must succeed")
@@ -861,8 +861,8 @@ func Test1181_match_two_sources_disambiguated_by_specificity(t *testing.T) {
 	foundImage, foundText := false, false
 	for _, pair := range pairs {
 		arg, src := pair[0], pair[1]
-		if arg.IsEquivalent(mediaUrn("media:image;png")) {
-			assert.True(t, src.IsEquivalent(mediaUrn("media:image;png")))
+		if arg.IsEquivalent(mediaUrn("media:ext=png;image")) {
+			assert.True(t, src.IsEquivalent(mediaUrn("media:ext=png;image")))
 			foundImage = true
 		} else if arg.IsEquivalent(mediaUrn("media:enc=utf-8")) {
 			assert.True(t, src.IsEquivalent(mediaUrn("media:model-spec;enc=utf-8")))

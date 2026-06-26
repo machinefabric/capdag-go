@@ -379,11 +379,11 @@ func Test1263_cycle_detection(t *testing.T) {
 func Test1264_incompatible_media_types_at_shared_node(t *testing.T) {
 	registry := buildParserTestRegistry(t, []string{
 		`cap:in="media:void";produce-pdf;out="media:ext=pdf"`,
-		`cap:in="media:audio;wav";transcribe;out="media:txt;enc=utf-8"`,
+		`cap:in="media:audio;ext=wav";transcribe;out="media:txt;enc=utf-8"`,
 	})
 
 	notation := `[produce cap:in="media:void";produce-pdf;out="media:ext=pdf"]` +
-		`[transcribe cap:in="media:audio;wav";transcribe;out="media:txt;enc=utf-8"]` +
+		`[transcribe cap:in="media:audio;ext=wav";transcribe;out="media:txt;enc=utf-8"]` +
 		`[A -> produce -> B]` +
 		`[B -> transcribe -> C]`
 
@@ -400,12 +400,12 @@ func Test1264_incompatible_media_types_at_shared_node(t *testing.T) {
 // TEST1265: Shared nodes accept compatible media URNs when one is a more specific form of the other.
 func Test1265_compatible_media_urns_at_shared_node(t *testing.T) {
 	registry := buildParserTestRegistry(t, []string{
-		`cap:in="media:ext=pdf";thumbnail;out="media:image;png"`,
-		`cap:in="media:bytes;image;png";embed-image;out="media:embedding-vector;record;enc=utf-8"`,
+		`cap:in="media:ext=pdf";thumbnail;out="media:ext=png;image"`,
+		`cap:in="media:bytes;ext=png;image";embed-image;out="media:embedding-vector;record;enc=utf-8"`,
 	})
 
-	notation := `[thumb cap:in="media:ext=pdf";thumbnail;out="media:image;png"]` +
-		`[embed_image cap:in="media:bytes;image;png";embed-image;out="media:embedding-vector;record;enc=utf-8"]` +
+	notation := `[thumb cap:in="media:ext=pdf";thumbnail;out="media:ext=png;image"]` +
+		`[embed_image cap:in="media:bytes;ext=png;image";embed-image;out="media:embedding-vector;record;enc=utf-8"]` +
 		`[A -> thumb -> B]` +
 		`[B -> embed_image -> C]`
 

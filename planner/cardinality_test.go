@@ -50,7 +50,7 @@ func Test693_compatibility_vector_to_vector(t *testing.T) {
 // TEST697: Tests CapShapeInfo correctly identifies one-to-one pattern
 // Verifies Single input and Single output result in OneToOne pattern
 func Test697_cap_shape_info_one_to_one(t *testing.T) {
-	info := CapShapeInfoFromSpecs("cap:test", "media:ext=pdf", "media:image;png")
+	info := CapShapeInfoFromSpecs("cap:test", "media:ext=pdf", "media:ext=png;image")
 	assert.Equal(t, CardinalitySingle, info.Input.Cardinality)
 	assert.Equal(t, CardinalitySingle, info.Output.Cardinality)
 	assert.Equal(t, PatternOneToOne, info.CardinalityPatternOf())
@@ -60,7 +60,7 @@ func Test697_cap_shape_info_one_to_one(t *testing.T) {
 // Cardinality comes from context (IsSequence), not from URN tags.
 // The list tag is a semantic type property, not a cardinality indicator.
 func Test698_cap_shape_info_cardinality_always_single_from_urn(t *testing.T) {
-	info := CapShapeInfoFromSpecs("cap:pdf-to-pages", "media:ext=pdf", "media:list;png")
+	info := CapShapeInfoFromSpecs("cap:pdf-to-pages", "media:ext=pdf", "media:ext=png;list")
 	assert.Equal(t, CardinalitySingle, info.Input.Cardinality)
 	assert.Equal(t, CardinalitySingle, info.Output.Cardinality)
 	assert.Equal(t, PatternOneToOne, info.CardinalityPatternOf())
@@ -106,8 +106,8 @@ func Test710_pattern_requires_vector(t *testing.T) {
 // TEST711: Tests shape chain analysis for simple linear one-to-one capability chains
 func Test711_strand_shape_analysis_simple_linear(t *testing.T) {
 	infos := []CapShapeInfo{
-		CapShapeInfoFromSpecs("cap:pdf-to-png", "media:ext=pdf", "media:image;png"),
-		CapShapeInfoFromSpecs("cap:resize", "media:image;png", "media:image;png"),
+		CapShapeInfoFromSpecs("cap:pdf-to-png", "media:ext=pdf", "media:ext=png;image"),
+		CapShapeInfoFromSpecs("cap:resize", "media:ext=png;image", "media:ext=png;image"),
 	}
 	analysis := AnalyzeShapeChain(infos)
 	assert.True(t, analysis.IsValid)
@@ -121,12 +121,12 @@ func Test712_strand_shape_analysis_with_fan_out(t *testing.T) {
 	// Simulate pdf-to-pages with Sequence output (is_sequence=true)
 	pdfToPages := CapShapeInfo{
 		Input:  MediaShapeFromUrn("media:ext=pdf"),
-		Output: MediaShape{Cardinality: CardinalitySequence, Structure: StructureFromMediaUrn("media:image;png")},
+		Output: MediaShape{Cardinality: CardinalitySequence, Structure: StructureFromMediaUrn("media:ext=png;image")},
 		CapUrn: "cap:pdf-to-pages",
 	}
 	infos := []CapShapeInfo{
 		pdfToPages,
-		CapShapeInfoFromSpecs("cap:thumbnail", "media:image;png", "media:image;png"),
+		CapShapeInfoFromSpecs("cap:thumbnail", "media:ext=png;image", "media:ext=png;image"),
 	}
 	analysis := AnalyzeShapeChain(infos)
 	assert.True(t, analysis.IsValid)
@@ -305,8 +305,8 @@ func Test741_cap_shape_info_pattern(t *testing.T) {
 // TEST750: Tests shape chain analysis for valid chain with matching structures
 func Test750_strand_shape_valid(t *testing.T) {
 	infos := []CapShapeInfo{
-		CapShapeInfoFromSpecs("cap:resize", "media:image;png", "media:image;png"),
-		CapShapeInfoFromSpecs("cap:compress", "media:image;png", "media:image;png"),
+		CapShapeInfoFromSpecs("cap:resize", "media:ext=png;image", "media:ext=png;image"),
+		CapShapeInfoFromSpecs("cap:compress", "media:ext=png;image", "media:ext=png;image"),
 	}
 	analysis := AnalyzeShapeChain(infos)
 	assert.True(t, analysis.IsValid)

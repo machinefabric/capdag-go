@@ -2984,10 +2984,10 @@ func Test680_require_stream_missing_fails(t *testing.T) {
 func Test681_find_stream_multiple(t *testing.T) {
 	streams := streamsToSlice([]testStream{
 		{"media:txt;enc=utf-8", []byte("text data")},
-		{"media:image;png", []byte("image data")},
+		{"media:ext=png;image", []byte("image data")},
 		{"media:fmt=json", []byte("json data")},
 	})
-	result, err := FindStream(streams, "media:image;png")
+	result, err := FindStream(streams, "media:ext=png;image")
 	if err != nil {
 		t.Fatalf("FindStream error: %v", err)
 	}

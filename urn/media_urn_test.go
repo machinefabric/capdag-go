@@ -388,7 +388,7 @@ func Test546_is_image(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, pngUrn.IsImage())
 
-	customImage, err := NewMediaUrnFromString("media:image;jpg")
+	customImage, err := NewMediaUrnFromString("media:ext=jpg;image")
 	require.NoError(t, err)
 	assert.True(t, customImage.IsImage())
 
@@ -420,7 +420,7 @@ func Test547_is_audio(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, speechUrn.IsAudio())
 
-	customAudio, err := NewMediaUrnFromString("media:audio;mp3")
+	customAudio, err := NewMediaUrnFromString("media:audio;ext=mp3")
 	require.NoError(t, err)
 	assert.True(t, customAudio.IsAudio())
 
@@ -444,7 +444,7 @@ func Test548_is_video(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, videoUrn.IsVideo())
 
-	customVideo, err := NewMediaUrnFromString("media:mp4;video")
+	customVideo, err := NewMediaUrnFromString("media:ext=mp4;video")
 	require.NoError(t, err)
 	assert.True(t, customVideo.IsVideo())
 
@@ -593,7 +593,7 @@ func Test852_lub_identical(t *testing.T) {
 func Test853_lub_no_common_tags(t *testing.T) {
 	pdf, err := NewMediaUrnFromString("media:ext=pdf")
 	require.NoError(t, err)
-	png, err := NewMediaUrnFromString("media:image;png")
+	png, err := NewMediaUrnFromString("media:ext=png;image")
 	require.NoError(t, err)
 	lub := LeastUpperBound([]*MediaUrn{pdf, png})
 	universal, err := NewMediaUrnFromString("media:")

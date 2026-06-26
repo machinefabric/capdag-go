@@ -443,7 +443,7 @@ func Test893_extensions_with_metadata_and_validation(t *testing.T) {
 func Test894_multiple_extensions(t *testing.T) {
 	mediaDefs := []MediaDef{
 		{
-			Urn:         "media:image;jpeg",
+			Urn:         "media:ext=jpeg;image",
 			MediaType:   "image/jpeg",
 			Title:       "JPEG Image",
 			ProfileURI:  "https://capdag.com/schema/jpeg",
@@ -457,7 +457,7 @@ func Test894_multiple_extensions(t *testing.T) {
 
 	registry := testRegistry(t)
 	for _, d := range mediaDefs { registry.AddSpec(d.ToStored()) }
-	resolved, err := ResolveMediaUrn("media:image;jpeg", registry)
+	resolved, err := ResolveMediaUrn("media:ext=jpeg;image", registry)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"jpg", "jpeg"}, resolved.Extensions)
 	assert.Len(t, resolved.Extensions, 2)
@@ -520,7 +520,7 @@ func Test609_get_extension_mappings(t *testing.T) {
 		Extensions: []string{"pdf"},
 	})
 	registry.AddSpec(StoredMediaDef{
-		Urn:        "media:epub",
+		Urn:        "media:ext=epub",
 		MediaType:  "application/octet-stream",
 		Title:      "Test",
 		Extensions: []string{"epub"},

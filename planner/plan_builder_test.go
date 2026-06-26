@@ -187,7 +187,7 @@ func Test766_validation_to_json_with_constraints(t *testing.T) {
 // Verifies that arguments with defaults return HasDefault regardless of step position
 func Test886_optional_non_io_arg_with_default_has_default(t *testing.T) {
 	defaultVal := 300
-	resolution := determineResolutionWithIOCheck(standard.MediaInteger, "media:ext=pdf", "media:image;png", 0, defaultVal)
+	resolution := determineResolutionWithIOCheck(standard.MediaInteger, "media:ext=pdf", "media:ext=png;image", 0, defaultVal)
 	assert.Equal(t, ResolutionHasDefault, resolution)
 }
 
@@ -250,38 +250,38 @@ func Test993_same_op_different_input_types_not_duplicates(t *testing.T) {
 // TEST994: Tests first cap's input argument is automatically resolved from input file
 // Verifies that determineResolutionWithIOCheck() returns FromInputFile for the first cap in a chain
 func Test994_input_arg_first_cap_auto_resolved_from_input(t *testing.T) {
-	resolution := determineResolutionWithIOCheck("media:ext=pdf", "media:ext=pdf", "media:image;png", 0, nil)
+	resolution := determineResolutionWithIOCheck("media:ext=pdf", "media:ext=pdf", "media:ext=png;image", 0, nil)
 	assert.Equal(t, ResolutionFromInputFile, resolution)
 }
 
 // TEST995: Tests subsequent caps' input arguments are automatically resolved from previous output
 // Verifies that determineResolutionWithIOCheck() returns FromPreviousOutput for caps after the first
 func Test995_input_arg_subsequent_cap_auto_resolved_from_previous(t *testing.T) {
-	resolution := determineResolutionWithIOCheck("media:ext=pdf", "media:ext=pdf", "media:image;png", 1, nil)
+	resolution := determineResolutionWithIOCheck("media:ext=pdf", "media:ext=pdf", "media:ext=png;image", 1, nil)
 	assert.Equal(t, ResolutionFromPreviousOutput, resolution)
 
-	resolution = determineResolutionWithIOCheck("media:ext=pdf", "media:ext=pdf", "media:image;png", 2, nil)
+	resolution = determineResolutionWithIOCheck("media:ext=pdf", "media:ext=pdf", "media:ext=png;image", 2, nil)
 	assert.Equal(t, ResolutionFromPreviousOutput, resolution)
 }
 
 // TEST996: Tests output arguments are automatically resolved from previous cap's output
 // Verifies that arguments matching the output spec are always resolved as FromPreviousOutput
 func Test996_output_arg_auto_resolved(t *testing.T) {
-	resolution := determineResolutionWithIOCheck("media:image;png", "media:ext=pdf", "media:image;png", 0, nil)
+	resolution := determineResolutionWithIOCheck("media:ext=png;image", "media:ext=pdf", "media:ext=png;image", 0, nil)
 	assert.Equal(t, ResolutionFromPreviousOutput, resolution)
 }
 
 // TEST997: Tests MEDIA_FILE_PATH argument type resolves to input file for first cap
 // Verifies that generic file-path arguments are bound to input file in the first cap
 func Test997_file_path_type_fallback_first_cap(t *testing.T) {
-	resolution := determineResolutionWithIOCheck(standard.MediaFilePath, "media:ext=pdf", "media:image;png", 0, nil)
+	resolution := determineResolutionWithIOCheck(standard.MediaFilePath, "media:ext=pdf", "media:ext=png;image", 0, nil)
 	assert.Equal(t, ResolutionFromInputFile, resolution)
 }
 
 // TEST998: Tests MEDIA_FILE_PATH argument type resolves to previous output for subsequent caps
 // Verifies that generic file-path arguments are bound to previous cap's output after the first cap
 func Test998_file_path_type_fallback_subsequent_cap(t *testing.T) {
-	resolution := determineResolutionWithIOCheck(standard.MediaFilePath, "media:ext=pdf", "media:image;png", 1, nil)
+	resolution := determineResolutionWithIOCheck(standard.MediaFilePath, "media:ext=pdf", "media:ext=png;image", 1, nil)
 	assert.Equal(t, ResolutionFromPreviousOutput, resolution)
 }
 
@@ -289,21 +289,21 @@ func Test998_file_path_type_fallback_subsequent_cap(t *testing.T) {
 // Verifies that arguments like integers with defaults don't require user input
 func Test1009_non_io_arg_with_default_has_default(t *testing.T) {
 	defaultVal := 200
-	resolution := determineResolutionWithIOCheck(standard.MediaInteger, "media:ext=pdf", "media:image;png", 0, defaultVal)
+	resolution := determineResolutionWithIOCheck(standard.MediaInteger, "media:ext=pdf", "media:ext=png;image", 0, defaultVal)
 	assert.Equal(t, ResolutionHasDefault, resolution)
 }
 
 // TEST1012: Tests required non-IO arguments without defaults require user input
 // Verifies that arguments like strings without defaults are marked as RequiresUserInput
 func Test1012_non_io_arg_without_default_requires_user_input(t *testing.T) {
-	resolution := determineResolutionWithIOCheck("media:string", "media:ext=pdf", "media:image;png", 0, nil)
+	resolution := determineResolutionWithIOCheck("media:string", "media:ext=pdf", "media:ext=png;image", 0, nil)
 	assert.Equal(t, ResolutionRequiresUserInput, resolution)
 }
 
 // TEST1015: Tests optional non-IO arguments without defaults still require user input
 // Verifies that optional arguments without defaults must be explicitly provided or skipped
 func Test1015_optional_non_io_arg_without_default_requires_user_input(t *testing.T) {
-	resolution := determineResolutionWithIOCheck("media:boolean", "media:ext=pdf", "media:image;png", 0, nil)
+	resolution := determineResolutionWithIOCheck("media:boolean", "media:ext=pdf", "media:ext=png;image", 0, nil)
 	assert.Equal(t, ResolutionRequiresUserInput, resolution)
 }
 

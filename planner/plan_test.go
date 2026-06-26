@@ -138,7 +138,7 @@ func Test736_topological_order_complex_dag(t *testing.T) {
 // TEST737: Tests LinearChain() with exactly one capability
 // Verifies that a single-element chain produces a valid plan with input_slot, cap, and output
 func Test737_linear_chain_single_cap(t *testing.T) {
-	plan := LinearChain([]string{"cap:only"}, "media:ext=pdf", "media:image;png", []string{"source_file"})
+	plan := LinearChain([]string{"cap:only"}, "media:ext=pdf", "media:ext=png;image", []string{"source_file"})
 	assert.Equal(t, 3, len(plan.Nodes)) // input_slot, cap_0, output
 	assert.Equal(t, 2, len(plan.Edges))
 	assert.NoError(t, plan.Validate())
@@ -147,7 +147,7 @@ func Test737_linear_chain_single_cap(t *testing.T) {
 // TEST738: Tests LinearChain() with empty capability list
 // Verifies that an empty chain produces a plan with zero nodes and edges
 func Test738_linear_chain_empty(t *testing.T) {
-	plan := LinearChain([]string{}, "media:ext=pdf", "media:image;png", []string{})
+	plan := LinearChain([]string{}, "media:ext=pdf", "media:ext=png;image", []string{})
 	assert.Equal(t, 0, len(plan.Nodes))
 	assert.Equal(t, 0, len(plan.Edges))
 }
@@ -228,7 +228,7 @@ func Test743_foreach_body_bounds_determine_extraction(t *testing.T) {
 // TEST744: Tests SingleCap plan passes Validate and TopologicalOrder produces correct sequence
 // Verifies the plan is structurally sound: input_slot must precede cap_0 must precede output
 func Test744_single_cap_plan_validates_and_orders_correctly(t *testing.T) {
-	plan := SingleCap("cap:test", "media:ext=pdf", "media:image;png", "input_file")
+	plan := SingleCap("cap:test", "media:ext=pdf", "media:ext=png;image", "input_file")
 
 	require.NoError(t, plan.Validate(), "SingleCap plan must pass validation")
 
@@ -325,7 +325,7 @@ func Test748_split_and_merge_not_classified_as_cap_fanout_fanin(t *testing.T) {
 // TEST749: Tests GetNode() method for looking up nodes by ID in a plan
 // Verifies that existing nodes are found and non-existent nodes return nil
 func Test749_get_node(t *testing.T) {
-	plan := SingleCap("cap:test", "media:ext=pdf", "media:image;png", "doc_path")
+	plan := SingleCap("cap:test", "media:ext=pdf", "media:ext=png;image", "doc_path")
 
 	assert.NotNil(t, plan.GetNode("cap_0"))
 	assert.NotNil(t, plan.GetNode("input_slot"))
@@ -518,7 +518,7 @@ func Test763_suffix_is_dag(t *testing.T) {
 
 // TEST920: SingleCap creates a valid plan with input_slot, cap node, and output node.
 func Test920_single_cap_plan(t *testing.T) {
-	plan := SingleCap("cap:test", "media:ext=pdf", "media:image;png", "input_file")
+	plan := SingleCap("cap:test", "media:ext=pdf", "media:ext=png;image", "input_file")
 	// 3 nodes: input_slot, cap_0, output
 	assert.Equal(t, 3, len(plan.Nodes))
 	assert.Equal(t, 1, len(plan.EntryNodes))
@@ -531,7 +531,7 @@ func Test921_linear_chain_plan(t *testing.T) {
 	plan := LinearChain(
 		[]string{"cap:a", "cap:b", "cap:c"},
 		"media:ext=pdf",
-		"media:image;png",
+		"media:ext=png;image",
 		[]string{"input_a", "input_b", "input_c"},
 	)
 	// 5 nodes: input_slot, cap_0, cap_1, cap_2, output
@@ -712,7 +712,7 @@ func Test934_find_first_foreach(t *testing.T) {
 
 // TEST935: FindFirstForEach returns nil for linear plans
 func Test935_find_first_foreach_linear(t *testing.T) {
-	plan := LinearChain([]string{"cap:a", "cap:b"}, "media:ext=pdf", "media:image;png", []string{"input_a", "input_b"})
+	plan := LinearChain([]string{"cap:a", "cap:b"}, "media:ext=pdf", "media:ext=png;image", []string{"input_a", "input_b"})
 	assert.Nil(t, plan.FindFirstForEach())
 }
 
@@ -721,7 +721,7 @@ func Test936_has_foreach(t *testing.T) {
 	foreachPlan := buildForeachPlanWithCollect()
 	assert.True(t, foreachPlan.HasForeach(), "Plan with ForEach+Collect should detect ForEach")
 
-	linearPlan := LinearChain([]string{"cap:a"}, "media:ext=pdf", "media:image;png", []string{"input_a"})
+	linearPlan := LinearChain([]string{"cap:a"}, "media:ext=pdf", "media:ext=png;image", []string{"input_a"})
 	assert.False(t, linearPlan.HasForeach(), "Linear plan should not detect ForEach")
 
 	// Standalone Collect (no ForEach) should NOT trigger HasForeach

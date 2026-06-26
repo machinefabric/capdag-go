@@ -956,29 +956,29 @@ func Test050_matching_semantics_direction_mismatch(t *testing.T) {
 // TEST890: Semantic direction matching - generic provider matches specific request
 func Test890_direction_semantic_matching(t *testing.T) {
 	genericCap, err := NewCapUrnFromString(
-		`cap:in="media:";generate-thumbnail;out="media:image;png;thumbnail"`,
+		`cap:in="media:";generate-thumbnail;out="media:ext=png;image;thumbnail"`,
 	)
 	require.NoError(t, err)
 	pdfRequest, err := NewCapUrnFromString(
-		`cap:in="media:ext=pdf";generate-thumbnail;out="media:image;png;thumbnail"`,
+		`cap:in="media:ext=pdf";generate-thumbnail;out="media:ext=png;image;thumbnail"`,
 	)
 	require.NoError(t, err)
 	assert.True(t, genericCap.Accepts(pdfRequest),
 		"Generic provider must match specific pdf request")
 
 	epubRequest, err := NewCapUrnFromString(
-		`cap:in="media:epub";generate-thumbnail;out="media:image;png;thumbnail"`,
+		`cap:in="media:ext=epub";generate-thumbnail;out="media:ext=png;image;thumbnail"`,
 	)
 	require.NoError(t, err)
 	assert.True(t, genericCap.Accepts(epubRequest),
 		"Generic provider must match epub request")
 
 	pdfCap, err := NewCapUrnFromString(
-		`cap:in="media:ext=pdf";generate-thumbnail;out="media:image;png;thumbnail"`,
+		`cap:in="media:ext=pdf";generate-thumbnail;out="media:ext=png;image;thumbnail"`,
 	)
 	require.NoError(t, err)
 	genericRequest, err := NewCapUrnFromString(
-		`cap:in="media:";generate-thumbnail;out="media:image;png;thumbnail"`,
+		`cap:in="media:";generate-thumbnail;out="media:ext=png;image;thumbnail"`,
 	)
 	require.NoError(t, err)
 	assert.False(t, pdfCap.Accepts(genericRequest),
@@ -988,7 +988,7 @@ func Test890_direction_semantic_matching(t *testing.T) {
 		"PDF-specific cap must NOT match epub request (epub lacks pdf marker)")
 
 	specificOutCap, err := NewCapUrnFromString(
-		`cap:in="media:";generate-thumbnail;out="media:image;png;thumbnail"`,
+		`cap:in="media:";generate-thumbnail;out="media:ext=png;image;thumbnail"`,
 	)
 	require.NoError(t, err)
 	genericOutRequest, err := NewCapUrnFromString(
@@ -1003,7 +1003,7 @@ func Test890_direction_semantic_matching(t *testing.T) {
 	)
 	require.NoError(t, err)
 	specificOutRequest, err := NewCapUrnFromString(
-		`cap:in="media:";generate-thumbnail;out="media:image;png;thumbnail"`,
+		`cap:in="media:";generate-thumbnail;out="media:ext=png;image;thumbnail"`,
 	)
 	require.NoError(t, err)
 	assert.False(t, genericOutCap.Accepts(specificOutRequest),
@@ -1016,22 +1016,22 @@ func Test890_direction_semantic_matching(t *testing.T) {
 // exact tag scores 3.
 func Test891_direction_semantic_specificity(t *testing.T) {
 	genericCap, err := NewCapUrnFromString(
-		`cap:in="media:";generate-thumbnail;out="media:image;png;thumbnail"`,
+		`cap:in="media:";generate-thumbnail;out="media:ext=png;image;thumbnail"`,
 	)
 	require.NoError(t, err)
 	specificCap, err := NewCapUrnFromString(
-		`cap:in="media:ext=pdf";generate-thumbnail;out="media:image;png;thumbnail"`,
+		`cap:in="media:ext=pdf";generate-thumbnail;out="media:ext=png;image;thumbnail"`,
 	)
 	require.NoError(t, err)
 
 	// genericCap:
-	//   out=media:image;png;thumbnail -> 2+2+2 = 6
+	//   out=media:ext=png;image;thumbnail -> 2+2+2 = 6
 	//   in=media:                     -> 0
 	//   y: generate-thumbnail marker  -> 2
 	//   spec_C = 10000*6 + 100*0 + 2 = 60002
 	assert.Equal(t, 10000*6+100*0+2, genericCap.Specificity())
 	// specificCap:
-	//   out=media:image;png;thumbnail -> 6
+	//   out=media:ext=png;image;thumbnail -> 6
 	//   in=media:ext=pdf              -> 4 (ext=pdf is an exact-value tag, not a bare marker)
 	//   y: generate-thumbnail marker  -> 2
 	//   spec_C = 10000*6 + 100*4 + 2 = 60402
@@ -1041,7 +1041,7 @@ func Test891_direction_semantic_specificity(t *testing.T) {
 		"pdf cap must be more specific than wildcard cap")
 
 	pdfRequest, err := NewCapUrnFromString(
-		`cap:in="media:ext=pdf";generate-thumbnail;out="media:image;png;thumbnail"`,
+		`cap:in="media:ext=pdf";generate-thumbnail;out="media:ext=png;image;thumbnail"`,
 	)
 	require.NoError(t, err)
 	caps := []*CapUrn{genericCap, specificCap}
