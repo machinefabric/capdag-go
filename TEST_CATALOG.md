@@ -490,13 +490,13 @@ This catalog lists all tests in the Go codebase.
 | test559 | `Test559_without_tag` | TEST559: without_tag removes tag, ignores in/out, case-insensitive for keys | urn/cap_urn_test.go:1056 |
 | test560 | `Test560_with_in_out_spec` | TEST560: with_in_spec and with_out_spec change direction specs | urn/cap_urn_test.go:1081 |
 | test561 | `Test561_in_out_media_urn` | TEST561: in_media_urn and out_media_urn parse direction specs into MediaUrn | urn/cap_urn_test.go:1457 |
-| test562 | `Test562_canonical_option` | TEST562: canonical_option returns None for None input, canonical string for Some | urn/cap_urn_test.go:1482 |
+| test562 | `Test562_canonical_option` | TEST562: canonical_option returns None for None input, canonical string for Some | urn/cap_urn_test.go:1484 |
 | test563 | `Test563_find_all_matches` | TEST563: CapMatcher::find_all_matches returns all matching caps sorted by specificity | urn/cap_urn_test.go:1105 |
 | test564 | `Test564_are_compatible` | TEST564: CapMatcher::are_compatible detects bidirectional overlap | urn/cap_urn_test.go:1132 |
 | test565 | `Test565_tags_to_string` | TEST565: tags_to_string returns only tags portion without prefix | urn/cap_urn_test.go:1162 |
 | test566 | `Test566_with_tag_ignores_in_out` | TEST566: with_tag rejects reserved structural keys | urn/cap_urn_test.go:1174 |
 | test567 | `Test567_str_variants` | TEST567: conforms_to_str and accepts_str work with string arguments | urn/cap_urn_test.go:1185 |
-| test568 | `Test568_dispatch_output_tag_order` | TEST568: is_dispatchable with different tag order in output spec | urn/cap_urn_test.go:1508 |
+| test568 | `Test568_dispatch_output_tag_order` | TEST568: is_dispatchable with different tag order in output spec | urn/cap_urn_test.go:1510 |
 | test578 | `Test578_rule1_duplicate_media_urns` | TEST578: RULE1 - duplicate media_urns rejected | cap/validation_test.go:134 |
 | test579 | `Test579_rule2_empty_sources` | TEST579: RULE2 - empty sources rejected | cap/validation_test.go:145 |
 | test580 | `Test580_rule3_different_stdin_urns` | TEST580: RULE3 - multiple stdin sources with different URNs rejected | cap/validation_test.go:155 |
@@ -551,17 +551,17 @@ This catalog lists all tests in the Go codebase.
 | test631 | `Test631_needs_sync_empty_cache` | TEST631: Verify needs_sync returns true with empty cache and non-empty URLs | bifaci/cartridge_repo_test.go:758 |
 | test638 | `Test638_no_peer_router_rejects_all` | TEST638: Verify NoPeerRouter rejects all requests with PeerInvokeNotSupported | bifaci/router_test.go:12 |
 | test639 | `Test639_wildcard_empty_cap_defaults_to_media_wildcard` | TEST639: bare top cap is illegal; identity must be explicit effect=none | urn/cap_urn_test.go:1205 |
-| test640 | `Test640_wildcard_002_in_only_defaults_out_to_media` | TEST640: cap:in without a non-vacuous axis/tag is illegal bare top | urn/cap_urn_test.go:1527 |
-| test641 | `Test641_wildcard_003_out_only_defaults_in_to_media` | TEST641: cap:out without a non-vacuous axis/tag is illegal bare top | urn/cap_urn_test.go:1534 |
-| test642 | `Test642_wildcard_004_in_out_no_values_become_media` | TEST642: cap:in;out normalizes to illegal bare top | urn/cap_urn_test.go:1541 |
-| test643 | `Test643_wildcard_005_explicit_asterisk_becomes_media` | TEST643: explicit wildcard in/out is still illegal bare top | urn/cap_urn_test.go:1548 |
-| test644 | `Test644_wildcard_006_specific_in_wildcard_out` | TEST644: top in plus wildcard out is still illegal bare top | urn/cap_urn_test.go:1555 |
-| test645 | `Test645_wildcard_007_wildcard_in_specific_out` | TEST645: cap:in=*;out=media:text has wildcard in, specific out | urn/cap_urn_test.go:1562 |
-| test646 | `Test646_wildcard_008_invalid_in_spec_fails` | TEST646: cap:in=foo fails (invalid media URN) | urn/cap_urn_test.go:1570 |
-| test647 | `Test647_wildcard_009_invalid_out_spec_fails` | TEST647: cap:in=media:;out=bar fails (invalid media URN) | urn/cap_urn_test.go:1576 |
+| test640 | `Test640_wildcard_002_in_only_defaults_out_to_media` | TEST640: cap:in without a non-vacuous axis/tag is illegal bare top | urn/cap_urn_test.go:1529 |
+| test641 | `Test641_wildcard_003_out_only_defaults_in_to_media` | TEST641: cap:out without a non-vacuous axis/tag is illegal bare top | urn/cap_urn_test.go:1536 |
+| test642 | `Test642_wildcard_004_in_out_no_values_become_media` | TEST642: cap:in;out normalizes to illegal bare top | urn/cap_urn_test.go:1543 |
+| test643 | `Test643_wildcard_005_explicit_asterisk_becomes_media` | TEST643: explicit wildcard in/out is still illegal bare top | urn/cap_urn_test.go:1550 |
+| test644 | `Test644_wildcard_006_specific_in_wildcard_out` | TEST644: top in plus wildcard out is still illegal bare top | urn/cap_urn_test.go:1557 |
+| test645 | `Test645_wildcard_007_wildcard_in_specific_out` | TEST645: cap:in=*;out=media:text has wildcard in, specific out | urn/cap_urn_test.go:1564 |
+| test646 | `Test646_wildcard_008_invalid_in_spec_fails` | TEST646: cap:in=foo fails (invalid media URN) | urn/cap_urn_test.go:1572 |
+| test647 | `Test647_wildcard_009_invalid_out_spec_fails` | TEST647: cap:in=media:;out=bar fails (invalid media URN) | urn/cap_urn_test.go:1578 |
 | test648 | `Test648_wildcard_accepts_specific` | TEST648: Legal generic cap with marker-only y-axis matches specific caps | urn/cap_urn_test.go:1215 |
 | test649 | `Test649_specificity_scoring` | TEST649: Specificity - marker-only wildcard scores on y-axis only | urn/cap_urn_test.go:1227 |
-| test650 | `Test650_wildcard_012_preserve_other_tags` | TEST650: cap:in=media:;out=media:;test preserves other tags | urn/cap_urn_test.go:1582 |
+| test650 | `Test650_wildcard_012_preserve_other_tags` | TEST650: cap:in=media:;out=media:;test preserves other tags | urn/cap_urn_test.go:1584 |
 | test651 | `Test651_identity_forms_equivalent` | TEST651: Long and short explicit identity forms are equivalent | urn/cap_urn_test.go:1239 |
 | test652 | `Test652_cap_identity_constant_works` | TEST652: CAP_IDENTITY constant matches identity caps regardless of string form | urn/cap_urn_test.go:1252 |
 | test653 | `Test653_identity_routing_isolation` | TEST653: Cap identity does not route as a declared-effect provider | urn/cap_urn_test.go:1265 |
@@ -906,29 +906,29 @@ This catalog lists all tests in the Go codebase.
 | test1297 | `Test1297_rule11_non_void_input_with_stdin_passes` | TEST1297: RULE11 - non-void-input cap with stdin source passes | cap/validation_test.go:334 |
 | test1721 | `Test1721_cartridge_json_fabric_manifest_version_zero_round_trip` | TEST1721: CartridgeJson with FabricManifestVersion=0 (zero value) is absent on the wire. | bifaci/cartridge_json_test.go:13 |
 | test1722 | `Test1722_cartridge_json_fabric_manifest_version_nonzero_round_trip` | TEST1722: CartridgeJson with FabricManifestVersion>0 round-trips the value correctly. | bifaci/cartridge_json_test.go:44 |
-| test1800 | `Test1800_kind_identity_only_for_bare_cap` | TEST1800: Identity classifier — only explicit effect=none qualifies. `cap:effect=none` is the fully generic identity on every axis; adding any tag (even one that doesn't constrain in/out) demotes the cap to Transform because the operation/metadata axis is no longer fully generic. | urn/cap_urn_test.go:1604 |
-| test1801 | `Test1801_kind_source_when_input_is_void` | TEST1801: Source classifier — in=media:void, out non-void. The y dimension may carry any tags; void on the input alone is what matters. | urn/cap_urn_test.go:1636 |
-| test1802 | `Test1802_kind_sink_when_output_is_void` | TEST1802: Sink classifier — out=media:void, in non-void. | urn/cap_urn_test.go:1651 |
-| test1803 | `Test1803_kind_effect_when_both_sides_void` | TEST1803: Effect classifier — both sides void. Reads as `() → ()`. | urn/cap_urn_test.go:1666 |
-| test1804 | `Test1804_kind_transform_for_normal_data_processors` | TEST1804: Transform classifier — at least one side non-void, and the cap is not the bare identity. The default kind for ordinary data-processing caps. | urn/cap_urn_test.go:1683 |
-| test1805 | `Test1805_kind_invariant_under_canonical_spellings` | TEST1805: Kind is invariant under canonicalization. The same morphism written in many surface forms must classify the same way once parsed. Pins the rule that kind is a property of the cap as a structured object, not of any particular spelling. | urn/cap_urn_test.go:1701 |
+| test1800 | `Test1800_kind_identity_only_for_bare_cap` | TEST1800: Identity classifier — only explicit effect=none qualifies. `cap:effect=none` is the fully generic identity on every axis; adding any tag (even one that doesn't constrain in/out) demotes the cap to Transform because the operation/metadata axis is no longer fully generic. | urn/cap_urn_test.go:1606 |
+| test1801 | `Test1801_kind_source_when_input_is_void` | TEST1801: Source classifier — in=media:void, out non-void. The y dimension may carry any tags; void on the input alone is what matters. | urn/cap_urn_test.go:1638 |
+| test1802 | `Test1802_kind_sink_when_output_is_void` | TEST1802: Sink classifier — out=media:void, in non-void. | urn/cap_urn_test.go:1653 |
+| test1803 | `Test1803_kind_effect_when_both_sides_void` | TEST1803: Effect classifier — both sides void. Reads as `() → ()`. | urn/cap_urn_test.go:1668 |
+| test1804 | `Test1804_kind_transform_for_normal_data_processors` | TEST1804: Transform classifier — at least one side non-void, and the cap is not the bare identity. The default kind for ordinary data-processing caps. | urn/cap_urn_test.go:1685 |
+| test1805 | `Test1805_kind_invariant_under_canonical_spellings` | TEST1805: Kind is invariant under canonicalization. The same morphism written in many surface forms must classify the same way once parsed. Pins the rule that kind is a property of the cap as a structured object, not of any particular spelling. | urn/cap_urn_test.go:1703 |
 | test1810 | `Test1810_media_void_is_atomic` | TEST1810: media:void is atomic — refinements are parse errors. Mirrored across every language port (Rust, Go, Python, Swift/ObjC, JS) under the SAME number. Any divergence is a wire-level inconsistency — the unit type's atomicity is part of the protocol's deepest layer, not a per-port detail. | urn/media_urn_test.go:734 |
-| test1820 | `Test1820_specificity_question_is_zero` | TEST1820: A `?`-valued cap-tag scores 0. Same as missing. | urn/cap_urn_test.go:1751 |
-| test1821 | `Test1821_specificity_must_not_have_is_five` | TEST1821: A `!`-valued cap-tag scores 5 (top of negative chain). | urn/cap_urn_test.go:1763 |
-| test1822 | `Test1822_specificity_must_have_any_is_two` | TEST1822: A `*`-valued cap-tag (including bare markers) scores 2. | urn/cap_urn_test.go:1771 |
-| test1823 | `Test1823_specificity_exact_value_is_four` | TEST1823: An exact-valued cap-tag scores 4. | urn/cap_urn_test.go:1787 |
-| test1824 | `Test1824_specificity_combined_y_axis` | TEST1824: All six forms compose additively on a single cap. y combining 0+1+2+3+4+5 must sum to 15. | urn/cap_urn_test.go:1796 |
-| test1830 | `Test1830_canonicalize_no_constraint` | TEST1830: ?x ≡ x? ≡ x=? all canonicalize to ?x. | urn/cap_urn_test.go:1814 |
-| test1831 | `Test1831_canonicalize_absent_or_not_value` | TEST1831: ?x=v and x?=v both canonicalize to x?=v. The third hypothetical form `x=?v` is NOT recognized as a qualifier — a value starting with `?` is just an exact value beginning with a `?` character. | urn/cap_urn_test.go:1828 |
-| test1832 | `Test1832_canonicalize_must_have_any` | TEST1832: x ≡ x=* both canonicalize to bare x. | urn/cap_urn_test.go:1848 |
-| test1833 | `Test1833_canonicalize_present_not_value` | TEST1833: !x=v and x!=v both canonicalize to x!=v. The third hypothetical form `x=!v` is NOT recognized as a qualifier — a value starting with `!` is just an exact value beginning with a `!` character. | urn/cap_urn_test.go:1862 |
-| test1834 | `Test1834_canonicalize_exact_value` | TEST1834: x=v stays as x=v. | urn/cap_urn_test.go:1882 |
-| test1835 | `Test1835_canonicalize_must_not_have` | TEST1835: !x ≡ x! ≡ x=! all canonicalize to !x. | urn/cap_urn_test.go:1889 |
-| test1842 | `Test1842_truth_table_full_cross_product` | TEST1842: Full 6×6 truth table — every cell must match the matrix in 04-PREDICATES.md §2.5. | urn/cap_urn_test.go:1901 |
-| test1843 | `Test1843_reject_invalid_combinations` | TEST1843: Invalid qualifier combinations must be rejected. | urn/cap_urn_test.go:1936 |
-| test1844 | `Test1844_axis_weighting_out_dominates` | TEST1844: out-axis difference dominates combined in+y differences. | urn/cap_urn_test.go:1958 |
-| test1845 | `Test1845_axis_weighting_in_dominates_y` | TEST1845: With equal out, in-axis dominates over y-axis. | urn/cap_urn_test.go:1969 |
-| test1846 | `Test1846_axis_weighting_decoded_layout` | TEST1846: Decoded layout — 10000*out + 100*in + y. | urn/cap_urn_test.go:1980 |
+| test1820 | `Test1820_specificity_question_is_zero` | TEST1820: A `?`-valued cap-tag scores 0. Same as missing. | urn/cap_urn_test.go:1753 |
+| test1821 | `Test1821_specificity_must_not_have_is_five` | TEST1821: A `!`-valued cap-tag scores 5 (top of negative chain). | urn/cap_urn_test.go:1765 |
+| test1822 | `Test1822_specificity_must_have_any_is_two` | TEST1822: A `*`-valued cap-tag (including bare markers) scores 2. | urn/cap_urn_test.go:1773 |
+| test1823 | `Test1823_specificity_exact_value_is_four` | TEST1823: An exact-valued cap-tag scores 4. | urn/cap_urn_test.go:1789 |
+| test1824 | `Test1824_specificity_combined_y_axis` | TEST1824: All six forms compose additively on a single cap. y combining 0+1+2+3+4+5 must sum to 15. | urn/cap_urn_test.go:1798 |
+| test1830 | `Test1830_canonicalize_no_constraint` | TEST1830: ?x ≡ x? ≡ x=? all canonicalize to ?x. | urn/cap_urn_test.go:1816 |
+| test1831 | `Test1831_canonicalize_absent_or_not_value` | TEST1831: ?x=v and x?=v both canonicalize to x?=v. The third hypothetical form `x=?v` is NOT recognized as a qualifier — a value starting with `?` is just an exact value beginning with a `?` character. | urn/cap_urn_test.go:1830 |
+| test1832 | `Test1832_canonicalize_must_have_any` | TEST1832: x ≡ x=* both canonicalize to bare x. | urn/cap_urn_test.go:1850 |
+| test1833 | `Test1833_canonicalize_present_not_value` | TEST1833: !x=v and x!=v both canonicalize to x!=v. The third hypothetical form `x=!v` is NOT recognized as a qualifier — a value starting with `!` is just an exact value beginning with a `!` character. | urn/cap_urn_test.go:1864 |
+| test1834 | `Test1834_canonicalize_exact_value` | TEST1834: x=v stays as x=v. | urn/cap_urn_test.go:1884 |
+| test1835 | `Test1835_canonicalize_must_not_have` | TEST1835: !x ≡ x! ≡ x=! all canonicalize to !x. | urn/cap_urn_test.go:1891 |
+| test1842 | `Test1842_truth_table_full_cross_product` | TEST1842: Full 6×6 truth table — every cell must match the matrix in 04-PREDICATES.md §2.5. | urn/cap_urn_test.go:1903 |
+| test1843 | `Test1843_reject_invalid_combinations` | TEST1843: Invalid qualifier combinations must be rejected. | urn/cap_urn_test.go:1938 |
+| test1844 | `Test1844_axis_weighting_out_dominates` | TEST1844: out-axis difference dominates combined in+y differences. | urn/cap_urn_test.go:1960 |
+| test1845 | `Test1845_axis_weighting_in_dominates_y` | TEST1845: With equal out, in-axis dominates over y-axis. | urn/cap_urn_test.go:1971 |
+| test1846 | `Test1846_axis_weighting_decoded_layout` | TEST1846: Decoded layout — 10000*out + 100*in + y. | urn/cap_urn_test.go:1982 |
 | test1872 | `Test1872_registry_url_from_build_env_passes_through_nonempty` | TEST1872: RegistryURLFromBuildEnv passes a non-empty registry URL through unchanged. This is the function that decides a cartridge/engine's baked PRIMARY registry identity; a published build must report exactly the URL it was compiled with (mirror of Rust test1872). | bifaci/manifest_test.go:379 |
 | test1873 | `Test1873_registry_url_from_build_env_none_for_dev` | TEST1873: an unset build-env value (nil) yields nil — a dev build has no baked registry, so the engine reports an empty primary-registry URL and loads only `dev/` cartridges (mirror of Rust test1873). | bifaci/manifest_test.go:392 |
 | test1874 | `Test1874_registry_url_from_build_env_rejects_empty_string` | TEST1874: an exported-but-empty value (a pointer to "") is neither a dev build nor a valid identity and MUST fail hard, so the build can never silently hash the empty string into a fake registry slug. We assert the panic AND its exact message, so a regression that dropped the check (or replaced it with a silent fallback) is caught rather than passing on a bogus empty primary registry (mirror of Rust test1874). | bifaci/manifest_test.go:402 |
