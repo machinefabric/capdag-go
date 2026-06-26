@@ -605,7 +605,7 @@ func Test1293_roundtrip_requires_cap_steps(t *testing.T) {
 // TEST789: Tests that caps loaded from JSON have correct in_spec/out_spec
 func Test789_cap_from_json_has_valid_specs(t *testing.T) {
 	jsonStr := `{
-		"urn": "cap:in=media:pdf;disbind;out=\"media:disbound-page;enc=utf-8\"",
+		"urn": "cap:in=\"media:ext=pdf\";disbind;out=\"media:disbound-page;enc=utf-8\"",
 		"command": "disbind",
 		"title": "Disbind PDF",
 		"args": [],
@@ -635,7 +635,7 @@ func Test790_identity_urn_is_specific(t *testing.T) {
 	assert.Equal(t, urn.CapEffectNone, identityUrn.Effect())
 
 	// A specific cap should NOT be equivalent to identity
-	specificCap, err := urn.NewCapUrnFromString(`cap:in=media:pdf;disbind;out="media:disbound-page;enc=utf-8"`)
+	specificCap, err := urn.NewCapUrnFromString(`cap:in="media:ext=pdf";disbind;out="media:disbound-page;enc=utf-8"`)
 	require.NoError(t, err)
 
 	assert.False(t, specificCap.IsEquivalent(identityUrn),

@@ -117,13 +117,13 @@ func Test1142_resolved_graph_to_mermaid_renders_shapes_dedupes_edges_and_escapes
 // TEST1161: Converting a simple linear plan produces resolved edges for the cap-to-cap chain.
 func Test1161_simple_linear_chain_conversion(t *testing.T) {
 	registry := buildTestRegistry(t, []string{
-		"cap:in=media:pdf;extract;out=media:text",
+		"cap:in=\"media:ext=pdf\";extract;out=media:text",
 		"cap:in=media:text;summarize;out=media:summary",
 	})
 
 	plan := planner.NewMachinePlan("test_chain")
 	plan.AddNode(planner.NewInputSlotNode("input", "input", "media:ext=pdf", planner.CardinalitySingle))
-	plan.AddNode(planner.NewMachineNode("cap_0", "cap:in=media:pdf;extract;out=media:text"))
+	plan.AddNode(planner.NewMachineNode("cap_0", "cap:in=\"media:ext=pdf\";extract;out=media:text"))
 	plan.AddNode(planner.NewMachineNode("cap_1", "cap:in=media:text;summarize;out=media:summary"))
 	plan.AddNode(planner.NewOutputNode("output", "result", "cap_1"))
 	plan.AddEdge(planner.NewDirectEdge("input", "cap_0"))
@@ -185,11 +185,11 @@ func Test770_rejects_foreach(t *testing.T) {
 
 // TEST953: Linear plans (no ForEach/Collect) still convert successfully
 func Test953_linear_plan_still_works(t *testing.T) {
-	registry := buildTestRegistry(t, []string{"cap:in=media:pdf;extract;out=media:text"})
+	registry := buildTestRegistry(t, []string{"cap:in=\"media:ext=pdf\";extract;out=media:text"})
 
 	plan := planner.NewMachinePlan("linear_plan")
 	plan.AddNode(planner.NewInputSlotNode("input", "input", "media:ext=pdf", planner.CardinalitySingle))
-	plan.AddNode(planner.NewMachineNode("cap_0", "cap:in=media:pdf;extract;out=media:text"))
+	plan.AddNode(planner.NewMachineNode("cap_0", "cap:in=\"media:ext=pdf\";extract;out=media:text"))
 	plan.AddNode(planner.NewOutputNode("output", "result", "cap_0"))
 	plan.AddEdge(planner.NewDirectEdge("input", "cap_0"))
 	plan.AddEdge(planner.NewDirectEdge("cap_0", "output"))
@@ -209,13 +209,13 @@ func Test953_linear_plan_still_works(t *testing.T) {
 // should be rewritten to go from cap_0 to cap_1 directly.
 func Test954_standalone_collect_passthrough(t *testing.T) {
 	registry := buildTestRegistry(t, []string{
-		`cap:in=media:pdf;extract;out="media:text;enc=utf-8"`,
+		`cap:in="media:ext=pdf";extract;out="media:text;enc=utf-8"`,
 		`cap:in="media:list;text;enc=utf-8";embed;out="media:embedding-vector;record;enc=utf-8"`,
 	})
 
 	plan := planner.NewMachinePlan("collect_plan")
 	plan.AddNode(planner.NewInputSlotNode("input", "input", "media:ext=pdf", planner.CardinalitySingle))
-	plan.AddNode(planner.NewMachineNode("cap_0", `cap:in=media:pdf;extract;out="media:text;enc=utf-8"`))
+	plan.AddNode(planner.NewMachineNode("cap_0", `cap:in="media:ext=pdf";extract;out="media:text;enc=utf-8"`))
 
 	// Standalone Collect: scalar→list with OutputMediaUrn set
 	collectNode := planner.NewCollectNode("collect_0", []string{"cap_0"})

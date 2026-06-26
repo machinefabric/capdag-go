@@ -317,9 +317,9 @@ func Test1019_validation_to_json_nil(t *testing.T) {
 // TEST1100: Tests that CapUrn normalizes media URN tags to canonical order
 // Two CapUrns with different tag ordering in out spec must produce the same canonical string.
 func Test1100_cap_urn_normalizes_media_urn_tag_order(t *testing.T) {
-	urn1, err := urn.NewCapUrnFromString(`cap:in=media:pdf;extract-metadata;out="media:file-metadata;record;enc=utf-8"`)
+	urn1, err := urn.NewCapUrnFromString(`cap:in="media:ext=pdf";extract-metadata;out="media:file-metadata;record;enc=utf-8"`)
 	require.NoError(t, err)
-	urn2, err := urn.NewCapUrnFromString(`cap:in=media:pdf;extract-metadata;out="media:file-metadata;record;enc=utf-8"`)
+	urn2, err := urn.NewCapUrnFromString(`cap:in="media:ext=pdf";extract-metadata;out="media:file-metadata;record;enc=utf-8"`)
 	require.NoError(t, err)
 
 	assert.Equal(t, urn1.String(), urn2.String(),
@@ -334,10 +334,10 @@ func Test1100_cap_urn_normalizes_media_urn_tag_order(t *testing.T) {
 // TEST1103: Tests that IsDispatchable has correct directionality
 // A specific provider is dispatchable for a general request; the reverse is false.
 func Test1103_is_dispatchable_uses_correct_directionality(t *testing.T) {
-	generalRequest, err := urn.NewCapUrnFromString("cap:in=media:pdf;extract;out=media:text")
+	generalRequest, err := urn.NewCapUrnFromString("cap:in=\"media:ext=pdf\";extract;out=media:text")
 	require.NoError(t, err)
 
-	specificProvider, err := urn.NewCapUrnFromString("cap:in=media:pdf;extract;out=media:text;version=2")
+	specificProvider, err := urn.NewCapUrnFromString("cap:in=\"media:ext=pdf\";extract;out=media:text;version=2")
 	require.NoError(t, err)
 
 	assert.True(t, specificProvider.IsDispatchable(generalRequest),
@@ -349,10 +349,10 @@ func Test1103_is_dispatchable_uses_correct_directionality(t *testing.T) {
 // TEST1104: Tests that IsDispatchable rejects when provider is missing a required cap tag
 // Provider without required=yes cannot handle a request that demands required=yes.
 func Test1104_is_dispatchable_rejects_non_dispatchable(t *testing.T) {
-	request, err := urn.NewCapUrnFromString("cap:in=media:pdf;extract;out=media:text;required=yes")
+	request, err := urn.NewCapUrnFromString("cap:in=\"media:ext=pdf\";extract;out=media:text;required=yes")
 	require.NoError(t, err)
 
-	provider, err := urn.NewCapUrnFromString("cap:in=media:pdf;extract;out=media:text")
+	provider, err := urn.NewCapUrnFromString("cap:in=\"media:ext=pdf\";extract;out=media:text")
 	require.NoError(t, err)
 
 	assert.False(t, provider.IsDispatchable(request),

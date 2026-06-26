@@ -1032,10 +1032,10 @@ func Test891_direction_semantic_specificity(t *testing.T) {
 	assert.Equal(t, 10000*6+100*0+2, genericCap.Specificity())
 	// specificCap:
 	//   out=media:image;png;thumbnail -> 6
-	//   in=media:ext=pdf                  -> 2
+	//   in=media:ext=pdf              -> 4 (ext=pdf is an exact-value tag, not a bare marker)
 	//   y: generate-thumbnail marker  -> 2
-	//   spec_C = 10000*6 + 100*2 + 2 = 60202
-	assert.Equal(t, 10000*6+100*2+2, specificCap.Specificity())
+	//   spec_C = 10000*6 + 100*4 + 2 = 60402
+	assert.Equal(t, 10000*6+100*4+2, specificCap.Specificity())
 
 	assert.True(t, specificCap.Specificity() > genericCap.Specificity(),
 		"pdf cap must be more specific than wildcard cap")
@@ -1048,7 +1048,7 @@ func Test891_direction_semantic_specificity(t *testing.T) {
 	matcher := &CapMatcher{}
 	best := matcher.FindBestMatch(caps, pdfRequest)
 	require.NotNil(t, best)
-	assert.Equal(t, 10000*6+100*2+2, best.Specificity(),
+	assert.Equal(t, 10000*6+100*4+2, best.Specificity(),
 		"CapMatcher must prefer the more specific pdf provider")
 }
 
@@ -1253,7 +1253,7 @@ func Test652_cap_identity_constant_works(t *testing.T) {
 	identity, err := NewCapUrnFromString(standard.CapIdentity)
 	require.NoError(t, err)
 
-	specific, err := NewCapUrnFromString(`cap:in=media:pdf;test;out="media:enc=utf-8"`)
+	specific, err := NewCapUrnFromString(`cap:in="media:ext=pdf";test;out="media:enc=utf-8"`)
 	require.NoError(t, err)
 
 	assert.Equal(t, "cap:effect=none", identity.ToString())
@@ -1460,8 +1460,10 @@ func Test561_in_out_media_urn(t *testing.T) {
 
 	inUrn, err := cap.InMediaUrn()
 	require.NoError(t, err)
-	assert.False(t, inUrn.HasTag("enc")) // pdf is not text (no enc tag)
-	assert.True(t, inUrn.HasTag("pdf"))
+	assert.False(t, inUrn.HasTag("enc")) // pdf file is not text content (no enc tag)
+	inExt, inOk := inUrn.GetTag("ext")
+	assert.True(t, inOk)
+	assert.Equal(t, "pdf", inExt)
 
 	outUrn, err := cap.OutMediaUrn()
 	require.NoError(t, err)
@@ -1681,7 +1683,7 @@ func Test1803_kind_effect_when_both_sides_void(t *testing.T) {
 // the cap is not the bare identity. The default kind for ordinary
 // data-processing caps.
 func Test1804_kind_transform_for_normal_data_processors(t *testing.T) {
-	extract, err := NewCapUrnFromString(`cap:extract;in=media:pdf;out="media:record;enc=utf-8"`)
+	extract, err := NewCapUrnFromString(`cap:extract;in="media:ext=pdf";out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
 	k, err := extract.Kind()
 	require.NoError(t, err)
@@ -1705,7 +1707,7 @@ func Test1805_kind_invariant_under_canonical_spellings(t *testing.T) {
 	}{
 		{"cap:effect=none", "cap:in=media:;out=media:;effect=none", CapKindIdentity},
 		{
-			`cap:extract;in=media:pdf;out="media:enc=utf-8"`,
+			`cap:extract;in="media:ext=pdf";out="media:enc=utf-8"`,
 			`cap:extract;in="media:ext=pdf";out="media:enc=utf-8"`,
 			CapKindTransform,
 		},
@@ -1959,7 +1961,7 @@ func Test1844_axis_weighting_out_dominates(t *testing.T) {
 	bigOut, err := NewCapUrnFromString(`cap:in=media:;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
 	bigInAndY, err := NewCapUrnFromString(
-		"cap:in=media:pdf;out=media:record;!constrained;?target;extract;stage!=alpha;target2=metadata;ver?=draft")
+		"cap:in=\"media:ext=pdf\";out=media:record;!constrained;?target;extract;stage!=alpha;target2=metadata;ver?=draft")
 	require.NoError(t, err)
 	assert.Greater(t, bigOut.Specificity(), bigInAndY.Specificity(),
 		"out-axis difference must dominate combined in+y differences")
@@ -1967,7 +1969,7 @@ func Test1844_axis_weighting_out_dominates(t *testing.T) {
 
 // TEST1845: With equal out, in-axis dominates over y-axis.
 func Test1845_axis_weighting_in_dominates_y(t *testing.T) {
-	bigIn, err := NewCapUrnFromString("cap:in=media:pdf;out=media:record")
+	bigIn, err := NewCapUrnFromString("cap:in=\"media:ext=pdf\";out=media:record")
 	require.NoError(t, err)
 	bigY, err := NewCapUrnFromString(
 		"cap:in=media:;out=media:record;!constrained;?target;extract;stage!=alpha;target2=metadata;ver?=draft")
