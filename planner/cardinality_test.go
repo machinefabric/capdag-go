@@ -69,7 +69,7 @@ func Test698_cap_shape_info_cardinality_always_single_from_urn(t *testing.T) {
 // TEST699: CapShapeInfo cardinality from URN is always Single; ManyToOne requires IsSequence context
 func Test699_cap_shape_info_list_urn_still_single_cardinality(t *testing.T) {
 	// URN parsing always yields Single — the "list" tag is a structure marker, not cardinality
-	fromUrn := CapShapeInfoFromSpecs("cap:merge-pdfs", "media:list;pdf", "media:ext=pdf")
+	fromUrn := CapShapeInfoFromSpecs("cap:merge-pdfs", "media:ext=pdf;list", "media:ext=pdf")
 	assert.Equal(t, CardinalitySingle, fromUrn.Input.Cardinality)
 	assert.Equal(t, CardinalitySingle, fromUrn.Output.Cardinality)
 	assert.Equal(t, PatternOneToOne, fromUrn.CardinalityPatternOf())
