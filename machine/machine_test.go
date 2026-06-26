@@ -1083,7 +1083,7 @@ func Test1191_resolve_strand_disbind_pdf_with_file_path_slot_identity(t *testing
 	// Binding's CapArgMediaUrn must be the slot identity (media:enc=utf-8;file-path).
 	assert.True(t, binding.CapArgMediaUrn.IsEquivalent(mediaUrn("media:file-path;enc=utf-8")),
 		"binding cap_arg_media_urn must be the slot identity, got: %s", binding.CapArgMediaUrn)
-	// Source node must be media:pdf.
+	// Source node must be media:ext=pdf.
 	sourceUrn := resolved.NodeUrn(binding.Source)
 	assert.True(t, sourceUrn.IsEquivalent(mediaUrn("media:ext=pdf")),
 		"source node URN must be media:ext=pdf (the data-type URN), got: %s", sourceUrn)
