@@ -85,6 +85,18 @@ const (
 	// is held back from attaching until verification succeeds; the
 	// UI shows the actionable reason.
 	CartridgeAttachmentErrorKindRegistryUnreachable CartridgeAttachmentErrorKind = "registry_unreachable"
+	// CartridgeAttachmentErrorKindFabricManifestVersionMismatch: the
+	// cartridge was built against a different fabric registry manifest
+	// version than this engine is pinned to. Both engine and cartridge
+	// bake their fabric manifest version at build time from
+	// MFR_FABRIC_MANIFEST_VERSION (sourced from
+	// fabric/manifest-version.txt); the engine refuses to load any
+	// cartridge whose baked version does not match its own. Recovery is
+	// "rebuild the cartridge against the engine's fabric manifest
+	// version" — there is no in-engine fallback because URN resolution
+	// between mismatched versions is fundamentally unsafe (cap and media
+	// definitions may have changed shape across manifest versions).
+	CartridgeAttachmentErrorKindFabricManifestVersionMismatch CartridgeAttachmentErrorKind = "fabric_manifest_version_mismatch"
 )
 
 // CartridgeAttachmentError carries the details of a failed cartridge attachment.

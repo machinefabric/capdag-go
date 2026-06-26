@@ -73,7 +73,7 @@ func (s *StdinSource) IsFileReference() bool {
 // CapArgumentValue is a unified argument type — arguments are identified by media_urn.
 // The cap definition's sources specify how to extract values (stdin, position, cli_flag).
 type CapArgumentValue struct {
-	// MediaUrn is the semantic identifier, e.g., "media:model-spec;textable"
+	// MediaUrn is the semantic identifier, e.g., "media:enc=utf-8;model-spec"
 	MediaUrn string
 	// Value is the argument bytes (UTF-8 for text, raw for binary)
 	Value []byte

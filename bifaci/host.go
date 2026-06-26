@@ -203,6 +203,52 @@ type ManagedCartridge struct {
 	helloFailed              bool
 	LastHeartbeatUnixSeconds *int64
 	RestartCount             uint64
+	// installedIdentity is the resolvable (registry_url, channel, id,
+	// version) identity of a cartridge registered from a version
+	// directory (or attached with a known identity). nil for the
+	// legacy RegisterCartridge / AttachCartridge paths that carry no
+	// on-disk anchor — such cartridges are advertised with a synthetic
+	// identity by rebuildCapabilities. When set, it gates this
+	// cartridge's appearance in the RelayNotify inventory.
+	installedIdentity *InstalledCartridgeRecord
+	// cartridgeDir is the version directory a dir-registered cartridge
+	// was created from (empty for binary/attached cartridges). Its
+	// presence marks a cartridge as roster-managed (isRegisteredDir).
+	cartridgeDir string
+}
+
+// installedCartridgeRecord returns the cartridge's resolvable identity, or nil
+// if it has none (e.g. an attached/internal provider with no on-disk anchor).
+func (c *ManagedCartridge) installedCartridgeRecord() *InstalledCartridgeRecord {
+	return c.installedIdentity
+}
+
+// isRegisteredDir reports whether this cartridge was registered from a version
+// directory (the lazily-spawned, dir-backed kind). Distinguishes roster-managed
+// installs from attached/internal providers during a SyncRoster.
+func (c *ManagedCartridge) isRegisteredDir() bool {
+	return c.cartridgeDir != ""
+}
+
+// capURNsFromGroups is the flat de-duplicated cap-URN view derived from a
+// cartridge's cap_groups, preserving manifest declaration order.
+func capURNsFromGroups(groups []CapGroup) []string {
+	seen := make(map[string]struct{})
+	out := make([]string, 0)
+	for _, group := range groups {
+		for _, c := range group.Caps {
+			u := c.Urn.String()
+			if u == "" {
+				continue
+			}
+			if _, ok := seen[u]; ok {
+				continue
+			}
+			seen[u] = struct{}{}
+			out = append(out, u)
+		}
+	}
+	return out
 }
 
 // CartridgeHost manages N cartridge binaries with cap-based routing.
@@ -253,7 +299,12 @@ type CartridgeHost struct {
 
 	capabilities []byte
 	eventCh      chan cartridgeEvent
-	mu           sync.Mutex
+	// commandCh delivers HostCommands (e.g. SyncRoster) from external
+	// callers into the Run loop, where they are applied under the host
+	// mutex alongside relay/cartridge events. Buffered so a caller's
+	// send never blocks the caller for the common single-command case.
+	commandCh chan hostCommand
+	mu        sync.Mutex
 
 	// Observer receives lifecycle notifications for cartridges.
 	// May be nil.
@@ -266,7 +317,47 @@ func NewCartridgeHost() *CartridgeHost {
 		outgoingRids:  make(map[string]outgoingRoute),
 		incomingRxids: make(map[rxidKey]incomingRoute),
 		eventCh:       make(chan cartridgeEvent, 256),
+		commandCh:     make(chan hostCommand, 16),
 	}
+}
+
+// RegisteredDirSpec describes a directory-registered cartridge in a roster sync.
+// Mirrors the parameters of RegisterCartridgeDir so a caller can describe the
+// full desired registered-dir set without reaching into host internals.
+type RegisteredDirSpec struct {
+	EntryPoint  string
+	VersionDir  string
+	Id          string
+	Channel     CartridgeChannel
+	RegistryURL *string
+	Version     string
+	CapGroups   []CapGroup
+}
+
+// hostCommand is a command applied inside the Run loop. Exactly one field is set.
+type hostCommand struct {
+	syncRoster []RegisteredDirSpec
+	isSync     bool
+}
+
+// CartridgeProcessHandle is a thread-safe handle for sending commands to a
+// running CartridgeHost. Obtained via ProcessHandle() before calling Run().
+type CartridgeProcessHandle struct {
+	commandCh chan hostCommand
+}
+
+// ProcessHandle returns a handle for sending commands (e.g. SyncRoster) to this
+// host while its Run loop is executing.
+func (h *CartridgeHost) ProcessHandle() *CartridgeProcessHandle {
+	return &CartridgeProcessHandle{commandCh: h.commandCh}
+}
+
+// SyncRoster replaces the live registered-dir roster (see syncRegisteredRoster).
+// Blocks until the command is accepted by the Run loop. Returns an error only
+// if the host's Run loop is not consuming commands.
+func (p *CartridgeProcessHandle) SyncRoster(cartridges []RegisteredDirSpec) error {
+	p.commandCh <- hostCommand{syncRoster: cartridges, isSync: true}
+	return nil
 }
 
 // RegisterCartridge registers a cartridge binary for on-demand spawning.
@@ -285,6 +376,75 @@ func (h *CartridgeHost) RegisterCartridge(path string, knownCaps []string) {
 
 	for _, cap := range knownCaps {
 		h.capTable = append(h.capTable, capTableEntry{capUrn: cap, cartridgeIdx: cartridgeIdx})
+	}
+}
+
+// RegisterCartridgeDir registers a cartridge discovered as a version directory
+// for on-demand spawning, stamping its full (registry_url, channel, id,
+// version) identity so it appears in the engine's RelayNotify with the
+// (registry, channel) provenance preserved end-to-end. The cartridge is not
+// spawned until a REQ arrives for one of its caps; its cap_groups (already
+// probed during discovery) are registered into the cap table immediately.
+//
+// The version directory is hashed at registration time. If the directory is not
+// hashable the cartridge is recorded with an EntryPointMissing attachment error
+// and hello_failed so it drops out of the cap table / inventory — mirroring the
+// reference new_registered_dir constructor.
+func (h *CartridgeHost) RegisterCartridgeDir(spec RegisteredDirSpec) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.registerCartridgeDirLocked(spec)
+}
+
+func (h *CartridgeHost) registerCartridgeDirLocked(spec RegisteredDirSpec) {
+	cartridgeIdx := len(h.cartridges)
+
+	cartridge := &ManagedCartridge{
+		path:         spec.EntryPoint,
+		cartridgeDir: spec.VersionDir,
+		capGroups:    spec.CapGroups,
+		caps:         capURNsFromGroups(spec.CapGroups),
+		running:      false,
+		limits:       DefaultLimits(),
+	}
+
+	sha256, err := HashCartridgeDirectory(spec.VersionDir)
+	if err != nil {
+		detectedAt := unixSecondsNow()
+		cartridge.helloFailed = true
+		cartridge.installedIdentity = &InstalledCartridgeRecord{
+			RegistryURL: spec.RegistryURL,
+			Id:          spec.Id,
+			Channel:     string(spec.Channel),
+			Version:     spec.Version,
+			Sha256:      "",
+			AttachmentError: &CartridgeAttachmentError{
+				Kind:                  CartridgeAttachmentErrorKindEntryPointMissing,
+				Message:               fmt.Sprintf("Cartridge directory not hashable at '%s': %v", spec.VersionDir, err),
+				DetectedAtUnixSeconds: detectedAt,
+			},
+			Lifecycle: CartridgeLifecycleDiscovered,
+		}
+	} else {
+		cartridge.installedIdentity = &InstalledCartridgeRecord{
+			RegistryURL: spec.RegistryURL,
+			Id:          spec.Id,
+			Channel:     string(spec.Channel),
+			Version:     spec.Version,
+			Sha256:      sha256,
+			// Engine-spawned external providers are operational by
+			// construction: discovery validated the install context and
+			// probed the cartridge before this registration. There is no
+			// separate inspecting/verifying phase on this path.
+			Lifecycle: CartridgeLifecycleOperational,
+		}
+	}
+
+	h.cartridges = append(h.cartridges, cartridge)
+	if !cartridge.helloFailed {
+		for _, capURN := range cartridge.caps {
+			h.capTable = append(h.capTable, capTableEntry{capUrn: capURN, cartridgeIdx: cartridgeIdx})
+		}
 	}
 }
 
@@ -416,6 +576,24 @@ func (h *CartridgeHost) findCartridgeForCapLocked(capUrn string) (int, bool) {
 	return matches[0].cartridgeIdx, true
 }
 
+// relayOutbound is an async sink for frames the host sends to the relay. A
+// dedicated writer goroutine drains the buffered channel, so the host event
+// loop never blocks on relay-read backpressure when it publishes a frame
+// (errors, forwarded cartridge frames, RelayNotify inventory). This mirrors the
+// reference runtime's unbounded `outbound_tx` mpsc channel — decoupling event
+// processing from relay write latency keeps frame ordering deterministic and
+// prevents head-of-line blocking from perturbing request/death routing.
+type relayOutbound struct {
+	ch chan *Frame
+}
+
+// WriteFrame enqueues a frame for the relay. Drops the frame only if the writer
+// goroutine has already exited (relay closed) — there is nothing to send to.
+func (o *relayOutbound) WriteFrame(frame *Frame) {
+	defer func() { _ = recover() }() // send on closed channel after relay teardown
+	o.ch <- frame
+}
+
 // Run runs the main event loop, reading from relay and cartridges.
 // Blocks until relay closes or a fatal error occurs.
 func (h *CartridgeHost) Run(relayRead io.Reader, relayWrite io.Writer, resourceFn func() []byte) error {
@@ -440,27 +618,155 @@ func (h *CartridgeHost) Run(relayRead io.Reader, relayWrite io.Writer, resourceF
 		}
 	}()
 
+	// Async outbound writer: drains queued frames to the relay so the event
+	// loop never blocks behind a slow relay reader.
+	out := &relayOutbound{ch: make(chan *Frame, 256)}
+	writerDone := make(chan struct{})
+	go func() {
+		defer close(writerDone)
+		for frame := range out.ch {
+			if err := relayWriter.WriteFrame(frame); err != nil {
+				// Relay closed mid-write. Drain remaining queued frames
+				// without writing so WriteFrame senders never block, then
+				// exit when the channel is closed at teardown.
+				for range out.ch {
+				}
+				return
+			}
+		}
+	}()
+
+	// Send the initial RelayNotify so the relay/engine knows about
+	// pre-registered cartridges (and an empty inventory when none are
+	// registered yet), exactly like the reference run loop. Without this
+	// a SyncRoster-added cartridge would be the engine's FIRST
+	// RelayNotify, hiding the "absent → present" transition.
+	h.mu.Lock()
+	h.rebuildCapabilitiesLocked(out)
+	h.mu.Unlock()
+
 	for {
 		select {
 		case frame, ok := <-relayCh:
 			if !ok {
 				err := <-relayDone
 				h.killAllCartridges()
+				close(out.ch)
+				<-writerDone
 				return err
 			}
-			if err := h.handleRelayFrame(frame, relayWriter); err != nil {
+			if ferr := h.handleRelayFrame(frame, out); ferr != nil {
 				h.killAllCartridges()
-				return err
+				close(out.ch)
+				<-writerDone
+				return ferr
 			}
 
 		case event := <-h.eventCh:
 			if event.isDeath {
-				h.handleCartridgeDeath(event.cartridgeIdx, relayWriter)
+				h.handleCartridgeDeath(event.cartridgeIdx, out)
 			} else if event.frame != nil {
-				h.handleCartridgeFrame(event.cartridgeIdx, event.frame, relayWriter)
+				h.handleCartridgeFrame(event.cartridgeIdx, event.frame, out)
+			}
+
+		case cmd := <-h.commandCh:
+			if cmd.isSync {
+				h.syncRegisteredRoster(cmd.syncRoster, out)
 			}
 		}
 	}
+}
+
+// syncRegisteredRoster replaces the live registered-dir roster with a
+// freshly-discovered set and re-publishes RelayNotify, so the engine sees
+// added/removed cartridges without reconnecting — the equivalent of the macOS
+// XPC service's syncDiscoveryOutcomes after a rescan. Running cartridges no
+// longer in the set are killed; survivors keep their live process and stats.
+// Only dir-registered cartridges are touched; attached/internal providers are
+// not part of a dir roster sync.
+func (h *CartridgeHost) syncRegisteredRoster(desired []RegisteredDirSpec, relayWriter *relayOutbound) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	type identity struct {
+		registryURL string
+		hasURL      bool
+		channel     CartridgeChannel
+		id          string
+		version     string
+	}
+	recIdentity := func(rec *InstalledCartridgeRecord) identity {
+		id := identity{channel: CartridgeChannel(rec.Channel), id: rec.Id, version: rec.Version}
+		if rec.RegistryURL != nil {
+			id.registryURL = *rec.RegistryURL
+			id.hasURL = true
+		}
+		return id
+	}
+	specIdentity := func(s *RegisteredDirSpec) identity {
+		id := identity{channel: s.Channel, id: s.Id, version: s.Version}
+		if s.RegistryURL != nil {
+			id.registryURL = *s.RegistryURL
+			id.hasURL = true
+		}
+		return id
+	}
+
+	desiredKeys := make(map[identity]struct{}, len(desired))
+	for i := range desired {
+		desiredKeys[specIdentity(&desired[i])] = struct{}{}
+	}
+
+	// Retire registered-dir cartridges no longer desired.
+	for idx := range h.cartridges {
+		cartridge := h.cartridges[idx]
+		if cartridge.helloFailed {
+			continue
+		}
+		rec := cartridge.installedCartridgeRecord()
+		if rec == nil {
+			continue // no resolvable identity (e.g. internal provider) — leave it
+		}
+		if !cartridge.isRegisteredDir() {
+			continue // attached/internal providers are not part of a dir roster sync
+		}
+		if _, ok := desiredKeys[recIdentity(rec)]; ok {
+			continue // still desired — keep, preserving any live process
+		}
+		if cartridge.running {
+			if cartridge.writerCh != nil {
+				close(cartridge.writerCh)
+				cartridge.writerCh = nil
+			}
+			if cartridge.cmd != nil && cartridge.cmd.Process != nil {
+				cartridge.cmd.Process.Kill()
+				cartridge.cmd = nil
+			}
+			cartridge.running = false
+		}
+		cartridge.helloFailed = true // drop from cap table + inventory
+	}
+
+	// Add newly-desired specs not already registered.
+	presentKeys := make(map[identity]struct{})
+	for idx := range h.cartridges {
+		cartridge := h.cartridges[idx]
+		if cartridge.helloFailed {
+			continue
+		}
+		if rec := cartridge.installedCartridgeRecord(); rec != nil {
+			presentKeys[recIdentity(rec)] = struct{}{}
+		}
+	}
+	for i := range desired {
+		if _, ok := presentKeys[specIdentity(&desired[i])]; ok {
+			continue
+		}
+		h.registerCartridgeDirLocked(desired[i])
+	}
+
+	h.updateCapTable()
+	h.rebuildCapabilitiesLocked(relayWriter)
 }
 
 // handleRelayFrame routes an incoming frame from the relay to the
@@ -479,7 +785,7 @@ func (h *CartridgeHost) Run(relayRead io.Reader, relayWrite io.Writer, resourceF
 // XID disambiguates because the body's END (which removes
 // `incomingRxids[(xid, rid)]`) always precedes the peer response's
 // frames on a single ordered relay socket.
-func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *FrameWriter) error {
+func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutbound) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -662,7 +968,7 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *FrameWriter)
 // only when the request BODY's END arrives from the relay (in
 // `handleRelayFrame`), because cartridge response END and relay
 // body END race independently.
-func (h *CartridgeHost) handleCartridgeFrame(cartridgeIdx int, frame *Frame, relayWriter *FrameWriter) {
+func (h *CartridgeHost) handleCartridgeFrame(cartridgeIdx int, frame *Frame, relayWriter *relayOutbound) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -703,7 +1009,7 @@ func (h *CartridgeHost) handleCartridgeFrame(cartridgeIdx int, frame *Frame, rel
 }
 
 // handleCartridgeDeath processes a cartridge death event.
-func (h *CartridgeHost) handleCartridgeDeath(cartridgeIdx int, relayWriter *FrameWriter) {
+func (h *CartridgeHost) handleCartridgeDeath(cartridgeIdx int, relayWriter *relayOutbound) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -759,7 +1065,9 @@ func (h *CartridgeHost) handleCartridgeDeath(cartridgeIdx int, relayWriter *Fram
 	}
 
 	h.updateCapTable()
-	h.rebuildCapabilities()
+	// Republish the inventory so the engine sees the cartridge leave (and any
+	// surviving cartridges' updated running state).
+	h.rebuildCapabilitiesLocked(relayWriter)
 }
 
 // sendToCartridge sends a frame to a cartridge via its writer
@@ -887,29 +1195,36 @@ func (h *CartridgeHost) updateCapTable() {
 	}
 }
 
-// rebuildCapabilities rebuilds the aggregate capabilities JSON.
+// buildInstalledCartridgeIdentities builds the installed-cartridge inventory
+// the host advertises to the engine. Cartridges that have permanently failed
+// HELLO are filtered out. A cartridge with a resolvable installedIdentity (a
+// dir-registered roster cartridge) advertises that real (registry_url, channel,
+// id, version) identity plus live runtime stats; a legacy cartridge with no
+// on-disk anchor (RegisterCartridge / AttachCartridge) advertises a synthetic
+// identity so the inventory shape stays uniform.
 //
-// The relay payload is the single source of truth. Every cartridge
-// that has not permanently failed HELLO is advertised, regardless of
-// whether its process is currently running — this mirrors Rust's
-// `rebuild_capabilities`. Running state is communicated via the
-// per-cartridge runtime stats; advertisement (cap_groups) is the
-// inventory view.
-//
-// `cap_groups` is the source of truth. For cartridges registered with
-// a flat `knownCaps` list (no manifest yet), we synthesize a default
-// cap_group from those URNs so the inventory shape stays uniform.
-func (h *CartridgeHost) rebuildCapabilities() {
+// cap_groups is the source of truth. For cartridges registered with a flat
+// knownCaps list (no manifest yet), we synthesize a default cap_group from those
+// URNs.
+func (h *CartridgeHost) buildInstalledCartridgeIdentities() []InstalledCartridgeRecord {
+	activeCounts := make(map[int]uint64)
+	for _, route := range h.incomingRxids {
+		activeCounts[route.cartridgeIdx]++
+	}
+	peerCounts := make(map[int]uint64)
+	for _, route := range h.outgoingRids {
+		peerCounts[route.cartridgeIdx]++
+	}
+
 	var installed []InstalledCartridgeRecord
 	for idx, cartridge := range h.cartridges {
 		if cartridge.helloFailed {
 			continue // Permanently broken, not advertised.
 		}
 
-		// Prefer manifest-derived cap_groups (the source of truth
-		// once HELLO has succeeded); fall back to a synthetic group
-		// built from knownCaps when the cartridge has not started
-		// yet.
+		// Prefer manifest-derived cap_groups (the source of truth once HELLO
+		// has succeeded); fall back to a synthetic group built from knownCaps
+		// when the cartridge has not started yet.
 		var capGroups []CapGroup
 		if len(cartridge.capGroups) > 0 {
 			capGroups = cartridge.capGroups
@@ -918,9 +1233,8 @@ func (h *CartridgeHost) rebuildCapabilities() {
 			for _, urnStr := range cartridge.knownCaps {
 				parsed, err := urn.NewCapUrnFromString(urnStr)
 				if err != nil {
-					// Registration accepted this string upstream;
-					// re-parsing it here must succeed. Fail hard
-					// rather than silently dropping.
+					// Registration accepted this string upstream; re-parsing it
+					// here must succeed. Fail hard rather than silently dropping.
 					panic(fmt.Sprintf("BUG: known cap URN %q failed to re-parse: %v", urnStr, err))
 				}
 				caps = append(caps, *cap.NewCap(parsed, urnStr, ""))
@@ -928,30 +1242,82 @@ func (h *CartridgeHost) rebuildCapabilities() {
 			capGroups = []CapGroup{{Name: "default", Caps: caps}}
 		}
 
+		stats := &CartridgeRuntimeStats{
+			Running:            cartridge.running,
+			ActiveRequestCount: activeCounts[idx],
+			PeerRequestCount:   peerCounts[idx],
+		}
+		if cartridge.cmd != nil && cartridge.cmd.Process != nil {
+			pid := uint32(cartridge.cmd.Process.Pid)
+			stats.PID = &pid
+		}
+
+		if rec := cartridge.installedCartridgeRecord(); rec != nil {
+			// Real identity (dir-registered roster cartridge). Copy the base
+			// identity and overlay the live cap_groups + runtime stats.
+			out := *rec
+			out.CapGroups = capGroups
+			out.RuntimeStats = stats
+			installed = append(installed, out)
+			continue
+		}
+
+		// Legacy cartridge with no on-disk anchor — synthetic identity.
 		installed = append(installed, InstalledCartridgeRecord{
-			RegistryURL: nil,
-			Id:          fmt.Sprintf("cartridge-%d", idx),
-			Channel:     "release",
-			Version:     "0.0.0",
-			Sha256:      "",
-			CapGroups:   capGroups,
+			RegistryURL:  nil,
+			Id:           fmt.Sprintf("cartridge-%d", idx),
+			Channel:      "release",
+			Version:      "0.0.0",
+			Sha256:       "",
+			CapGroups:    capGroups,
+			RuntimeStats: stats,
 		})
 	}
+	return installed
+}
+
+// rebuildCapabilities rebuilds the aggregate capabilities JSON without
+// publishing a RelayNotify frame (the initialization path — mirrors the
+// reference rebuild_capabilities(None)).
+func (h *CartridgeHost) rebuildCapabilities() {
+	h.rebuildCapabilitiesLocked(nil)
+}
+
+// rebuildCapabilitiesLocked rebuilds the aggregate capabilities JSON and, when
+// relayWriter is non-nil, publishes a RelayNotify frame so the relay/engine
+// tracks capability changes dynamically as cartridges connect / disconnect /
+// fail / are roster-synced. Caller must hold h.mu.
+func (h *CartridgeHost) rebuildCapabilitiesLocked(relayWriter *relayOutbound) {
+	installed := h.buildInstalledCartridgeIdentities()
 
 	if len(installed) == 0 {
 		h.capabilities = nil
-		return
+	} else {
+		payload := RelayNotifyCapabilitiesPayload{InstalledCartridges: installed}
+		capsJSON, err := json.Marshal(payload)
+		if err != nil {
+			h.capabilities = nil
+		} else {
+			h.capabilities = capsJSON
+		}
 	}
 
-	payload := RelayNotifyCapabilitiesPayload{
-		InstalledCartridges: installed,
-	}
-	capsJSON, err := json.Marshal(payload)
-	if err != nil {
-		h.capabilities = nil
+	if relayWriter == nil {
 		return
 	}
-	h.capabilities = capsJSON
+	// Publish a RelayNotify so the engine sees the current inventory. An empty
+	// roster is published as an empty installed_cartridges list (not skipped)
+	// so the engine can observe a cartridge being retired.
+	payload := RelayNotifyCapabilitiesPayload{InstalledCartridges: installed}
+	if installed == nil {
+		payload.InstalledCartridges = []InstalledCartridgeRecord{}
+	}
+	notifyBytes, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	frame := NewRelayNotify(notifyBytes, DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer)
+	relayWriter.WriteFrame(frame)
 }
 
 // killAllCartridges stops all managed cartridges.

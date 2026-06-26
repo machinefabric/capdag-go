@@ -109,17 +109,6 @@ func (m *MediaUrn) GetTag(tag string) (string, bool) {
 	return m.inner.GetTag(tag)
 }
 
-// IsBinary returns true if this represents binary (non-text) data.
-// Returns true if the "textable" marker tag is NOT present.
-func (m *MediaUrn) IsBinary() bool {
-	return !m.HasTag("textable")
-}
-
-// IsTextable returns true if this has the "textable" tag
-func (m *MediaUrn) IsTextable() bool {
-	return m.HasTag("textable")
-}
-
 // IsVoid returns true if this represents void/no data — the **unit
 // type** in the type-theoretic reading. media:void is the nullary
 // value. NOT "invalid" or "absent".
@@ -138,19 +127,28 @@ func (m *MediaUrn) IsTop() bool {
 	return len(m.inner.AllTags()) == 0
 }
 
-// IsJson returns true if this has the "json" tag
+// IsJson returns true iff the content serialization format is JSON (`fmt=json`).
+// The serialization format is the single `fmt=` axis — `fmt=json` marks JSON
+// content regardless of whether it also came from a `.json` file (`ext=json`).
 func (m *MediaUrn) IsJson() bool {
-	return m.HasTag("json")
+	val, ok := m.GetTag("fmt")
+	return ok && val == "json"
 }
 
-// IsYaml returns true if this media URN describes YAML representation.
+// IsYaml returns true iff the content serialization format is YAML (`fmt=yaml`).
 func (m *MediaUrn) IsYaml() bool {
-	return m.HasMarkerTag("yaml")
+	val, ok := m.GetTag("fmt")
+	return ok && val == "yaml"
 }
 
-// IsCsv returns true if this media URN describes CSV representation.
+// IsCsv returns true iff the content serialization format is CSV (`fmt=csv`).
+//
+// CSV content is identified by the `fmt=csv` content-format tag — the only form
+// the catalog publishes. A `.csv` file on disk carries `ext=csv` *and* `fmt=csv`;
+// the file-type tag alone (`ext=csv`) does not make a value CSV content.
 func (m *MediaUrn) IsCsv() bool {
-	return m.HasMarkerTag("csv")
+	val, ok := m.GetTag("fmt")
+	return ok && val == "csv"
 }
 
 // Accepts checks if this MediaUrn (pattern/handler) accepts the given instance (request).
@@ -472,7 +470,7 @@ func MediaUrnString() *MediaUrn {
 	return m
 }
 
-// MediaUrnBytes creates a binary media URN
+// MediaUrnBytes creates the top media URN (no constraints — opaque bytes)
 func MediaUrnBytes() *MediaUrn {
 	m, _ := NewMediaUrnFromString(standard.MediaIdentity)
 	return m
@@ -502,15 +500,17 @@ func MediaUrnBoolean() *MediaUrn {
 	return m
 }
 
-// BinaryMediaUrnForExt builds a binary media URN with the given file extension
-// on the keyed ext= axis so Extension() resolves correctly.
-func BinaryMediaUrnForExt(ext string) string {
-	return fmt.Sprintf("media:binary;ext=%s", ext)
+// FileMediaUrnForExt builds a bare file media URN for the given file extension —
+// a file of the given type with no content-format or encoding claim
+// (e.g. media:ext=pdf). Extension() resolves correctly off the keyed ext= axis.
+func FileMediaUrnForExt(ext string) string {
+	return fmt.Sprintf("media:ext=%s", ext)
 }
 
-// TextMediaUrnForExt builds a text media URN with the given file extension.
+// TextMediaUrnForExt builds a UTF-8 text file media URN with the given file
+// extension (e.g. media:enc=utf-8;ext=md).
 func TextMediaUrnForExt(ext string) string {
-	return fmt.Sprintf("media:ext=%s;textable", ext)
+	return fmt.Sprintf("media:enc=utf-8;ext=%s", ext)
 }
 
 // ImageMediaUrnForExt builds an image media URN with the given file extension.

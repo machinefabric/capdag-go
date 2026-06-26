@@ -14,9 +14,9 @@ import (
 // Test helper to create URNs with required in/out specs
 func capTestUrn(tags string) string {
 	if tags == "" {
-		return `cap:in="media:void";out="media:json;record;textable"`
+		return `cap:in="media:void";out="media:fmt=json;record"`
 	}
-	return `cap:in="media:void";out="media:json;record;textable";` + tags
+	return `cap:in="media:void";out="media:fmt=json;record";` + tags
 }
 
 // TEST108: Test creating new cap with URN, title, and command verifies correct initialization
@@ -121,10 +121,10 @@ func Test113_cap_stdin(t *testing.T) {
 	assert.Nil(t, cap.GetStdinMediaUrn())
 
 	// Enable stdin support by adding an arg with a stdin source
-	stdinUrn := "media:textable"
+	stdinUrn := "media:enc=utf-8"
 	inputTextDesc := "Input text"
 	stdinArg := CapArg{
-		MediaUrn:       "media:textable",
+		MediaUrn:       "media:enc=utf-8",
 		Required:       true,
 		Sources:        []ArgSource{{Stdin: &stdinUrn}},
 		ArgDescription: &inputTextDesc,
@@ -132,7 +132,7 @@ func Test113_cap_stdin(t *testing.T) {
 	cap.AddArg(stdinArg)
 
 	assert.True(t, cap.AcceptsStdin())
-	assert.Equal(t, "media:textable", *cap.GetStdinMediaUrn())
+	assert.Equal(t, "media:enc=utf-8", *cap.GetStdinMediaUrn())
 
 	// Test serialization/deserialization preserves the args
 	serialized, err := json.Marshal(cap)
@@ -144,7 +144,7 @@ func Test113_cap_stdin(t *testing.T) {
 	err = json.Unmarshal(serialized, &deserialized)
 	require.NoError(t, err)
 	assert.True(t, deserialized.AcceptsStdin())
-	assert.Equal(t, "media:textable", *deserialized.GetStdinMediaUrn())
+	assert.Equal(t, "media:enc=utf-8", *deserialized.GetStdinMediaUrn())
 }
 
 // TEST114: Test ArgSource type variants stdin, position, and cli_flag with their accessors
@@ -574,7 +574,7 @@ func Test1128_cap_documentation_omitted_when_none(t *testing.T) {
 // must deserialize into a Cap with the body intact.
 func Test1129_cap_documentation_parses_from_capfab_json(t *testing.T) {
 	raw := `{
-		"urn": "cap:in=\"media:textable\";docparse;out=\"media:textable\"",
+		"urn": "cap:in=\"media:enc=utf-8\";docparse;out=\"media:enc=utf-8\"",
 		"title": "Doc Parse",
 		"command": "docparse",
 		"cap_description": "short",

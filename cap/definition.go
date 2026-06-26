@@ -256,15 +256,6 @@ func (a *CapArg) Resolve(registry *media.FabricRegistry) (*media.ResolvedMediaDe
 	return media.ResolveMediaUrn(a.MediaUrn, registry)
 }
 
-// IsBinary checks if this argument expects binary data.
-func (a *CapArg) IsBinary(registry *media.FabricRegistry) (bool, error) {
-	resolved, err := a.Resolve(registry)
-	if err != nil {
-		return false, fmt.Errorf("failed to resolve argument media_urn '%s': %w", a.MediaUrn, err)
-	}
-	return resolved.IsBinary(), nil
-}
-
 // IsStructured checks if this argument expects structured data (map or list).
 func (a *CapArg) IsStructured(registry *media.FabricRegistry) (bool, error) {
 	resolved, err := a.Resolve(registry)
@@ -294,15 +285,6 @@ type CapOutput struct {
 // Resolve resolves the output's media URN through the FabricRegistry.
 func (co *CapOutput) Resolve(registry *media.FabricRegistry) (*media.ResolvedMediaDef, error) {
 	return media.ResolveMediaUrn(co.MediaUrn, registry)
-}
-
-// IsBinary checks if this output produces binary data.
-func (co *CapOutput) IsBinary(registry *media.FabricRegistry) (bool, error) {
-	resolved, err := co.Resolve(registry)
-	if err != nil {
-		return false, fmt.Errorf("failed to resolve output media_urn '%s': %w", co.MediaUrn, err)
-	}
-	return resolved.IsBinary(), nil
 }
 
 // IsStructured checks if this output produces structured data (map or list).

@@ -160,7 +160,7 @@ func Test715_pattern_string(t *testing.T) {
 // Verifies that URNs without record marker are parsed as Opaque
 func Test720_from_media_urn_opaque(t *testing.T) {
 	assert.Equal(t, StructureOpaque, StructureFromMediaUrn("media:pdf"))
-	assert.Equal(t, StructureOpaque, StructureFromMediaUrn("media:textable"))
+	assert.Equal(t, StructureOpaque, StructureFromMediaUrn("media:enc=utf-8"))
 	assert.Equal(t, StructureOpaque, StructureFromMediaUrn("media:integer"))
 	// List marker doesn't affect structure
 	assert.Equal(t, StructureOpaque, StructureFromMediaUrn("media:file-path;list"))
@@ -169,11 +169,11 @@ func Test720_from_media_urn_opaque(t *testing.T) {
 // TEST721: Tests InputStructure correctly identifies record media URNs
 // Verifies that URNs with record marker tag are parsed as Record
 func Test721_from_media_urn_record(t *testing.T) {
-	assert.Equal(t, StructureRecord, StructureFromMediaUrn("media:json;record"))
-	assert.Equal(t, StructureRecord, StructureFromMediaUrn("media:record;textable"))
-	assert.Equal(t, StructureRecord, StructureFromMediaUrn("media:file-metadata;record;textable"))
+	assert.Equal(t, StructureRecord, StructureFromMediaUrn("media:fmt=json;record"))
+	assert.Equal(t, StructureRecord, StructureFromMediaUrn("media:record;enc=utf-8"))
+	assert.Equal(t, StructureRecord, StructureFromMediaUrn("media:file-metadata;record;enc=utf-8"))
 	// List of records
-	assert.Equal(t, StructureRecord, StructureFromMediaUrn("media:json;list;record"))
+	assert.Equal(t, StructureRecord, StructureFromMediaUrn("media:fmt=json;list;record"))
 }
 
 // TEST722: Tests structure compatibility for opaque-to-opaque data flow
@@ -202,25 +202,25 @@ func Test725_structure_incompatibility_record_to_opaque(t *testing.T) {
 
 // TEST726: Tests applying Record structure adds record marker to URN
 func Test726_apply_structure_add_record(t *testing.T) {
-	result := StructureRecord.ApplyToUrn("media:json")
+	result := StructureRecord.ApplyToUrn("media:fmt=json")
 	assert.Contains(t, result, "record")
 }
 
 // TEST727: Tests applying Opaque structure removes record marker from URN
 func Test727_apply_structure_remove_record(t *testing.T) {
-	result := StructureOpaque.ApplyToUrn("media:json;record")
+	result := StructureOpaque.ApplyToUrn("media:fmt=json;record")
 	assert.False(t, strings.Contains(result, "record"), "record tag must be removed")
 }
 
 // TEST730: Tests MediaShape correctly parses all four combinations
 func Test730_media_shape_from_urn_all_combinations(t *testing.T) {
 	// Scalar opaque (default)
-	shape := MediaShapeFromUrn("media:textable")
+	shape := MediaShapeFromUrn("media:enc=utf-8")
 	assert.Equal(t, CardinalitySingle, shape.Cardinality)
 	assert.Equal(t, StructureOpaque, shape.Structure)
 
 	// Scalar record
-	shape = MediaShapeFromUrn("media:json;record")
+	shape = MediaShapeFromUrn("media:fmt=json;record")
 	assert.Equal(t, CardinalitySingle, shape.Cardinality)
 	assert.Equal(t, StructureRecord, shape.Structure)
 
@@ -230,7 +230,7 @@ func Test730_media_shape_from_urn_all_combinations(t *testing.T) {
 	assert.Equal(t, StructureOpaque, shape.Structure)
 
 	// List record — cardinality is always Single from URN
-	shape = MediaShapeFromUrn("media:json;list;record")
+	shape = MediaShapeFromUrn("media:fmt=json;list;record")
 	assert.Equal(t, CardinalitySingle, shape.Cardinality)
 	assert.Equal(t, StructureRecord, shape.Structure)
 }
@@ -284,7 +284,7 @@ func Test733_media_shape_structure_mismatch(t *testing.T) {
 
 // TEST740: Tests CapShapeInfo correctly parses cap specs
 func Test740_cap_shape_info_from_specs(t *testing.T) {
-	info := CapShapeInfoFromSpecs("cap:test", "media:textable", "media:json;record")
+	info := CapShapeInfoFromSpecs("cap:test", "media:enc=utf-8", "media:fmt=json;record")
 	assert.Equal(t, CardinalitySingle, info.Input.Cardinality)
 	assert.Equal(t, StructureOpaque, info.Input.Structure)
 	assert.Equal(t, CardinalitySingle, info.Output.Cardinality)
@@ -296,7 +296,7 @@ func Test741_cap_shape_info_pattern(t *testing.T) {
 	// Simulate one-to-many (output is_sequence=true on wire)
 	oneToMany := CapShapeInfo{
 		Input:  MediaShapeFromUrn("media:pdf"),
-		Output: MediaShape{Cardinality: CardinalitySequence, Structure: StructureFromMediaUrn("media:disbound-page;textable")},
+		Output: MediaShape{Cardinality: CardinalitySequence, Structure: StructureFromMediaUrn("media:disbound-page;enc=utf-8")},
 		CapUrn: "cap:disbind",
 	}
 	assert.Equal(t, PatternOneToMany, oneToMany.CardinalityPatternOf())
@@ -316,9 +316,9 @@ func Test750_strand_shape_valid(t *testing.T) {
 // TEST751: Tests shape chain analysis detects structure mismatch
 func Test751_strand_shape_structure_mismatch(t *testing.T) {
 	infos := []CapShapeInfo{
-		CapShapeInfoFromSpecs("cap:extract", "media:pdf", "media:textable"),
+		CapShapeInfoFromSpecs("cap:extract", "media:pdf", "media:enc=utf-8"),
 		// This cap expects record but gets opaque — should fail
-		CapShapeInfoFromSpecs("cap:parse", "media:json;record", "media:data;record"),
+		CapShapeInfoFromSpecs("cap:parse", "media:fmt=json;record", "media:data;record"),
 	}
 	analysis := AnalyzeShapeChain(infos)
 	assert.False(t, analysis.IsValid)
@@ -331,12 +331,12 @@ func Test751_strand_shape_structure_mismatch(t *testing.T) {
 func Test752_strand_shape_with_fanout(t *testing.T) {
 	disbind := CapShapeInfo{
 		Input:  MediaShapeFromUrn("media:pdf"),
-		Output: MediaShape{Cardinality: CardinalitySequence, Structure: StructureFromMediaUrn("media:page;textable")},
+		Output: MediaShape{Cardinality: CardinalitySequence, Structure: StructureFromMediaUrn("media:page;enc=utf-8")},
 		CapUrn: "cap:disbind",
 	}
 	infos := []CapShapeInfo{
 		disbind,
-		CapShapeInfoFromSpecs("cap:process", "media:textable", "media:result;textable"),
+		CapShapeInfoFromSpecs("cap:process", "media:enc=utf-8", "media:result;enc=utf-8"),
 	}
 	analysis := AnalyzeShapeChain(infos)
 	assert.True(t, analysis.IsValid)
@@ -347,8 +347,8 @@ func Test752_strand_shape_with_fanout(t *testing.T) {
 // TEST753: Tests shape chain analysis correctly handles list-to-list record flow
 func Test753_strand_shape_list_record_to_list_record(t *testing.T) {
 	infos := []CapShapeInfo{
-		CapShapeInfoFromSpecs("cap:parse_csv", "media:csv;textable", "media:json;list;record"),
-		CapShapeInfoFromSpecs("cap:transform", "media:json;list;record", "media:result;list;record"),
+		CapShapeInfoFromSpecs("cap:parse_csv", "media:fmt=csv", "media:fmt=json;list;record"),
+		CapShapeInfoFromSpecs("cap:transform", "media:fmt=json;list;record", "media:result;list;record"),
 	}
 	analysis := AnalyzeShapeChain(infos)
 	assert.True(t, analysis.IsValid)

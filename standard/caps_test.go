@@ -11,7 +11,7 @@ import (
 func Test307_model_availability_urn(t *testing.T) {
 	urnStr := ModelAvailabilityUrn()
 	assert.True(t, strings.Contains(urnStr, "model-availability"), "URN must have model-availability")
-	assert.True(t, strings.Contains(urnStr, "in=media:model-spec"), "input must be model-spec")
+	assert.True(t, strings.Contains(urnStr, "model-spec"), "input must be model-spec")
 	assert.True(t, strings.Contains(urnStr, "out=media:availability-output"), "output must be availability output")
 }
 
@@ -19,7 +19,7 @@ func Test307_model_availability_urn(t *testing.T) {
 func Test308_model_path_urn(t *testing.T) {
 	urnStr := ModelPathUrn()
 	assert.True(t, strings.Contains(urnStr, "model-path"), "URN must have model-path")
-	assert.True(t, strings.Contains(urnStr, "in=media:model-spec"), "input must be model-spec")
+	assert.True(t, strings.Contains(urnStr, "model-spec"), "input must be model-spec")
 	assert.True(t, strings.Contains(urnStr, "out=media:path-output"), "output must be path output")
 }
 

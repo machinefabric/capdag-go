@@ -68,12 +68,12 @@ func buildTestRegistry(t *testing.T, capUrns []string) *cap.FabricRegistry {
 func Test1142_resolved_graph_to_mermaid_renders_shapes_dedupes_edges_and_escapes(t *testing.T) {
 	extractCap := buildTestCap(
 		t,
-		`cap:in="media:pdf";extract;out="media:textable;txt"`,
+		`cap:in="media:pdf";extract;out="media:txt;enc=utf-8"`,
 		`Extract "Title" <One>\path`,
 	)
 	embedCap := buildTestCap(
 		t,
-		`cap:in="media:textable;txt";embed;out="media:embedding;record"`,
+		`cap:in="media:txt;enc=utf-8";embed;out="media:embedding;record"`,
 		"Embed",
 	)
 
@@ -81,13 +81,13 @@ func Test1142_resolved_graph_to_mermaid_renders_shapes_dedupes_edges_and_escapes
 	graph := &ResolvedGraph{
 		Nodes: map[string]string{
 			"input":  "media:pdf",
-			"middle": "media:textable;txt",
+			"middle": "media:txt;enc=utf-8",
 			"output": "media:embedding;record",
 		},
 		Edges: []*ResolvedEdge{
-			{From: "input", To: "middle", CapUrn: extractCap.Urn.String(), Cap: extractCap, InMedia: "media:pdf", OutMedia: "media:textable;txt"},
-			{From: "input", To: "middle", CapUrn: extractCap.Urn.String(), Cap: extractCap, InMedia: "media:pdf", OutMedia: "media:textable;txt"},
-			{From: "middle", To: "output", CapUrn: embedCap.Urn.String(), Cap: embedCap, InMedia: "media:textable;txt", OutMedia: "media:embedding;record"},
+			{From: "input", To: "middle", CapUrn: extractCap.Urn.String(), Cap: extractCap, InMedia: "media:pdf", OutMedia: "media:txt;enc=utf-8"},
+			{From: "input", To: "middle", CapUrn: extractCap.Urn.String(), Cap: extractCap, InMedia: "media:pdf", OutMedia: "media:txt;enc=utf-8"},
+			{From: "middle", To: "output", CapUrn: embedCap.Urn.String(), Cap: embedCap, InMedia: "media:txt;enc=utf-8", OutMedia: "media:embedding;record"},
 		},
 		GraphName: &graphName,
 	}
@@ -100,7 +100,7 @@ func Test1142_resolved_graph_to_mermaid_renders_shapes_dedupes_edges_and_escapes
 	if !strings.Contains(mermaid, `input(["input<br/><small>media:pdf</small>"])`) {
 		t.Fatalf("expected input node shape, got: %s", mermaid)
 	}
-	if !strings.Contains(mermaid, `middle["middle<br/><small>media:textable;txt</small>"]`) {
+	if !strings.Contains(mermaid, `middle["middle<br/><small>media:txt;enc=utf-8</small>"]`) {
 		t.Fatalf("expected middle node shape, got: %s", mermaid)
 	}
 	if !strings.Contains(mermaid, `output(("output<br/><small>media:embedding;record</small>"))`) {
@@ -209,21 +209,21 @@ func Test953_linear_plan_still_works(t *testing.T) {
 // should be rewritten to go from cap_0 to cap_1 directly.
 func Test954_standalone_collect_passthrough(t *testing.T) {
 	registry := buildTestRegistry(t, []string{
-		`cap:in=media:pdf;extract;out="media:text;textable"`,
-		`cap:in="media:list;text;textable";embed;out="media:embedding-vector;record;textable"`,
+		`cap:in=media:pdf;extract;out="media:text;enc=utf-8"`,
+		`cap:in="media:list;text;enc=utf-8";embed;out="media:embedding-vector;record;enc=utf-8"`,
 	})
 
 	plan := planner.NewMachinePlan("collect_plan")
 	plan.AddNode(planner.NewInputSlotNode("input", "input", "media:pdf", planner.CardinalitySingle))
-	plan.AddNode(planner.NewMachineNode("cap_0", `cap:in=media:pdf;extract;out="media:text;textable"`))
+	plan.AddNode(planner.NewMachineNode("cap_0", `cap:in=media:pdf;extract;out="media:text;enc=utf-8"`))
 
 	// Standalone Collect: scalar→list with OutputMediaUrn set
 	collectNode := planner.NewCollectNode("collect_0", []string{"cap_0"})
-	outUrn := "media:list;text;textable"
+	outUrn := "media:list;text;enc=utf-8"
 	collectNode.NodeType.OutputMediaUrn = &outUrn
 	plan.AddNode(collectNode)
 
-	plan.AddNode(planner.NewMachineNode("cap_1", `cap:in="media:list;text;textable";embed;out="media:embedding-vector;record;textable"`))
+	plan.AddNode(planner.NewMachineNode("cap_1", `cap:in="media:list;text;enc=utf-8";embed;out="media:embedding-vector;record;enc=utf-8"`))
 	plan.AddNode(planner.NewOutputNode("output", "result", "cap_1"))
 
 	plan.AddEdge(planner.NewDirectEdge("input", "cap_0"))
@@ -257,10 +257,10 @@ func Test954_standalone_collect_passthrough(t *testing.T) {
 // TEST1256: A single declared cap and one wiring parse into a two-node one-edge DAG.
 func Test1256_parse_simple_machine(t *testing.T) {
 	registry := buildParserTestRegistry(t, []string{
-		`cap:in="media:pdf";extract;out="media:textable;txt"`,
+		`cap:in="media:pdf";extract;out="media:txt;enc=utf-8"`,
 	})
 
-	notation := `[extract cap:in="media:pdf";extract;out="media:textable;txt"][A -> extract -> B]`
+	notation := `[extract cap:in="media:pdf";extract;out="media:txt;enc=utf-8"][A -> extract -> B]`
 
 	graph, err := ParseMachineToCapDag(notation, registry)
 	if err != nil {
@@ -284,12 +284,12 @@ func Test1256_parse_simple_machine(t *testing.T) {
 // TEST1257: Two sequential wirings preserve the intermediate node media type.
 func Test1257_parse_two_step_chain(t *testing.T) {
 	registry := buildParserTestRegistry(t, []string{
-		`cap:in="media:pdf";extract;out="media:textable;txt"`,
-		`cap:in="media:textable;txt";embed;out="media:embedding-vector;record;textable"`,
+		`cap:in="media:pdf";extract;out="media:txt;enc=utf-8"`,
+		`cap:in="media:txt;enc=utf-8";embed;out="media:embedding-vector;record;enc=utf-8"`,
 	})
 
-	notation := `[extract cap:in="media:pdf";extract;out="media:textable;txt"]` +
-		`[embed cap:in="media:textable;txt";embed;out="media:embedding-vector;record;textable"]` +
+	notation := `[extract cap:in="media:pdf";extract;out="media:txt;enc=utf-8"]` +
+		`[embed cap:in="media:txt;enc=utf-8";embed;out="media:embedding-vector;record;enc=utf-8"]` +
 		`[A -> extract -> B]` +
 		`[B -> embed -> C]`
 
@@ -354,10 +354,10 @@ func Test1262_invalid_machine_notation(t *testing.T) {
 // In Go the machine parser may reject cycles at the parse layer or the orchestrator layer.
 func Test1263_cycle_detection(t *testing.T) {
 	registry := buildParserTestRegistry(t, []string{
-		`cap:in="media:textable;txt";process;out="media:textable;txt"`,
+		`cap:in="media:txt;enc=utf-8";process;out="media:txt;enc=utf-8"`,
 	})
 
-	notation := `[proc cap:in="media:textable;txt";process;out="media:textable;txt"]` +
+	notation := `[proc cap:in="media:txt;enc=utf-8";process;out="media:txt;enc=utf-8"]` +
 		`[A -> proc -> B]` +
 		`[B -> proc -> C]` +
 		`[C -> proc -> A]`
@@ -379,11 +379,11 @@ func Test1263_cycle_detection(t *testing.T) {
 func Test1264_incompatible_media_types_at_shared_node(t *testing.T) {
 	registry := buildParserTestRegistry(t, []string{
 		`cap:in="media:void";produce-pdf;out="media:pdf"`,
-		`cap:in="media:audio;wav";transcribe;out="media:textable;txt"`,
+		`cap:in="media:audio;wav";transcribe;out="media:txt;enc=utf-8"`,
 	})
 
 	notation := `[produce cap:in="media:void";produce-pdf;out="media:pdf"]` +
-		`[transcribe cap:in="media:audio;wav";transcribe;out="media:textable;txt"]` +
+		`[transcribe cap:in="media:audio;wav";transcribe;out="media:txt;enc=utf-8"]` +
 		`[A -> produce -> B]` +
 		`[B -> transcribe -> C]`
 
@@ -401,11 +401,11 @@ func Test1264_incompatible_media_types_at_shared_node(t *testing.T) {
 func Test1265_compatible_media_urns_at_shared_node(t *testing.T) {
 	registry := buildParserTestRegistry(t, []string{
 		`cap:in="media:pdf";thumbnail;out="media:image;png"`,
-		`cap:in="media:bytes;image;png";embed-image;out="media:embedding-vector;record;textable"`,
+		`cap:in="media:bytes;image;png";embed-image;out="media:embedding-vector;record;enc=utf-8"`,
 	})
 
 	notation := `[thumb cap:in="media:pdf";thumbnail;out="media:image;png"]` +
-		`[embed_image cap:in="media:bytes;image;png";embed-image;out="media:embedding-vector;record;textable"]` +
+		`[embed_image cap:in="media:bytes;image;png";embed-image;out="media:embedding-vector;record;enc=utf-8"]` +
 		`[A -> thumb -> B]` +
 		`[B -> embed_image -> C]`
 
@@ -418,12 +418,12 @@ func Test1265_compatible_media_urns_at_shared_node(t *testing.T) {
 // TEST1267: Record-shaped outputs can feed record-shaped inputs without error.
 func Test1267_structure_match_both_record(t *testing.T) {
 	registry := buildParserTestRegistry(t, []string{
-		`cap:in="media:void";produce;out="media:json;record;textable"`,
-		`cap:in="media:json;record;textable";transform;out="media:result;record;textable"`,
+		`cap:in="media:void";produce;out="media:fmt=json;record"`,
+		`cap:in="media:fmt=json;record";transform;out="media:result;record;enc=utf-8"`,
 	})
 
-	notation := `[produce cap:in="media:void";produce;out="media:json;record;textable"]` +
-		`[transform cap:in="media:json;record;textable";transform;out="media:result;record;textable"]` +
+	notation := `[produce cap:in="media:void";produce;out="media:fmt=json;record"]` +
+		`[transform cap:in="media:fmt=json;record";transform;out="media:result;record;enc=utf-8"]` +
 		`[A -> produce -> B]` +
 		`[B -> transform -> C]`
 
@@ -436,12 +436,12 @@ func Test1267_structure_match_both_record(t *testing.T) {
 // TEST1268: Opaque outputs can feed opaque inputs without triggering structure conflicts.
 func Test1268_structure_match_both_opaque(t *testing.T) {
 	registry := buildParserTestRegistry(t, []string{
-		`cap:in="media:void";produce;out="media:json;textable"`,
-		`cap:in="media:json;textable";format;out="media:textable;txt"`,
+		`cap:in="media:void";produce;out="media:fmt=json"`,
+		`cap:in="media:fmt=json";format;out="media:txt;enc=utf-8"`,
 	})
 
-	notation := `[produce cap:in="media:void";produce;out="media:json;textable"]` +
-		`[format cap:in="media:json;textable";format;out="media:textable;txt"]` +
+	notation := `[produce cap:in="media:void";produce;out="media:fmt=json"]` +
+		`[format cap:in="media:fmt=json";format;out="media:txt;enc=utf-8"]` +
 		`[A -> produce -> B]` +
 		`[B -> format -> C]`
 
@@ -454,11 +454,11 @@ func Test1268_structure_match_both_opaque(t *testing.T) {
 // TEST1269: Multi-line machine notation parses successfully with the same semantics as inline notation.
 func Test1269_parse_multiline_machine(t *testing.T) {
 	registry := buildParserTestRegistry(t, []string{
-		`cap:in="media:pdf";extract;out="media:textable;txt"`,
+		`cap:in="media:pdf";extract;out="media:txt;enc=utf-8"`,
 	})
 
 	notation := `
-[extract cap:in="media:pdf";extract;out="media:textable;txt"]
+[extract cap:in="media:pdf";extract;out="media:txt;enc=utf-8"]
 [doc -> extract -> text]
 `
 

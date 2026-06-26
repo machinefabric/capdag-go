@@ -14,9 +14,9 @@ import (
 // Test helper for manifest tests - use proper media URNs with tags
 func manifestTestUrn(tags string) string {
 	if tags == "" {
-		return `cap:in="media:void";out="media:json;record;textable"`
+		return `cap:in="media:void";out="media:fmt=json;record"`
 	}
-	return `cap:in="media:void";out="media:json;record;textable";` + tags
+	return `cap:in="media:void";out="media:fmt=json;record";` + tags
 }
 
 // TEST148: Manifest creation with cap groups
@@ -98,7 +98,7 @@ func Test150_cap_manifest_json_serialization(t *testing.T) {
 	chunkFlag := "--chunk-size"
 	timestampFlag := "--timestamps"
 	capDef.AddArg(cap.CapArg{
-		MediaUrn:       "media:chunk-size;textable;numeric",
+		MediaUrn:       "media:chunk-size;numeric",
 		Required:       false,
 		Sources:        []cap.ArgSource{{CliFlag: &chunkFlag}},
 		ArgDescription: &chunkDesc,
@@ -106,7 +106,7 @@ func Test150_cap_manifest_json_serialization(t *testing.T) {
 		Metadata:       map[string]any{"unit": "words"},
 	})
 	capDef.AddArg(cap.CapArg{
-		MediaUrn:       "media:timestamps;textable;bool",
+		MediaUrn:       "media:timestamps;bool;enc=utf-8",
 		Required:       false,
 		Sources:        []cap.ArgSource{{CliFlag: &timestampFlag}},
 		ArgDescription: &timestampDesc,
@@ -353,7 +353,7 @@ func Test1284_cap_group_with_adapter_urns(t *testing.T) {
 	group := CapGroup{
 		Name:        "data-formats",
 		Caps:        []cap.Cap{*capDef},
-		AdapterUrns: []string{"media:json", "media:csv"},
+		AdapterUrns: []string{"media:fmt=json", "media:fmt=csv"},
 	}
 
 	manifest := NewCapManifest("TestCartridge", "1.0.0", "release", nil, "Test", []CapGroup{group})
@@ -363,8 +363,8 @@ func Test1284_cap_group_with_adapter_urns(t *testing.T) {
 
 	jsonStr := string(jsonData)
 	assert.Contains(t, jsonStr, `"adapter_urns"`)
-	assert.Contains(t, jsonStr, "media:json")
-	assert.Contains(t, jsonStr, "media:csv")
+	assert.Contains(t, jsonStr, "media:fmt=json")
+	assert.Contains(t, jsonStr, "media:fmt=csv")
 
 	var deserialized CapManifest
 	err = json.Unmarshal(jsonData, &deserialized)

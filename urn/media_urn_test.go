@@ -15,7 +15,7 @@ func Test0126_ParseSimple(t *testing.T) {
 	urn, err := NewMediaUrnFromString("media:string")
 	require.NoError(t, err)
 	assert.True(t, urn.HasTag("string"))
-	assert.False(t, urn.HasTag("textable"))
+	assert.False(t, urn.HasTag("enc"))
 }
 
 // Mirror-specific coverage: Test parsing media URN with marker tags works correctly
@@ -30,9 +30,9 @@ func Test0127_ParseWithSubtype(t *testing.T) {
 
 // Mirror-specific coverage: Test parsing media URN with profile extracts profile URL correctly
 func Test0128_ParseWithProfile(t *testing.T) {
-	urn, err := NewMediaUrnFromString("media:string;textable")
+	urn, err := NewMediaUrnFromString("media:enc=utf-8;string")
 	require.NoError(t, err)
-	assert.True(t, urn.HasTag("textable"))
+	assert.True(t, urn.HasTag("enc"))
 }
 
 // TEST060: Test wrong prefix fails with InvalidPrefix error showing expected and actual prefix
@@ -46,42 +46,11 @@ func Test060_wrong_prefix_fails(t *testing.T) {
 	assert.Contains(t, taggedErr.Error(), "cap")
 }
 
-// TEST061: Test is_binary returns true when textable tag is absent (binary = not textable)
-func Test061_is_binary(t *testing.T) {
-	// Binary types (no textable tag)
-	binary, err := NewMediaUrnFromString("media:")
-	require.NoError(t, err)
-	assert.True(t, binary.IsBinary(), "media: (wildcard) should be binary")
-
-	pdfUrn, err := NewMediaUrnFromString("media:pdf")
-	require.NoError(t, err)
-	assert.True(t, pdfUrn.IsBinary(), "media:pdf should be binary")
-
-	pngUrn, err := NewMediaUrnFromString(standard.MediaPNG)
-	require.NoError(t, err)
-	assert.True(t, pngUrn.IsBinary(), "media:image;png should be binary")
-
-	voidUrn, err := NewMediaUrnFromString("media:void")
-	require.NoError(t, err)
-	assert.True(t, voidUrn.IsBinary(), "media:void should be binary (no textable tag)")
-
-	// Non-binary types (have textable tag)
-	text, err := NewMediaUrnFromString("media:textable")
-	require.NoError(t, err)
-	assert.False(t, text.IsBinary(), "media:textable should NOT be binary")
-
-	textMap, err := NewMediaUrnFromString("media:textable;record")
-	require.NoError(t, err)
-	assert.False(t, textMap.IsBinary(), "media:textable;record should NOT be binary")
-
-	strUrn, err := NewMediaUrnFromString(standard.MediaString)
-	require.NoError(t, err)
-	assert.False(t, strUrn.IsBinary(), "MEDIA_STRING should NOT be binary")
-
-	jsonUrn, err := NewMediaUrnFromString(standard.MediaJSON)
-	require.NoError(t, err)
-	assert.False(t, jsonUrn.IsBinary(), "MEDIA_JSON should NOT be binary")
-}
+// TEST061: REMOVED — the binary/text distinction no longer exists in the
+// vocabulary (IsBinary() was deleted from MediaUrn; everything is bytes).
+// Encoding is now expressed by the orthogonal `enc=` tag, exercised by other
+// tests (e.g. the enc-based text checks below). No replacement assertion is
+// meaningful here.
 
 // TEST062: Test is_record returns true when record marker tag is present indicating key-value structure
 func Test062_is_record(t *testing.T) {
@@ -96,10 +65,10 @@ func Test062_is_record(t *testing.T) {
 
 	jsonUrn, err := NewMediaUrnFromString(standard.MediaJSON)
 	require.NoError(t, err)
-	assert.True(t, jsonUrn.IsRecord()) // "media:json;record;textable"
+	assert.True(t, jsonUrn.IsRecord()) // "media:fmt=json;record"
 
 	// Without record marker, is_record is false
-	scalar, err := NewMediaUrnFromString("media:textable")
+	scalar, err := NewMediaUrnFromString("media:enc=utf-8")
 	require.NoError(t, err)
 	assert.False(t, scalar.IsRecord())
 
@@ -162,7 +131,7 @@ func Test065_is_opaque(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, pdfUrn.IsOpaque())
 
-	textUrn, err := NewMediaUrnFromString("media:textable")
+	textUrn, err := NewMediaUrnFromString("media:enc=utf-8")
 	require.NoError(t, err)
 	assert.True(t, textUrn.IsOpaque())
 
@@ -185,7 +154,7 @@ func Test066_is_json(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, jsonUrn.IsJson())
 
-	customJson, err := NewMediaUrnFromString("media:custom;json")
+	customJson, err := NewMediaUrnFromString("media:custom;fmt=json")
 	require.NoError(t, err)
 	assert.True(t, customJson.IsJson())
 
@@ -194,19 +163,32 @@ func Test066_is_json(t *testing.T) {
 	assert.False(t, nonJson.IsJson())
 }
 
-// TEST067: Test is_text returns true only when textable marker tag is present
+// TEST067: Text-representability is now carried by the orthogonal `enc=` tag
+// (the old `textable` marker and IsTextable() are gone). A media is "text" iff
+// it declares an encoding. enc is orthogonal to format/numeric, so only media
+// that actually carry enc= are text.
 func Test067_is_text(t *testing.T) {
-	stringUrn, err := NewMediaUrnFromString(standard.MediaString)
+	// Has enc= → text-representable
+	stringUrn, err := NewMediaUrnFromString(standard.MediaString) // media:enc=utf-8
 	require.NoError(t, err)
-	assert.True(t, stringUrn.IsTextable())
+	assert.True(t, stringUrn.HasTag("enc"))
 
-	intUrn, err := NewMediaUrnFromString(standard.MediaInteger)
+	boolUrn, err := NewMediaUrnFromString(standard.MediaBoolean) // media:bool;enc=utf-8
 	require.NoError(t, err)
-	assert.True(t, intUrn.IsTextable())
+	assert.True(t, boolUrn.HasTag("enc"))
+
+	// No enc= → not text-representable
+	intUrn, err := NewMediaUrnFromString(standard.MediaInteger) // media:integer;numeric
+	require.NoError(t, err)
+	assert.False(t, intUrn.HasTag("enc"))
+
+	jsonUrn, err := NewMediaUrnFromString(standard.MediaJSON) // media:fmt=json;record
+	require.NoError(t, err)
+	assert.False(t, jsonUrn.HasTag("enc"))
 
 	binary, err := NewMediaUrnFromString("media:")
 	require.NoError(t, err)
-	assert.False(t, binary.IsTextable())
+	assert.False(t, binary.HasTag("enc"))
 }
 
 // TEST068: Test is_void returns true when void flag or type=void tag is present
@@ -239,7 +221,7 @@ func Test0130_WithSubtypeConstructor(t *testing.T) {
 
 // TEST071: Test to_string roundtrip ensures serialization and deserialization preserve URN structure
 func Test071_to_string_roundtrip(t *testing.T) {
-	original := "media:string;textable"
+	original := "media:enc=utf-8;string"
 	urn1, err := NewMediaUrnFromString(original)
 	require.NoError(t, err)
 
@@ -267,7 +249,6 @@ func Test072_constants_parse(t *testing.T) {
 		standard.MediaObject,
 		standard.MediaIdentity,
 		standard.MediaList,
-		standard.MediaTextableList,
 		standard.MediaStringList,
 		standard.MediaIntegerList,
 		standard.MediaNumberList,
@@ -302,13 +283,13 @@ func Test073_extension_helpers(t *testing.T) {
 
 // TEST074: Test media URN conforms_to using tagged URN semantics with specific and generic requirements
 func Test074_media_urn_matching(t *testing.T) {
-	specific, err := NewMediaUrnFromString("media:string;textable")
+	specific, err := NewMediaUrnFromString("media:enc=utf-8;string")
 	require.NoError(t, err)
 
 	generic, err := NewMediaUrnFromString("media:string")
 	require.NoError(t, err)
 
-	// Specific pattern does NOT accept generic instance (generic missing textable and form)
+	// Specific pattern does NOT accept generic instance (generic missing enc and form)
 	assert.False(t, specific.Accepts(generic))
 
 	// Generic pattern DOES accept specific instance (generic has no constraints on extra tags)
@@ -338,7 +319,7 @@ func Test076_specificity(t *testing.T) {
 	simple, err := NewMediaUrnFromString("media:string")
 	require.NoError(t, err)
 
-	detailed, err := NewMediaUrnFromString("media:string;textable")
+	detailed, err := NewMediaUrnFromString("media:enc=utf-8;string")
 	require.NoError(t, err)
 
 	// More tags = higher specificity
@@ -347,7 +328,7 @@ func Test076_specificity(t *testing.T) {
 
 // TEST077: Test serde roundtrip serializes to JSON string and deserializes back correctly
 func Test077_serde_roundtrip(t *testing.T) {
-	original, err := NewMediaUrnFromString("media:string;textable")
+	original, err := NewMediaUrnFromString("media:enc=utf-8;string")
 	require.NoError(t, err)
 
 	// JSON marshaling
@@ -371,32 +352,30 @@ func Test078_object_does_not_conform_to_string(t *testing.T) {
 
 	assert.True(t, strUrn.ConformsTo(strUrn), "string conforms to string")
 	assert.True(t, objUrn.ConformsTo(objUrn), "object conforms to object")
-	assert.False(t, objUrn.ConformsTo(strUrn), "MEDIA_OBJECT should NOT conform to MEDIA_STRING (missing textable)")
+	assert.False(t, objUrn.ConformsTo(strUrn), "MEDIA_OBJECT should NOT conform to MEDIA_STRING (missing enc)")
 }
 
 // TEST304: Test MEDIA_AVAILABILITY_OUTPUT constant parses as valid media URN with correct tags
 func Test304_media_availability_output_constant(t *testing.T) {
-	urn, err := NewMediaUrnFromString("media:model-availability;record;textable")
+	urn, err := NewMediaUrnFromString("media:enc=utf-8;model-availability;record")
 	require.NoError(t, err)
-	assert.True(t, urn.IsTextable())
+	assert.True(t, urn.HasTag("enc"))
 	assert.True(t, urn.IsRecord())
-	assert.False(t, urn.IsBinary())
 }
 
 // TEST305: Test MEDIA_PATH_OUTPUT constant parses as valid media URN with correct tags
 func Test305_media_path_output_constant(t *testing.T) {
-	urn, err := NewMediaUrnFromString("media:model-path;record;textable")
+	urn, err := NewMediaUrnFromString("media:enc=utf-8;model-path;record")
 	require.NoError(t, err)
-	assert.True(t, urn.IsTextable())
+	assert.True(t, urn.HasTag("enc"))
 	assert.True(t, urn.IsRecord())
-	assert.False(t, urn.IsBinary())
 }
 
 // TEST306: Test MEDIA_AVAILABILITY_OUTPUT and MEDIA_PATH_OUTPUT are distinct URNs
 func Test306_availability_and_path_output_distinct(t *testing.T) {
-	availUrn, err := NewMediaUrnFromString("media:model-availability;record;textable")
+	availUrn, err := NewMediaUrnFromString("media:enc=utf-8;model-availability;record")
 	require.NoError(t, err)
-	pathUrn, err := NewMediaUrnFromString("media:model-path;record;textable")
+	pathUrn, err := NewMediaUrnFromString("media:enc=utf-8;model-path;record")
 	require.NoError(t, err)
 	assert.False(t, availUrn.Equals(pathUrn))
 	// They must NOT conform to each other (different marker tags)
@@ -564,41 +543,41 @@ func Test551_is_file_path(t *testing.T) {
 
 // TEST558: predicates are consistent with constants — every constant triggers exactly the expected predicates
 func Test558_predicate_constant_consistency(t *testing.T) {
-	// MEDIA_INTEGER must be numeric, text, scalar, NOT binary/bool/image/audio/video
+	// MEDIA_INTEGER must be numeric, scalar, NOT enc/bool/image/json/list.
+	// Integers are numeric, not text — they carry no enc= tag.
 	intUrn, err := NewMediaUrnFromString(standard.MediaInteger)
 	require.NoError(t, err)
 	assert.True(t, intUrn.IsNumeric())
-	assert.True(t, intUrn.IsTextable())
+	assert.False(t, intUrn.HasTag("enc"))
 	assert.True(t, intUrn.IsScalar())
-	assert.False(t, intUrn.IsBinary())
 	assert.False(t, intUrn.IsBool())
 	assert.False(t, intUrn.IsImage())
+	assert.False(t, intUrn.IsJson())
 	assert.False(t, intUrn.IsList())
 
-	// MEDIA_BOOLEAN must be bool, text, scalar, NOT numeric
+	// MEDIA_BOOLEAN must be bool, text (enc), scalar, NOT numeric
 	boolUrn, err := NewMediaUrnFromString(standard.MediaBoolean)
 	require.NoError(t, err)
 	assert.True(t, boolUrn.IsBool())
-	assert.True(t, boolUrn.IsTextable())
+	assert.True(t, boolUrn.HasTag("enc"))
 	assert.True(t, boolUrn.IsScalar())
 	assert.False(t, boolUrn.IsNumeric())
 
-	// MEDIA_JSON must be json, text, map, structured, NOT binary
+	// MEDIA_JSON must be json, record, structured, NOT enc/list.
+	// JSON content carries fmt=json (not enc=) — it is a serialization, not bare text.
 	jsonUrn, err := NewMediaUrnFromString(standard.MediaJSON)
 	require.NoError(t, err)
 	assert.True(t, jsonUrn.IsJson())
-	assert.True(t, jsonUrn.IsTextable())
+	assert.False(t, jsonUrn.HasTag("enc"))
 	assert.True(t, jsonUrn.IsRecord())
 	assert.True(t, jsonUrn.IsStructured())
-	assert.False(t, jsonUrn.IsBinary())
 	assert.False(t, jsonUrn.IsList())
 
-	// MEDIA_VOID is void, binary (no textable tag), NOT textable/numeric
+	// MEDIA_VOID is void, NOT enc/numeric
 	voidUrn, err := NewMediaUrnFromString(standard.MediaVoid)
 	require.NoError(t, err)
 	assert.True(t, voidUrn.IsVoid())
-	assert.False(t, voidUrn.IsTextable())
-	assert.True(t, voidUrn.IsBinary(), "void is binary because it has no textable tag")
+	assert.False(t, voidUrn.HasTag("enc"))
 	assert.False(t, voidUrn.IsNumeric())
 }
 
@@ -624,24 +603,24 @@ func Test853_lub_no_common_tags(t *testing.T) {
 
 // TEST854: LUB keeps common tags, drops differing ones
 func Test854_lub_partial_overlap(t *testing.T) {
-	jsonText, err := NewMediaUrnFromString("media:json;textable")
+	jsonRec, err := NewMediaUrnFromString("media:fmt=json;record")
 	require.NoError(t, err)
-	csvText, err := NewMediaUrnFromString("media:csv;textable")
+	yamlRec, err := NewMediaUrnFromString("media:fmt=yaml;record")
 	require.NoError(t, err)
-	lub := LeastUpperBound([]*MediaUrn{jsonText, csvText})
-	expected, err := NewMediaUrnFromString("media:textable")
+	lub := LeastUpperBound([]*MediaUrn{jsonRec, yamlRec})
+	expected, err := NewMediaUrnFromString("media:record")
 	require.NoError(t, err)
-	assert.True(t, lub.IsEquivalent(expected), "LUB should be media:textable but got %s", lub.String())
+	assert.True(t, lub.IsEquivalent(expected), "LUB should drop differing fmt, keep record, got %s", lub.String())
 }
 
 // TEST855: LUB of list and non-list drops list tag
 func Test855_lub_list_vs_scalar(t *testing.T) {
-	jsonList, err := NewMediaUrnFromString("media:json;list;textable")
+	jsonList, err := NewMediaUrnFromString("media:fmt=json;list")
 	require.NoError(t, err)
-	jsonScalar, err := NewMediaUrnFromString("media:json;textable")
+	jsonScalar, err := NewMediaUrnFromString("media:fmt=json")
 	require.NoError(t, err)
 	lub := LeastUpperBound([]*MediaUrn{jsonList, jsonScalar})
-	expected, err := NewMediaUrnFromString("media:json;textable")
+	expected, err := NewMediaUrnFromString("media:fmt=json")
 	require.NoError(t, err)
 	assert.True(t, lub.IsEquivalent(expected), "LUB should drop list tag, got %s", lub.String())
 }
@@ -664,16 +643,16 @@ func Test857_lub_single(t *testing.T) {
 
 // TEST858: LUB with three+ inputs narrows correctly
 func Test858_lub_three_inputs(t *testing.T) {
-	a, err := NewMediaUrnFromString("media:json;list;record;textable")
+	a, err := NewMediaUrnFromString("media:fmt=json;list;record")
 	require.NoError(t, err)
-	b, err := NewMediaUrnFromString("media:csv;list;record;textable")
+	b, err := NewMediaUrnFromString("media:fmt=csv;list;record")
 	require.NoError(t, err)
-	c, err := NewMediaUrnFromString("media:ndjson;list;textable")
+	c, err := NewMediaUrnFromString("media:fmt=ndjson;list")
 	require.NoError(t, err)
 	lub := LeastUpperBound([]*MediaUrn{a, b, c})
-	expected, err := NewMediaUrnFromString("media:list;textable")
+	expected, err := NewMediaUrnFromString("media:list")
 	require.NoError(t, err)
-	assert.True(t, lub.IsEquivalent(expected), "LUB should be media:list;textable but got %s", lub.String())
+	assert.True(t, lub.IsEquivalent(expected), "LUB should be media:list but got %s", lub.String())
 }
 
 // TEST859: LUB with valued tags (non-marker) that differ
@@ -726,7 +705,7 @@ func Test556_image_media_urn_for_ext(t *testing.T) {
 	parsed, err := NewMediaUrnFromString(jpgUrn)
 	require.NoError(t, err)
 	assert.True(t, parsed.IsImage(), "image helper must set image tag")
-	assert.True(t, parsed.IsBinary(), "image URN must be binary (no textable tag)")
+	assert.False(t, parsed.HasTag("enc"), "image URN is not text (no enc tag)")
 	ext, ok := parsed.GetExtension()
 	assert.True(t, ok)
 	assert.Equal(t, "jpg", ext)
@@ -738,7 +717,7 @@ func Test557_audio_media_urn_for_ext(t *testing.T) {
 	parsed, err := NewMediaUrnFromString(mp3Urn)
 	require.NoError(t, err)
 	assert.True(t, parsed.IsAudio(), "audio helper must set audio tag")
-	assert.True(t, parsed.IsBinary(), "audio URN must be binary (no textable tag)")
+	assert.False(t, parsed.HasTag("enc"), "audio URN is not text (no enc tag)")
 	ext, ok := parsed.GetExtension()
 	assert.True(t, ok)
 	assert.Equal(t, "mp3", ext)

@@ -14,6 +14,23 @@ import (
 
 const testHostManifest = `{"name":"Test","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"}]}]}`
 
+// recvCartridgeFrame reads from the engine side of the relay, skipping the
+// host's RelayNotify inventory frames (the host publishes one on Run start and
+// on every inventory change; the real engine tolerates them). Returns the first
+// non-RelayNotify frame.
+func recvCartridgeFrame(reader *FrameReader) (*Frame, error) {
+	for {
+		frame, err := reader.ReadFrame()
+		if err != nil {
+			return nil, err
+		}
+		if frame.FrameType == FrameTypeRelayNotify {
+			continue
+		}
+		return frame, nil
+	}
+}
+
 // simulateCartridge runs a fake cartridge: handshake + handler on the cartridge side of a pipe.
 // handler receives the FrameReader/FrameWriter after handshake and can read/write frames.
 func simulateCartridge(t *testing.T, cartridgeRead, cartridgeWrite net.Conn, manifest string, handler func(*FrameReader, *FrameWriter)) {
@@ -78,13 +95,22 @@ func Test415_req_triggers_spawn(t *testing.T) {
 		req := NewReq(reqId, "cap:test", []byte("hello"), "text/plain")
 		writer.WriteFrame(req)
 
-		// Read the ERR response
+		// Read the ERR response, skipping the host's RelayNotify
+		// inventory frames (the engine tolerates these; the host
+		// publishes one on Run start and on every inventory change).
 		reader := NewFrameReader(engineRead)
-		frame, err := reader.ReadFrame()
-		if err == nil {
+		for {
+			frame, err := reader.ReadFrame()
+			if err != nil {
+				break
+			}
+			if frame.FrameType == FrameTypeRelayNotify {
+				continue
+			}
 			assert.Equal(t, FrameTypeErr, frame.FrameType)
 			errCode := frame.ErrorCode()
 			assert.Equal(t, "SPAWN_FAILED", errCode, "spawn of nonexistent binary must fail")
+			break
 		}
 
 		// Close relay to end Run()
@@ -221,7 +247,7 @@ func Test417_route_req_by_cap_urn(t *testing.T) {
 		writer.WriteFrame(end)
 
 		// Read response
-		frame, err := reader.ReadFrame()
+		frame, err := recvCartridgeFrame(reader)
 		require.NoError(t, err)
 		assert.Equal(t, FrameTypeEnd, frame.FrameType)
 		assert.Equal(t, []byte("converted"), frame.Payload)
@@ -318,7 +344,7 @@ func Test418_route_continuation_by_req_id(t *testing.T) {
 		writer.WriteFrame(stamp(NewEnd(reqId, nil)))
 
 		// Read response
-		frame, err := reader.ReadFrame()
+		frame, err := recvCartridgeFrame(reader)
 		require.NoError(t, err)
 		assert.Equal(t, FrameTypeEnd, frame.FrameType)
 		assert.Equal(t, []byte("ok"), frame.Payload)
@@ -734,9 +760,9 @@ func Test423_multi_cartridge_distinct_caps(t *testing.T) {
 		betaEnd.RoutingId = &betaXid
 		writer.WriteFrame(betaEnd)
 
-		// Read 2 responses
+		// Read 2 responses (skipping RelayNotify inventory frames).
 		for i := 0; i < 2; i++ {
-			frame, err := reader.ReadFrame()
+			frame, err := recvCartridgeFrame(reader)
 			if err != nil {
 				break
 			}
@@ -854,9 +880,9 @@ func Test424_concurrent_requests_same_cartridge(t *testing.T) {
 		end1.RoutingId = &xid1
 		writer.WriteFrame(end1)
 
-		// Read both responses
+		// Read both responses (skipping RelayNotify inventory frames).
 		for i := 0; i < 2; i++ {
-			frame, err := reader.ReadFrame()
+			frame, err := recvCartridgeFrame(reader)
 			if err != nil {
 				break
 			}

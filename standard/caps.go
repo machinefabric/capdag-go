@@ -19,17 +19,17 @@ const CapDiscard = "cap:in=media:;out=media:void"
 // Default implementation returns empty END (no match).
 // Cartridges that inspect file content override this with a handler
 // that returns {"media_urns": [...]}.
-const CapAdapterSelection = `cap:in="media:";out="media:adapter-selection;json;record"`
+const CapAdapterSelection = `cap:in="media:";out="media:adapter-selection;fmt=json;record"`
 
 // CapLookupCapFabric resolves a canonical cap URN to its full flattened
 // cap definition by fetching from the public fabric registry. Implemented
 // by fetchcartridge.
-const CapLookupCapFabric = `cap:in="media:cap-urn;textable";fabric;lookup-cap;out="media:cap-definition;json;record;textable"`
+const CapLookupCapFabric = `cap:in="media:cap-urn;enc=utf-8";fabric;lookup-cap;out="media:cap-definition;fmt=json;record"`
 
 // CapLookupMediaDefFabric resolves a canonical media URN to its full
 // media definition by fetching from the public fabric registry.
 // Implemented by fetchcartridge.
-const CapLookupMediaDefFabric = `cap:in="media:media-urn;textable";fabric;lookup-media-def;out="media:media-definition;json;record;textable"`
+const CapLookupMediaDefFabric = `cap:in="media:enc=utf-8;media-urn";fabric;lookup-media-def;out="media:fmt=json;media-definition;record"`
 
 // =============================================================================
 // STANDARD CAP URN BUILDERS
@@ -43,12 +43,12 @@ func LlmGenerateTextUrn() string {
 
 // ModelAvailabilityUrn builds a URN string for model-availability capability
 func ModelAvailabilityUrn() string {
-	return "cap:in=media:model-spec;model-availability;out=media:availability-output"
+	return "cap:in=media:enc=utf-8;model-spec;model-availability;out=media:availability-output"
 }
 
 // ModelPathUrn builds a URN string for model-path capability
 func ModelPathUrn() string {
-	return "cap:in=media:model-spec;model-path;out=media:path-output"
+	return "cap:in=media:enc=utf-8;model-spec;model-path;out=media:path-output"
 }
 
 // MediaUrnForType maps a type name to its media URN constant.
@@ -92,7 +92,7 @@ func CoercionUrn(sourceType, targetType string) string {
 // AllCoercionPaths returns all valid coercion (source, target) pairs.
 func AllCoercionPaths() [][2]string {
 	return [][2]string{
-		// To string (from all textable types)
+		// To string (from all scalar/serializable types)
 		{"integer", "string"},
 		{"number", "string"},
 		{"boolean", "string"},
@@ -149,14 +149,14 @@ func AllFormatConversionPaths() []FormatConversionPath {
 		// YAML list-record ↔ CSV
 		{MediaYAMLListRecord, MediaCSV, "YAML Sequence of Mappings → CSV", "Convert a YAML sequence of mappings to CSV with header row"},
 		{MediaCSV, MediaYAMLListRecord, "CSV → YAML Sequence of Mappings", "Convert CSV with header row to a YAML sequence of mappings"},
-		// Textable list ↔ JSON list
-		{MediaTextableList, MediaJSONList, "Textable List → JSON Array", "Convert a list of textable values to a JSON array"},
-		{MediaJSONList, MediaTextableList, "JSON Array → Textable List", "Convert a JSON array to a list of textable values"},
-		// Textable list ↔ YAML list
-		{MediaTextableList, MediaYAMLList, "Textable List → YAML Sequence", "Convert a list of textable values to a YAML sequence"},
-		{MediaYAMLList, MediaTextableList, "YAML Sequence → Textable List", "Convert a YAML sequence to a list of textable values"},
-		// Textable list ↔ CSV
-		{MediaTextableList, MediaCSVList, "Textable List → CSV List", "Convert a list of textable values to single-column CSV"},
-		{MediaCSVList, MediaTextableList, "CSV List → Textable List", "Convert single-column CSV to a list of textable values"},
+		// String list ↔ JSON list
+		{MediaStringList, MediaJSONList, "String List → JSON Array", "Convert a list of string values to a JSON array"},
+		{MediaJSONList, MediaStringList, "JSON Array → String List", "Convert a JSON array to a list of string values"},
+		// String list ↔ YAML list
+		{MediaStringList, MediaYAMLList, "String List → YAML Sequence", "Convert a list of string values to a YAML sequence"},
+		{MediaYAMLList, MediaStringList, "YAML Sequence → String List", "Convert a YAML sequence to a list of string values"},
+		// String list ↔ CSV
+		{MediaStringList, MediaCSVList, "String List → CSV List", "Convert a list of string values to single-column CSV"},
+		{MediaCSVList, MediaStringList, "CSV List → String List", "Convert single-column CSV to a list of string values"},
 	}
 }

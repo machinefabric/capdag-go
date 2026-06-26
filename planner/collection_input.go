@@ -2,7 +2,7 @@ package planner
 
 import "encoding/json"
 
-const collectionMediaUrn = "media:collection;record;textable"
+const collectionMediaUrn = "media:collection;enc=utf-8;record"
 
 // CollectionFile is a single file within a collection folder.
 type CollectionFile struct {

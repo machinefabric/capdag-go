@@ -199,7 +199,7 @@ func (rw *ResponseWrapper) ValidateAgainstCap(cap *Cap, registry *media.FabricRe
 			if err != nil {
 				return fmt.Errorf("failed to resolve output media URN '%s': %w", output.MediaUrn, err)
 			}
-			if !resolved.IsBinary() {
+			if resolved.HasEncoding() {
 				return fmt.Errorf(
 					"cap %s expects %s output but received binary data",
 					cap.UrnString(),
@@ -246,11 +246,13 @@ func (rw *ResponseWrapper) MatchesOutputType(cap *Cap, registry *media.FabricReg
 		// JSON response matches structured outputs (map/list)
 		return resolved.IsStructured(), nil
 	case ResponseContentTypeText:
-		// Text response matches non-binary, non-structured outputs (scalars)
-		return !resolved.IsBinary() && !resolved.IsStructured(), nil
+		// Text response matches text-representable (enc=), non-structured outputs (scalars)
+		return resolved.HasEncoding() && !resolved.IsStructured(), nil
 	case ResponseContentTypeBinary:
-		// Binary response matches binary outputs
-		return resolved.IsBinary(), nil
+		// Binary response matches opaque-byte outputs: not text-representable
+		// (no enc=) and not structured (no record/json). A JSON-record output is
+		// structured, so it is matched by the JSON branch, not here.
+		return !resolved.HasEncoding() && !resolved.IsStructured(), nil
 	}
 
 	return false, nil

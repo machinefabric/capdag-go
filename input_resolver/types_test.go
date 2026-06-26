@@ -82,7 +82,7 @@ func Test1145_ResolvedInputSetUsesEquivalentMediaAndFileCountCardinality(t *test
 	singleListFile := NewResolvedInputSet([]ResolvedFile{
 		{
 			Path:             "/tmp/items.json",
-			MediaUrn:         "media:application;json;list;record",
+			MediaUrn:         "media:application;fmt=json;list;record",
 			SizeBytes:        42,
 			ContentStructure: ListRecord,
 		},
@@ -93,21 +93,21 @@ func Test1145_ResolvedInputSetUsesEquivalentMediaAndFileCountCardinality(t *test
 	if !singleListFile.IsHomogeneous() {
 		t.Error("single file must be homogeneous")
 	}
-	if singleListFile.CommonMedia == nil || *singleListFile.CommonMedia != "media:application;json;list;record" {
-		t.Errorf("expected CommonMedia %q, got %v", "media:application;json;list;record", singleListFile.CommonMedia)
+	if singleListFile.CommonMedia == nil || *singleListFile.CommonMedia != "media:application;fmt=json;list;record" {
+		t.Errorf("expected CommonMedia %q, got %v", "media:application;fmt=json;list;record", singleListFile.CommonMedia)
 	}
 
 	// Two files with equivalent URNs (different tag order) — is_sequence=true, homogeneous
 	equivalentOrdering := NewResolvedInputSet([]ResolvedFile{
 		{
 			Path:             "/tmp/a.json",
-			MediaUrn:         "media:application;json;record;textable",
+			MediaUrn:         "media:application;fmt=json;record",
 			SizeBytes:        10,
 			ContentStructure: ScalarRecord,
 		},
 		{
 			Path:             "/tmp/b.json",
-			MediaUrn:         "media:application;record;textable;json",
+			MediaUrn:         "media:application;record;fmt=json",
 			SizeBytes:        11,
 			ContentStructure: ScalarRecord,
 		},
@@ -118,7 +118,7 @@ func Test1145_ResolvedInputSetUsesEquivalentMediaAndFileCountCardinality(t *test
 	if !equivalentOrdering.IsHomogeneous() {
 		t.Error("equivalent URNs must be homogeneous")
 	}
-	if equivalentOrdering.CommonMedia == nil || *equivalentOrdering.CommonMedia != "media:application;json;record;textable" {
+	if equivalentOrdering.CommonMedia == nil || *equivalentOrdering.CommonMedia != "media:application;fmt=json;record" {
 		t.Errorf("expected CommonMedia to be first file's URN, got %v", equivalentOrdering.CommonMedia)
 	}
 }

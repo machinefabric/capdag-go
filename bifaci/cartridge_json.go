@@ -156,6 +156,61 @@ func (c CartridgeJson) MarshalJSON() ([]byte, error) {
 	})
 }
 
+// RegistryURLSchemeResultKind is the verdict from ValidateRegistryURLScheme.
+// Distinguishes "OK" from each rejection reason so callers can render an
+// actionable message.
+type RegistryURLSchemeResultKind int
+
+const (
+	// RegistryURLSchemeOk: URL is acceptable (dev-mode allows it, or scheme is https).
+	RegistryURLSchemeOk RegistryURLSchemeResultKind = iota
+	// RegistryURLSchemeNotAURL: URL string didn't parse as a valid URL.
+	RegistryURLSchemeNotAURL
+	// RegistryURLSchemeNonHTTPS: URL parsed but scheme is not https and dev-mode is off.
+	RegistryURLSchemeNonHTTPS
+)
+
+// RegistryURLSchemeResult is the structured outcome of ValidateRegistryURLScheme.
+// Scheme is set for the NonHTTPS case (the offending scheme); Bad is set for
+// the NotAURL case (the offending input string).
+type RegistryURLSchemeResult struct {
+	Kind   RegistryURLSchemeResultKind
+	Scheme string
+	Bad    string
+}
+
+// ValidateRegistryURLScheme validates that a non-null registry_url uses the
+// https scheme — UNLESS devMode is set, in which case any well-formed URL is
+// accepted (so developers can point at http://localhost:port during
+// integration testing).
+//
+// The rule lives at the deepest layer (used by every consumer that loads a
+// cartridge.json or a HELLO manifest) so a caller can never bypass it by
+// parsing the URL out of band. Dev cartridges (registry_url == nil) never go
+// through this validator — they have no URL to check.
+//
+// Cheap parse: split once on "://". The rule is "scheme must be the literal
+// bytes https"; full URL validation is the caller's job.
+func ValidateRegistryURLScheme(url string, devMode bool) RegistryURLSchemeResult {
+	scheme, rest, found := strings.Cut(url, "://")
+	if !found {
+		return RegistryURLSchemeResult{Kind: RegistryURLSchemeNotAURL, Bad: url}
+	}
+	if rest == "" {
+		return RegistryURLSchemeResult{Kind: RegistryURLSchemeNotAURL, Bad: url}
+	}
+	if devMode {
+		// Dev mode: accept any well-formed scheme. We still require SOME scheme
+		// to be present (caught above) — an empty scheme is malformed regardless
+		// of mode.
+		return RegistryURLSchemeResult{Kind: RegistryURLSchemeOk}
+	}
+	if strings.EqualFold(scheme, "https") {
+		return RegistryURLSchemeResult{Kind: RegistryURLSchemeOk}
+	}
+	return RegistryURLSchemeResult{Kind: RegistryURLSchemeNonHTTPS, Scheme: scheme}
+}
+
 // CartridgeJsonError is returned when reading or validating a cartridge.json fails.
 type CartridgeJsonError struct {
 	Kind    CartridgeJsonErrorKind

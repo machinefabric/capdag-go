@@ -11,7 +11,7 @@ func main() {
 	fmt.Println("=== Schema Integration Example ===")
 
 	// Create a capability
-	urn, _ := capdag.NewCapUrnFromString(`cap:in="media:void";query;out="media:record;textable";target=structured`)
+	urn, _ := capdag.NewCapUrnFromString(`cap:in="media:void";query;out="media:enc=utf-8;record";target=structured`)
 	cap := capdag.NewCap(urn, "Query Command", "query-command")
 
 	// Define a comprehensive schema for document query parameters
@@ -61,7 +61,7 @@ func main() {
 	cliFlag := "--query"
 	pos := 0
 	cap.AddArg(capdag.CapArg{
-		MediaUrn:       "media:query-params;textable;record",
+		MediaUrn:       "media:enc=utf-8;query-params;record",
 		Required:       true,
 		Sources:        []capdag.ArgSource{{CliFlag: &cliFlag}, {Position: &pos}},
 		ArgDescription: capdag.StringPtr("Document query parameters"),
@@ -109,7 +109,7 @@ func main() {
 
 	// Add custom media def for output with schema
 	// Set output
-	cap.SetOutput(capdag.NewCapOutput("media:query-results;textable;record", "Document search results"))
+	cap.SetOutput(capdag.NewCapOutput("media:enc=utf-8;query-results;record", "Document search results"))
 
 	// Create validation coordinator
 	coordinator := capdag.NewCapValidationCoordinator()

@@ -4,8 +4,8 @@
 // Format: `media:<type>` with optional tags.
 //
 // Examples:
-// - `media:textable`
-// - `media:pdf`
+// - `media:enc=utf-8`
+// - `media:ext=pdf`
 //
 // MediaDef is always a structured object - NO string form parsing.
 package media
@@ -23,20 +23,19 @@ import (
 // Built-in media URN constants with coercion tags
 const (
 	MediaVoid     = "media:void"
-	MediaString   = "media:textable"
-	MediaInteger  = "media:integer;textable;numeric"
-	MediaNumber   = "media:textable;numeric"
-	MediaBoolean  = "media:bool;textable"
-	MediaObject   = "media:record;textable"
+	MediaString   = "media:enc=utf-8"
+	MediaInteger  = "media:integer;numeric"
+	MediaNumber   = "media:numeric"
+	MediaBoolean  = "media:bool;enc=utf-8"
+	MediaObject   = "media:record"
 	MediaIdentity = "media:"
 	// List types
-	MediaList         = "media:list"
-	MediaTextableList = "media:list;textable"
-	MediaStringList   = "media:list;textable"
-	MediaIntegerList  = "media:integer;list;textable;numeric"
-	MediaNumberList   = "media:list;numeric;textable"
-	MediaBooleanList  = "media:bool;list;textable"
-	MediaObjectList   = "media:list;record"
+	MediaList        = "media:list"
+	MediaStringList  = "media:enc=utf-8;list"
+	MediaIntegerList = "media:integer;list;numeric"
+	MediaNumberList  = "media:list;numeric"
+	MediaBooleanList = "media:bool;enc=utf-8;list"
+	MediaObjectList  = "media:list;record"
 	// Semantic content types
 	MediaImage = "media:ext=png;image"
 	MediaAudio = "media:audio;ext=wav"
@@ -47,29 +46,29 @@ const (
 	MediaPdf  = "media:ext=pdf"
 	MediaEpub = "media:ext=epub"
 	// Text format types (PRIMARY naming - type IS the format)
-	MediaMd         = "media:ext=md;textable"
-	MediaTxt        = "media:ext=txt;textable"
-	MediaRst        = "media:ext=rst;textable"
-	MediaLog        = "media:ext=log;textable"
-	MediaHtml       = "media:ext=html;textable"
-	MediaXml        = "media:ext=xml;textable"
-	MediaJson       = "media:json;record;textable"
-	MediaJsonSchema = "media:json;json-schema;record;textable"
-	MediaYaml       = "media:record;textable;yaml"
+	MediaMd         = "media:enc=utf-8;ext=md"
+	MediaTxt        = "media:enc=utf-8;ext=txt"
+	MediaRst        = "media:enc=utf-8;ext=rst"
+	MediaLog        = "media:enc=utf-8;ext=log"
+	MediaHtml       = "media:enc=utf-8;ext=html"
+	MediaXml        = "media:enc=utf-8;ext=xml"
+	MediaJson       = "media:fmt=json;record"
+	MediaJsonSchema = "media:fmt=json;json-schema;record"
+	MediaYaml       = "media:fmt=yaml;record"
 	// Semantic input types
-	MediaModelSpec = "media:model-spec;textable"
-	MediaModelRepo = "media:model-repo;record;textable"
+	MediaModelSpec = "media:enc=utf-8;model-spec"
+	MediaModelRepo = "media:enc=utf-8;model-repo;record"
 	// File path type — single URN; cardinality lives on is_sequence.
-	MediaFilePath = "media:file-path;textable"
+	MediaFilePath = "media:enc=utf-8;file-path"
 	// Semantic output types
-	MediaModelDim  = "media:model-dim;integer;textable;numeric"
-	MediaDecision  = "media:decision;json;record;textable"
-	MediaTextablePage = "media:ext=txt;page;plain-text;textable"
+	MediaModelDim     = "media:integer;model-dim;numeric"
+	MediaDecision     = "media:decision;fmt=json;record"
+	MediaTextablePage = "media:enc=utf-8;ext=txt;page;plain-text"
 	// MediaPlainText is the canonical input/output of cap:save-as-txt.
-	MediaPlainText = "media:ext=txt;plain-text;textable"
+	MediaPlainText = "media:enc=utf-8;ext=txt;plain-text"
 	// Semantic output types for model operations
-	MediaAvailabilityOutput = "media:model-availability;record;textable"
-	MediaPathOutput         = "media:model-path;record;textable"
+	MediaAvailabilityOutput = "media:enc=utf-8;model-availability;record"
+	MediaPathOutput         = "media:enc=utf-8;model-path;record"
 )
 
 // Profile URL constants (defaults, use GetSchemaBase() for configurable version)
@@ -216,11 +215,6 @@ type ResolvedMediaDef struct {
 	Extensions []string
 }
 
-// IsBinary returns true if the "textable" marker tag is NOT present in the source media URN.
-func (r *ResolvedMediaDef) IsBinary() bool {
-	return !HasMediaUrnTag(r.SpecID, "textable")
-}
-
 // IsRecord returns true if record marker tag is present (has internal key-value structure).
 func (r *ResolvedMediaDef) IsRecord() bool {
 	return HasMediaUrnMarkerTag(r.SpecID, "record")
@@ -241,10 +235,10 @@ func (r *ResolvedMediaDef) IsList() bool {
 	return HasMediaUrnMarkerTag(r.SpecID, "list")
 }
 
-// IsJSON returns true if the "json" marker tag is present in the source media URN.
+// IsJSON returns true if the content serialization format is JSON (`fmt=json`).
 // Note: This checks for JSON representation specifically, not record structure (use IsRecord for that).
 func (r *ResolvedMediaDef) IsJSON() bool {
-	return HasMediaUrnTag(r.SpecID, "json")
+	return HasMediaUrnTagValue(r.SpecID, "fmt", "json")
 }
 
 // IsStructured returns true if this represents structured data (has record marker).
@@ -254,9 +248,12 @@ func (r *ResolvedMediaDef) IsStructured() bool {
 	return r.IsRecord()
 }
 
-// IsText returns true if the "textable" marker tag is present in the source media URN.
-func (r *ResolvedMediaDef) IsText() bool {
-	return HasMediaUrnTag(r.SpecID, "textable")
+// HasEncoding returns true if the media declares a character encoding via the
+// `enc=` tag (e.g. enc=utf-8). This is the positive test for "is this value
+// text-representable" — there is no `textable` coercion marker and no separate
+// binary/text axis; text is identified by the presence of an encoding.
+func (r *ResolvedMediaDef) HasEncoding() bool {
+	return HasMediaUrnTag(r.SpecID, "enc")
 }
 
 // IsImage returns true if the "image" marker tag is present in the source media URN.
@@ -284,8 +281,8 @@ func (r *ResolvedMediaDef) IsBool() bool {
 	return HasMediaUrnTag(r.SpecID, "bool")
 }
 
-// HasMediaUrnTag checks if a media URN has a marker tag (e.g., json, textable).
-// Uses tagged-urn parsing for proper tag detection.
+// HasMediaUrnTag checks if a media URN carries a tag with the given key (e.g.
+// "enc", "fmt", "record"). Uses tagged-urn parsing for proper tag detection.
 // Requires a valid, non-empty media URN - panics otherwise.
 func HasMediaUrnTag(mediaUrn, tagName string) bool {
 	if mediaUrn == "" {
@@ -399,7 +396,7 @@ func ValidateNoMediaDefDuplicates(mediaDefs []MediaDef) error {
 // This is the SINGLE resolution path for all media URN lookups.
 //
 // Arguments:
-//   - mediaUrn: The media URN to resolve (e.g., "media:textable")
+//   - mediaUrn: The media URN to resolve (e.g., "media:enc=utf-8")
 //   - registry: The FabricRegistry for spec lookups
 //
 // Returns:
@@ -434,81 +431,6 @@ func ResolveMediaUrn(mediaUrn string, registry *FabricRegistry) (*ResolvedMediaD
 		Metadata:      storedSpec.Metadata,
 		Extensions:    storedSpec.Extensions,
 	}, nil
-}
-
-// GetTypeFromMediaUrn returns the base type (string, integer, number, boolean, object, binary, etc.) from a media URN
-// This is useful for validation to determine what Go type to expect
-// Determines type based on media URN marker tags: no textable->binary, record marker->object, list marker->array, etc.
-func GetTypeFromMediaUrn(mediaUrn string) string {
-	// Parse the media URN to check tags
-	parsed, err := taggedurn.NewTaggedUrnFromString(mediaUrn)
-	if err != nil {
-		return "unknown"
-	}
-
-	// Check for void
-	if _, ok := parsed.GetTag("void"); ok {
-		return "void"
-	}
-
-	// Check for binary (no "textable" tag)
-	if _, ok := parsed.GetTag("textable"); !ok {
-		return "binary"
-	}
-
-	// Check for record marker (has internal key-value structure)
-	if val, ok := parsed.GetTag("record"); ok && val == "*" {
-		return "object"
-	}
-
-	// Check for explicit json tag (also represents object)
-	if _, ok := parsed.GetTag("json"); ok {
-		return "object"
-	}
-
-	// Check for list marker (array/list cardinality)
-	if val, ok := parsed.GetTag("list"); ok && val == "*" {
-		return "array"
-	}
-
-	// Check specific type tags (for scalar types)
-	if _, ok := parsed.GetTag("integer"); ok {
-		return "integer"
-	}
-	if _, ok := parsed.GetTag("numeric"); ok {
-		return "number"
-	}
-	if _, ok := parsed.GetTag("number"); ok {
-		return "number"
-	}
-	if _, ok := parsed.GetTag("bool"); ok {
-		return "boolean"
-	}
-	if _, ok := parsed.GetTag("textable"); ok {
-		return "string"
-	}
-
-	return "unknown"
-}
-
-// GetTypeFromResolvedMediaDef determines the type from a resolved media def
-func GetTypeFromResolvedMediaDef(resolved *ResolvedMediaDef) string {
-	if resolved.IsBinary() {
-		return "binary"
-	}
-	// Check for record structure (has internal fields) OR explicit json tag
-	if resolved.IsRecord() || resolved.IsJSON() {
-		return "object"
-	}
-	// Check for list structure (list)
-	if resolved.IsList() {
-		return "array"
-	}
-	// Scalar or text types
-	if resolved.IsText() || resolved.IsScalar() {
-		return "string"
-	}
-	return "unknown"
 }
 
 // GetMediaDefFromCapUrn extracts media def from a CapUrn using the 'out' tag

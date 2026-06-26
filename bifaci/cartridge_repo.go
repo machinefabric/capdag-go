@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -103,12 +104,67 @@ type CartridgeDistributionInfo struct {
 	Sha256 string `json:"sha256"`
 	Size   uint64 `json:"size"`
 	Url    string `json:"url"`
+	// Format is the installer format: "pkg" (macOS), "deb"/"rpm" (Linux),
+	// "msi"/"exe" (Windows). Empty-when-omitted so the legacy singular
+	// `package` (which has no `format`) round-trips through this same
+	// struct.
+	Format string `json:"format,omitempty"`
 }
 
 // CartridgeBuild represents a platform-specific build within a version.
+//
+// A platform may ship more than one installer format (e.g. linux-x86_64
+// → `.deb` + `.rpm`), so `Packages` is a list; consumers pick the format
+// the host can run via PrimaryPackage. `Package` is the legacy singular
+// installer (no `format`), read only as a fallback when `Packages` is
+// empty so a registry not yet republished with the dual-write keeps
+// installing.
 type CartridgeBuild struct {
-	Platform string                    `json:"platform"`
-	Package  CartridgeDistributionInfo `json:"package"`
+	Platform string `json:"platform"`
+	// Per-format installer list (`.pkg`/`.deb`/`.rpm`/`.msi`/`.exe`).
+	// `omitempty` so a manifest published before `packages[]` existed
+	// (which carries only the legacy singular `package`) still
+	// deserializes instead of failing the whole parse.
+	Packages []CartridgeDistributionInfo `json:"packages,omitempty"`
+	// Legacy singular installer (`{name,url,sha256,size}`, no `format`).
+	// Read here only as a fallback when `Packages` is empty. An empty
+	// Name marks it absent.
+	Package CartridgeDistributionInfo `json:"package,omitempty"`
+}
+
+// PrimaryPackage returns the installer package the host should use,
+// preferring the platform's native format. Falls back to the legacy
+// singular `Package` when `Packages` is empty (pre-dual-write
+// manifests). Returns nil only when the build ships no installer at all
+// (empty `Packages` and a legacy `Package` with no name).
+func (b *CartridgeBuild) PrimaryPackage() *CartridgeDistributionInfo {
+	os := b.Platform
+	if i := strings.Index(os, "-"); i >= 0 {
+		os = os[:i]
+	}
+	var preference []string
+	switch os {
+	case "darwin":
+		preference = []string{"pkg"}
+	case "linux":
+		preference = []string{"deb", "rpm"}
+	case "windows":
+		preference = []string{"msi", "exe"}
+	}
+	for _, format := range preference {
+		for i := range b.Packages {
+			if b.Packages[i].Format == format {
+				return &b.Packages[i]
+			}
+		}
+	}
+	if len(b.Packages) > 0 {
+		return &b.Packages[0]
+	}
+	if b.Package.Name != "" {
+		return &b.Package
+	}
+	return nil
 }
 
 // CartridgeVersionData represents a cartridge version's data (v5.0 schema).
@@ -251,6 +307,148 @@ func (p *CartridgeInfo) AvailablePlatforms() []string {
 	return platforms
 }
 
+// HostPlatform returns the platform string ({os}-{arch}) of the binary
+// that calls this, in the exact form the registry uses
+// (`darwin-arm64`, `darwin-x86_64`, `linux-x86_64`, `windows-x86_64`).
+// Derived from runtime.GOOS/runtime.GOARCH — the engine binary literally
+// runs on this platform, so this is the authoritative host string for
+// compatibility resolution. Single source of truth: every consumer that
+// needs "what am I running on?" calls this rather than re-deriving the
+// os/arch mapping.
+func HostPlatform() string {
+	var os string
+	switch runtime.GOOS {
+	case "darwin":
+		os = "darwin"
+	case "linux":
+		os = "linux"
+	case "windows":
+		os = "windows"
+	default:
+		os = runtime.GOOS
+	}
+	arch := runtime.GOARCH
+	switch arch {
+	case "arm64":
+		arch = "arm64"
+	case "amd64":
+		// Go reports x86-64 as "amd64"; the registry uses "x86_64".
+		arch = "x86_64"
+	case "aarch64":
+		arch = "arm64"
+	}
+	return fmt.Sprintf("%s-%s", os, arch)
+}
+
+// CompatStatus is the host-compatibility status of a registry cartridge,
+// resolved against a specific host platform string. Mirrors the proto
+// CartridgeCompatibilityStatus.
+type CompatStatus int
+
+const (
+	// CompatStatusCompatible: the latest version has a build for this host
+	// platform — install as-is.
+	CompatStatusCompatible CompatStatus = iota
+	// CompatStatusCompatibleOutdated: the latest version has no host build,
+	// but an older version does; ResolvedVersion names that older version.
+	// Install it, mark outdated.
+	CompatStatusCompatibleOutdated
+	// CompatStatusIncompatible: no version has a build for this host
+	// platform. Nothing to install.
+	CompatStatusIncompatible
+)
+
+// CartridgeCompatibilityResolution is the resolved verdict the engine
+// attaches to an available cartridge: which version/package the host
+// should install (if any) and a human reason when it is not the
+// latest-and-greatest.
+type CartridgeCompatibilityResolution struct {
+	Status       CompatStatus
+	HostPlatform string
+	// ResolvedVersion is the newest version that has a build for this host
+	// (empty when Incompatible).
+	ResolvedVersion string
+	// ResolvedPackage is the host-preferred installer package within
+	// ResolvedVersion (nil when Incompatible). Cloned from the registry
+	// data.
+	ResolvedPackage *CartridgeDistributionInfo
+	// Reason is the explanation, set whenever Status is not Compatible.
+	Reason string
+}
+
+// buildForHost finds this cartridge's build for hostPlatform within a
+// given version, if any. The host package within it is then chosen by
+// PrimaryPackage.
+func (p *CartridgeInfo) buildForHost(version, hostPlatform string) *CartridgeBuild {
+	vd, ok := p.Versions[version]
+	if !ok {
+		return nil
+	}
+	for i := range vd.Builds {
+		if vd.Builds[i].Platform == hostPlatform {
+			return &vd.Builds[i]
+		}
+	}
+	return nil
+}
+
+// ResolveForHost resolves which version/package this host should
+// install, scanning versions newest-first (AvailableVersions is the
+// authoritative newest-first ordering). The newest version with a host
+// build wins:
+//   - it IS the latest version → Compatible
+//   - it is older than the latest → CompatibleOutdated
+//   - no version has a host build → Incompatible
+//
+// "Latest" is p.Version — the same field BuildForPlatform trusts — not
+// AvailableVersions[0]. A host build found at p.Version classifies as
+// Compatible while any other found version classifies as
+// CompatibleOutdated. We do not paper over a p.Version with no host
+// build by silently calling it latest. A build whose PrimaryPackage is
+// nil ships no installer at all — skip it rather than resolve to a
+// version the host cannot download, and keep scanning older versions.
+func (p *CartridgeInfo) ResolveForHost(hostPlatform string) CartridgeCompatibilityResolution {
+	latest := p.Version
+
+	for _, ver := range p.AvailableVersions {
+		build := p.buildForHost(ver, hostPlatform)
+		if build == nil {
+			continue
+		}
+		pkg := build.PrimaryPackage()
+		if pkg == nil {
+			continue
+		}
+		pkgCopy := *pkg
+		if ver == latest {
+			return CartridgeCompatibilityResolution{
+				Status:          CompatStatusCompatible,
+				HostPlatform:    hostPlatform,
+				ResolvedVersion: ver,
+				ResolvedPackage: &pkgCopy,
+			}
+		}
+		return CartridgeCompatibilityResolution{
+			Status:          CompatStatusCompatibleOutdated,
+			HostPlatform:    hostPlatform,
+			ResolvedVersion: ver,
+			ResolvedPackage: &pkgCopy,
+			Reason: fmt.Sprintf(
+				"Latest %s has no %s build; newest compatible is %s",
+				latest, hostPlatform, ver,
+			),
+		}
+	}
+
+	return CartridgeCompatibilityResolution{
+		Status:       CompatStatusIncompatible,
+		HostPlatform: hostPlatform,
+		Reason: fmt.Sprintf(
+			"No installable %s build available in any version", hostPlatform,
+		),
+	}
+}
+
 // CartridgeRegistryResponse represents the cartridge registry response (flat format)
 type CartridgeRegistryResponse struct {
 	Cartridges []CartridgeInfo `json:"cartridges"`
@@ -306,10 +504,30 @@ func validateVersionData(id, version string, versionData *CartridgeVersionData) 
 				"Cartridge %s v%s: build[%d] missing platform", id, version, i,
 			))
 		}
-		if build.Package.Name == "" {
-			return NewParseError(fmt.Sprintf(
-				"Cartridge %s v%s: build[%d] (%s) missing package.name", id, version, i, build.Platform,
-			))
+		if len(build.Packages) == 0 {
+			// A manifest published before `packages[]` existed carries
+			// only the legacy singular `package`. Accept it (read as a
+			// fallback by PrimaryPackage); reject only a build with no
+			// installer at all. The legacy object has no `format`.
+			if build.Package.Name == "" {
+				return NewParseError(fmt.Sprintf(
+					"Cartridge %s v%s: build[%d] (%s) ships no packages", id, version, i, build.Platform,
+				))
+			}
+		}
+		for j, pkg := range build.Packages {
+			if pkg.Name == "" {
+				return NewParseError(fmt.Sprintf(
+					"Cartridge %s v%s: build[%d] (%s) package[%d] missing name",
+					id, version, i, build.Platform, j,
+				))
+			}
+			if pkg.Format == "" {
+				return NewParseError(fmt.Sprintf(
+					"Cartridge %s v%s: build[%d] (%s) package[%d] (%s) missing format",
+					id, version, i, build.Platform, j, pkg.Name,
+				))
+			}
 		}
 	}
 	return nil

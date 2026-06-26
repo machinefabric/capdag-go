@@ -12,7 +12,7 @@ func main() {
 	// Example 1: Create capability with embedded schema
 	fmt.Println("=== Example 1: Basic Schema Validation ===")
 
-	urn, _ := capdag.NewCapUrnFromString(`cap:in="media:void";query;out="media:record;textable";target=structured`)
+	urn, _ := capdag.NewCapUrnFromString(`cap:in="media:void";query;out="media:enc=utf-8;record";target=structured`)
 	cap := capdag.NewCap(urn, "Query Command", "query-command")
 
 	// Define JSON schema for user data
@@ -41,7 +41,7 @@ func main() {
 	cliFlag := "--user"
 	pos := 0
 	userArg := capdag.CapArg{
-		MediaUrn:       "media:user;textable;record",
+		MediaUrn:       "media:enc=utf-8;user;record",
 		Required:       true,
 		Sources:        []capdag.ArgSource{{CliFlag: &cliFlag}, {Position: &pos}},
 		ArgDescription: capdag.StringPtr("User data"),
@@ -126,7 +126,7 @@ func main() {
 	}
 
 	// Add custom media def for output with schema
-	output := capdag.NewCapOutput("media:query-result;textable;record", "Query results")
+	output := capdag.NewCapOutput("media:enc=utf-8;query-result;record", "Query results")
 	cap.SetOutput(output)
 
 	// Valid output
@@ -196,7 +196,7 @@ func main() {
 	cliFlag2 := "--items"
 	pos2 := 1
 	itemsArg := capdag.CapArg{
-		MediaUrn:       "media:items;textable;record",
+		MediaUrn:       "media:enc=utf-8;items;record",
 		Required:       false,
 		Sources:        []capdag.ArgSource{{CliFlag: &cliFlag2}, {Position: &pos2}},
 		ArgDescription: capdag.StringPtr("List of items"),

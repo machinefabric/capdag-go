@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/machinefabric/capdag-go/media"
 	"github.com/machinefabric/capdag-go/urn"
+	"github.com/xeipuuv/gojsonschema"
 )
 
 // ValidationError represents validation errors with descriptive failure information
@@ -66,6 +68,64 @@ func NewInvalidArgumentTypeErrorFromMediaUrn(capUrn, argumentName, mediaUrn, exp
 		ActualValue:  actualValue,
 		Message:      fmt.Sprintf("Cap '%s' argument '%s' (media URN: %s) expects type '%s' but received '%s' with value: %v", capUrn, argumentName, mediaUrn, expectedType, actualType, actualValue),
 	}
+}
+
+// NewInvalidArgumentTypeSchemaError creates an InvalidArgumentType error from
+// schema validation failures (local schema or profile). Mirrors Rust's
+// ValidationError::InvalidArgumentType { schema_errors }.
+func NewInvalidArgumentTypeSchemaError(capUrn, mediaUrn string, actualValue interface{}, schemaErrors []string) *ValidationError {
+	return &ValidationError{
+		Type:         "InvalidArgumentType",
+		CapUrn:       capUrn,
+		ArgumentName: mediaUrn,
+		ExpectedType: mediaUrn,
+		ActualValue:  actualValue,
+		Message: fmt.Sprintf("Cap '%s' argument '%s' failed schema validation: %s with value: %v",
+			capUrn, mediaUrn, strings.Join(schemaErrors, "; "), actualValue),
+	}
+}
+
+// NewInvalidOutputTypeSchemaError creates an InvalidOutputType error from schema
+// validation failures. Mirrors Rust's ValidationError::InvalidOutputType { schema_errors }.
+func NewInvalidOutputTypeSchemaError(capUrn, mediaUrn string, actualValue interface{}, schemaErrors []string) *ValidationError {
+	return &ValidationError{
+		Type:         "InvalidOutputType",
+		CapUrn:       capUrn,
+		ExpectedType: mediaUrn,
+		ActualValue:  actualValue,
+		Message: fmt.Sprintf("Cap '%s' output '%s' failed schema validation: %s with value: %v",
+			capUrn, mediaUrn, strings.Join(schemaErrors, "; "), actualValue),
+	}
+}
+
+// validateWithLocalSchema compiles an inline JSON Schema and validates a value
+// against it, returning the list of error strings (empty when valid). Mirrors
+// Rust's validate_with_local_schema.
+func validateWithLocalSchema(schema interface{}, value interface{}) []string {
+	schemaJSON, err := json.Marshal(schema)
+	if err != nil {
+		return []string{fmt.Sprintf("Failed to serialize schema: %v", err)}
+	}
+	compiled, err := gojsonschema.NewSchema(gojsonschema.NewBytesLoader(schemaJSON))
+	if err != nil {
+		return []string{fmt.Sprintf("Failed to compile schema: %v", err)}
+	}
+	valueJSON, err := json.Marshal(value)
+	if err != nil {
+		return []string{fmt.Sprintf("Failed to serialize value: %v", err)}
+	}
+	result, err := compiled.Validate(gojsonschema.NewBytesLoader(valueJSON))
+	if err != nil {
+		return []string{fmt.Sprintf("Validation error: %v", err)}
+	}
+	if result.Valid() {
+		return nil
+	}
+	errs := make([]string, 0, len(result.Errors()))
+	for _, e := range result.Errors() {
+		errs = append(errs, fmt.Sprintf("%s: %s", e.Field(), e.String()))
+	}
+	return errs
 }
 
 // NewUnresolvableMediaUrnErrorForValidation creates an error for unresolvable media URNs in validation
@@ -147,15 +207,37 @@ func NewSchemaValidationFailedError(capUrn, argumentName, details string, actual
 	}
 }
 
-// InputValidator validates arguments against cap input schemas
+// InputValidator validates arguments against cap input schemas.
+// It mirrors Rust's InputValidator, holding a ProfileSchemaRegistry for
+// profile-URI-based JSON Schema validation.
 type InputValidator struct {
 	schemaValidator *SchemaValidator
+	schemaRegistry  *media.ProfileSchemaRegistry
 }
 
-// NewInputValidator creates a new input validator
+// newProfileRegistryOrPanic constructs a ProfileSchemaRegistry, mirroring how
+// Rust's call sites obtain one via ProfileSchemaRegistry::new(). Construction
+// only fails if the cache directory cannot be created, which is an environment
+// fault the reference also surfaces by failing hard.
+func newProfileRegistryOrPanic() *media.ProfileSchemaRegistry {
+	registry, err := media.NewProfileSchemaRegistry()
+	if err != nil {
+		panic(fmt.Sprintf("failed to create profile schema registry: %v", err))
+	}
+	return registry
+}
+
+// NewInputValidator creates a new input validator with a default profile registry.
 func NewInputValidator() *InputValidator {
+	return NewInputValidatorWithRegistry(newProfileRegistryOrPanic())
+}
+
+// NewInputValidatorWithRegistry creates a new input validator with the given
+// profile schema registry (mirrors Rust's InputValidator::new schema_registry param).
+func NewInputValidatorWithRegistry(schemaRegistry *media.ProfileSchemaRegistry) *InputValidator {
 	return &InputValidator{
 		schemaValidator: NewSchemaValidator(),
+		schemaRegistry:  schemaRegistry,
 	}
 }
 
@@ -163,6 +245,7 @@ func NewInputValidator() *InputValidator {
 func NewInputValidatorWithSchemaResolver(resolver SchemaResolver) *InputValidator {
 	return &InputValidator{
 		schemaValidator: NewSchemaValidatorWithResolver(resolver),
+		schemaRegistry:  newProfileRegistryOrPanic(),
 	}
 }
 
@@ -264,27 +347,23 @@ func (iv *InputValidator) ValidateNamedArguments(cap *Cap, namedArgs []map[strin
 }
 
 func (iv *InputValidator) validateSingleArgument(cap *Cap, argDef *CapArg, value interface{}, registry *media.FabricRegistry) error {
-	// Resolve the media URN to determine the expected type
+	// Resolve the media URN. Mirrors Rust's validate_argument_type:
+	// resolve -> local-schema-if-present -> else profile-uri-if-present -> rules.
 	resolved, err := argDef.Resolve(registry)
 	if err != nil {
 		return NewUnresolvableMediaUrnErrorForValidation(cap.UrnString(), argDef.MediaUrn, argDef.MediaUrn)
 	}
 
-	// Type validation based on resolved media def
+	// Schema/profile type validation.
 	if err := iv.validateArgumentType(cap, argDef, resolved, value); err != nil {
 		return err
 	}
 
-	// Media def validation rules (inherent to the semantic type)
+	// Media def validation rules (inherent to the semantic type).
 	if resolved.Validation != nil {
 		if err := iv.validateMediaDefRules(cap, argDef, resolved, value); err != nil {
 			return err
 		}
-	}
-
-	// Schema validation for object/array types
-	if err := iv.validateArgumentSchema(cap, argDef, resolved, value); err != nil {
-		return err
 	}
 
 	return nil
@@ -366,113 +445,51 @@ func (iv *InputValidator) validateMediaDefRules(cap *Cap, argDef *CapArg, resolv
 	return nil
 }
 
-// validateArgumentSchema validates argument against JSON schema
-func (iv *InputValidator) validateArgumentSchema(cap *Cap, argDef *CapArg, resolved *media.ResolvedMediaDef, value interface{}) error {
-	// Only validate structured types (map, list, or json) that have schemas
-	if !resolved.IsStructured() {
+// validateArgumentType mirrors Rust's validate_argument_type: it validates the
+// value against the resolved media def's local schema if present, otherwise
+// against its profile URI via the ProfileSchemaRegistry. A media def with
+// neither a local schema nor a profile URI accepts any JSON value. There is no
+// type-string inference.
+func (iv *InputValidator) validateArgumentType(cap *Cap, argDef *CapArg, resolved *media.ResolvedMediaDef, value interface{}) error {
+	capUrn := cap.UrnString()
+
+	// First, try the local schema from the resolved spec.
+	if resolved.Schema != nil {
+		if errs := validateWithLocalSchema(resolved.Schema, value); len(errs) > 0 {
+			return NewInvalidArgumentTypeSchemaError(capUrn, argDef.MediaUrn, value, errs)
+		}
 		return nil
 	}
 
-	// Get schema from resolved media def
-	schema := resolved.Schema
-	if schema == nil {
-		return nil // No schema to validate against
-	}
-
-	if err := iv.schemaValidator.ValidateArgumentWithSchema(argDef, schema, value); err != nil {
-		if schemaErr, ok := err.(*SchemaValidationError); ok {
-			return NewSchemaValidationFailedError(cap.UrnString(), argDef.MediaUrn, schemaErr.Details, value)
+	// Otherwise validate against the profile schema via the registry.
+	if resolved.ProfileURI != "" {
+		if errs := iv.schemaRegistry.Validate(resolved.ProfileURI, value); len(errs) > 0 {
+			return NewInvalidArgumentTypeSchemaError(capUrn, argDef.MediaUrn, value, errs)
 		}
-		return err
 	}
 
+	// No profile or schema means any JSON value is valid for that media type.
 	return nil
 }
 
-func (iv *InputValidator) validateArgumentType(cap *Cap, argDef *CapArg, resolved *media.ResolvedMediaDef, value interface{}) error {
-	capUrn := cap.UrnString()
-	actualType := getValueTypeName(value)
-
-	// Determine expected type from media URN
-	expectedType := getExpectedTypeFromMediaUrn(argDef.MediaUrn, resolved)
-
-	typeMatches := false
-	switch expectedType {
-	case "string":
-		_, typeMatches = value.(string)
-	case "integer":
-		if num, ok := value.(float64); ok {
-			typeMatches = num == float64(int64(num))
-		} else if _, ok := value.(int); ok {
-			typeMatches = true
-		} else if _, ok := value.(int64); ok {
-			typeMatches = true
-		}
-	case "number":
-		_, ok1 := value.(float64)
-		_, ok2 := value.(int)
-		_, ok3 := value.(int64)
-		typeMatches = ok1 || ok2 || ok3
-	case "boolean":
-		_, typeMatches = value.(bool)
-	case "array":
-		_, typeMatches = value.([]interface{})
-	case "object":
-		_, typeMatches = value.(map[string]interface{})
-	case "binary":
-		_, typeMatches = value.(string) // Binary as base64 string
-	default:
-		// For unknown types from custom specs, accept any value
-		typeMatches = true
-	}
-
-	if !typeMatches {
-		return NewInvalidArgumentTypeErrorFromMediaUrn(capUrn, argDef.MediaUrn, argDef.MediaUrn, expectedType, actualType, value)
-	}
-
-	return nil
-}
-
-// getExpectedTypeFromMediaUrn determines the expected Go type from a media URN
-// Uses media.GetTypeFromMediaUrn for consistent type detection based on media URN tags
-func getExpectedTypeFromMediaUrn(mediaUrn string, resolved *media.ResolvedMediaDef) string {
-	// Use the centralized type detection based on media URN tags
-	typeFromUrn := media.GetTypeFromMediaUrn(mediaUrn)
-	if typeFromUrn != "unknown" {
-		return typeFromUrn
-	}
-
-	// Fallback: infer from resolved media def if available
-	if resolved != nil {
-		if resolved.IsBinary() {
-			return "binary"
-		}
-		// Check for record structure (has internal fields) OR explicit json tag
-		if resolved.IsRecord() || resolved.IsJSON() {
-			return "object"
-		}
-		// Check for list structure (list)
-		if resolved.IsList() {
-			return "array"
-		}
-		// Scalar or text types
-		if resolved.IsText() || resolved.IsScalar() {
-			return "string"
-		}
-	}
-
-	return "unknown"
-}
-
-// OutputValidator validates output against cap output schemas
+// OutputValidator validates output against cap output schemas.
+// Mirrors Rust's OutputValidator, holding a ProfileSchemaRegistry.
 type OutputValidator struct {
 	schemaValidator *SchemaValidator
+	schemaRegistry  *media.ProfileSchemaRegistry
 }
 
-// NewOutputValidator creates a new output validator
+// NewOutputValidator creates a new output validator with a default profile registry.
 func NewOutputValidator() *OutputValidator {
+	return NewOutputValidatorWithRegistry(newProfileRegistryOrPanic())
+}
+
+// NewOutputValidatorWithRegistry creates a new output validator with the given
+// profile schema registry (mirrors Rust's OutputValidator::new schema_registry param).
+func NewOutputValidatorWithRegistry(schemaRegistry *media.ProfileSchemaRegistry) *OutputValidator {
 	return &OutputValidator{
 		schemaValidator: NewSchemaValidator(),
+		schemaRegistry:  schemaRegistry,
 	}
 }
 
@@ -480,6 +497,7 @@ func NewOutputValidator() *OutputValidator {
 func NewOutputValidatorWithSchemaResolver(resolver SchemaResolver) *OutputValidator {
 	return &OutputValidator{
 		schemaValidator: NewSchemaValidatorWithResolver(resolver),
+		schemaRegistry:  newProfileRegistryOrPanic(),
 	}
 }
 
@@ -509,7 +527,7 @@ func (ov *OutputValidator) ValidateOutput(cap *Cap, output interface{}, registry
 		}
 	}
 
-	// Type validation
+	// Type validation (local schema or profile via registry)
 	if err := ov.validateOutputType(cap, outputDef, resolved, output); err != nil {
 		return err
 	}
@@ -519,11 +537,6 @@ func (ov *OutputValidator) ValidateOutput(cap *Cap, output interface{}, registry
 		if err := ov.validateOutputMediaDefRules(cap, resolved, output); err != nil {
 			return err
 		}
-	}
-
-	// Schema validation for structured outputs
-	if err := ov.validateOutputSchema(cap, outputDef, resolved, output); err != nil {
-		return err
 	}
 
 	return nil
@@ -605,68 +618,23 @@ func (ov *OutputValidator) validateOutputMediaDefRules(cap *Cap, resolved *media
 	return nil
 }
 
-// validateOutputSchema validates output against JSON schema
-func (ov *OutputValidator) validateOutputSchema(cap *Cap, outputDef *CapOutput, resolved *media.ResolvedMediaDef, value interface{}) error {
-	// Only validate structured types (map, list, or json) that have schemas
-	if !resolved.IsStructured() {
+// validateOutputType mirrors Rust's validate_output_type: local schema if
+// present, otherwise profile URI via the ProfileSchemaRegistry; a media def with
+// neither accepts any JSON value.
+func (ov *OutputValidator) validateOutputType(cap *Cap, outputDef *CapOutput, resolved *media.ResolvedMediaDef, value interface{}) error {
+	capUrn := cap.UrnString()
+
+	if resolved.Schema != nil {
+		if errs := validateWithLocalSchema(resolved.Schema, value); len(errs) > 0 {
+			return NewInvalidOutputTypeSchemaError(capUrn, outputDef.MediaUrn, value, errs)
+		}
 		return nil
 	}
 
-	// Get schema from resolved media def
-	schema := resolved.Schema
-	if schema == nil {
-		return nil // No schema to validate against
-	}
-
-	if err := ov.schemaValidator.ValidateOutputWithSchema(outputDef, schema, value); err != nil {
-		if schemaErr, ok := err.(*SchemaValidationError); ok {
-			return NewOutputValidationFailedError(cap.UrnString(), "schema validation: "+schemaErr.Details, value)
+	if resolved.ProfileURI != "" {
+		if errs := ov.schemaRegistry.Validate(resolved.ProfileURI, value); len(errs) > 0 {
+			return NewInvalidOutputTypeSchemaError(capUrn, outputDef.MediaUrn, value, errs)
 		}
-		return err
-	}
-
-	return nil
-}
-
-func (ov *OutputValidator) validateOutputType(cap *Cap, outputDef *CapOutput, resolved *media.ResolvedMediaDef, value interface{}) error {
-	capUrn := cap.UrnString()
-	actualType := getValueTypeName(value)
-
-	// Determine expected type from media URN
-	expectedType := getExpectedTypeFromMediaUrn(outputDef.MediaUrn, resolved)
-
-	typeMatches := false
-	switch expectedType {
-	case "string":
-		_, typeMatches = value.(string)
-	case "integer":
-		if num, ok := value.(float64); ok {
-			typeMatches = num == float64(int64(num))
-		} else if _, ok := value.(int); ok {
-			typeMatches = true
-		} else if _, ok := value.(int64); ok {
-			typeMatches = true
-		}
-	case "number":
-		_, ok1 := value.(float64)
-		_, ok2 := value.(int)
-		_, ok3 := value.(int64)
-		typeMatches = ok1 || ok2 || ok3
-	case "boolean":
-		_, typeMatches = value.(bool)
-	case "array":
-		_, typeMatches = value.([]interface{})
-	case "object":
-		_, typeMatches = value.(map[string]interface{})
-	case "binary":
-		_, typeMatches = value.(string) // Binary as base64 string
-	default:
-		// For unknown types from custom specs, accept any value
-		typeMatches = true
-	}
-
-	if !typeMatches {
-		return NewInvalidOutputTypeErrorFromMediaUrn(capUrn, outputDef.MediaUrn, expectedType, actualType, value)
 	}
 
 	return nil
@@ -679,12 +647,15 @@ type CapValidationCoordinator struct {
 	outputValidator *OutputValidator
 }
 
-// NewCapValidationCoordinator creates a new validation coordinator
+// NewCapValidationCoordinator creates a new validation coordinator. Both the
+// input and output validators share a single profile schema registry, mirroring
+// Rust where one Arc<ProfileSchemaRegistry> is threaded into both.
 func NewCapValidationCoordinator() *CapValidationCoordinator {
+	registry := newProfileRegistryOrPanic()
 	return &CapValidationCoordinator{
 		caps:            make(map[string]*Cap),
-		inputValidator:  NewInputValidator(),
-		outputValidator: NewOutputValidator(),
+		inputValidator:  NewInputValidatorWithRegistry(registry),
+		outputValidator: NewOutputValidatorWithRegistry(registry),
 	}
 }
 
@@ -1018,32 +989,6 @@ func ValidateCapArgs(cap *Cap) error {
 }
 
 // Utility functions
-
-func getValueTypeName(value interface{}) string {
-	switch v := value.(type) {
-	case nil:
-		return "null"
-	case bool:
-		return "boolean"
-	case int, int8, int16, int32, int64:
-		return "integer"
-	case float32, float64:
-		return "number"
-	case string:
-		return "string"
-	case []interface{}:
-		return "array"
-	case map[string]interface{}:
-		return "object"
-	case json.Number:
-		if _, err := v.Int64(); err == nil {
-			return "integer"
-		}
-		return "number"
-	default:
-		return fmt.Sprintf("%T", value)
-	}
-}
 
 func getNumericValue(value interface{}) (float64, bool) {
 	switch v := value.(type) {

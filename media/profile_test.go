@@ -2,6 +2,7 @@ package media
 
 import (
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -42,23 +43,25 @@ func standardProfileURLs() []string {
 	}
 }
 
-// createTestRegistry returns a registry with the well-known scalar/array
-// profile schemas seeded into the cache.
-func createTestRegistry(t *testing.T) *ProfileSchemaRegistry {
+// createEmptyTestRegistry returns a registry rooted at an isolated temp cache
+// directory with offline mode enabled, so it never touches the network. Mirrors
+// the Rust test harness (new_with_cache_dir over a TempDir).
+func createEmptyTestRegistry(t *testing.T) *ProfileSchemaRegistry {
 	t.Helper()
-	registry, err := NewProfileSchemaRegistry()
+	registry, err := NewProfileSchemaRegistryWithCacheDir(t.TempDir())
 	require.NoError(t, err, "Failed to create profile registry")
-	for _, url := range standardProfileURLs() {
-		require.NoError(t, registry.InsertSchema(url, schemaBody(url)))
-	}
+	registry.SetOffline(true)
 	return registry
 }
 
-// createEmptyTestRegistry returns a registry with no schemas seeded.
-func createEmptyTestRegistry(t *testing.T) *ProfileSchemaRegistry {
+// createTestRegistry returns a registry with the well-known scalar/array
+// profile schemas seeded into the cache (isolated temp dir, offline).
+func createTestRegistry(t *testing.T) *ProfileSchemaRegistry {
 	t.Helper()
-	registry, err := NewProfileSchemaRegistry()
-	require.NoError(t, err, "Failed to create profile registry")
+	registry := createEmptyTestRegistry(t)
+	for _, url := range standardProfileURLs() {
+		require.NoError(t, registry.InsertSchema(url, schemaBody(url)))
+	}
 	return registry
 }
 
@@ -102,11 +105,31 @@ func Test613_validate_cached(t *testing.T) {
 	assert.Nil(t, registry.ValidateCached("https://example.com/unknown", "anything"))
 }
 
-// TEST618: A freshly constructed registry is operational and reports an empty
-// cache. Schemas must be inserted explicitly — none are bundled.
+// TEST618: A freshly constructed registry over a temp cache dir is operational:
+// the cache directory exists on disk and the registry is usable. Inserting then
+// reopening a registry on the same directory must load the persisted schema —
+// this genuinely exercises the disk-cache round-trip (Rust new_with_cache_dir +
+// load_all_cached_schemas), not just the in-memory map.
 func Test618_registry_creation(t *testing.T) {
-	registry := createEmptyTestRegistry(t)
-	assert.Equal(t, 0, len(registry.GetCachedProfiles()))
+	dir := t.TempDir()
+	registry, err := NewProfileSchemaRegistryWithCacheDir(dir)
+	require.NoError(t, err)
+	registry.SetOffline(true)
+
+	info, statErr := os.Stat(dir)
+	require.NoError(t, statErr)
+	assert.True(t, info.IsDir(), "cache directory must exist")
+
+	// Persist a schema, then reopen on the same directory.
+	require.NoError(t, registry.InsertSchema(ProfileStr, schemaBody(ProfileStr)))
+
+	reopened, err := NewProfileSchemaRegistryWithCacheDir(dir)
+	require.NoError(t, err)
+	reopened.SetOffline(true)
+	assert.True(t, reopened.SchemaExists(ProfileStr),
+		"reopened registry must load the persisted schema from disk")
+	assert.Nil(t, reopened.ValidateCached(ProfileStr, "ok"))
+	assert.NotNil(t, reopened.ValidateCached(ProfileStr, 7))
 }
 
 // TEST619: A freshly constructed registry has no cached schemas. The well-known

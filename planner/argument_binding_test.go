@@ -20,10 +20,10 @@ func emptyContext(opts ...func(*ArgumentResolutionContext)) *ArgumentResolutionC
 func Test668_ResolveSlotWithPopulatedByteSlotValues(t *testing.T) {
 	ctx := emptyContext(func(c *ArgumentResolutionContext) {
 		c.SlotValues = map[string][]byte{
-			"step_0:media:width;textable;numeric": []byte("800"),
+			"step_0:media:width;numeric": []byte("800"),
 		}
 	})
-	binding := NewSlotBinding("media:width;textable;numeric", nil)
+	binding := NewSlotBinding("media:width;numeric", nil)
 	result, err := ResolveBinding(
 		binding, ctx,
 		`cap:in="media:pdf";resize;out="media:pdf"`,
@@ -47,7 +47,7 @@ func Test668_ResolveSlotWithPopulatedByteSlotValues(t *testing.T) {
 // TEST669: resolve_binding falls back to cap default value when slot has no data
 func Test669_ResolveSlotFallsBackToDefault(t *testing.T) {
 	ctx := emptyContext()
-	binding := NewSlotBinding("media:quality;textable;numeric", nil)
+	binding := NewSlotBinding("media:quality;numeric", nil)
 	defaultVal := json.RawMessage(`85`)
 	result, err := ResolveBinding(binding, ctx, "cap:compress", "step_0", defaultVal, false)
 	if err != nil {
@@ -68,13 +68,13 @@ func Test669_ResolveSlotFallsBackToDefault(t *testing.T) {
 // TEST670: resolve_binding returns error when required slot has no value and no default
 func Test670_ResolveRequiredSlotNoValueReturnsErr(t *testing.T) {
 	ctx := emptyContext()
-	binding := NewSlotBinding("media:question;textable", nil)
+	binding := NewSlotBinding("media:question;enc=utf-8", nil)
 	_, err := ResolveBinding(binding, ctx, "cap:generate", "step_0", nil, true)
 	if err == nil {
 		t.Fatal("expected error for required slot with no value")
 	}
 	errStr := err.Error()
-	if !contains(errStr, "media:question;textable") {
+	if !contains(errStr, "media:question;enc=utf-8") {
 		t.Fatalf("expected error to mention slot name, got: %s", errStr)
 	}
 }
@@ -82,7 +82,7 @@ func Test670_ResolveRequiredSlotNoValueReturnsErr(t *testing.T) {
 // TEST671: resolve_binding returns None when optional slot has no value and no default
 func Test671_ResolveOptionalSlotNoValueReturnsNone(t *testing.T) {
 	ctx := emptyContext()
-	binding := NewSlotBinding("media:suffix;textable", nil)
+	binding := NewSlotBinding("media:suffix;enc=utf-8", nil)
 	result, err := ResolveBinding(binding, ctx, "cap:rename", "step_0", nil, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -94,8 +94,8 @@ func Test671_ResolveOptionalSlotNoValueReturnsNone(t *testing.T) {
 
 // TEST1105: Two steps with the same cap_urn get distinct slot values via different node_ids. This is the core disambiguation scenario that step-index keying was designed to solve.
 func Test1105_TwoStepsSameCapUrnDifferentSlotValues(t *testing.T) {
-	capUrn := `cap:in="media:pdf";make-decision;out="media:bool;textable"`
-	slotName := "media:list;question;textable"
+	capUrn := `cap:in="media:pdf";make-decision;out="media:bool;enc=utf-8"`
+	slotName := "media:list;question;enc=utf-8"
 	ctx := emptyContext(func(c *ArgumentResolutionContext) {
 		c.SlotValues = map[string][]byte{
 			"step_0:" + slotName: []byte("Is this a contract?"),
@@ -136,8 +136,8 @@ func Test1105_TwoStepsSameCapUrnDifferentSlotValues(t *testing.T) {
 
 // TEST1106: Slot resolution falls through to cap_settings when no slot_value exists. cap_settings are keyed by cap_urn (shared across steps), so both steps get the same value.
 func Test1106_SlotFallsThroughToCapSettingsShared(t *testing.T) {
-	capUrn := `cap:in="media:pdf";make-decision;out="media:bool;textable"`
-	slotName := "media:language;textable"
+	capUrn := `cap:in="media:pdf";make-decision;out="media:bool;enc=utf-8"`
+	slotName := "media:language;enc=utf-8"
 	ctx := emptyContext(func(c *ArgumentResolutionContext) {
 		c.CapSettings = map[string]map[string]json.RawMessage{
 			capUrn: {
@@ -172,8 +172,8 @@ func Test1106_SlotFallsThroughToCapSettingsShared(t *testing.T) {
 
 // TEST1107: step_0 has a slot_value override, step_1 falls through to cap_settings. Proves per-step override works while shared settings remain as fallback.
 func Test1107_SlotValueOverridesCapSettingsPerStep(t *testing.T) {
-	capUrn := `cap:in="media:pdf";make-decision;out="media:bool;textable"`
-	slotName := "media:language;textable"
+	capUrn := `cap:in="media:pdf";make-decision;out="media:bool;enc=utf-8"`
+	slotName := "media:language;enc=utf-8"
 	ctx := emptyContext(func(c *ArgumentResolutionContext) {
 		c.SlotValues = map[string][]byte{
 			"step_0:" + slotName: []byte("fr"),
@@ -216,16 +216,16 @@ func Test1107_SlotValueOverridesCapSettingsPerStep(t *testing.T) {
 func Test1108_ResolveAllPassesNodeID(t *testing.T) {
 	ctx := emptyContext(func(c *ArgumentResolutionContext) {
 		c.SlotValues = map[string][]byte{
-			"step_3:media:width;textable;numeric":   []byte("1024"),
-			"step_3:media:quality;textable;numeric": []byte("95"),
+			"step_3:media:width;numeric":   []byte("1024"),
+			"step_3:media:quality;numeric": []byte("95"),
 		}
 	})
 
 	bindings := NewArgumentBindings()
-	bindings.Add("media:width;textable;numeric",
-		NewSlotBinding("media:width;textable;numeric", nil))
-	bindings.Add("media:quality;textable;numeric",
-		NewSlotBinding("media:quality;textable;numeric", nil))
+	bindings.Add("media:width;numeric",
+		NewSlotBinding("media:width;numeric", nil))
+	bindings.Add("media:quality;numeric",
+		NewSlotBinding("media:quality;numeric", nil))
 
 	results, err := bindings.ResolveAll(ctx, "cap:resize", "step_3", nil, nil)
 	if err != nil {
@@ -240,7 +240,7 @@ func Test1108_ResolveAllPassesNodeID(t *testing.T) {
 		byName[r.Name] = r
 	}
 
-	width := byName["media:width;textable;numeric"]
+	width := byName["media:width;numeric"]
 	if width == nil {
 		t.Fatal("missing width result")
 	}
@@ -251,7 +251,7 @@ func Test1108_ResolveAllPassesNodeID(t *testing.T) {
 		t.Fatalf("width: expected source Slot, got %d", width.Source)
 	}
 
-	quality := byName["media:quality;textable;numeric"]
+	quality := byName["media:quality;numeric"]
 	if quality == nil {
 		t.Fatal("missing quality result")
 	}
@@ -266,7 +266,7 @@ func Test1108_ResolveAllPassesNodeID(t *testing.T) {
 // TEST1109: Slot key uses node_id, NOT cap_urn — a slot_value keyed by cap_urn must not match.
 func Test1109_SlotKeyUsesNodeIDNotCapUrn(t *testing.T) {
 	capUrn := `cap:in="media:pdf";resize;out="media:pdf"`
-	slotName := "media:width;textable;numeric"
+	slotName := "media:width;numeric"
 	// Deliberately key by cap_urn (the OLD format) — should NOT match
 	ctx := emptyContext(func(c *ArgumentResolutionContext) {
 		c.SlotValues = map[string][]byte{

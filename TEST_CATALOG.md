@@ -1,8 +1,8 @@
 # Go Test Catalog
 
-**Total Tests:** 918
+**Total Tests:** 921
 
-**Numbered Tests:** 918
+**Numbered Tests:** 921
 
 **Unnumbered Tests:** 0
 
@@ -934,11 +934,14 @@ This catalog lists all tests in the Go codebase.
 | test1844 | `Test1844_axis_weighting_out_dominates` | TEST1844: out-axis difference dominates combined in+y differences. | urn/cap_urn_test.go:1956 |
 | test1845 | `Test1845_axis_weighting_in_dominates_y` | TEST1845: With equal out, in-axis dominates over y-axis. | urn/cap_urn_test.go:1967 |
 | test1846 | `Test1846_axis_weighting_decoded_layout` | TEST1846: Decoded layout — 10000*out + 100*in + y. | urn/cap_urn_test.go:1978 |
+| test1872 | `Test1872_registry_url_from_build_env_passes_through_nonempty` | TEST1872: RegistryURLFromBuildEnv passes a non-empty registry URL through unchanged. This is the function that decides a cartridge/engine's baked PRIMARY registry identity; a published build must report exactly the URL it was compiled with (mirror of Rust test1872). | bifaci/manifest_test.go:379 |
+| test1873 | `Test1873_registry_url_from_build_env_none_for_dev` | TEST1873: an unset build-env value (nil) yields nil — a dev build has no baked registry, so the engine reports an empty primary-registry URL and loads only `dev/` cartridges (mirror of Rust test1873). | bifaci/manifest_test.go:392 |
+| test1874 | `Test1874_registry_url_from_build_env_rejects_empty_string` | TEST1874: an exported-but-empty value (a pointer to "") is neither a dev build nor a valid identity and MUST fail hard, so the build can never silently hash the empty string into a fake registry slug. We assert the panic AND its exact message, so a regression that dropped the check (or replaced it with a silent fallback) is caught rather than passing on a bogus empty primary registry (mirror of Rust test1874). | bifaci/manifest_test.go:402 |
 ---
 
 *Generated from Go source tree*
-*Total tests: 918*
-*Total numbered tests: 918*
+*Total tests: 921*
+*Total numbered tests: 921*
 *Total unnumbered tests: 0*
 *Total numbered tests missing descriptions: 0*
 *Total numbering mismatches: 0*

@@ -374,10 +374,10 @@ func Test260_extract_effective_payload_no_content_type(t *testing.T) {
 
 // TEST261: Test extract_effective_payload with CBOR content extracts matching argument value
 func Test261_extract_effective_payload_cbor_match(t *testing.T) {
-	// Build CBOR arguments: [{media_urn: "media:string;textable", value: bytes("hello")}]
+	// Build CBOR arguments: [{media_urn: "media:string;enc=utf-8", value: bytes("hello")}]
 	args := []interface{}{
 		map[string]interface{}{
-			"media_urn": "media:string;textable",
+			"media_urn": "media:string;enc=utf-8",
 			"value":     []byte("hello"),
 		},
 	}
@@ -386,8 +386,8 @@ func Test261_extract_effective_payload_cbor_match(t *testing.T) {
 		t.Fatalf("Failed to encode payload: %v", err)
 	}
 
-	// The cap URN has in=media:string;textable
-	capDef := createTestCap(`cap:in="media:string;textable";test;out="media:void"`, "Test", "test", nil)
+	// The cap URN has in=media:string;enc=utf-8
+	capDef := createTestCap(`cap:in="media:string;enc=utf-8";test;out="media:void"`, "Test", "test", nil)
 	result, err := extractEffectivePayload(payload, "application/cbor", capDef, false)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
@@ -430,7 +430,7 @@ func Test262_extract_effective_payload_cbor_no_match(t *testing.T) {
 		t.Fatalf("Failed to encode payload: %v", err)
 	}
 
-	capDef := createTestCap(`cap:in="media:string;textable";test;out="media:void"`, "Test", "test", nil)
+	capDef := createTestCap(`cap:in="media:string;enc=utf-8";test;out="media:void"`, "Test", "test", nil)
 	_, err = extractEffectivePayload(payload, "application/cbor", capDef, false)
 	if err == nil {
 		t.Fatal("Expected error when no argument matches expected input")
@@ -544,11 +544,11 @@ func Test271_handler_replacement(t *testing.T) {
 func Test272_extract_effective_payload_multiple_args(t *testing.T) {
 	args := []interface{}{
 		map[string]interface{}{
-			"media_urn": "media:other-type;textable",
+			"media_urn": "media:other-type;enc=utf-8",
 			"value":     []byte("wrong"),
 		},
 		map[string]interface{}{
-			"media_urn": "media:model-spec;textable",
+			"media_urn": "media:model-spec;enc=utf-8",
 			"value":     []byte("correct"),
 		},
 	}
@@ -557,7 +557,7 @@ func Test272_extract_effective_payload_multiple_args(t *testing.T) {
 		t.Fatalf("Failed to encode payload: %v", err)
 	}
 
-	capDef := createTestCap(`cap:in="media:model-spec;textable";infer;out="media:void"`, "Test", "infer", nil)
+	capDef := createTestCap(`cap:in="media:model-spec;enc=utf-8";infer;out="media:void"`, "Test", "infer", nil)
 	result, err := extractEffectivePayload(payload, "application/cbor", capDef, false)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
@@ -573,7 +573,7 @@ func Test272_extract_effective_payload_multiple_args(t *testing.T) {
 		t.Errorf("Expected both arguments present, got %d", len(resultArr))
 	}
 
-	inSpec, _ := urn.NewMediaUrnFromString("media:model-spec;textable")
+	inSpec, _ := urn.NewMediaUrnFromString("media:model-spec;enc=utf-8")
 	var foundValue []byte
 	for _, arg := range resultArr {
 		argMap, ok := arg.(map[interface{}]interface{})
@@ -868,7 +868,7 @@ func Test336_FilePathReadsFilePassesBytes(t *testing.T) {
 		"process",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;textable",
+				MediaUrn: "media:file-path;enc=utf-8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:pdf"),
@@ -947,7 +947,7 @@ func Test337_FilePathWithoutStdinPassesString(t *testing.T) {
 		"test",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;textable",
+				MediaUrn: "media:file-path;enc=utf-8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					positionSource(0), // NO stdin source!
@@ -988,7 +988,7 @@ func Test338_FilePathViaCliFlag(t *testing.T) {
 		"process",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;textable",
+				MediaUrn: "media:file-path;enc=utf-8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:pdf"),
@@ -1039,7 +1039,7 @@ func Test339_FilePathArrayGlobExpansion(t *testing.T) {
 	}
 
 	batchArg := cap.CapArg{
-		MediaUrn:   "media:file-path;textable",
+		MediaUrn:   "media:file-path;enc=utf-8",
 		Required:   true,
 		IsSequence: true,
 		Sources: []cap.ArgSource{
@@ -1114,7 +1114,7 @@ func Test340_FileNotFoundClearError(t *testing.T) {
 		"test",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;textable",
+				MediaUrn: "media:file-path;enc=utf-8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:pdf"),
@@ -1162,7 +1162,7 @@ func Test341_StdinPrecedenceOverFilePath(t *testing.T) {
 		"test",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;textable",
+				MediaUrn: "media:file-path;enc=utf-8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:"), // First
@@ -1204,7 +1204,7 @@ func Test342_FilePathPositionZeroReadsFirstArg(t *testing.T) {
 		"test",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;textable",
+				MediaUrn: "media:file-path;enc=utf-8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:"),
@@ -1256,10 +1256,10 @@ func Test343_NonFilePathArgsUnaffected(t *testing.T) {
 		"test",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:model-spec;textable", // NOT file-path
+				MediaUrn: "media:model-spec;enc=utf-8", // NOT file-path
 				Required: true,
 				Sources: []cap.ArgSource{
-					stdinSource("media:model-spec;textable"),
+					stdinSource("media:model-spec;enc=utf-8"),
 					positionSource(0),
 				},
 			},
@@ -1294,7 +1294,7 @@ func Test344_FilePathArrayInvalidJSONFails(t *testing.T) {
 		"batch",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;textable",
+				MediaUrn: "media:file-path;enc=utf-8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:"),
@@ -1340,7 +1340,7 @@ func Test345_FilePathArrayOneFileMissingFailsHard(t *testing.T) {
 		"batch",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;textable",
+				MediaUrn: "media:file-path;enc=utf-8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:"),
@@ -1391,7 +1391,7 @@ func Test346_LargeFileReadsSuccessfully(t *testing.T) {
 		"test",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;textable",
+				MediaUrn: "media:file-path;enc=utf-8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:"),
@@ -1435,7 +1435,7 @@ func Test347_EmptyFileReadsAsEmptyBytes(t *testing.T) {
 		"test",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;textable",
+				MediaUrn: "media:file-path;enc=utf-8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:"),
@@ -1480,7 +1480,7 @@ func Test348_FilePathConversionRespectsSourceOrder(t *testing.T) {
 		"test",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;textable",
+				MediaUrn: "media:file-path;enc=utf-8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					positionSource(0),     // First
@@ -1526,7 +1526,7 @@ func Test349_FilePathMultipleSourcesFallback(t *testing.T) {
 		"test",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;textable",
+				MediaUrn: "media:file-path;enc=utf-8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					cliFlagSource("--file"), // First (not provided)
@@ -1568,12 +1568,12 @@ func Test350_FullCLIModeWithFilePathIntegration(t *testing.T) {
 	}
 
 	capDef := createTestCap(
-		`cap:in="media:pdf";process;out="media:result;textable"`,
+		`cap:in="media:pdf";process;out="media:result;enc=utf-8"`,
 		"Process PDF",
 		"process",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;textable",
+				MediaUrn: "media:file-path;enc=utf-8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:pdf"),
@@ -1594,7 +1594,7 @@ func Test350_FullCLIModeWithFilePathIntegration(t *testing.T) {
 	// wrapper to recover the raw file bytes.
 	var receivedPayload []byte
 	runtime.Register(
-		`cap:in="media:pdf";process;out="media:result;textable"`,
+		`cap:in="media:pdf";process;out="media:result;enc=utf-8"`,
 		func(frames <-chan Frame, emitter StreamEmitter, peer PeerInvoker) error {
 			payload, err := CollectFirstArg(frames)
 			if err != nil {
@@ -1642,7 +1642,7 @@ func Test350_FullCLIModeWithFilePathIntegration(t *testing.T) {
 // args. Mirrors Rust test351_file_path_array_empty_array.
 func Test351_FilePathArrayEmptyArray(t *testing.T) {
 	batchArg := cap.CapArg{
-		MediaUrn:   "media:file-path;textable",
+		MediaUrn:   "media:file-path;enc=utf-8",
 		Required:   false,
 		IsSequence: true,
 		Sources: []cap.ArgSource{
@@ -1659,7 +1659,7 @@ func Test351_FilePathArrayEmptyArray(t *testing.T) {
 	// CBOR-mode payload: value is an empty Array
 	args := []interface{}{
 		map[string]interface{}{
-			"media_urn": "media:file-path;textable",
+			"media_urn": "media:file-path;enc=utf-8",
 			"value":     []interface{}{},
 		},
 	}
@@ -1716,7 +1716,7 @@ func Test352_FilePermissionDeniedClearError(t *testing.T) {
 		"test",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;textable",
+				MediaUrn: "media:file-path;enc=utf-8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:"),
@@ -1749,15 +1749,15 @@ func Test352_FilePermissionDeniedClearError(t *testing.T) {
 // TEST353: CBOR payload format matches between CLI and CBOR mode
 func Test353_CBORPayloadFormatConsistency(t *testing.T) {
 	capDef := createTestCap(
-		`cap:in="media:text;textable";test;out="media:void"`,
+		`cap:in="media:text;enc=utf-8";test;out="media:void"`,
 		"Test",
 		"test",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:text;textable",
+				MediaUrn: "media:text;enc=utf-8",
 				Required: true,
 				Sources: []cap.ArgSource{
-					stdinSource("media:text;textable"),
+					stdinSource("media:text;enc=utf-8"),
 					positionSource(0),
 				},
 			},
@@ -1795,8 +1795,8 @@ func Test353_CBORPayloadFormatConsistency(t *testing.T) {
 		t.Fatal("Expected argument to have media_urn and value fields")
 	}
 
-	if mediaUrn != "media:text;textable" {
-		t.Errorf("Expected media_urn 'media:text;textable', got: %s", mediaUrn)
+	if mediaUrn != "media:text;enc=utf-8" {
+		t.Errorf("Expected media_urn 'media:text;enc=utf-8', got: %s", mediaUrn)
 	}
 
 	if string(value) != "test value" {
@@ -1815,7 +1815,7 @@ func Test354_GlobPatternNoMatchesEmptyArray(t *testing.T) {
 		"batch",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;textable",
+				MediaUrn: "media:file-path;enc=utf-8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:"),
@@ -1868,7 +1868,7 @@ func Test355_GlobPatternSkipsDirectories(t *testing.T) {
 	}
 
 	batchArg := cap.CapArg{
-		MediaUrn:   "media:file-path;textable",
+		MediaUrn:   "media:file-path;enc=utf-8",
 		Required:   true,
 		IsSequence: true,
 		Sources: []cap.ArgSource{
@@ -1939,7 +1939,7 @@ func Test356_MultipleGlobPatternsCombined(t *testing.T) {
 	}
 
 	batchArg := cap.CapArg{
-		MediaUrn:   "media:file-path;textable",
+		MediaUrn:   "media:file-path;enc=utf-8",
 		Required:   true,
 		IsSequence: true,
 		Sources: []cap.ArgSource{
@@ -1959,7 +1959,7 @@ func Test356_MultipleGlobPatternsCombined(t *testing.T) {
 	pattern2 := filepath.Join(tempDir, "*.json")
 	args := []interface{}{
 		map[string]interface{}{
-			"media_urn": "media:file-path;textable",
+			"media_urn": "media:file-path;enc=utf-8",
 			"value":     []interface{}{pattern1, pattern2},
 		},
 	}
@@ -2027,7 +2027,7 @@ func Test357_SymlinksFollowed(t *testing.T) {
 		"test",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;textable",
+				MediaUrn: "media:file-path;enc=utf-8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:"),
@@ -2072,7 +2072,7 @@ func Test358_BinaryFileNonUTF8(t *testing.T) {
 		"test",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;textable",
+				MediaUrn: "media:file-path;enc=utf-8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:"),
@@ -2112,7 +2112,7 @@ func Test358_BinaryFileNonUTF8(t *testing.T) {
 // Mirrors Rust test359_invalid_glob_pattern_fails.
 func Test359_InvalidGlobPatternFails(t *testing.T) {
 	batchArg := cap.CapArg{
-		MediaUrn:   "media:file-path;textable",
+		MediaUrn:   "media:file-path;enc=utf-8",
 		Required:   true,
 		IsSequence: true,
 		Sources: []cap.ArgSource{
@@ -2130,7 +2130,7 @@ func Test359_InvalidGlobPatternFails(t *testing.T) {
 	// Invalid glob pattern (unclosed bracket) sent in CBOR mode.
 	args := []interface{}{
 		map[string]interface{}{
-			"media_urn": "media:file-path;textable",
+			"media_urn": "media:file-path;enc=utf-8",
 			"value":     "[invalid",
 		},
 	}
@@ -2162,7 +2162,7 @@ func Test360_ExtractEffectivePayloadWithFileData(t *testing.T) {
 		"process",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;textable",
+				MediaUrn: "media:file-path;enc=utf-8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:pdf"),
@@ -2245,7 +2245,7 @@ func Test361_CLIModeFilePath(t *testing.T) {
 		"process",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;textable",
+				MediaUrn: "media:file-path;enc=utf-8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:pdf"),
@@ -2521,7 +2521,7 @@ func Test364_CBORModeFilePath(t *testing.T) {
 	// Build CBOR arguments with file-path URN
 	args := []cap.CapArgumentValue{
 		{
-			MediaUrn: "media:file-path;textable",
+			MediaUrn: "media:file-path;enc=utf-8",
 			Value:    []byte(tempFile),
 		},
 	}
@@ -2556,7 +2556,7 @@ func Test364_CBORModeFilePath(t *testing.T) {
 	mediaUrn, _ := argMap["media_urn"].(string)
 	value, _ := argMap["value"].([]byte)
 
-	if mediaUrn != "media:file-path;textable" {
+	if mediaUrn != "media:file-path;enc=utf-8" {
 		t.Errorf("Expected media:file-path URN, got: %s", mediaUrn)
 	}
 	if string(value) != tempFile {
@@ -2941,9 +2941,9 @@ func streamsToSlice(streams []testStream) []struct {
 // TEST678: find_stream with exact equivalent URN (same tags, different order) succeeds
 func Test678_find_stream_equivalent_urn(t *testing.T) {
 	streams := streamsToSlice([]testStream{
-		{"media:textable;txt", []byte("hello world")},
+		{"media:txt;enc=utf-8", []byte("hello world")},
 	})
-	result, err := FindStream(streams, "media:textable;txt")
+	result, err := FindStream(streams, "media:txt;enc=utf-8")
 	if err != nil {
 		t.Fatalf("FindStream error: %v", err)
 	}
@@ -2955,12 +2955,12 @@ func Test678_find_stream_equivalent_urn(t *testing.T) {
 	}
 }
 
-// TEST679: find_stream with base URN vs full URN fails — is_equivalent is strict This is the root cause of the cartridge_client.rs bug. Sender sent "media:llm-generation-request" but receiver looked for "media:llm-generation-request;json;record".
+// TEST679: find_stream with base URN vs full URN fails — is_equivalent is strict This is the root cause of the cartridge_client.rs bug. Sender sent "media:llm-generation-request" but receiver looked for "media:llm-generation-request;fmt=json;record".
 func Test679_find_stream_base_vs_full_fails(t *testing.T) {
 	streams := streamsToSlice([]testStream{
-		{"media:textable;txt", []byte("hello")},
+		{"media:txt;enc=utf-8", []byte("hello")},
 	})
-	result, _ := FindStream(streams, "media:textable")
+	result, _ := FindStream(streams, "media:enc=utf-8")
 	if result != nil {
 		t.Fatal("Base URN must not match more specific URN (is_equivalent is strict)")
 	}
@@ -2969,7 +2969,7 @@ func Test679_find_stream_base_vs_full_fails(t *testing.T) {
 // TEST680: require_stream with missing URN returns hard StreamError
 func Test680_require_stream_missing_fails(t *testing.T) {
 	streams := streamsToSlice([]testStream{
-		{"media:textable;txt", []byte("hello")},
+		{"media:txt;enc=utf-8", []byte("hello")},
 	})
 	_, err := RequireStream(streams, "media:binary")
 	if err == nil {
@@ -2983,9 +2983,9 @@ func Test680_require_stream_missing_fails(t *testing.T) {
 // TEST681: find_stream with multiple streams returns the correct one
 func Test681_find_stream_multiple(t *testing.T) {
 	streams := streamsToSlice([]testStream{
-		{"media:textable;txt", []byte("text data")},
+		{"media:txt;enc=utf-8", []byte("text data")},
 		{"media:image;png", []byte("image data")},
-		{"media:json;textable", []byte("json data")},
+		{"media:fmt=json", []byte("json data")},
 	})
 	result, err := FindStream(streams, "media:image;png")
 	if err != nil {
@@ -2999,9 +2999,9 @@ func Test681_find_stream_multiple(t *testing.T) {
 // TEST682: require_stream_str returns UTF-8 string for text data
 func Test682_require_stream_returns_data(t *testing.T) {
 	streams := streamsToSlice([]testStream{
-		{"media:textable;txt", []byte("hello text")},
+		{"media:txt;enc=utf-8", []byte("hello text")},
 	})
-	result, err := RequireStream(streams, "media:textable;txt")
+	result, err := RequireStream(streams, "media:txt;enc=utf-8")
 	if err != nil {
 		t.Fatalf("RequireStream failed: %v", err)
 	}
@@ -3013,7 +3013,7 @@ func Test682_require_stream_returns_data(t *testing.T) {
 // TEST683: find_stream returns None for invalid media URN string (not a parse error — just None)
 func Test683_find_stream_invalid_urn_returns_nil(t *testing.T) {
 	streams := streamsToSlice([]testStream{
-		{"media:textable;txt", []byte("data")},
+		{"media:txt;enc=utf-8", []byte("data")},
 	})
 	found, _ := FindStream(streams, "")
 	if found != nil {

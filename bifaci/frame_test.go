@@ -695,7 +695,7 @@ func Test366_stream_end_frame(t *testing.T) {
 func Test367_stream_start_with_empty_stream_id(t *testing.T) {
 	reqId := NewMessageIdRandom()
 	streamId := ""
-	mediaUrn := "media:json"
+	mediaUrn := "media:fmt=json"
 
 	frame := NewStreamStart(reqId, streamId, mediaUrn, nil)
 

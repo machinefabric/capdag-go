@@ -341,10 +341,10 @@ func buildForeachPlanWithCollect() *MachinePlan {
 	plan.AddNode(NewInputSlotNode("input_slot", "input", "media:pdf", CardinalitySingle))
 	plan.AddNode(NewMachineNode("cap_0", `cap:in=media:pdf;out="media:pdf-page;list"`))
 	plan.AddNode(NewForEachNode("foreach_0", "cap_0", "body_cap_0", "body_cap_1"))
-	plan.AddNode(NewMachineNode("body_cap_0", `cap:in=media:pdf-page;out="media:text;textable"`))
-	plan.AddNode(NewMachineNode("body_cap_1", `cap:in="media:text;textable";out="media:decision;json;record;textable"`))
+	plan.AddNode(NewMachineNode("body_cap_0", `cap:in=media:pdf-page;out="media:text;enc=utf-8"`))
+	plan.AddNode(NewMachineNode("body_cap_1", `cap:in="media:text;enc=utf-8";out="media:decision;fmt=json;record"`))
 	plan.AddNode(NewCollectNode("collect_0", []string{"body_cap_1"}))
-	plan.AddNode(NewMachineNode("cap_post", `cap:in="media:decision;json;record;textable";out="media:json;textable"`))
+	plan.AddNode(NewMachineNode("cap_post", `cap:in="media:decision;fmt=json;record";out="media:fmt=json"`))
 	plan.AddNode(NewOutputNode("output", "result", "cap_post"))
 
 	plan.AddEdge(NewDirectEdge("input_slot", "cap_0"))
@@ -365,7 +365,7 @@ func buildForeachPlanUnclosed() *MachinePlan {
 	plan.AddNode(NewInputSlotNode("input_slot", "input", "media:pdf", CardinalitySingle))
 	plan.AddNode(NewMachineNode("cap_0", `cap:in=media:pdf;out="media:pdf-page;list"`))
 	plan.AddNode(NewForEachNode("foreach_0", "cap_0", "body_cap_0", "body_cap_0"))
-	plan.AddNode(NewMachineNode("body_cap_0", `cap:in=media:pdf-page;out="media:decision;json;record;textable"`))
+	plan.AddNode(NewMachineNode("body_cap_0", `cap:in=media:pdf-page;out="media:decision;fmt=json;record"`))
 	plan.AddNode(NewOutputNode("output", "result", "body_cap_0"))
 
 	plan.AddEdge(NewDirectEdge("input_slot", "cap_0"))
@@ -438,7 +438,7 @@ func Test757_extract_foreach_body_wrong_type(t *testing.T) {
 func Test758_extract_suffix_from(t *testing.T) {
 	plan := buildForeachPlanWithCollect()
 
-	suffix, err := plan.ExtractSuffixFrom("collect_0", "media:decision;json;record;textable")
+	suffix, err := plan.ExtractSuffixFrom("collect_0", "media:decision;fmt=json;record")
 	require.NoError(t, err)
 
 	assert.Equal(t, 3, len(suffix.Nodes))
@@ -474,7 +474,7 @@ func Test760_decomposition_covers_all_caps(t *testing.T) {
 	require.NoError(t, err)
 	body, err := plan.ExtractForEachBody("foreach_0", "media:pdf-page")
 	require.NoError(t, err)
-	suffix, err := plan.ExtractSuffixFrom("collect_0", "media:decision;json;record;textable")
+	suffix, err := plan.ExtractSuffixFrom("collect_0", "media:decision;fmt=json;record")
 	require.NoError(t, err)
 
 	allCaps := make(map[string]bool)
@@ -510,7 +510,7 @@ func Test762_body_is_dag(t *testing.T) {
 // TEST763: Suffix sub-plan can be topologically sorted (is a valid DAG)
 func Test763_suffix_is_dag(t *testing.T) {
 	plan := buildForeachPlanWithCollect()
-	suffix, err := plan.ExtractSuffixFrom("collect_0", "media:decision;json;record;textable")
+	suffix, err := plan.ExtractSuffixFrom("collect_0", "media:decision;fmt=json;record")
 	require.NoError(t, err)
 	_, err = suffix.TopologicalOrder()
 	assert.NoError(t, err)
@@ -726,8 +726,8 @@ func Test936_has_foreach(t *testing.T) {
 
 	// Standalone Collect (no ForEach) should NOT trigger HasForeach
 	standalonePlan := NewMachinePlan("collect_only")
-	standalonePlan.AddNode(NewInputSlotNode("input", "input", "media:textable", CardinalitySingle))
-	standalonePlan.AddNode(NewMachineNode("cap_0", "cap:in=media:textable;summarize;out=media:summary"))
+	standalonePlan.AddNode(NewInputSlotNode("input", "input", "media:enc=utf-8", CardinalitySingle))
+	standalonePlan.AddNode(NewMachineNode("cap_0", "cap:in=media:summarize;out=media;enc=utf-8:summary"))
 	standalonePlan.AddNode(NewCollectNode("collect_0", []string{"cap_0"}))
 	standalonePlan.AddNode(NewOutputNode("output", "result", "collect_0"))
 	assert.False(t, standalonePlan.HasForeach(), "Plan with standalone Collect (no ForEach) should NOT trigger HasForeach")
