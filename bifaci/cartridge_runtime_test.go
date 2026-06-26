@@ -617,7 +617,7 @@ func Test273_ExtractEffectivePayloadBinaryValue(t *testing.T) {
 	}
 	args := []interface{}{
 		map[string]interface{}{
-			"media_urn": "media:pdf",
+			"media_urn": "media:ext=pdf",
 			"value":     binaryData,
 		},
 	}
@@ -626,7 +626,7 @@ func Test273_ExtractEffectivePayloadBinaryValue(t *testing.T) {
 		t.Fatalf("Failed to encode payload: %v", err)
 	}
 
-	capDef := createTestCap(`cap:in="media:pdf";process;out="media:void"`, "Test", "process", nil)
+	capDef := createTestCap(`cap:in="media:ext=pdf";process;out="media:void"`, "Test", "process", nil)
 	result, err := extractEffectivePayload(payload, "application/cbor", capDef, false)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
@@ -863,7 +863,7 @@ func Test336_FilePathReadsFilePassesBytes(t *testing.T) {
 	}
 
 	capDef := createTestCap(
-		`cap:in="media:pdf";process;out="media:void"`,
+		`cap:in="media:ext=pdf";process;out="media:void"`,
 		"Process PDF",
 		"process",
 		[]cap.CapArg{
@@ -871,7 +871,7 @@ func Test336_FilePathReadsFilePassesBytes(t *testing.T) {
 				MediaUrn: "media:file-path;enc=utf-8",
 				Required: true,
 				Sources: []cap.ArgSource{
-					stdinSource("media:pdf"),
+					stdinSource("media:ext=pdf"),
 					positionSource(0),
 				},
 			},
@@ -889,7 +889,7 @@ func Test336_FilePathReadsFilePassesBytes(t *testing.T) {
 	// wrapper to recover the raw file bytes.
 	var receivedPayload []byte
 	runtime.Register(
-		`cap:in="media:pdf";process;out="media:void"`,
+		`cap:in="media:ext=pdf";process;out="media:void"`,
 		func(frames <-chan Frame, emitter StreamEmitter, peer PeerInvoker) error {
 			payload, err := CollectFirstArg(frames)
 			if err != nil {
@@ -983,7 +983,7 @@ func Test338_FilePathViaCliFlag(t *testing.T) {
 	}
 
 	capDef := createTestCap(
-		`cap:in="media:pdf";process;out="media:void"`,
+		`cap:in="media:ext=pdf";process;out="media:void"`,
 		"Process",
 		"process",
 		[]cap.CapArg{
@@ -991,7 +991,7 @@ func Test338_FilePathViaCliFlag(t *testing.T) {
 				MediaUrn: "media:file-path;enc=utf-8",
 				Required: true,
 				Sources: []cap.ArgSource{
-					stdinSource("media:pdf"),
+					stdinSource("media:ext=pdf"),
 					cliFlagSource("--file"),
 				},
 			},
@@ -1109,7 +1109,7 @@ func Test339_FilePathArrayGlobExpansion(t *testing.T) {
 // TEST340: File not found error provides clear message
 func Test340_FileNotFoundClearError(t *testing.T) {
 	capDef := createTestCap(
-		`cap:in="media:pdf";test;out="media:void"`,
+		`cap:in="media:ext=pdf";test;out="media:void"`,
 		"Test",
 		"test",
 		[]cap.CapArg{
@@ -1117,7 +1117,7 @@ func Test340_FileNotFoundClearError(t *testing.T) {
 				MediaUrn: "media:file-path;enc=utf-8",
 				Required: true,
 				Sources: []cap.ArgSource{
-					stdinSource("media:pdf"),
+					stdinSource("media:ext=pdf"),
 					positionSource(0),
 				},
 			},
@@ -1568,7 +1568,7 @@ func Test350_FullCLIModeWithFilePathIntegration(t *testing.T) {
 	}
 
 	capDef := createTestCap(
-		`cap:in="media:pdf";process;out="media:result;enc=utf-8"`,
+		`cap:in="media:ext=pdf";process;out="media:result;enc=utf-8"`,
 		"Process PDF",
 		"process",
 		[]cap.CapArg{
@@ -1576,7 +1576,7 @@ func Test350_FullCLIModeWithFilePathIntegration(t *testing.T) {
 				MediaUrn: "media:file-path;enc=utf-8",
 				Required: true,
 				Sources: []cap.ArgSource{
-					stdinSource("media:pdf"),
+					stdinSource("media:ext=pdf"),
 					positionSource(0),
 				},
 			},
@@ -1594,7 +1594,7 @@ func Test350_FullCLIModeWithFilePathIntegration(t *testing.T) {
 	// wrapper to recover the raw file bytes.
 	var receivedPayload []byte
 	runtime.Register(
-		`cap:in="media:pdf";process;out="media:result;enc=utf-8"`,
+		`cap:in="media:ext=pdf";process;out="media:result;enc=utf-8"`,
 		func(frames <-chan Frame, emitter StreamEmitter, peer PeerInvoker) error {
 			payload, err := CollectFirstArg(frames)
 			if err != nil {
@@ -2157,7 +2157,7 @@ func Test360_ExtractEffectivePayloadWithFileData(t *testing.T) {
 	}
 
 	capDef := createTestCap(
-		`cap:in="media:pdf";process;out="media:void"`,
+		`cap:in="media:ext=pdf";process;out="media:void"`,
 		"Process",
 		"process",
 		[]cap.CapArg{
@@ -2165,7 +2165,7 @@ func Test360_ExtractEffectivePayloadWithFileData(t *testing.T) {
 				MediaUrn: "media:file-path;enc=utf-8",
 				Required: true,
 				Sources: []cap.ArgSource{
-					stdinSource("media:pdf"),
+					stdinSource("media:ext=pdf"),
 					positionSource(0),
 				},
 			},
@@ -2195,7 +2195,7 @@ func Test360_ExtractEffectivePayloadWithFileData(t *testing.T) {
 	if err := cborlib.Unmarshal(effective, &resultArr); err != nil {
 		t.Fatalf("Failed to decode result CBOR: %v", err)
 	}
-	inSpec, _ := urn.NewMediaUrnFromString("media:pdf")
+	inSpec, _ := urn.NewMediaUrnFromString("media:ext=pdf")
 	var foundValue []byte
 	for _, arg := range resultArr {
 		argMap, ok := arg.(map[interface{}]interface{})
@@ -2240,7 +2240,7 @@ func Test361_CLIModeFilePath(t *testing.T) {
 	defer os.Remove(tempFile)
 
 	capDef := createTestCap(
-		`cap:in="media:pdf";process;out="media:void"`,
+		`cap:in="media:ext=pdf";process;out="media:void"`,
 		"Process",
 		"process",
 		[]cap.CapArg{
@@ -2248,7 +2248,7 @@ func Test361_CLIModeFilePath(t *testing.T) {
 				MediaUrn: "media:file-path;enc=utf-8",
 				Required: true,
 				Sources: []cap.ArgSource{
-					stdinSource("media:pdf"),
+					stdinSource("media:ext=pdf"),
 					positionSource(0),
 				},
 			},
@@ -2289,15 +2289,15 @@ func Test362_CLIModePipedBinary(t *testing.T) {
 
 	// Create cap that accepts stdin
 	capDef := createTestCap(
-		`cap:in="media:pdf";process;out="media:void"`,
+		`cap:in="media:ext=pdf";process;out="media:void"`,
 		"Process",
 		"process",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:pdf",
+				MediaUrn: "media:ext=pdf",
 				Required: true,
 				Sources: []cap.ArgSource{
-					stdinSource("media:pdf"),
+					stdinSource("media:ext=pdf"),
 				},
 			},
 		},
@@ -2358,7 +2358,7 @@ func Test362_CLIModePipedBinary(t *testing.T) {
 		}
 	}
 
-	if mediaUrn != "media:pdf" {
+	if mediaUrn != "media:ext=pdf" {
 		t.Errorf("Media URN should match cap in_spec, got: %s", mediaUrn)
 	}
 	if string(value) != string(pdfContent) {
@@ -2411,15 +2411,15 @@ func Test363_CBORModeChunkedContent(t *testing.T) {
 	}
 
 	capDef := createTestCap(
-		`cap:in="media:pdf";process;out="media:void"`,
+		`cap:in="media:ext=pdf";process;out="media:void"`,
 		"Process",
 		"process",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:pdf",
+				MediaUrn: "media:ext=pdf",
 				Required: true,
 				Sources: []cap.ArgSource{
-					stdinSource("media:pdf"),
+					stdinSource("media:ext=pdf"),
 				},
 			},
 		},
@@ -2435,7 +2435,7 @@ func Test363_CBORModeChunkedContent(t *testing.T) {
 	// Build CBOR payload
 	args := []cap.CapArgumentValue{
 		{
-			MediaUrn: "media:pdf",
+			MediaUrn: "media:ext=pdf",
 			Value:    pdfContent,
 		},
 	}

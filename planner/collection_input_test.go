@@ -21,7 +21,7 @@ func Test716_empty_collection(t *testing.T) {
 // Verifies total_file_count() returns 2 for collection with 2 files, no folders
 func Test717_collection_with_files(t *testing.T) {
 	collection := NewCapInputCollection("folder-123", "Test Folder")
-	collection.Files = append(collection.Files, NewCollectionFile("listing-1", "/path/to/file1.pdf", "media:pdf"))
+	collection.Files = append(collection.Files, NewCollectionFile("listing-1", "/path/to/file1.pdf", "media:ext=pdf"))
 	collection.Files = append(collection.Files, NewCollectionFile("listing-2", "/path/to/file2.md", "media:md;enc=utf-8"))
 
 	assert.False(t, collection.IsEmpty())
@@ -33,11 +33,11 @@ func Test717_collection_with_files(t *testing.T) {
 // Verifies total_file_count() includes subfolder files and total_folder_count() counts subfolders
 func Test718_nested_collection(t *testing.T) {
 	root := NewCapInputCollection("folder-root", "Root")
-	root.Files = append(root.Files, NewCollectionFile("listing-1", "/path/file1.pdf", "media:pdf"))
+	root.Files = append(root.Files, NewCollectionFile("listing-1", "/path/file1.pdf", "media:ext=pdf"))
 
 	subfolder := NewCapInputCollection("folder-sub", "Subfolder")
-	subfolder.Files = append(subfolder.Files, NewCollectionFile("listing-2", "/path/sub/file2.pdf", "media:pdf"))
-	subfolder.Files = append(subfolder.Files, NewCollectionFile("listing-3", "/path/sub/file3.pdf", "media:pdf"))
+	subfolder.Files = append(subfolder.Files, NewCollectionFile("listing-2", "/path/sub/file2.pdf", "media:ext=pdf"))
+	subfolder.Files = append(subfolder.Files, NewCollectionFile("listing-3", "/path/sub/file3.pdf", "media:ext=pdf"))
 
 	root.Folders["Subfolder"] = subfolder
 
@@ -49,10 +49,10 @@ func Test718_nested_collection(t *testing.T) {
 // Verifies flatten() extracts files from root and all subfolders into flat list
 func Test719_flatten_to_files(t *testing.T) {
 	root := NewCapInputCollection("folder-root", "Root")
-	root.Files = append(root.Files, NewCollectionFile("listing-1", "/path/file1.pdf", "media:pdf"))
+	root.Files = append(root.Files, NewCollectionFile("listing-1", "/path/file1.pdf", "media:ext=pdf"))
 
 	subfolder := NewCapInputCollection("folder-sub", "Subfolder")
-	subfolder.Files = append(subfolder.Files, NewCollectionFile("listing-2", "/path/sub/file2.pdf", "media:pdf"))
+	subfolder.Files = append(subfolder.Files, NewCollectionFile("listing-2", "/path/sub/file2.pdf", "media:ext=pdf"))
 
 	root.Folders["Subfolder"] = subfolder
 
@@ -68,7 +68,7 @@ func Test719_flatten_to_files(t *testing.T) {
 // Verifies JSON round-trip preserves folder_id, folder_name, files and file metadata.
 func Test933_serialization_roundtrip(t *testing.T) {
 	collection := NewCapInputCollection("folder-123", "Test Folder")
-	file := NewCollectionFile("listing-1", "/path/to/file.pdf", "media:pdf")
+	file := NewCollectionFile("listing-1", "/path/to/file.pdf", "media:ext=pdf")
 	file.Title = "My Document"
 	collection.Files = append(collection.Files, file)
 

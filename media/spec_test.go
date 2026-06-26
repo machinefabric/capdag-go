@@ -483,7 +483,7 @@ func Test608_media_urns_for_extension_populated(t *testing.T) {
 	require.NoError(t, err)
 
 	registry.AddSpec(StoredMediaDef{
-		Urn:        "media:pdf",
+		Urn:        "media:ext=pdf",
 		MediaType:  "application/pdf",
 		Title:      "PDF Document",
 		Extensions: []string{"pdf"},
@@ -514,7 +514,7 @@ func Test609_get_extension_mappings(t *testing.T) {
 	require.NoError(t, err)
 
 	registry.AddSpec(StoredMediaDef{
-		Urn:        "media:pdf",
+		Urn:        "media:ext=pdf",
 		MediaType:  "application/octet-stream",
 		Title:      "Test",
 		Extensions: []string{"pdf"},
@@ -570,7 +570,7 @@ func Test614_registry_creation(t *testing.T) {
 // TEST616: Verify StoredMediaDef converts to MediaDef preserving all fields
 func Test616_stored_media_def_to_def(t *testing.T) {
 	spec := StoredMediaDef{
-		Urn:         "media:pdf",
+		Urn:         "media:ext=pdf",
 		MediaType:   "application/pdf",
 		Title:       "PDF Document",
 		ProfileURI:  "https://capdag.com/schema/pdf",
@@ -579,7 +579,7 @@ func Test616_stored_media_def_to_def(t *testing.T) {
 	}
 
 	def := spec.ToMediaDef()
-	assert.Equal(t, "media:pdf", def.Urn)
+	assert.Equal(t, "media:ext=pdf", def.Urn)
 	assert.Equal(t, "application/pdf", def.MediaType)
 	assert.Equal(t, "PDF Document", def.Title)
 	assert.Equal(t, "PDF document data", def.Description)

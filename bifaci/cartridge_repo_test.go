@@ -409,7 +409,7 @@ func Test328_cartridge_repo_server_get_by_category(t *testing.T) {
 
 // TEST329: CartridgeRepoServer.get_suggestions_for_cap() finds cartridges providing a given cap URN
 func Test329_cartridge_repo_server_get_by_cap(t *testing.T) {
-	capUrn := `cap:in="media:pdf";disbind;out="media:disbound-page;list;enc=utf-8"`
+	capUrn := `cap:in="media:ext=pdf";disbind;out="media:disbound-page;list;enc=utf-8"`
 	entry := CartridgeRegistryEntry{
 		Name:          "PDF Cartridge",
 		Description:   "Process PDFs",
@@ -447,7 +447,7 @@ func Test329_cartridge_repo_server_get_by_cap(t *testing.T) {
 	// Same cap URN, same in/out, same op, but the out-spec's tags appear
 	// in a different declared order. Tagged-URN equivalence treats them
 	// as identical, so the lookup must still resolve.
-	reorderedUrn := `cap:in="media:pdf";disbind;out="media:list;disbound-page;enc=utf-8"`
+	reorderedUrn := `cap:in="media:ext=pdf";disbind;out="media:list;disbound-page;enc=utf-8"`
 	reordered, err := server.GetCartridgesByCap(reorderedUrn)
 	if err != nil {
 		t.Fatalf("Failed to get by reordered cap: %v", err)
@@ -509,7 +509,7 @@ func Test330_cartridge_repo_client_update_cache(t *testing.T) {
 func Test331_cartridge_repo_client_get_suggestions(t *testing.T) {
 	repo := NewCartridgeRepo(3600)
 
-	capUrn := `cap:in="media:pdf";disbind;out="media:disbound-page;list;enc=utf-8"`
+	capUrn := `cap:in="media:ext=pdf";disbind;out="media:disbound-page;list;enc=utf-8"`
 	registry := &CartridgeRegistryResponse{
 		Cartridges: []CartridgeInfo{
 			{
@@ -601,7 +601,7 @@ func Test332_cartridge_repo_client_get_cartridge(t *testing.T) {
 func Test333_cartridge_repo_client_get_all_caps(t *testing.T) {
 	repo := NewCartridgeRepo(3600)
 
-	cap1 := `cap:in="media:pdf";disbind;out="media:disbound-page;list;enc=utf-8"`
+	cap1 := `cap:in="media:ext=pdf";disbind;out="media:disbound-page;list;enc=utf-8"`
 	cap2 := `cap:in="media:txt;enc=utf-8";disbind;out="media:disbound-page;list;enc=utf-8"`
 
 	registry := &CartridgeRegistryResponse{

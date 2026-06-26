@@ -960,7 +960,7 @@ func Test890_direction_semantic_matching(t *testing.T) {
 	)
 	require.NoError(t, err)
 	pdfRequest, err := NewCapUrnFromString(
-		`cap:in="media:pdf";generate-thumbnail;out="media:image;png;thumbnail"`,
+		`cap:in="media:ext=pdf";generate-thumbnail;out="media:image;png;thumbnail"`,
 	)
 	require.NoError(t, err)
 	assert.True(t, genericCap.Accepts(pdfRequest),
@@ -974,7 +974,7 @@ func Test890_direction_semantic_matching(t *testing.T) {
 		"Generic provider must match epub request")
 
 	pdfCap, err := NewCapUrnFromString(
-		`cap:in="media:pdf";generate-thumbnail;out="media:image;png;thumbnail"`,
+		`cap:in="media:ext=pdf";generate-thumbnail;out="media:image;png;thumbnail"`,
 	)
 	require.NoError(t, err)
 	genericRequest, err := NewCapUrnFromString(
@@ -1020,7 +1020,7 @@ func Test891_direction_semantic_specificity(t *testing.T) {
 	)
 	require.NoError(t, err)
 	specificCap, err := NewCapUrnFromString(
-		`cap:in="media:pdf";generate-thumbnail;out="media:image;png;thumbnail"`,
+		`cap:in="media:ext=pdf";generate-thumbnail;out="media:image;png;thumbnail"`,
 	)
 	require.NoError(t, err)
 
@@ -1032,7 +1032,7 @@ func Test891_direction_semantic_specificity(t *testing.T) {
 	assert.Equal(t, 10000*6+100*0+2, genericCap.Specificity())
 	// specificCap:
 	//   out=media:image;png;thumbnail -> 6
-	//   in=media:pdf                  -> 2
+	//   in=media:ext=pdf                  -> 2
 	//   y: generate-thumbnail marker  -> 2
 	//   spec_C = 10000*6 + 100*2 + 2 = 60202
 	assert.Equal(t, 10000*6+100*2+2, specificCap.Specificity())
@@ -1041,7 +1041,7 @@ func Test891_direction_semantic_specificity(t *testing.T) {
 		"pdf cap must be more specific than wildcard cap")
 
 	pdfRequest, err := NewCapUrnFromString(
-		`cap:in="media:pdf";generate-thumbnail;out="media:image;png;thumbnail"`,
+		`cap:in="media:ext=pdf";generate-thumbnail;out="media:image;png;thumbnail"`,
 	)
 	require.NoError(t, err)
 	caps := []*CapUrn{genericCap, specificCap}
@@ -1095,9 +1095,9 @@ func Test560_with_in_out_spec(t *testing.T) {
 
 	// Chain both
 	changedBoth := cap.
-		WithInSpec("media:pdf").
+		WithInSpec("media:ext=pdf").
 		WithOutSpec("media:txt;enc=utf-8")
-	assert.Equal(t, "media:pdf", changedBoth.InSpec())
+	assert.Equal(t, "media:ext=pdf", changedBoth.InSpec())
 	assert.Equal(t, "media:enc=utf-8;txt", changedBoth.OutSpec())
 }
 
@@ -1283,9 +1283,9 @@ func Test653_identity_routing_isolation(t *testing.T) {
 
 // TEST823: is_dispatchable — exact match provider dispatches request
 func Test823_dispatch_exact_match(t *testing.T) {
-	provider, err := NewCapUrnFromString(`cap:in="media:pdf";extract;out="media:record;enc=utf-8"`)
+	provider, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
-	request, err := NewCapUrnFromString(`cap:in="media:pdf";extract;out="media:record;enc=utf-8"`)
+	request, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
 	assert.True(t, provider.IsDispatchable(request))
 }
@@ -1294,14 +1294,14 @@ func Test823_dispatch_exact_match(t *testing.T) {
 func Test824_dispatch_contravariant_input(t *testing.T) {
 	provider, err := NewCapUrnFromString(`cap:in="media:";analyze;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
-	request, err := NewCapUrnFromString(`cap:in="media:pdf";analyze;out="media:record;enc=utf-8"`)
+	request, err := NewCapUrnFromString(`cap:in="media:ext=pdf";analyze;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
 	assert.True(t, provider.IsDispatchable(request))
 }
 
 // TEST825: is_dispatchable — request with unconstrained input dispatches to specific provider media: on the request input axis means "unconstrained" — vacuously true
 func Test825_dispatch_request_unconstrained_input(t *testing.T) {
-	provider, err := NewCapUrnFromString(`cap:in="media:pdf";analyze;out="media:record;enc=utf-8"`)
+	provider, err := NewCapUrnFromString(`cap:in="media:ext=pdf";analyze;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
 	request, err := NewCapUrnFromString(`cap:in="media:";analyze;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
@@ -1311,9 +1311,9 @@ func Test825_dispatch_request_unconstrained_input(t *testing.T) {
 
 // TEST826: is_dispatchable — provider output must satisfy request output (covariance)
 func Test826_dispatch_covariant_output(t *testing.T) {
-	provider, err := NewCapUrnFromString(`cap:in="media:pdf";extract;out="media:record;enc=utf-8"`)
+	provider, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
-	request, err := NewCapUrnFromString(`cap:in="media:pdf";extract;out="media:enc=utf-8"`)
+	request, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:enc=utf-8"`)
 	require.NoError(t, err)
 	assert.True(t, provider.IsDispatchable(request),
 		"Provider output record;enc=utf-8 conforms to request output enc=utf-8")
@@ -1321,9 +1321,9 @@ func Test826_dispatch_covariant_output(t *testing.T) {
 
 // TEST827: is_dispatchable — provider with generic output cannot satisfy specific request
 func Test827_dispatch_generic_output_fails(t *testing.T) {
-	provider, err := NewCapUrnFromString(`cap:in="media:pdf";extract;out="media:"`)
+	provider, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:"`)
 	require.NoError(t, err)
-	request, err := NewCapUrnFromString(`cap:in="media:pdf";extract;out="media:record;enc=utf-8"`)
+	request, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
 	assert.False(t, provider.IsDispatchable(request),
 		"Provider out=media: cannot guarantee specific output")
@@ -1373,7 +1373,7 @@ func Test831_dispatch_cross_backend_mismatch(t *testing.T) {
 func Test832_dispatch_asymmetric(t *testing.T) {
 	broad, err := NewCapUrnFromString(`cap:in="media:";process;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
-	narrow, err := NewCapUrnFromString(`cap:in="media:pdf";process;out="media:enc=utf-8"`)
+	narrow, err := NewCapUrnFromString(`cap:in="media:ext=pdf";process;out="media:enc=utf-8"`)
 	require.NoError(t, err)
 	assert.True(t, broad.IsDispatchable(narrow))
 	assert.False(t, narrow.IsDispatchable(broad))
@@ -1381,9 +1381,9 @@ func Test832_dispatch_asymmetric(t *testing.T) {
 
 // TEST833: is_comparable — both directions checked
 func Test833_comparable_symmetric(t *testing.T) {
-	a, err := NewCapUrnFromString(`cap:in="media:pdf";extract;out="media:enc=utf-8"`)
+	a, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:enc=utf-8"`)
 	require.NoError(t, err)
-	b, err := NewCapUrnFromString(`cap:in="media:pdf";extract;out="media:record;enc=utf-8"`)
+	b, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
 	assert.True(t, a.IsComparable(b))
 	assert.True(t, b.IsComparable(a))
@@ -1391,7 +1391,7 @@ func Test833_comparable_symmetric(t *testing.T) {
 
 // TEST834: is_comparable — unrelated caps are NOT comparable
 func Test834_comparable_unrelated(t *testing.T) {
-	a, err := NewCapUrnFromString(`cap:in="media:pdf";extract;out="media:enc=utf-8"`)
+	a, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:enc=utf-8"`)
 	require.NoError(t, err)
 	b, err := NewCapUrnFromString(`cap:in="media:audio";transcribe;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
@@ -1401,9 +1401,9 @@ func Test834_comparable_unrelated(t *testing.T) {
 
 // TEST835: is_equivalent — identical caps
 func Test835_equivalent_identical(t *testing.T) {
-	a, err := NewCapUrnFromString(`cap:in="media:pdf";extract;out="media:record;enc=utf-8"`)
+	a, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
-	b, err := NewCapUrnFromString(`cap:in="media:pdf";extract;out="media:record;enc=utf-8"`)
+	b, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
 	assert.True(t, a.IsEquivalent(b))
 	assert.True(t, b.IsEquivalent(a))
@@ -1411,9 +1411,9 @@ func Test835_equivalent_identical(t *testing.T) {
 
 // TEST836: is_equivalent — non-equivalent comparable caps
 func Test836_equivalent_non_equivalent(t *testing.T) {
-	a, err := NewCapUrnFromString(`cap:in="media:pdf";extract;out="media:enc=utf-8"`)
+	a, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:enc=utf-8"`)
 	require.NoError(t, err)
-	b, err := NewCapUrnFromString(`cap:in="media:pdf";extract;out="media:record;enc=utf-8"`)
+	b, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
 	assert.True(t, a.IsComparable(b))
 	assert.False(t, a.IsEquivalent(b))
@@ -1421,18 +1421,18 @@ func Test836_equivalent_non_equivalent(t *testing.T) {
 
 // TEST837: is_dispatchable — op tag mismatch rejects
 func Test837_dispatch_op_mismatch(t *testing.T) {
-	provider, err := NewCapUrnFromString(`cap:in="media:pdf";extract;out="media:record;enc=utf-8"`)
+	provider, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
-	request, err := NewCapUrnFromString(`cap:in="media:pdf";summarize;out="media:record;enc=utf-8"`)
+	request, err := NewCapUrnFromString(`cap:in="media:ext=pdf";summarize;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
 	assert.False(t, provider.IsDispatchable(request))
 }
 
 // TEST838: is_dispatchable — request with wildcard output accepts any provider output
 func Test838_dispatch_request_wildcard_output(t *testing.T) {
-	provider, err := NewCapUrnFromString(`cap:in="media:pdf";extract;out="media:record;enc=utf-8"`)
+	provider, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
-	request, err := NewCapUrnFromString(`cap:in="media:pdf";extract;out="media:"`)
+	request, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:"`)
 	require.NoError(t, err)
 	assert.True(t, provider.IsDispatchable(request),
 		"Request out=media: is unconstrained — any provider output accepted")
@@ -1455,7 +1455,7 @@ func Test0125_CapUrn_JSONSerialization(t *testing.T) {
 
 // TEST561: in_media_urn and out_media_urn parse direction specs into MediaUrn
 func Test561_in_out_media_urn(t *testing.T) {
-	cap, err := NewCapUrnFromString(`cap:in="media:pdf";extract;out="media:enc=utf-8;ext=txt"`)
+	cap, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:enc=utf-8;ext=txt"`)
 	require.NoError(t, err)
 
 	inUrn, err := cap.InMediaUrn()
@@ -1706,7 +1706,7 @@ func Test1805_kind_invariant_under_canonical_spellings(t *testing.T) {
 		{"cap:effect=none", "cap:in=media:;out=media:;effect=none", CapKindIdentity},
 		{
 			`cap:extract;in=media:pdf;out="media:enc=utf-8"`,
-			`cap:extract;in="media:pdf";out="media:enc=utf-8"`,
+			`cap:extract;in="media:ext=pdf";out="media:enc=utf-8"`,
 			CapKindTransform,
 		},
 		{

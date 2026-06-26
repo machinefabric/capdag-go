@@ -10,7 +10,7 @@ package standard
 // - `record` marker: presence = has internal fields, absence = opaque (default)
 //
 // Examples:
-// - `media:pdf` → scalar, opaque (no markers)
+// - `media:ext=pdf` → scalar, opaque (no markers)
 // - `media:enc=utf-8;list` → list, opaque (has list marker)
 // - `media:fmt=json;record` → scalar, record (has record marker)
 // - `media:fmt=json;list;record` → list of records (has both markers)

@@ -583,7 +583,7 @@ func Test558_predicate_constant_consistency(t *testing.T) {
 
 // TEST852: LUB of identical URNs returns the same URN
 func Test852_lub_identical(t *testing.T) {
-	pdf, err := NewMediaUrnFromString("media:pdf")
+	pdf, err := NewMediaUrnFromString("media:ext=pdf")
 	require.NoError(t, err)
 	lub := LeastUpperBound([]*MediaUrn{pdf, pdf})
 	assert.True(t, lub.IsEquivalent(pdf))
@@ -591,7 +591,7 @@ func Test852_lub_identical(t *testing.T) {
 
 // TEST853: LUB of URNs with no common tags returns media: (universal)
 func Test853_lub_no_common_tags(t *testing.T) {
-	pdf, err := NewMediaUrnFromString("media:pdf")
+	pdf, err := NewMediaUrnFromString("media:ext=pdf")
 	require.NoError(t, err)
 	png, err := NewMediaUrnFromString("media:image;png")
 	require.NoError(t, err)
@@ -635,7 +635,7 @@ func Test856_lub_empty(t *testing.T) {
 
 // TEST857: LUB of single input returns that input
 func Test857_lub_single(t *testing.T) {
-	pdf, err := NewMediaUrnFromString("media:pdf")
+	pdf, err := NewMediaUrnFromString("media:ext=pdf")
 	require.NoError(t, err)
 	lub := LeastUpperBound([]*MediaUrn{pdf})
 	assert.True(t, lub.IsEquivalent(pdf))

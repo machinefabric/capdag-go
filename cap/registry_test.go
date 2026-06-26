@@ -94,7 +94,7 @@ func Test137_parse_registry_json(t *testing.T) {
 // TEST138: Test parsing registry JSON with stdin args verifies stdin media URN extraction
 func Test138_parse_registry_json_with_stdin(t *testing.T) {
 	// JSON with stdin args - means cap accepts stdin of specified media type
-	jsonData := `{"urn":"cap:in=\"media:pdf\";disbind;out=\"media:enc=utf-8;page\"","command":"disbind","title":"Disbind PDF","args":[{"media_urn":"media:pdf","required":true,"sources":[{"stdin":"media:pdf"}]}]}`
+	jsonData := `{"urn":"cap:in=\"media:ext=pdf\";disbind;out=\"media:enc=utf-8;page\"","command":"disbind","title":"Disbind PDF","args":[{"media_urn":"media:ext=pdf","required":true,"sources":[{"stdin":"media:ext=pdf"}]}]}`
 
 	var registryResp RegistryCapResponse
 	err := json.Unmarshal([]byte(jsonData), &registryResp)
@@ -106,7 +106,7 @@ func Test138_parse_registry_json_with_stdin(t *testing.T) {
 	assert.True(t, cap.AcceptsStdin())
 	stdinUrn := cap.GetStdinMediaUrn()
 	require.NotNil(t, stdinUrn)
-	assert.Equal(t, "media:pdf", *stdinUrn)
+	assert.Equal(t, "media:ext=pdf", *stdinUrn)
 }
 
 // TEST0123: Cap exists

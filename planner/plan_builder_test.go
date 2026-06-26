@@ -68,8 +68,8 @@ func Test767_argument_resolution_string_representations(t *testing.T) {
 // Verifies that the argument analysis correctly identifies input-file arguments when the
 // cap's stdin arg media URN matches the cap's in_spec.
 func Test768_analyze_path_arguments_stdin_is_from_input_file(t *testing.T) {
-	// Build a cap whose stdin arg is the cap's in_spec (media:pdf) — should resolve as FromInputFile
-	capUrnStr := `cap:in="media:pdf";extract;out="media:txt;enc=utf-8"`
+	// Build a cap whose stdin arg is the cap's in_spec (media:ext=pdf) — should resolve as FromInputFile
+	capUrnStr := `cap:in="media:ext=pdf";extract;out="media:txt;enc=utf-8"`
 	capUrnParsed, err := urn.NewCapUrnFromString(capUrnStr)
 	require.NoError(t, err)
 
@@ -87,7 +87,7 @@ func Test768_analyze_path_arguments_stdin_is_from_input_file(t *testing.T) {
 	// Build a single-step path
 	graph := NewLiveCapFab()
 	graph.AddCap(c)
-	source, err := urn.NewMediaUrnFromString("media:pdf")
+	source, err := urn.NewMediaUrnFromString("media:ext=pdf")
 	require.NoError(t, err)
 	target, err := urn.NewMediaUrnFromString(`media:txt;enc=utf-8`)
 	require.NoError(t, err)
@@ -187,18 +187,18 @@ func Test766_validation_to_json_with_constraints(t *testing.T) {
 // Verifies that arguments with defaults return HasDefault regardless of step position
 func Test886_optional_non_io_arg_with_default_has_default(t *testing.T) {
 	defaultVal := 300
-	resolution := determineResolutionWithIOCheck(standard.MediaInteger, "media:pdf", "media:image;png", 0, defaultVal)
+	resolution := determineResolutionWithIOCheck(standard.MediaInteger, "media:ext=pdf", "media:image;png", 0, defaultVal)
 	assert.Equal(t, ResolutionHasDefault, resolution)
 }
 
 // TEST887: Tests duplicate detection passes for caps with unique URN combinations
 // Verifies that checkForDuplicateCaps() correctly accepts caps with different op/in/out combinations
 func Test887_no_duplicates_with_unique_caps(t *testing.T) {
-	c1, err := makeTestCap("extract_metadata", "media:pdf", "media:file-metadata;record;enc=utf-8", "Extract Metadata")
+	c1, err := makeTestCap("extract_metadata", "media:ext=pdf", "media:file-metadata;record;enc=utf-8", "Extract Metadata")
 	require.NoError(t, err)
-	c2, err := makeTestCap("extract_outline", "media:pdf", "media:document-outline;record;enc=utf-8", "Extract Outline")
+	c2, err := makeTestCap("extract_outline", "media:ext=pdf", "media:document-outline;record;enc=utf-8", "Extract Outline")
 	require.NoError(t, err)
-	c3, err := makeTestCap("disbind", "media:pdf", "media:disbound-pages;list;enc=utf-8", "Disbind PDF")
+	c3, err := makeTestCap("disbind", "media:ext=pdf", "media:disbound-pages;list;enc=utf-8", "Disbind PDF")
 	require.NoError(t, err)
 
 	count, err := checkForDuplicateCaps([]*cap.Cap{c1, c2, c3})
@@ -209,24 +209,24 @@ func Test887_no_duplicates_with_unique_caps(t *testing.T) {
 // TEST991: Tests duplicate detection identifies caps with identical URNs
 // Verifies that checkForDuplicateCaps() returns an error when multiple caps share the same cap_urn
 func Test991_detects_duplicate_cap_urns(t *testing.T) {
-	c1, err := makeTestCap("disbind", "media:pdf", "media:disbound-pages;list;enc=utf-8", "Disbind PDF")
+	c1, err := makeTestCap("disbind", "media:ext=pdf", "media:disbound-pages;list;enc=utf-8", "Disbind PDF")
 	require.NoError(t, err)
-	c2, err := makeTestCap("disbind", "media:pdf", "media:disbound-pages;list;enc=utf-8", "Disbind PDF Again")
+	c2, err := makeTestCap("disbind", "media:ext=pdf", "media:disbound-pages;list;enc=utf-8", "Disbind PDF Again")
 	require.NoError(t, err)
 
 	_, err = checkForDuplicateCaps([]*cap.Cap{c1, c2})
 	require.Error(t, err, "Should detect duplicate cap URN")
 	assert.Contains(t, err.Error(), "Duplicate cap_urn detected")
 	assert.Contains(t, err.Error(), "disbind")
-	assert.Contains(t, err.Error(), "media:pdf")
+	assert.Contains(t, err.Error(), "media:ext=pdf")
 }
 
 // TEST992: Tests caps with different operations but same input/output types are not duplicates
 // Verifies that only the complete URN (including op) is used for duplicate detection
 func Test992_different_ops_same_types_not_duplicates(t *testing.T) {
-	c1, err := makeTestCap("disbind", "media:pdf", "media:disbound-pages;list;enc=utf-8", "Disbind")
+	c1, err := makeTestCap("disbind", "media:ext=pdf", "media:disbound-pages;list;enc=utf-8", "Disbind")
 	require.NoError(t, err)
-	c2, err := makeTestCap("grind", "media:pdf", "media:disbound-pages;list;enc=utf-8", "Grind")
+	c2, err := makeTestCap("grind", "media:ext=pdf", "media:disbound-pages;list;enc=utf-8", "Grind")
 	require.NoError(t, err)
 
 	count, err := checkForDuplicateCaps([]*cap.Cap{c1, c2})
@@ -237,7 +237,7 @@ func Test992_different_ops_same_types_not_duplicates(t *testing.T) {
 // TEST993: Tests caps with same operation but different input types are not duplicates
 // Verifies that input type differences distinguish caps with the same operation name
 func Test993_same_op_different_input_types_not_duplicates(t *testing.T) {
-	c1, err := makeTestCap("extract_metadata", "media:pdf", "media:file-metadata;record;enc=utf-8", "Extract PDF Metadata")
+	c1, err := makeTestCap("extract_metadata", "media:ext=pdf", "media:file-metadata;record;enc=utf-8", "Extract PDF Metadata")
 	require.NoError(t, err)
 	c2, err := makeTestCap("extract_metadata", "media:txt;enc=utf-8", "media:file-metadata;record;enc=utf-8", "Extract TXT Metadata")
 	require.NoError(t, err)
@@ -250,38 +250,38 @@ func Test993_same_op_different_input_types_not_duplicates(t *testing.T) {
 // TEST994: Tests first cap's input argument is automatically resolved from input file
 // Verifies that determineResolutionWithIOCheck() returns FromInputFile for the first cap in a chain
 func Test994_input_arg_first_cap_auto_resolved_from_input(t *testing.T) {
-	resolution := determineResolutionWithIOCheck("media:pdf", "media:pdf", "media:image;png", 0, nil)
+	resolution := determineResolutionWithIOCheck("media:ext=pdf", "media:ext=pdf", "media:image;png", 0, nil)
 	assert.Equal(t, ResolutionFromInputFile, resolution)
 }
 
 // TEST995: Tests subsequent caps' input arguments are automatically resolved from previous output
 // Verifies that determineResolutionWithIOCheck() returns FromPreviousOutput for caps after the first
 func Test995_input_arg_subsequent_cap_auto_resolved_from_previous(t *testing.T) {
-	resolution := determineResolutionWithIOCheck("media:pdf", "media:pdf", "media:image;png", 1, nil)
+	resolution := determineResolutionWithIOCheck("media:ext=pdf", "media:ext=pdf", "media:image;png", 1, nil)
 	assert.Equal(t, ResolutionFromPreviousOutput, resolution)
 
-	resolution = determineResolutionWithIOCheck("media:pdf", "media:pdf", "media:image;png", 2, nil)
+	resolution = determineResolutionWithIOCheck("media:ext=pdf", "media:ext=pdf", "media:image;png", 2, nil)
 	assert.Equal(t, ResolutionFromPreviousOutput, resolution)
 }
 
 // TEST996: Tests output arguments are automatically resolved from previous cap's output
 // Verifies that arguments matching the output spec are always resolved as FromPreviousOutput
 func Test996_output_arg_auto_resolved(t *testing.T) {
-	resolution := determineResolutionWithIOCheck("media:image;png", "media:pdf", "media:image;png", 0, nil)
+	resolution := determineResolutionWithIOCheck("media:image;png", "media:ext=pdf", "media:image;png", 0, nil)
 	assert.Equal(t, ResolutionFromPreviousOutput, resolution)
 }
 
 // TEST997: Tests MEDIA_FILE_PATH argument type resolves to input file for first cap
 // Verifies that generic file-path arguments are bound to input file in the first cap
 func Test997_file_path_type_fallback_first_cap(t *testing.T) {
-	resolution := determineResolutionWithIOCheck(standard.MediaFilePath, "media:pdf", "media:image;png", 0, nil)
+	resolution := determineResolutionWithIOCheck(standard.MediaFilePath, "media:ext=pdf", "media:image;png", 0, nil)
 	assert.Equal(t, ResolutionFromInputFile, resolution)
 }
 
 // TEST998: Tests MEDIA_FILE_PATH argument type resolves to previous output for subsequent caps
 // Verifies that generic file-path arguments are bound to previous cap's output after the first cap
 func Test998_file_path_type_fallback_subsequent_cap(t *testing.T) {
-	resolution := determineResolutionWithIOCheck(standard.MediaFilePath, "media:pdf", "media:image;png", 1, nil)
+	resolution := determineResolutionWithIOCheck(standard.MediaFilePath, "media:ext=pdf", "media:image;png", 1, nil)
 	assert.Equal(t, ResolutionFromPreviousOutput, resolution)
 }
 
@@ -289,21 +289,21 @@ func Test998_file_path_type_fallback_subsequent_cap(t *testing.T) {
 // Verifies that arguments like integers with defaults don't require user input
 func Test1009_non_io_arg_with_default_has_default(t *testing.T) {
 	defaultVal := 200
-	resolution := determineResolutionWithIOCheck(standard.MediaInteger, "media:pdf", "media:image;png", 0, defaultVal)
+	resolution := determineResolutionWithIOCheck(standard.MediaInteger, "media:ext=pdf", "media:image;png", 0, defaultVal)
 	assert.Equal(t, ResolutionHasDefault, resolution)
 }
 
 // TEST1012: Tests required non-IO arguments without defaults require user input
 // Verifies that arguments like strings without defaults are marked as RequiresUserInput
 func Test1012_non_io_arg_without_default_requires_user_input(t *testing.T) {
-	resolution := determineResolutionWithIOCheck("media:string", "media:pdf", "media:image;png", 0, nil)
+	resolution := determineResolutionWithIOCheck("media:string", "media:ext=pdf", "media:image;png", 0, nil)
 	assert.Equal(t, ResolutionRequiresUserInput, resolution)
 }
 
 // TEST1015: Tests optional non-IO arguments without defaults still require user input
 // Verifies that optional arguments without defaults must be explicitly provided or skipped
 func Test1015_optional_non_io_arg_without_default_requires_user_input(t *testing.T) {
-	resolution := determineResolutionWithIOCheck("media:boolean", "media:pdf", "media:image;png", 0, nil)
+	resolution := determineResolutionWithIOCheck("media:boolean", "media:ext=pdf", "media:image;png", 0, nil)
 	assert.Equal(t, ResolutionRequiresUserInput, resolution)
 }
 

@@ -26,7 +26,7 @@ func Test668_ResolveSlotWithPopulatedByteSlotValues(t *testing.T) {
 	binding := NewSlotBinding("media:width;numeric", nil)
 	result, err := ResolveBinding(
 		binding, ctx,
-		`cap:in="media:pdf";resize;out="media:pdf"`,
+		`cap:in="media:ext=pdf";resize;out="media:ext=pdf"`,
 		"step_0",
 		nil, true,
 	)
@@ -94,7 +94,7 @@ func Test671_ResolveOptionalSlotNoValueReturnsNone(t *testing.T) {
 
 // TEST1105: Two steps with the same cap_urn get distinct slot values via different node_ids. This is the core disambiguation scenario that step-index keying was designed to solve.
 func Test1105_TwoStepsSameCapUrnDifferentSlotValues(t *testing.T) {
-	capUrn := `cap:in="media:pdf";make-decision;out="media:bool;enc=utf-8"`
+	capUrn := `cap:in="media:ext=pdf";make-decision;out="media:bool;enc=utf-8"`
 	slotName := "media:list;question;enc=utf-8"
 	ctx := emptyContext(func(c *ArgumentResolutionContext) {
 		c.SlotValues = map[string][]byte{
@@ -136,7 +136,7 @@ func Test1105_TwoStepsSameCapUrnDifferentSlotValues(t *testing.T) {
 
 // TEST1106: Slot resolution falls through to cap_settings when no slot_value exists. cap_settings are keyed by cap_urn (shared across steps), so both steps get the same value.
 func Test1106_SlotFallsThroughToCapSettingsShared(t *testing.T) {
-	capUrn := `cap:in="media:pdf";make-decision;out="media:bool;enc=utf-8"`
+	capUrn := `cap:in="media:ext=pdf";make-decision;out="media:bool;enc=utf-8"`
 	slotName := "media:language;enc=utf-8"
 	ctx := emptyContext(func(c *ArgumentResolutionContext) {
 		c.CapSettings = map[string]map[string]json.RawMessage{
@@ -172,7 +172,7 @@ func Test1106_SlotFallsThroughToCapSettingsShared(t *testing.T) {
 
 // TEST1107: step_0 has a slot_value override, step_1 falls through to cap_settings. Proves per-step override works while shared settings remain as fallback.
 func Test1107_SlotValueOverridesCapSettingsPerStep(t *testing.T) {
-	capUrn := `cap:in="media:pdf";make-decision;out="media:bool;enc=utf-8"`
+	capUrn := `cap:in="media:ext=pdf";make-decision;out="media:bool;enc=utf-8"`
 	slotName := "media:language;enc=utf-8"
 	ctx := emptyContext(func(c *ArgumentResolutionContext) {
 		c.SlotValues = map[string][]byte{
@@ -265,7 +265,7 @@ func Test1108_ResolveAllPassesNodeID(t *testing.T) {
 
 // TEST1109: Slot key uses node_id, NOT cap_urn — a slot_value keyed by cap_urn must not match.
 func Test1109_SlotKeyUsesNodeIDNotCapUrn(t *testing.T) {
-	capUrn := `cap:in="media:pdf";resize;out="media:pdf"`
+	capUrn := `cap:in="media:ext=pdf";resize;out="media:ext=pdf"`
 	slotName := "media:width;numeric"
 	// Deliberately key by cap_urn (the OLD format) — should NOT match
 	ctx := emptyContext(func(c *ArgumentResolutionContext) {
@@ -359,7 +359,7 @@ func Test795_ArgumentBindingsUnresolvedSlots(t *testing.T) {
 func Test796_ResolveInputFilePath(t *testing.T) {
 	ctx := emptyContext(func(c *ArgumentResolutionContext) {
 		c.InputFiles = []*CapInputFile{
-			{FilePath: "/path/to/file.pdf", MediaUrn: "media:pdf"},
+			{FilePath: "/path/to/file.pdf", MediaUrn: "media:ext=pdf"},
 		}
 	})
 	binding := NewInputFilePathBinding()
@@ -423,7 +423,7 @@ func Test798_ResolvePreviousOutput(t *testing.T) {
 
 // TEST799: StrandInput single constructor creates valid Single cardinality input
 func Test799_StrandInputSingle(t *testing.T) {
-	file := &CapInputFile{FilePath: "/path/to/file.pdf", MediaUrn: "media:pdf"}
+	file := &CapInputFile{FilePath: "/path/to/file.pdf", MediaUrn: "media:ext=pdf"}
 	input := NewSingleStrandInput(file)
 	if len(input.Files) != 1 {
 		t.Fatalf("expected 1 file, got %d", len(input.Files))
@@ -439,10 +439,10 @@ func Test799_StrandInputSingle(t *testing.T) {
 // TEST800: StrandInput sequence constructor creates valid Sequence cardinality input
 func Test800_StrandInputSequence(t *testing.T) {
 	files := []*CapInputFile{
-		{FilePath: "/path/1.pdf", MediaUrn: "media:pdf"},
-		{FilePath: "/path/2.pdf", MediaUrn: "media:pdf"},
+		{FilePath: "/path/1.pdf", MediaUrn: "media:ext=pdf"},
+		{FilePath: "/path/2.pdf", MediaUrn: "media:ext=pdf"},
 	}
-	input := NewSequenceStrandInput(files, "media:pdf")
+	input := NewSequenceStrandInput(files, "media:ext=pdf")
 	if len(input.Files) != 2 {
 		t.Fatalf("expected 2 files, got %d", len(input.Files))
 	}
@@ -456,7 +456,7 @@ func Test800_StrandInputSequence(t *testing.T) {
 
 // TEST801: CapInputFile deserializes from JSON with source metadata fields
 func Test801_CapInputFileDeserializationWithSourceMetadata(t *testing.T) {
-	jsonStr := `[{"file_path":"/Users/bahram/ws/prj/machinefabric/pdfcartridge/test_files/aws_in_action.pdf","media_urn":"media:pdf","source_id":"1b964d3b-f409-4f51-8684-884348ec2501","source_type":"listing"}]`
+	jsonStr := `[{"file_path":"/Users/bahram/ws/prj/machinefabric/pdfcartridge/test_files/aws_in_action.pdf","media_urn":"media:ext=pdf","source_id":"1b964d3b-f409-4f51-8684-884348ec2501","source_type":"listing"}]`
 	var files []CapInputFile
 	if err := json.Unmarshal([]byte(jsonStr), &files); err != nil {
 		t.Fatalf("deserialization failed: %v", err)
@@ -471,7 +471,7 @@ func Test801_CapInputFileDeserializationWithSourceMetadata(t *testing.T) {
 
 // TEST802: CapInputFile deserializes from compact JSON
 func Test802_CapInputFileDeserializationCompact(t *testing.T) {
-	jsonStr := `[{"file_path":"/path/to/file.pdf","media_urn":"media:pdf","source_id":"abc123","source_type":"listing"}]`
+	jsonStr := `[{"file_path":"/path/to/file.pdf","media_urn":"media:ext=pdf","source_id":"abc123","source_type":"listing"}]`
 	var files []CapInputFile
 	if err := json.Unmarshal([]byte(jsonStr), &files); err != nil {
 		t.Fatalf("deserialization failed: %v", err)
@@ -484,12 +484,12 @@ func Test802_CapInputFileDeserializationCompact(t *testing.T) {
 // TEST803: StrandInput validation detects mismatched Single cardinality with multiple files
 func Test803_StrandInputInvalidSingle(t *testing.T) {
 	files := []*CapInputFile{
-		{FilePath: "/path/1.pdf", MediaUrn: "media:pdf"},
-		{FilePath: "/path/2.pdf", MediaUrn: "media:pdf"},
+		{FilePath: "/path/1.pdf", MediaUrn: "media:ext=pdf"},
+		{FilePath: "/path/2.pdf", MediaUrn: "media:ext=pdf"},
 	}
 	input := &StrandInput{
 		Files:           files,
-		ExpectedMediaUrn: "media:pdf",
+		ExpectedMediaUrn: "media:ext=pdf",
 		Cardinality:     CardinalitySingle,
 	}
 	if input.IsValid() {
@@ -500,12 +500,12 @@ func Test803_StrandInputInvalidSingle(t *testing.T) {
 // TEST957: NewCapInputFile creates a CapInputFile with correct path and media URN.
 // Metadata and source fields must be nil.
 func Test957_cap_input_file_new(t *testing.T) {
-	file := NewCapInputFile("/path/to/file.pdf", "media:pdf")
+	file := NewCapInputFile("/path/to/file.pdf", "media:ext=pdf")
 	if file.FilePath != "/path/to/file.pdf" {
 		t.Errorf("FilePath = %q, want /path/to/file.pdf", file.FilePath)
 	}
-	if file.MediaUrn != "media:pdf" {
-		t.Errorf("MediaUrn = %q, want media:pdf", file.MediaUrn)
+	if file.MediaUrn != "media:ext=pdf" {
+		t.Errorf("MediaUrn = %q, want media:ext=pdf", file.MediaUrn)
 	}
 	if file.Metadata != nil {
 		t.Error("Metadata must be nil")
@@ -517,7 +517,7 @@ func Test957_cap_input_file_new(t *testing.T) {
 
 // TEST958: CapInputFileFromListing sets source_id and source_type to Listing.
 func Test958_cap_input_file_from_listing(t *testing.T) {
-	file := CapInputFileFromListing("listing-123", "/path/to/file.pdf", "media:pdf")
+	file := CapInputFileFromListing("listing-123", "/path/to/file.pdf", "media:ext=pdf")
 	if file.SourceID == nil || *file.SourceID != "listing-123" {
 		t.Errorf("SourceID = %v, want listing-123", file.SourceID)
 	}
@@ -528,7 +528,7 @@ func Test958_cap_input_file_from_listing(t *testing.T) {
 
 // TEST959: CapInputFile.Filename() extracts the basename from a full path.
 func Test959_cap_input_file_filename(t *testing.T) {
-	file := NewCapInputFile("/path/to/document.pdf", "media:pdf")
+	file := NewCapInputFile("/path/to/document.pdf", "media:ext=pdf")
 	name := file.Filename()
 	if name == nil {
 		t.Fatal("Filename() must not return nil for a valid path")

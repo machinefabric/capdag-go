@@ -87,7 +87,7 @@ func Test150_cap_manifest_json_serialization(t *testing.T) {
 	require.NoError(t, err)
 
 	capDef := cap.NewCap(id, "Metadata Extractor", "extract-metadata")
-	stdinUrn := "media:pdf"
+	stdinUrn := "media:ext=pdf"
 	capDef.AddArg(cap.CapArg{
 		MediaUrn: standard.MediaIdentity,
 		Required: true,
@@ -257,7 +257,7 @@ func Test0132_CapManifestValidation(t *testing.T) {
 	require.NoError(t, err)
 
 	capDef := cap.NewCap(id, "Metadata Extractor", "extract-metadata")
-	stdinUrn := "media:pdf"
+	stdinUrn := "media:ext=pdf"
 	capDef.AddArg(cap.CapArg{
 		MediaUrn: standard.MediaIdentity,
 		Required: true,

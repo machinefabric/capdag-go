@@ -308,7 +308,7 @@ func Test1294_rule11_void_input_with_stdin_rejected(t *testing.T) {
 // TEST1295: RULE11 - non-void-input cap without stdin source rejected
 func Test1295_rule11_non_void_input_without_stdin_rejected(t *testing.T) {
 	cap := makeTestCapWithUrnAndArgs(t,
-		`cap:in="media:pdf";extract;out="media:enc=utf-8;ext=txt"`,
+		`cap:in="media:ext=pdf";extract;out="media:enc=utf-8;ext=txt"`,
 		[]CapArg{
 			NewCapArg(standard.MediaString, true, []ArgSource{positionSource(0)}),
 		},
@@ -333,9 +333,9 @@ func Test1296_rule11_void_input_cli_flag_only_passes(t *testing.T) {
 // TEST1297: RULE11 - non-void-input cap with stdin source passes
 func Test1297_rule11_non_void_input_with_stdin_passes(t *testing.T) {
 	cap := makeTestCapWithUrnAndArgs(t,
-		`cap:in="media:pdf";extract;out="media:enc=utf-8;ext=txt"`,
+		`cap:in="media:ext=pdf";extract;out="media:enc=utf-8;ext=txt"`,
 		[]CapArg{
-			NewCapArg(standard.MediaString, true, []ArgSource{stdinSource("media:pdf")}),
+			NewCapArg(standard.MediaString, true, []ArgSource{stdinSource("media:ext=pdf")}),
 		},
 	)
 	err := ValidateCapArgs(cap)
