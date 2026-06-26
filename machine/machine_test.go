@@ -424,7 +424,7 @@ func Test1164_ParseTwoDisconnectedStrandsYieldsTwoMachineStrands(t *testing.T) {
 		"media:fmt=csv",
 	)
 	convertB := buildCap(
-		"cap:in=media:html;convert-b;out=\"media:ext=txt\"",
+		"cap:in=\"media:ext=html\";convert-b;out=\"media:ext=txt\"",
 		"convert_b",
 		[]string{"media:ext=html"},
 		"media:ext=txt",
@@ -432,7 +432,7 @@ func Test1164_ParseTwoDisconnectedStrandsYieldsTwoMachineStrands(t *testing.T) {
 	registry := registryWith([]*cap.Cap{convertA, convertB})
 
 	notation := `[ca cap:in="media:fmt=json";convert-a;out="media:fmt=csv"]` +
-		`[cb cap:in=media:html;convert-b;out="media:ext=txt"]` +
+		`[cb cap:in="media:ext=html";convert-b;out="media:ext=txt"]` +
 		`[input_a -> ca -> output_a]` +
 		`[input_b -> cb -> output_b]`
 

@@ -1025,17 +1025,17 @@ func Test891_direction_semantic_specificity(t *testing.T) {
 	require.NoError(t, err)
 
 	// genericCap:
-	//   out=media:ext=png;image;thumbnail -> 2+2+2 = 6
+	//   out=media:ext=png;image;thumbnail -> 4 (ext=png exact-value) + 2 + 2 = 8
 	//   in=media:                     -> 0
 	//   y: generate-thumbnail marker  -> 2
-	//   spec_C = 10000*6 + 100*0 + 2 = 60002
-	assert.Equal(t, 10000*6+100*0+2, genericCap.Specificity())
+	//   spec_C = 10000*8 + 100*0 + 2 = 80002
+	assert.Equal(t, 10000*8+100*0+2, genericCap.Specificity())
 	// specificCap:
-	//   out=media:ext=png;image;thumbnail -> 6
+	//   out=media:ext=png;image;thumbnail -> 8
 	//   in=media:ext=pdf              -> 4 (ext=pdf is an exact-value tag, not a bare marker)
 	//   y: generate-thumbnail marker  -> 2
-	//   spec_C = 10000*6 + 100*4 + 2 = 60402
-	assert.Equal(t, 10000*6+100*4+2, specificCap.Specificity())
+	//   spec_C = 10000*8 + 100*4 + 2 = 80402
+	assert.Equal(t, 10000*8+100*4+2, specificCap.Specificity())
 
 	assert.True(t, specificCap.Specificity() > genericCap.Specificity(),
 		"pdf cap must be more specific than wildcard cap")
@@ -1048,7 +1048,7 @@ func Test891_direction_semantic_specificity(t *testing.T) {
 	matcher := &CapMatcher{}
 	best := matcher.FindBestMatch(caps, pdfRequest)
 	require.NotNil(t, best)
-	assert.Equal(t, 10000*6+100*4+2, best.Specificity(),
+	assert.Equal(t, 10000*8+100*4+2, best.Specificity(),
 		"CapMatcher must prefer the more specific pdf provider")
 }
 
