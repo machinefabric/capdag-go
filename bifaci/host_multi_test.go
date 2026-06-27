@@ -18,7 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const testHostManifest = `{"name":"Test","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"}]}]}`
+const testHostManifest = `{"name":"Test","version":"1.0","channel":"release","registry_url":null,"cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"}]}]}`
 
 // capGroupsFromURNs builds a single default cap_group from cap-URN strings,
 // the test-side analogue of the reference cap_groups_from_urns helper. Each
@@ -128,6 +128,35 @@ func echoIdentityRequest(t *testing.T, reader *FrameReader, writer *FrameWriter)
 	}
 }
 
+// TEST6601: An attached cartridge (raw-stream, no on-disk anchor) gets a
+// resolvable install identity derived from its HELLO manifest. Advertisement
+// is identity-gated, so without this the attached cartridge would be silently
+// excluded from every RelayNotify and the engine could never route to it — the
+// deadlock that hung the rust-rust-rust interop echo test. Mirrors the
+// reference test6601.
+func Test6601_attached_cartridge_identity_derived_from_manifest(t *testing.T) {
+	manifest := []byte(`{"name":"InteropCartridge","version":"2.3.4","channel":"nightly","registry_url":null,"description":"x","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity","args":[]}],"adapter_urns":[]}]}`)
+
+	rec := installedCartridgeRecordFromManifest(manifest)
+	require.NotNil(t, rec, "attached cartridge must have a resolvable identity")
+	assert.Equal(t, "InteropCartridge", rec.Id)
+	assert.Equal(t, "2.3.4", rec.Version)
+	assert.Nil(t, rec.RegistryURL, "null registry_url ⇒ dev install")
+	assert.Equal(t, "nightly", rec.Channel)
+	assert.Len(t, rec.Sha256, 64, "sha256 hex must be 64 chars")
+	assert.Nil(t, rec.AttachmentError)
+	assert.Equal(t, CartridgeLifecycleOperational, rec.Lifecycle)
+
+	// Deterministic.
+	again := installedCartridgeRecordFromManifest(manifest)
+	assert.Equal(t, rec.Sha256, again.Sha256)
+
+	// Garbage / incomplete manifest ⇒ nil identity (caller still attaches; the
+	// record is honestly absent rather than fabricated).
+	assert.Nil(t, installedCartridgeRecordFromManifest([]byte("{not json")))
+	assert.Nil(t, installedCartridgeRecordFromManifest([]byte(`{"name":"X","version":"1.0"}`)), "missing channel ⇒ no identity")
+}
+
 // TEST413: Register cartridge adds entries to cap_table
 func Test413_register_cartridge_adds_cap_table(t *testing.T) {
 	host := NewCartridgeHost()
@@ -205,7 +234,7 @@ func Test415_req_triggers_spawn(t *testing.T) {
 
 // TEST416: Attach cartridge performs HELLO handshake, extracts manifest, updates capabilities
 func Test416_attach_cartridge_handshake(t *testing.T) {
-	manifest := `{"name":"Test","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"}]}]}`
+	manifest := `{"name":"Test","version":"1.0","channel":"release","registry_url":null,"cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"}]}]}`
 
 	hostRead, cartridgeWrite := net.Pipe()
 	cartridgeRead, hostWrite := net.Pipe()
@@ -245,8 +274,8 @@ func Test416_attach_cartridge_handshake(t *testing.T) {
 
 // TEST417: Route REQ to correct cartridge by cap_urn (with two attached cartridges)
 func Test417_route_req_by_cap_urn(t *testing.T) {
-	manifestA := `{"name":"CartridgeA","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"},{"urn":"cap:convert","title":"convert","command":"convert"}]}]}`
-	manifestB := `{"name":"CartridgeB","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"},{"urn":"cap:analyze","title":"analyze","command":"analyze"}]}]}`
+	manifestA := `{"name":"CartridgeA","version":"1.0","channel":"release","registry_url":null,"cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"},{"urn":"cap:convert","title":"convert","command":"convert"}]}]}`
+	manifestB := `{"name":"CartridgeB","version":"1.0","channel":"release","registry_url":null,"cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"},{"urn":"cap:analyze","title":"analyze","command":"analyze"}]}]}`
 
 	// Cartridge A pipes
 	hostReadA, cartridgeWriteA := net.Pipe()
@@ -352,7 +381,7 @@ func Test417_route_req_by_cap_urn(t *testing.T) {
 
 // TEST418: Route STREAM_START/CHUNK/STREAM_END/END by req_id (not cap_urn) Verifies that after the initial REQ→cartridge routing, all subsequent continuation frames with the same req_id are routed to the same cartridge — even though no cap_urn is present on those frames.
 func Test418_route_continuation_by_req_id(t *testing.T) {
-	manifest := `{"name":"Test","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"},{"urn":"cap:cont","title":"cont","command":"cont"}]}]}`
+	manifest := `{"name":"Test","version":"1.0","channel":"release","registry_url":null,"cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"},{"urn":"cap:cont","title":"cont","command":"cont"}]}]}`
 
 	hostReadP, cartridgeWriteP := net.Pipe()
 	cartridgeReadP, hostWriteP := net.Pipe()
@@ -443,7 +472,7 @@ func Test418_route_continuation_by_req_id(t *testing.T) {
 
 // TEST419: Cartridge HEARTBEAT handled locally (not forwarded to relay)
 func Test419_heartbeat_local_handling(t *testing.T) {
-	manifest := `{"name":"Test","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"},{"urn":"cap:hb","title":"hb","command":"hb"}]}]}`
+	manifest := `{"name":"Test","version":"1.0","channel":"release","registry_url":null,"cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"},{"urn":"cap:hb","title":"hb","command":"hb"}]}]}`
 
 	hostReadP, cartridgeWriteP := net.Pipe()
 	cartridgeReadP, hostWriteP := net.Pipe()
@@ -524,7 +553,7 @@ func Test419_heartbeat_local_handling(t *testing.T) {
 
 // TEST420: Cartridge non-HELLO/non-HB frames forwarded to relay (pass-through)
 func Test420_cartridge_frames_forwarded_to_relay(t *testing.T) {
-	manifest := `{"name":"Test","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"},{"urn":"cap:fwd","title":"fwd","command":"fwd"}]}]}`
+	manifest := `{"name":"Test","version":"1.0","channel":"release","registry_url":null,"cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"},{"urn":"cap:fwd","title":"fwd","command":"fwd"}]}]}`
 
 	hostReadP, cartridgeWriteP := net.Pipe()
 	cartridgeReadP, hostWriteP := net.Pipe()
@@ -619,7 +648,7 @@ func Test420_cartridge_frames_forwarded_to_relay(t *testing.T) {
 
 // TEST421: Cartridge death updates capability list (caps removed)
 func Test421_cartridge_death_updates_caps(t *testing.T) {
-	manifest := `{"name":"Test","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"},{"urn":"cap:die","title":"die","command":"die"}]}]}`
+	manifest := `{"name":"Test","version":"1.0","channel":"release","registry_url":null,"cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"},{"urn":"cap:die","title":"die","command":"die"}]}]}`
 
 	hostReadP, cartridgeWriteP := net.Pipe()
 	cartridgeReadP, hostWriteP := net.Pipe()
@@ -683,7 +712,7 @@ func Test421_cartridge_death_updates_caps(t *testing.T) {
 // the engine is best-effort and NOT guaranteed before teardown, so asserting
 // its receipt would over-specify beyond the reference contract.
 func Test422_cartridge_death_sends_err(t *testing.T) {
-	manifest := `{"name":"Test","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"},{"urn":"cap:die","title":"die","command":"die"}]}]}`
+	manifest := `{"name":"Test","version":"1.0","channel":"release","registry_url":null,"cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"},{"urn":"cap:die","title":"die","command":"die"}]}]}`
 
 	hostReadP, cartridgeWriteP := net.Pipe()
 	cartridgeReadP, hostWriteP := net.Pipe()
@@ -777,8 +806,8 @@ func Test422_cartridge_death_sends_err(t *testing.T) {
 
 // TEST423: Multiple cartridges registered with distinct caps route independently
 func Test423_multi_cartridge_distinct_caps(t *testing.T) {
-	manifestA := `{"name":"CartridgeA","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"},{"urn":"cap:alpha","title":"alpha","command":"alpha"}]}]}`
-	manifestB := `{"name":"CartridgeB","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"},{"urn":"cap:beta","title":"beta","command":"beta"}]}]}`
+	manifestA := `{"name":"CartridgeA","version":"1.0","channel":"release","registry_url":null,"cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"},{"urn":"cap:alpha","title":"alpha","command":"alpha"}]}]}`
+	manifestB := `{"name":"CartridgeB","version":"1.0","channel":"release","registry_url":null,"cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"},{"urn":"cap:beta","title":"beta","command":"beta"}]}]}`
 
 	// Cartridge A pipes
 	hostReadA, cartridgeWriteA := net.Pipe()
@@ -908,7 +937,7 @@ func Test423_multi_cartridge_distinct_caps(t *testing.T) {
 
 // TEST424: Concurrent requests to the same cartridge are handled independently
 func Test424_concurrent_requests_same_cartridge(t *testing.T) {
-	manifest := `{"name":"Test","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"},{"urn":"cap:conc","title":"conc","command":"conc"}]}]}`
+	manifest := `{"name":"Test","version":"1.0","channel":"release","registry_url":null,"cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"},{"urn":"cap:conc","title":"conc","command":"conc"}]}]}`
 
 	hostReadP, cartridgeWriteP := net.Pipe()
 	cartridgeReadP, hostWriteP := net.Pipe()
