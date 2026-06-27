@@ -169,6 +169,38 @@ func ParseMachine(input string, registry *cap.FabricRegistry) (*Machine, *Machin
 		return nil, syntaxParseError(emptyError())
 	}
 
+	// Phase 3b: cap-alias resolution against the fabric registry.
+	//
+	// A wiring's cap-position name not defined by a local header is taken to
+	// be a fabric cap alias and resolved through the registry — an identifier
+	// with no local definition is resolved as an alias before it is declared
+	// undefined. The resolved cap URN is injected into aliasMap as if a header
+	// had defined it. Media URNs never appear in a wiring (they are implicit),
+	// so only cap aliases are resolved here; an alias that points at a media
+	// URN in cap position is a hard error. The lookup is the synchronous
+	// in-memory cache (ResolveAliasCached); a name that resolves to nothing is
+	// left for Phase 4's undefined-alias error.
+	seenUnresolved := make(map[string]bool)
+	for _, w := range wirings {
+		if _, ok := aliasMap[w.capAlias]; ok {
+			continue
+		}
+		if seenUnresolved[w.capAlias] {
+			continue
+		}
+		seenUnresolved[w.capAlias] = true
+		target, ok := registry.ResolveAliasCached(w.capAlias)
+		if !ok {
+			continue // not a known alias → Phase 4 yields undefinedAliasError
+		}
+		resolvedCapUrn, perr := urn.NewCapUrnFromString(target)
+		if perr != nil {
+			return nil, syntaxParseError(aliasNotACapError(w.capAlias, target))
+		}
+		syntheticPos := len(headers) + len(wirings) + len(aliasMap)
+		aliasMap[w.capAlias] = aliasEntry{capUrn: resolvedCapUrn, position: syntheticPos}
+	}
+
 	// Phase 4: Derive node-name → MediaUrn bindings.
 	//
 	// Walk wirings in textual order. For each wiring:

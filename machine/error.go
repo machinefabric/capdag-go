@@ -138,6 +138,9 @@ const (
 	ErrNodeAliasCollision
 	// ErrParse — PEG parse error from the grammar.
 	ErrParse
+	// ErrAliasNotACap — a cap-position name resolved to a fabric alias whose
+	// target is a media URN, not a cap.
+	ErrAliasNotACap
 )
 
 func emptyError() *MachineSyntaxError {
@@ -160,8 +163,19 @@ func invalidCapUrnError(alias, details string) *MachineSyntaxError {
 
 func undefinedAliasError(alias string) *MachineSyntaxError {
 	return &MachineSyntaxError{
-		Kind:    ErrUndefinedAlias,
-		Message: fmt.Sprintf("wiring references undefined alias '%s'", alias),
+		Kind: ErrUndefinedAlias,
+		Message: fmt.Sprintf(
+			"wiring references undefined alias '%s' (not a local header and not a registered cap alias)",
+			alias),
+	}
+}
+
+func aliasNotACapError(alias, target string) *MachineSyntaxError {
+	return &MachineSyntaxError{
+		Kind: ErrAliasNotACap,
+		Message: fmt.Sprintf(
+			"alias '%s' in cap position resolves to a media URN ('%s'), but a cap is required there",
+			alias, target),
 	}
 }
 

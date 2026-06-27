@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/machinefabric/capdag-go/media"
 	"github.com/machinefabric/capdag-go/standard"
 	"github.com/machinefabric/capdag-go/urn"
 )
@@ -126,11 +127,16 @@ func (r *RegistryCapResponse) ToCap() (*Cap, error) {
 
 // FabricRegistry handles communication with the capdag registry
 type FabricRegistry struct {
-	client     *http.Client
-	cacheDir   string
-	cachedCaps map[string]*Cap
-	mutex      sync.RWMutex
-	config     RegistryConfig
+	client        *http.Client
+	cacheDir      string
+	cachedCaps    map[string]*Cap
+	cachedAliases map[string]media.StoredAlias
+	mutex         sync.RWMutex
+	config        RegistryConfig
+	// manifestVersion is the pinned fabric manifest version. 0 ⇒ legacy v0 /
+	// flat-path mode. >= 1 ⇒ manifest-driven (alias resolution requires >= 1).
+	manifestVersion uint32
+	manifest        *media.Manifest
 }
 
 // NewFabricRegistry creates a new registry client
@@ -168,10 +174,13 @@ func NewFabricRegistry(opts ...RegistryOption) (*FabricRegistry, error) {
 	}
 
 	return &FabricRegistry{
-		client:     client,
-		cacheDir:   cacheDir,
-		cachedCaps: cachedCaps,
-		config:     config,
+		client:          client,
+		cacheDir:        cacheDir,
+		cachedCaps:      cachedCaps,
+		cachedAliases:   make(map[string]media.StoredAlias),
+		config:          config,
+		manifestVersion: 0,
+		manifest:        media.EmptyManifest(0),
 	}, nil
 }
 
@@ -180,8 +189,20 @@ func (r *FabricRegistry) Config() RegistryConfig {
 	return r.config
 }
 
-// GetCap gets a cap from in-memory cache or fetch from registry
+// GetCap gets a cap from in-memory cache or fetch from registry.
+//
+// The argument may be a cap URN (cap:...) or an alias (a colon-free token).
+// An alias is resolved first; because this is the typed cap boundary, an
+// alias whose target is not a cap URN is a hard error.
 func (r *FabricRegistry) GetCap(urn string) (*Cap, error) {
+	if media.IsAliasToken(urn) {
+		target, err := r.ResolveAliasTyped(urn, media.AliasTargetCap)
+		if err != nil {
+			return nil, err
+		}
+		return r.GetCap(target)
+	}
+
 	// Check in-memory cache first
 	r.mutex.RLock()
 	if cap, exists := r.cachedCaps[urn]; exists {
@@ -288,6 +309,7 @@ func (r *FabricRegistry) ClearCache() error {
 	// Clear in-memory cache
 	r.mutex.Lock()
 	r.cachedCaps = make(map[string]*Cap)
+	r.cachedAliases = make(map[string]media.StoredAlias)
 	r.mutex.Unlock()
 
 	// Clear filesystem cache
@@ -490,10 +512,19 @@ func (r *FabricRegistry) EnsureIdentityCap() {
 		normalized = parsed.String()
 	}
 
+	// STANDARD_CAPS travel with the manifest: their per-def version is the
+	// registry's pinned manifest version (mirrors Rust).
+	if r.manifestVersion >= 1 {
+		identity.Version = r.manifestVersion
+	}
+
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	if _, exists := r.cachedCaps[normalized]; !exists {
 		r.cachedCaps[normalized] = identity
+	}
+	if r.manifestVersion >= 1 {
+		r.manifest.Caps[normalized] = r.manifestVersion
 	}
 }
 
@@ -506,10 +537,13 @@ func NewFabricRegistryForTest() *FabricRegistry {
 		Timeout: HTTPTimeoutSeconds * time.Second,
 	}
 	registry := &FabricRegistry{
-		client:     client,
-		cacheDir:   "/tmp/capdag-test-cache",
-		cachedCaps: make(map[string]*Cap),
-		config:     RegistryConfig{},
+		client:          client,
+		cacheDir:        "/tmp/capdag-test-cache",
+		cachedCaps:      make(map[string]*Cap),
+		cachedAliases:   make(map[string]media.StoredAlias),
+		config:          RegistryConfig{},
+		manifestVersion: 1,
+		manifest:        media.EmptyManifest(1),
 	}
 	registry.EnsureIdentityCap()
 	return registry
@@ -525,13 +559,125 @@ func NewFabricRegistryForTestWithConfig(config RegistryConfig) *FabricRegistry {
 	}
 
 	registry := &FabricRegistry{
-		client:     client,
-		cacheDir:   "/tmp/capdag-test-cache",
-		cachedCaps: make(map[string]*Cap),
-		config:     config,
+		client:          client,
+		cacheDir:        "/tmp/capdag-test-cache",
+		cachedCaps:      make(map[string]*Cap),
+		cachedAliases:   make(map[string]media.StoredAlias),
+		config:          config,
+		manifestVersion: 1,
+		manifest:        media.EmptyManifest(1),
 	}
 	registry.EnsureIdentityCap()
 	return registry
+}
+
+// =============================================================================
+// Alias resolution (cap registry surface)
+// =============================================================================
+
+// aliasDefver resolves a normalized alias name to its defver under the pinned
+// manifest. Aliases exist only in the versioned regime; at v0 any lookup is a
+// hard not-found.
+func (r *FabricRegistry) aliasDefver(normalizedName string) (uint32, error) {
+	if r.manifestVersion == 0 {
+		return 0, fmt.Errorf(
+			"alias '%s' cannot resolve: registry is pinned at v0 (aliases are a versioned-regime concept)",
+			normalizedName)
+	}
+	defver, ok := r.manifest.Aliases[normalizedName]
+	if !ok {
+		return 0, fmt.Errorf("alias '%s' is not part of manifest v%d", normalizedName, r.manifestVersion)
+	}
+	return defver, nil
+}
+
+// AliasDefverFor looks up an alias name's pinned defver without fetching.
+func (r *FabricRegistry) AliasDefverFor(name string) (uint32, error) {
+	normalized, err := media.NormalizeAliasName(name)
+	if err != nil {
+		return 0, fmt.Errorf("invalid alias name: %w", err)
+	}
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+	return r.aliasDefver(normalized)
+}
+
+// GetAlias fetches the full StoredAlias for a name from the in-memory cache.
+// The Go cap registry seeds aliases via InsertCachedAliasForTest or loads them
+// from disk; a name absent from the cache (after manifest membership is
+// confirmed) is a hard error.
+func (r *FabricRegistry) GetAlias(name string) (*media.StoredAlias, error) {
+	normalized, err := media.NormalizeAliasName(name)
+	if err != nil {
+		return nil, fmt.Errorf("invalid alias name: %w", err)
+	}
+	r.mutex.RLock()
+	alias, ok := r.cachedAliases[normalized]
+	r.mutex.RUnlock()
+	if ok {
+		return &alias, nil
+	}
+	if _, derr := r.AliasDefverFor(normalized); derr != nil {
+		return nil, derr
+	}
+	return nil, fmt.Errorf("alias '%s' is in manifest v%d but not present in cache", normalized, r.manifestVersion)
+}
+
+// ResolveAlias resolves an alias to the cap or media URN it points at
+// (untyped): returns whatever the alias targets.
+func (r *FabricRegistry) ResolveAlias(name string) (string, error) {
+	alias, err := r.GetAlias(name)
+	if err != nil {
+		return "", err
+	}
+	return alias.Target, nil
+}
+
+// ResolveAliasTyped resolves an alias and asserts its target kind. If expected
+// is non-empty and the resolved target is the other kind, fail hard.
+func (r *FabricRegistry) ResolveAliasTyped(name string, expected media.AliasTargetKind) (string, error) {
+	alias, err := r.GetAlias(name)
+	if err != nil {
+		return "", err
+	}
+	actual, ok := media.ClassifyAliasTarget(alias.Target)
+	if !ok {
+		return "", fmt.Errorf("alias '%s' target '%s' is neither a cap nor a media URN", alias.Name, alias.Target)
+	}
+	if expected != "" && actual != expected {
+		return "", fmt.Errorf("alias '%s' resolves to a %s URN ('%s') but a %s was required here",
+			alias.Name, actual, alias.Target, expected)
+	}
+	return alias.Target, nil
+}
+
+// ResolveAliasCached is a synchronous, in-memory-only alias resolution.
+// Returns (target, true) if cached, ("", false) otherwise (including for a
+// malformed name).
+func (r *FabricRegistry) ResolveAliasCached(name string) (string, bool) {
+	normalized, err := media.NormalizeAliasName(name)
+	if err != nil {
+		return "", false
+	}
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+	alias, ok := r.cachedAliases[normalized]
+	if !ok {
+		return "", false
+	}
+	return alias.Target, true
+}
+
+// InsertCachedAliasForTest inserts an alias directly into the in-memory cache
+// and registers its defver in the manifest (test helper). Mirrors Rust
+// insert_cached_alias_for_test.
+func (r *FabricRegistry) InsertCachedAliasForTest(alias media.StoredAlias) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	r.cachedAliases[alias.Name] = alias
+	if r.manifestVersion >= 1 {
+		r.manifest.Aliases[alias.Name] = alias.Version
+	}
 }
 
 // AddCapsToCache inserts caps directly into the in-memory cache.
@@ -541,11 +687,17 @@ func (r *FabricRegistry) AddCapsToCache(caps []*Cap) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	for _, cap := range caps {
+		if cap.Version == 0 && r.manifestVersion >= 1 {
+			cap.Version = r.manifestVersion
+		}
 		urnStr := cap.UrnString()
 		normalized := urnStr
 		if parsed, err := urn.NewCapUrnFromString(urnStr); err == nil {
 			normalized = parsed.String()
 		}
 		r.cachedCaps[normalized] = cap
+		if r.manifestVersion >= 1 {
+			r.manifest.Caps[normalized] = cap.Version
+		}
 	}
 }
