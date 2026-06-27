@@ -31,8 +31,17 @@ func recvCartridgeFrame(reader *FrameReader) (*Frame, error) {
 	}
 }
 
-// simulateCartridge runs a fake cartridge: handshake + handler on the cartridge side of a pipe.
-// handler receives the FrameReader/FrameWriter after handshake and can read/write frames.
+// simulateCartridge runs a fake cartridge: handshake + identity echo + handler
+// on the cartridge side of a pipe. handler receives the FrameReader/FrameWriter
+// after the host's post-handshake identity verification REQ has been echoed back,
+// and can read/write frames.
+//
+// The host's AttachCartridge runs VerifyIdentity right after the handshake
+// (mirroring Rust attach_cartridge), so every simulated cartridge MUST answer
+// the identity REQ before its normal handler runs. The echo mirrors
+// run_cartridge_identity_echo / drainIdentityRequest: read REQ + body
+// (STREAM_START → CHUNK(s) → STREAM_END → END), then echo the concatenated
+// payload back as STREAM_START → CHUNK → STREAM_END → END.
 func simulateCartridge(t *testing.T, cartridgeRead, cartridgeWrite net.Conn, manifest string, handler func(*FrameReader, *FrameWriter)) {
 	t.Helper()
 	reader := NewFrameReader(cartridgeRead)
@@ -43,8 +52,45 @@ func simulateCartridge(t *testing.T, cartridgeRead, cartridgeWrite net.Conn, man
 	reader.SetLimits(limits)
 	writer.SetLimits(limits)
 
+	// Answer the host's identity-verification REQ before the handler runs.
+	echoIdentityRequest(t, reader, writer)
+
 	if handler != nil {
 		handler(reader, writer)
+	}
+}
+
+// echoIdentityRequest reads the host's identity REQ and its request body, then
+// echoes the payload back. Mirrors run_cartridge_identity_echo (Rust) and
+// io_test.go's identity echo: the host's VerifyIdentity sends each CHUNK as a
+// CBOR-encoded payload and verifies the response echoes those exact bytes, so
+// the echo writes the raw chunk payloads back unchanged.
+func echoIdentityRequest(t *testing.T, reader *FrameReader, writer *FrameWriter) {
+	t.Helper()
+	req, err := reader.ReadFrame()
+	require.NoError(t, err)
+	require.Equal(t, FrameTypeReq, req.FrameType, "first frame after handshake must be the identity REQ")
+
+	var payload []byte
+	for {
+		f, err := reader.ReadFrame()
+		require.NoError(t, err)
+		switch f.FrameType {
+		case FrameTypeStreamStart, FrameTypeStreamEnd:
+			// no-op
+		case FrameTypeChunk:
+			payload = append(payload, f.Payload...)
+		case FrameTypeEnd:
+			streamId := "identity-echo"
+			require.NoError(t, writer.WriteFrame(NewStreamStart(req.Id, streamId, "media:", nil)))
+			checksum := ComputeChecksum(payload)
+			require.NoError(t, writer.WriteFrame(NewChunk(req.Id, streamId, 0, payload, 0, checksum)))
+			require.NoError(t, writer.WriteFrame(NewStreamEnd(req.Id, streamId, 1)))
+			require.NoError(t, writer.WriteFrame(NewEnd(req.Id, nil)))
+			return
+		default:
+			t.Fatalf("unexpected frame type during identity request: %v", f.FrameType)
+		}
 	}
 }
 
@@ -165,8 +211,8 @@ func Test416_attach_cartridge_handshake(t *testing.T) {
 
 // TEST417: Route REQ to correct cartridge by cap_urn (with two attached cartridges)
 func Test417_route_req_by_cap_urn(t *testing.T) {
-	manifestA := `{"name":"CartridgeA","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:convert","title":"convert","command":"convert"}]}]}`
-	manifestB := `{"name":"CartridgeB","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:analyze","title":"analyze","command":"analyze"}]}]}`
+	manifestA := `{"name":"CartridgeA","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"},{"urn":"cap:convert","title":"convert","command":"convert"}]}]}`
+	manifestB := `{"name":"CartridgeB","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"},{"urn":"cap:analyze","title":"analyze","command":"analyze"}]}]}`
 
 	// Cartridge A pipes
 	hostReadA, cartridgeWriteA := net.Pipe()
@@ -272,7 +318,7 @@ func Test417_route_req_by_cap_urn(t *testing.T) {
 
 // TEST418: Route STREAM_START/CHUNK/STREAM_END/END by req_id (not cap_urn) Verifies that after the initial REQ→cartridge routing, all subsequent continuation frames with the same req_id are routed to the same cartridge — even though no cap_urn is present on those frames.
 func Test418_route_continuation_by_req_id(t *testing.T) {
-	manifest := `{"name":"Test","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:cont","title":"cont","command":"cont"}]}]}`
+	manifest := `{"name":"Test","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"},{"urn":"cap:cont","title":"cont","command":"cont"}]}]}`
 
 	hostReadP, cartridgeWriteP := net.Pipe()
 	cartridgeReadP, hostWriteP := net.Pipe()
@@ -363,7 +409,7 @@ func Test418_route_continuation_by_req_id(t *testing.T) {
 
 // TEST419: Cartridge HEARTBEAT handled locally (not forwarded to relay)
 func Test419_heartbeat_local_handling(t *testing.T) {
-	manifest := `{"name":"Test","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:hb","title":"hb","command":"hb"}]}]}`
+	manifest := `{"name":"Test","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"},{"urn":"cap:hb","title":"hb","command":"hb"}]}]}`
 
 	hostReadP, cartridgeWriteP := net.Pipe()
 	cartridgeReadP, hostWriteP := net.Pipe()
@@ -444,7 +490,7 @@ func Test419_heartbeat_local_handling(t *testing.T) {
 
 // TEST420: Cartridge non-HELLO/non-HB frames forwarded to relay (pass-through)
 func Test420_cartridge_frames_forwarded_to_relay(t *testing.T) {
-	manifest := `{"name":"Test","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:fwd","title":"fwd","command":"fwd"}]}]}`
+	manifest := `{"name":"Test","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"},{"urn":"cap:fwd","title":"fwd","command":"fwd"}]}]}`
 
 	hostReadP, cartridgeWriteP := net.Pipe()
 	cartridgeReadP, hostWriteP := net.Pipe()
@@ -539,7 +585,7 @@ func Test420_cartridge_frames_forwarded_to_relay(t *testing.T) {
 
 // TEST421: Cartridge death updates capability list (caps removed)
 func Test421_cartridge_death_updates_caps(t *testing.T) {
-	manifest := `{"name":"Test","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:die","title":"die","command":"die"}]}]}`
+	manifest := `{"name":"Test","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"},{"urn":"cap:die","title":"die","command":"die"}]}]}`
 
 	hostReadP, cartridgeWriteP := net.Pipe()
 	cartridgeReadP, hostWriteP := net.Pipe()
@@ -594,7 +640,7 @@ func Test421_cartridge_death_updates_caps(t *testing.T) {
 
 // TEST422: Cartridge death sends ERR for all pending requests via relay
 func Test422_cartridge_death_sends_err(t *testing.T) {
-	manifest := `{"name":"Test","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:die","title":"die","command":"die"}]}]}`
+	manifest := `{"name":"Test","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"},{"urn":"cap:die","title":"die","command":"die"}]}]}`
 
 	hostReadP, cartridgeWriteP := net.Pipe()
 	cartridgeReadP, hostWriteP := net.Pipe()
@@ -668,8 +714,8 @@ func Test422_cartridge_death_sends_err(t *testing.T) {
 
 // TEST423: Multiple cartridges registered with distinct caps route independently
 func Test423_multi_cartridge_distinct_caps(t *testing.T) {
-	manifestA := `{"name":"CartridgeA","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:alpha","title":"alpha","command":"alpha"}]}]}`
-	manifestB := `{"name":"CartridgeB","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:beta","title":"beta","command":"beta"}]}]}`
+	manifestA := `{"name":"CartridgeA","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"},{"urn":"cap:alpha","title":"alpha","command":"alpha"}]}]}`
+	manifestB := `{"name":"CartridgeB","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"},{"urn":"cap:beta","title":"beta","command":"beta"}]}]}`
 
 	// Cartridge A pipes
 	hostReadA, cartridgeWriteA := net.Pipe()
@@ -799,7 +845,7 @@ func Test423_multi_cartridge_distinct_caps(t *testing.T) {
 
 // TEST424: Concurrent requests to the same cartridge are handled independently
 func Test424_concurrent_requests_same_cartridge(t *testing.T) {
-	manifest := `{"name":"Test","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:conc","title":"conc","command":"conc"}]}]}`
+	manifest := `{"name":"Test","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"},{"urn":"cap:conc","title":"conc","command":"conc"}]}]}`
 
 	hostReadP, cartridgeWriteP := net.Pipe()
 	cartridgeReadP, hostWriteP := net.Pipe()

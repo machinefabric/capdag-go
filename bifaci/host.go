@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/machinefabric/capdag-go/cap"
+	"github.com/machinefabric/capdag-go/standard"
 	"github.com/machinefabric/capdag-go/urn"
 )
 
@@ -297,6 +298,19 @@ type CartridgeHost struct {
 	outgoingRids  map[string]outgoingRoute  // rid string → route (carries typed RID)
 	incomingRxids map[rxidKey]incomingRoute // (xid, rid) → route (carries typed XID/RID)
 
+	// Routing-table GC bookkeeping — mirror of the Rust runtime's
+	// touch-sequence-based garbage collector
+	// (capdag/src/bifaci/host_runtime.rs). The `*Touched` maps stamp
+	// each routing entry with a monotonic touch sequence so the GC can
+	// evict the oldest entries first when a table crosses its soft
+	// watermark, keeping the routing tables bounded under a runaway
+	// producer without dropping fresh (still-streaming) flows.
+	incomingRxidsTouched  map[rxidKey]uint64
+	outgoingRidsTouched   map[string]uint64
+	routingTouchSeq       uint64
+	routingGcRunsTotal    uint64
+	routingGcEvictedTotal uint64
+
 	capabilities []byte
 	eventCh      chan cartridgeEvent
 	// commandCh delivers HostCommands (e.g. SyncRoster) from external
@@ -314,10 +328,113 @@ type CartridgeHost struct {
 // NewCartridgeHost creates a new multi-cartridge host.
 func NewCartridgeHost() *CartridgeHost {
 	return &CartridgeHost{
-		outgoingRids:  make(map[string]outgoingRoute),
-		incomingRxids: make(map[rxidKey]incomingRoute),
-		eventCh:       make(chan cartridgeEvent, 256),
-		commandCh:     make(chan hostCommand, 16),
+		outgoingRids:         make(map[string]outgoingRoute),
+		incomingRxids:        make(map[rxidKey]incomingRoute),
+		incomingRxidsTouched: make(map[rxidKey]uint64),
+		outgoingRidsTouched:  make(map[string]uint64),
+		eventCh:              make(chan cartridgeEvent, 256),
+		commandCh:            make(chan hostCommand, 16),
+	}
+}
+
+// Routing-table GC tuning constants — mirror of the Rust runtime
+// (capdag/src/bifaci/host_runtime.rs). The routing maps are bounded by
+// ROUTING_TABLE_HARD_CAP; the GC fires when a table crosses the soft
+// watermark and evicts the oldest ROUTING_TABLE_GC_EVICTION_FRACTION by
+// touch-sequence, with a secondary hard-cap pass for extreme runaway.
+const (
+	// ROUTING_TABLE_HARD_CAP — the absolute ceiling for any routing
+	// table. ~14× the ~568 entries observed across a long session.
+	RoutingTableHardCap = 8192
+	// ROUTING_TABLE_SOFT_WATERMARK — when an insertion brings a table
+	// at or above this size, the GC fires. ~80% of the hard cap.
+	RoutingTableSoftWatermark = 6553
+	// ROUTING_TABLE_GC_EVICTION_FRACTION — fraction of entries to drop
+	// in one GC pass.
+	RoutingTableGcEvictionFraction = 0.25
+)
+
+// touchIncomingRxid stamps key in incomingRxidsTouched with a fresh touch
+// sequence. Called both on insert and on every read that hits the entry, so a
+// still-streaming flow stays "fresh" for the GC. Caller must hold h.mu.
+func (h *CartridgeHost) touchIncomingRxid(key rxidKey) {
+	h.routingTouchSeq++
+	h.incomingRxidsTouched[key] = h.routingTouchSeq
+}
+
+// touchOutgoingRid stamps rid in outgoingRidsTouched with a fresh touch
+// sequence. Caller must hold h.mu.
+func (h *CartridgeHost) touchOutgoingRid(rid string) {
+	h.routingTouchSeq++
+	h.outgoingRidsTouched[rid] = h.routingTouchSeq
+}
+
+// gcRoutingTablesIfNeeded runs the GC if any routing table has crossed its soft
+// watermark. Each table is GC'd independently (their key sets don't overlap so
+// there's no benefit to ganging them). Caller must hold h.mu. Mirrors the Rust
+// gc_routing_tables_if_needed.
+func (h *CartridgeHost) gcRoutingTablesIfNeeded() {
+	if len(h.incomingRxids) >= RoutingTableSoftWatermark {
+		gcRoutingTable(h.incomingRxids, h.incomingRxidsTouched, &h.routingGcRunsTotal, &h.routingGcEvictedTotal)
+	}
+	if len(h.outgoingRids) >= RoutingTableSoftWatermark {
+		gcRoutingTable(h.outgoingRids, h.outgoingRidsTouched, &h.routingGcRunsTotal, &h.routingGcEvictedTotal)
+	}
+}
+
+// gcRoutingTable runs a single GC pass: drop the oldest
+// ROUTING_TABLE_GC_EVICTION_FRACTION of primary (and its matching touched
+// entries) by touch-sequence ascending. Keys missing from touched are treated
+// as oldest (sequence = 0). A secondary hard-cap pass evicts more aggressively
+// if the table somehow remains at or above the hard cap. Mirrors the Rust
+// generic gc_routing_table. The runs counter is bumped once per primary pass;
+// the evicted counter accumulates across both passes.
+func gcRoutingTable[K comparable, V any](primary map[K]V, touched map[K]uint64, runsTotal, evictedTotal *uint64) {
+	beforeCount := len(primary)
+	evictCount := int(float64(beforeCount) * RoutingTableGcEvictionFraction)
+	if evictCount < 1 {
+		evictCount = 1
+	}
+
+	evictOldest(primary, touched, evictCount)
+	*runsTotal++
+	*evictedTotal += uint64(evictCount)
+
+	// Secondary "hard cap" pass: if still at or above the hard cap
+	// (extreme runaway), evict more aggressively until back under the
+	// soft watermark. Bounded loop — runs at most a couple of
+	// iterations even at pathological growth.
+	for len(primary) >= RoutingTableHardCap {
+		extraEvict := len(primary) - RoutingTableSoftWatermark
+		if extraEvict < 1 {
+			extraEvict = 1
+		}
+		evictOldest(primary, touched, extraEvict)
+		*evictedTotal += uint64(extraEvict)
+	}
+}
+
+// evictOldest removes the n entries with the smallest touch sequence from
+// primary (and their touched entries). Keys missing from touched sort as 0
+// (oldest).
+func evictOldest[K comparable, V any](primary map[K]V, touched map[K]uint64, n int) {
+	type cand struct {
+		key K
+		at  uint64
+	}
+	candidates := make([]cand, 0, len(primary))
+	for k := range primary {
+		candidates = append(candidates, cand{key: k, at: touched[k]})
+	}
+	sort.SliceStable(candidates, func(i, j int) bool {
+		return candidates[i].at < candidates[j].at
+	})
+	if n > len(candidates) {
+		n = len(candidates)
+	}
+	for _, c := range candidates[:n] {
+		delete(primary, c.key)
+		delete(touched, c.key)
 	}
 }
 
@@ -467,6 +584,15 @@ func (h *CartridgeHost) AttachCartridge(cartridgeRead io.Reader, cartridgeWrite 
 		return -1, fmt.Errorf("failed to parse manifest: %w", err)
 	}
 	caps := flattenCapURNs(capGroups)
+
+	// Verify identity — proves the protocol stack works end-to-end before
+	// the cartridge is considered live. Mirrors Rust attach_cartridge,
+	// which runs verify_identity after the manifest parse and before the
+	// cartridge is recorded as running. A failure rejects the cartridge:
+	// it is never appended to the host and the error is returned.
+	if err := VerifyIdentity(reader, writer); err != nil {
+		return -1, fmt.Errorf("Identity verification failed: %w", err)
+	}
 
 	h.mu.Lock()
 	cartridgeIdx := len(h.cartridges)
@@ -838,6 +964,8 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 			xid:          xid,
 			rid:          frame.Id,
 		}
+		h.touchIncomingRxid(key)
+		h.gcRoutingTablesIfNeeded()
 		if err := h.sendToCartridge(cartridgeIdx, frame); err != nil {
 			// Cartridge died between dispatch and delivery. Synthesize
 			// a terminal ERR back to the relay so the engine doesn't
@@ -846,6 +974,7 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 			// the death event may already have been processed.
 			// Mirrors Rust host_runtime.rs:1438.
 			delete(h.incomingRxids, key)
+			delete(h.incomingRxidsTouched, key)
 			errFrame := NewErr(frame.Id, "CARTRIDGE_DIED", err.Error())
 			errFrame.RoutingId = frame.RoutingId
 			relayWriter.WriteFrame(errFrame)
@@ -892,6 +1021,14 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 			return nil
 		}
 
+		// Re-stamp the entry that matched so a still-streaming flow
+		// stays "fresh" for the GC.
+		if routedViaIncoming {
+			h.touchIncomingRxid(key)
+		} else {
+			h.touchOutgoingRid(frame.Id.ToString())
+		}
+
 		isTerminal := frame.FrameType == FrameTypeEnd || frame.FrameType == FrameTypeErr
 
 		if err := h.sendToCartridge(cartridgeIdx, frame); err != nil {
@@ -904,8 +1041,10 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 			// Mirrors Rust host_runtime.rs:1438-1465.
 			if routedViaIncoming {
 				delete(h.incomingRxids, key)
+				delete(h.incomingRxidsTouched, key)
 			} else {
 				delete(h.outgoingRids, frame.Id.ToString())
+				delete(h.outgoingRidsTouched, frame.Id.ToString())
 			}
 			errFrame := NewErr(frame.Id, "CARTRIDGE_DIED", err.Error())
 			errFrame.RoutingId = frame.RoutingId
@@ -919,12 +1058,14 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 				// is independent and tracked via the cartridge's
 				// outbound frames carrying the same XID.
 				delete(h.incomingRxids, key)
+				delete(h.incomingRxidsTouched, key)
 			} else {
 				// Peer response phase done. Drop the requester's
 				// entry so the next REQ with the same RID
 				// (extremely unlikely with UUIDs but possible
 				// with deterministic id allocators) starts fresh.
 				delete(h.outgoingRids, frame.Id.ToString())
+				delete(h.outgoingRidsTouched, frame.Id.ToString())
 			}
 		}
 
@@ -998,6 +1139,8 @@ func (h *CartridgeHost) handleCartridgeFrame(cartridgeIdx int, frame *Frame, rel
 			cartridgeIdx: cartridgeIdx,
 			rid:          frame.Id,
 		}
+		h.touchOutgoingRid(frame.Id.ToString())
+		h.gcRoutingTablesIfNeeded()
 		relayWriter.WriteFrame(frame)
 
 	default:
@@ -1049,6 +1192,7 @@ func (h *CartridgeHost) handleCartridgeDeath(cartridgeIdx int, relayWriter *rela
 	}
 	for _, key := range incomingKeys {
 		delete(h.incomingRxids, key)
+		delete(h.incomingRxidsTouched, key)
 	}
 
 	var outgoingKeys []string
@@ -1062,6 +1206,7 @@ func (h *CartridgeHost) handleCartridgeDeath(cartridgeIdx int, relayWriter *rela
 	}
 	for _, key := range outgoingKeys {
 		delete(h.outgoingRids, key)
+		delete(h.outgoingRidsTouched, key)
 	}
 
 	h.updateCapTable()
@@ -1337,10 +1482,44 @@ func (h *CartridgeHost) killAllCartridges() {
 	}
 }
 
+// ParseCapsError is the reason a manifest was rejected by
+// parseCapGroupsFromManifest. It carries the specific failure mode so the
+// caller can pick the right CartridgeAttachmentErrorKind — ManifestInvalid when
+// the JSON itself is malformed, Incompatible when the JSON parses but violates
+// the cartridge schema (missing CAP_IDENTITY, old shape, etc.). Mirrors the
+// Rust ParseCapsError enum in capdag/src/bifaci/host_runtime.rs.
+type ParseCapsError struct {
+	// Incompatible is true when the JSON parsed but the manifest is
+	// structurally incompatible with the host's expectations (e.g.
+	// missing CAP_IDENTITY). When false, the JSON itself failed to parse.
+	Incompatible bool
+	Message      string
+}
+
+func (e *ParseCapsError) Error() string {
+	return e.Message
+}
+
+// AttachmentKind maps the parse failure to a CartridgeAttachmentErrorKind:
+// ManifestInvalid for JSON-level failures, Incompatible for schema failures.
+// Mirrors Rust ParseCapsError::attachment_kind.
+func (e *ParseCapsError) AttachmentKind() CartridgeAttachmentErrorKind {
+	if e.Incompatible {
+		return CartridgeAttachmentErrorKindIncompatible
+	}
+	return CartridgeAttachmentErrorKindManifestInvalid
+}
+
 // parseCapGroupsFromManifest parses the cartridge's cap_groups from a
 // JSON manifest. Returns the full CapGroup slice — the engine needs it
 // to register adapter URNs per-cartridge, and the flat cap-urn list is
 // derived from it.
+//
+// A manifest that does not parse as JSON is rejected as a JSON-level failure
+// (ManifestInvalid); a manifest that parses but does not declare CAP_IDENTITY
+// is rejected as Incompatible. Both are returned as *ParseCapsError so the
+// caller can surface the right attachment-error kind. Mirrors the Rust
+// parse_cap_groups_from_manifest.
 func parseCapGroupsFromManifest(manifest []byte) ([]CapGroup, error) {
 	if len(manifest) == 0 {
 		return nil, nil
@@ -1351,11 +1530,45 @@ func parseCapGroupsFromManifest(manifest []byte) ([]CapGroup, error) {
 	}
 
 	if err := json.Unmarshal(manifest, &parsed); err != nil {
-		return nil, fmt.Errorf("failed to parse manifest JSON: %w", err)
+		return nil, &ParseCapsError{
+			Incompatible: false,
+			Message:      fmt.Sprintf("Invalid CapManifest from cartridge: %v", err),
+		}
 	}
 
 	if len(parsed.CapGroups) == 0 {
-		return nil, fmt.Errorf("manifest missing required cap_groups array")
+		return nil, &ParseCapsError{
+			Incompatible: false,
+			Message:      "manifest missing required cap_groups array",
+		}
+	}
+
+	// The manifest must declare the standard identity cap. The host's
+	// identity-verification handshake depends on it, and a manifest that
+	// omits it is structurally incompatible (Incompatible, not
+	// ManifestInvalid).
+	identityUrn, err := urn.NewCapUrnFromString(standard.CapIdentity)
+	if err != nil {
+		panic(fmt.Sprintf("BUG: CAP_IDENTITY constant is invalid: %v", err))
+	}
+	hasIdentity := false
+	for _, group := range parsed.CapGroups {
+		for i := range group.Caps {
+			capUrn := group.Caps[i].Urn
+			if capUrn != nil && identityUrn.ConformsTo(capUrn) {
+				hasIdentity = true
+				break
+			}
+		}
+		if hasIdentity {
+			break
+		}
+	}
+	if !hasIdentity {
+		return nil, &ParseCapsError{
+			Incompatible: true,
+			Message:      fmt.Sprintf("Cartridge manifest missing required CAP_IDENTITY (%s)", standard.CapIdentity),
+		}
 	}
 
 	return parsed.CapGroups, nil

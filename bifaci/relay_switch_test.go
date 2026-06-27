@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/machinefabric/capdag-go/cap"
 	"github.com/machinefabric/capdag-go/standard"
 )
 
@@ -1182,5 +1183,458 @@ func Test6745_RelaySwitchNewRejectsDuplicateIDs(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), `duplicate master id "dup-id"`) {
 		t.Fatalf("error should name the duplicate id; got %q", err.Error())
+	}
+}
+
+// TEST487: RelaySwitch construction succeeds when master's identity verification passes
+func Test487_relay_switch_identity_verification_succeeds(t *testing.T) {
+	engineRead, slaveWrite := net.Pipe()
+	slaveRead, engineWrite := net.Pipe()
+
+	go func() {
+		reader := NewFrameReader(slaveRead)
+		writer := NewFrameWriter(slaveWrite)
+		// Advertise identity + one test cap so construction runs the
+		// end-to-end identity probe before the caps become routable.
+		if !serveRelayHandshake(t, reader, writer, []string{
+			testCapIdentity,
+			`cap:in="media:void";test;out="media:void"`,
+		}) {
+			return
+		}
+		// Keep the pipe open after the probe.
+		for {
+			if _, err := reader.ReadFrame(); err != nil {
+				return
+			}
+		}
+	}()
+
+	sw, err := NewRelaySwitch([]SocketPair{
+		{ID: "test-master-0", Read: engineRead, Write: engineWrite},
+	})
+	if err != nil {
+		t.Fatalf("construction must succeed when identity verification passes: %v", err)
+	}
+
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+
+	// Construction succeeded — caps are populated and routable.
+	idx, err := sw.findMasterForCap(testCapIdentity, nil)
+	if err != nil || idx != 0 {
+		t.Errorf("expected master 0 for identity cap, got %d (err=%v)", idx, err)
+	}
+	idx, err = sw.findMasterForCap(`cap:in="media:void";test;out="media:void"`, nil)
+	if err != nil || idx != 0 {
+		t.Errorf("expected master 0 for test cap, got %d (err=%v)", idx, err)
+	}
+}
+
+// TEST488: RelaySwitch construction fails when master's identity verification fails
+func Test488_relay_switch_identity_verification_fails(t *testing.T) {
+	engineRead, slaveWrite := net.Pipe()
+	slaveRead, engineWrite := net.Pipe()
+
+	go func() {
+		reader := NewFrameReader(slaveRead)
+		writer := NewFrameWriter(slaveWrite)
+
+		// Send RelayNotify — an installed cartridge whose single
+		// cap-group declares CAP_IDENTITY so the host clears the
+		// payload-level identity check before the engine probes.
+		manifest := testManifestWithCaps([]string{testCapIdentity})
+		manifestJSON, _ := json.Marshal(manifest)
+		if err := SendNotify(writer, manifestJSON, DefaultLimits()); err != nil {
+			t.Errorf("slave SendNotify: %v", err)
+			return
+		}
+
+		// Read identity REQ, respond with ERR.
+		req, err := reader.ReadFrame()
+		if err != nil || req == nil {
+			t.Errorf("expected identity REQ: %v", err)
+			return
+		}
+		if req.FrameType != FrameTypeReq {
+			t.Errorf("expected identity REQ, got %d", req.FrameType)
+			return
+		}
+		errFrame := NewErr(req.Id, "BROKEN", "identity verification broken")
+		_ = writer.WriteFrame(errFrame)
+	}()
+
+	_, err := NewRelaySwitch([]SocketPair{
+		{ID: "test-master-0", Read: engineRead, Write: engineWrite},
+	})
+	if err == nil {
+		t.Fatal("construction must fail when identity verification fails")
+	}
+	if !strings.Contains(err.Error(), "identity verification failed") {
+		t.Errorf("error must mention identity verification: %v", err)
+	}
+}
+
+// =========================================================================
+// all_masters_ready / SetExpectedMasterCount
+// =========================================================================
+//
+// The host's `.configuring → .ready` advance is gated on AllMastersReady,
+// so its corner cases matter:
+//
+//   - Returns false when expected count is unset (default 0).
+//   - Returns false when only some of the expected masters connected.
+//   - Returns true once the expected count is met AND every connected
+//     master is healthy (caps may be empty — they register
+//     incrementally as cartridges progress to Operational).
+
+// buildSwitchWithNMasters builds a switch whose constructor reads
+// RelayNotify from n slaves, each registering identity + one cap, and
+// answering the construction-time identity probe. Mirrors Rust's
+// build_switch_with_n_masters.
+func buildSwitchWithNMasters(t *testing.T, n int) *RelaySwitch {
+	t.Helper()
+	sockets := make([]SocketPair, 0, n)
+	for i := 0; i < n; i++ {
+		engineRead, slaveWrite := net.Pipe()
+		slaveRead, engineWrite := net.Pipe()
+		capURN := fmt.Sprintf(`cap:in="media:t%d";noop;out="media:t%d"`, i, i)
+		go func() {
+			reader := NewFrameReader(slaveRead)
+			writer := NewFrameWriter(slaveWrite)
+			if !serveRelayHandshake(t, reader, writer, []string{testCapIdentity, capURN}) {
+				return
+			}
+			for {
+				if _, err := reader.ReadFrame(); err != nil {
+					return
+				}
+			}
+		}()
+		sockets = append(sockets, SocketPair{
+			ID:    fmt.Sprintf("test-master-%d", i),
+			Read:  engineRead,
+			Write: engineWrite,
+		})
+	}
+	sw, err := NewRelaySwitch(sockets)
+	if err != nil {
+		t.Fatalf("buildSwitchWithNMasters(%d): %v", n, err)
+	}
+	return sw
+}
+
+// buildSwitchWithNCaplessMasters builds a switch whose masters connect
+// but RelayNotify an EMPTY cap set — mirrors the real-world "cartridges
+// still inspecting / verifying" state where the master has connected
+// but no cartridge has reached Operational yet. An empty cap set skips
+// the identity probe (no handler chain to test). Mirrors Rust's
+// build_switch_with_n_capless_masters.
+func buildSwitchWithNCaplessMasters(t *testing.T, n int) *RelaySwitch {
+	t.Helper()
+	sockets := make([]SocketPair, 0, n)
+	for i := 0; i < n; i++ {
+		engineRead, slaveWrite := net.Pipe()
+		slaveRead, engineWrite := net.Pipe()
+		go func() {
+			reader := NewFrameReader(slaveRead)
+			writer := NewFrameWriter(slaveWrite)
+			if !serveRelayHandshake(t, reader, writer, []string{}) {
+				return
+			}
+			for {
+				if _, err := reader.ReadFrame(); err != nil {
+					return
+				}
+			}
+		}()
+		sockets = append(sockets, SocketPair{
+			ID:    fmt.Sprintf("test-master-%d", i),
+			Read:  engineRead,
+			Write: engineWrite,
+		})
+	}
+	sw, err := NewRelaySwitch(sockets)
+	if err != nil {
+		t.Fatalf("buildSwitchWithNCaplessMasters(%d): %v", n, err)
+	}
+	return sw
+}
+
+// TEST0136: All masters ready false when expected count unset
+func Test0136_all_masters_ready_false_when_expected_count_unset(t *testing.T) {
+	// Even with a connected, fully-RelayNotify'd master, the
+	// predicate must return false until the engine explicitly
+	// declares its expected master count via SetExpectedMasterCount.
+	// The default-zero policy is the safety net that makes "engine
+	// boot forgot to declare its expected count" surface as a hung
+	// readiness gate rather than a false-positive ready signal.
+	sw := buildSwitchWithNMasters(t, 1)
+	if sw.AllMastersReady() {
+		t.Errorf("all_masters_ready must return false when expected_master_count is 0")
+	}
+}
+
+// TEST0137: All masters ready false when partially connected
+func Test0137_all_masters_ready_false_when_partially_connected(t *testing.T) {
+	// 1 master connected, 2 expected. This is the live regression we
+	// shipped: the internal master had caps from t=0 but the
+	// external-providers master was still spawning cartridges. The
+	// host saw ready immediately and the bidi never started.
+	sw := buildSwitchWithNMasters(t, 1)
+	sw.SetExpectedMasterCount(2)
+	if sw.AllMastersReady() {
+		t.Errorf("all_masters_ready must return false until masters.len() reaches expected_master_count")
+	}
+}
+
+// TEST0139: All masters ready true when masters connected but capless
+func Test0139_all_masters_ready_true_when_masters_connected_but_capless(t *testing.T) {
+	// Cartridges in `.discovered` / `.inspecting` / `.verifying`
+	// contribute zero caps to their master's RelayNotify. The engine
+	// readiness gate must still fire so the splash screen can unblock
+	// — caps register incrementally as cartridges progress to
+	// `.operational`. A regression that re-coupled readiness to
+	// cap-set non-emptiness would make this test fail (and would hang
+	// the splash screen on every cold start with slow cartridges).
+	sw := buildSwitchWithNCaplessMasters(t, 2)
+	sw.SetExpectedMasterCount(2)
+	if !sw.AllMastersReady() {
+		t.Errorf("all_masters_ready must NOT require master.caps to be non-empty — caps register asynchronously as cartridges progress to Operational")
+	}
+}
+
+// TEST0140: All masters ready does not overshoot
+func Test0140_all_masters_ready_does_not_overshoot(t *testing.T) {
+	// 2 masters connected, 1 expected. The predicate should still
+	// report ready — the engine got more masters than it declared,
+	// which is fine; "at least expected" is the semantic. (A
+	// regression that used `==` instead of `>=` would make this case
+	// false and break edition setups where an extra master arrives
+	// later.)
+	sw := buildSwitchWithNMasters(t, 2)
+	sw.SetExpectedMasterCount(1)
+	if !sw.AllMastersReady() {
+		t.Errorf("all_masters_ready uses >= not == against expected_master_count")
+	}
+}
+
+// constHandler returns a constant byte string (ignores input).
+// Mirrors the Rust ConstHandler used by the add_master / preferred-cap
+// routing tests.
+type constHandler struct {
+	value string
+}
+
+func (h constHandler) HandleRequest(_ string, input <-chan Frame, output *ResponseWriter, _ PeerInvoker) {
+	// Drain input until END.
+	for frame := range input {
+		if frame.FrameType == FrameTypeEnd {
+			break
+		}
+	}
+	output.EmitResponse("media:", []byte(h.value))
+}
+
+// wireInProcessHost connects an InProcessCartridgeHost directly to one
+// end of a net.Pipe and returns the switch-side SocketPair. The Go
+// InProcessCartridgeHost.Run already sends the RelayNotify, answers the
+// identity probe, and routes REQs — so it stands in for Rust's
+// host→RelaySlave→switch chain (the RelaySlave is a transparent
+// forwarder; omitting it does not change observable switch behavior).
+func wireInProcessHost(t *testing.T, id string, host *InProcessCartridgeHost) SocketPair {
+	t.Helper()
+	// A real socketpair (buffered, full-duplex) rather than net.Pipe:
+	// the in-process host batches its handshake writes, which would
+	// deadlock against an unbuffered pipe.
+	hostConn, switchConn := createSocketPair(t)
+	go func() {
+		_ = host.Run(hostConn, hostConn)
+	}()
+	return SocketPair{ID: id, Read: switchConn, Write: switchConn}
+}
+
+// readSwitchResponse drains the switch response stream for rid and
+// returns the concatenated CBOR-decoded chunk payloads up to END.
+func readSwitchResponse(t *testing.T, sw *RelaySwitch, rid MessageId) []byte {
+	t.Helper()
+	var data []byte
+	for i := 0; i < 20; i++ {
+		frame, err := sw.ReadFromMasters()
+		if err != nil {
+			t.Fatalf("ReadFromMasters: %v", err)
+		}
+		if !frame.Id.Equals(rid) {
+			continue
+		}
+		switch frame.FrameType {
+		case FrameTypeChunk:
+			decoded, err := DecodeChunkPayload(frame.Payload)
+			if err != nil {
+				t.Fatalf("DecodeChunkPayload: %v", err)
+			}
+			data = append(data, decoded...)
+		case FrameTypeEnd:
+			return data
+		case FrameTypeErr:
+			t.Fatalf("unexpected ERR: %s", frame.ErrorMessage())
+		}
+	}
+	t.Fatalf("did not receive END for rid %s", rid.ToString())
+	return nil
+}
+
+// TEST0132: add_master dynamically connects new host to running switch
+func Test0132_add_master_dynamic(t *testing.T) {
+	// Create initial switch with handler A (alpha).
+	capA := `cap:in="media:void";alpha;out="media:void"`
+	hostA := NewInProcessCartridgeHost(
+		InProcessHostIdentityForTest("alpha-host"),
+		[]HandlerRegistration{{
+			Name:    "alpha",
+			Caps:    []cap.Cap{makeTestCap(t, capA)},
+			Handler: constHandler{value: "alpha"},
+		}},
+	)
+	spA := wireInProcessHost(t, "test-master-0", hostA)
+
+	sw, err := NewRelaySwitch([]SocketPair{spA})
+	if err != nil {
+		t.Fatalf("NewRelaySwitch: %v", err)
+	}
+	if got := len(sw.masters); got != 1 {
+		t.Fatalf("masters len: got %d, want 1", got)
+	}
+
+	// Add handler B (beta) dynamically. A distinct id exercises the
+	// append branch of AddMaster (slot index 1).
+	capB := `cap:in="media:void";beta;out="media:void"`
+	hostB := NewInProcessCartridgeHost(
+		InProcessHostIdentityForTest("beta-host"),
+		[]HandlerRegistration{{
+			Name:    "beta",
+			Caps:    []cap.Cap{makeTestCap(t, capB)},
+			Handler: constHandler{value: "beta"},
+		}},
+	)
+	spB := wireInProcessHost(t, "test-master-1", hostB)
+
+	idx, err := sw.AddMaster(spB)
+	if err != nil {
+		t.Fatalf("AddMaster: %v", err)
+	}
+	if idx != 1 {
+		t.Fatalf("AddMaster must append at index 1, got %d", idx)
+	}
+	if got := len(sw.masters); got != 2 {
+		t.Fatalf("masters len: got %d, want 2", got)
+	}
+
+	// Verify both caps are in the aggregate capabilities.
+	var payload RelayNotifyCapabilitiesPayload
+	if err := json.Unmarshal(sw.Capabilities(), &payload); err != nil {
+		t.Fatalf("parse aggregate capabilities: %v", err)
+	}
+	caps := payload.CapURNs()
+	foundAlpha, foundBeta := false, false
+	for _, c := range caps {
+		if strings.Contains(c, "alpha") {
+			foundAlpha = true
+		}
+		if strings.Contains(c, "beta") {
+			foundBeta = true
+		}
+	}
+	if !foundAlpha {
+		t.Errorf("aggregate caps missing alpha: %v", caps)
+	}
+	if !foundBeta {
+		t.Errorf("aggregate caps missing beta: %v", caps)
+	}
+
+	// Execute against beta (dynamically added master).
+	rid := NewMessageIdRandom()
+	maxChunk := sw.Limits().MaxChunk
+	frames := BuildRequestFrames(rid, capB, nil, maxChunk)
+	for i := range frames {
+		if err := sw.SendToMaster(&frames[i], nil); err != nil {
+			t.Fatalf("SendToMaster: %v", err)
+		}
+	}
+
+	got := readSwitchResponse(t, sw, rid)
+	if string(got) != "beta" {
+		t.Errorf("expected response %q, got %q", "beta", string(got))
+	}
+}
+
+// TEST666: Preferred cap routing - routes to exact equivalent when multiple masters match
+func Test666_preferred_cap_routing(t *testing.T) {
+	// Master 0: exact-match handler (matches request exactly — closest specificity).
+	capExact := `cap:in="media:void";test;out="media:void"`
+	hostExact := NewInProcessCartridgeHost(
+		InProcessHostIdentityForTest("exact-host"),
+		[]HandlerRegistration{{
+			Name:    "exact",
+			Caps:    []cap.Cap{makeTestCap(t, capExact)},
+			Handler: constHandler{value: "EXACT"},
+		}},
+	)
+
+	// Master 1: more-specific handler (extra tag — also matches, but
+	// further from the request).
+	capExtra := `cap:in="media:void";test;ext=pdf;out="media:void"`
+	hostExtra := NewInProcessCartridgeHost(
+		InProcessHostIdentityForTest("extra-host"),
+		[]HandlerRegistration{{
+			Name:    "extra",
+			Caps:    []cap.Cap{makeTestCap(t, capExtra)},
+			Handler: constHandler{value: "EXTRA"},
+		}},
+	)
+
+	spExact := wireInProcessHost(t, "test-master-0", hostExact)
+	spExtra := wireInProcessHost(t, "test-master-1", hostExtra)
+
+	sw, err := NewRelaySwitch([]SocketPair{spExact, spExtra})
+	if err != nil {
+		t.Fatalf("NewRelaySwitch: %v", err)
+	}
+	if got := len(sw.masters); got != 2 {
+		t.Fatalf("masters len: got %d, want 2", got)
+	}
+
+	reqCap := `cap:in="media:void";test;out="media:void"`
+
+	// Test 1: without preferred_cap, routes to exact match (closest specificity).
+	rid1 := NewMessageIdFromUint(1)
+	maxChunk := sw.Limits().MaxChunk
+	frames1 := BuildRequestFrames(rid1, reqCap, nil, maxChunk)
+	for i := range frames1 {
+		if err := sw.SendToMaster(&frames1[i], nil); err != nil {
+			t.Fatalf("SendToMaster (no preference): %v", err)
+		}
+	}
+	resp1 := readSwitchResponse(t, sw, rid1)
+	if string(resp1) != "EXACT" {
+		t.Errorf("Without preferred_cap, should route to exact-match handler (closest specificity); got %q", string(resp1))
+	}
+
+	// Test 2: with preferred_cap = capExtra, routes to extra handler (preferred override).
+	rid2 := NewMessageIdFromUint(2)
+	frames2 := BuildRequestFrames(rid2, reqCap, nil, maxChunk)
+	pref := capExtra
+	for i := range frames2 {
+		var p *string
+		if frames2[i].FrameType == FrameTypeReq {
+			p = &pref
+		}
+		if err := sw.SendToMaster(&frames2[i], p); err != nil {
+			t.Fatalf("SendToMaster (with preference): %v", err)
+		}
+	}
+	resp2 := readSwitchResponse(t, sw, rid2)
+	if string(resp2) != "EXTRA" {
+		t.Errorf("With preferred_cap, should route to extra handler (preferred override); got %q", string(resp2))
 	}
 }

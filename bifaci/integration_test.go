@@ -1798,13 +1798,13 @@ func Test6330_ChunkingDataIntegrity3x(t *testing.T) {
 // over the relay pipe and reads responses, skipping the host's RelayNotify
 // inventory frames via recvCartridgeFrame (defined in host_multi_test.go).
 //
-// DIVERGENCE NOTE: Rust's attach_cartridge() runs verify_identity() inline, so
-// the Rust tests use a cartridge_handshake_with_identity helper that answers an
-// identity REQ during attach. The Go CartridgeHost.AttachCartridge does NOT run
-// identity verification during attach (the whole host_multi_test.go suite — the
-// Go port of host_runtime.rs's attach tests — is built on this), so these Go
-// ports use the plain simulateCartridge handshake (no identity echo). The
-// request/response assertions are mirrored 1:1.
+// Rust's attach_cartridge() runs verify_identity() inline, so the Rust tests use
+// a cartridge_handshake_with_identity helper that answers an identity REQ during
+// attach. The Go CartridgeHost.AttachCartridge now mirrors this: it runs
+// VerifyIdentity after the handshake, and simulateCartridge answers the identity
+// REQ (echoIdentityRequest) before invoking the test handler. The handlers below
+// therefore read the real routed REQ first; the request/response assertions are
+// mirrored 1:1.
 // =============================================================================
 
 // TEST1122: Full path: engine REQ → runtime → cartridge → response back through relay
@@ -2489,10 +2489,10 @@ func Test901_ReqForUnknownCapReturnsErrFrame(t *testing.T) {
 
 // TEST489: Full path identity verification: engine → host (AttachCartridge) → cartridge
 //
-// In the Rust mirror, attach_cartridge runs identity verification end-to-end; in
-// the Go mirror identity is not exchanged during attach (see DIVERGENCE NOTE
-// above), so this verifies the equivalent end state: after attach the cartridge
-// is live and handles a real request through the full relay path.
+// In both the Rust and Go mirrors, attach_cartridge runs identity verification
+// end-to-end (simulateCartridge answers the identity REQ during attach); this
+// then verifies that after attach the cartridge is live and handles a real
+// request through the full relay path.
 func Test489_FullPathIdentityVerification(t *testing.T) {
 	manifest := `{"name":"IdentityE2E","version":"1.0","channel":"release","registry_url":null,"description":"Identity test","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity","args":[]},{"urn":"cap:in=\"media:void\";test;out=\"media:void\"","title":"Test","command":"test","args":[]}]}]}`
 
