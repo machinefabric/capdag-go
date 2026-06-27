@@ -636,8 +636,10 @@ func Test616_stored_media_def_to_def(t *testing.T) {
 
 // TEST617: Verify normalize_media_urn produces consistent non-empty results
 func Test617_normalize_media_urn(t *testing.T) {
-	urn1 := normalizeMediaUrn("media:string")
-	urn2 := normalizeMediaUrn("media:string")
+	urn1, err1 := normalizeMediaUrn("media:string")
+	urn2, err2 := normalizeMediaUrn("media:string")
+	assert.NoError(t, err1)
+	assert.NoError(t, err2)
 	assert.NotEmpty(t, urn1)
 	assert.NotEmpty(t, urn2)
 	assert.Equal(t, urn1, urn2)

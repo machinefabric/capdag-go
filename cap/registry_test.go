@@ -272,3 +272,39 @@ func Test1893_CacheRootIsNamespacedPerRegistryOrigin(t *testing.T) {
 	assert.Equal(t, "capdag", filepath.Base(filepath.Dir(staging)),
 		"the per-origin slug must live under the capdag cache directory")
 }
+
+// TEST6396: A malformed cap URN must FAIL HARD, not be passed through raw (the
+// old silent fallback) and surface later as a misleading "not in manifest" /
+// cache-miss. The `out` value below contains an unquoted `=`, which the cap
+// grammar rejects. Against the old `if err == nil { normalized = ... }`
+// fallback, normalizeCapUrn returned the raw string and GetCap then reported a
+// not-found/manifest error; this test asserts the truthful parse error and that
+// no path panics on a bad URN.
+func Test6396_MalformedCapUrnFailsHard(t *testing.T) {
+	malformed := `cap:coerce;in="media:integer;numeric";out=media:enc=utf-8`
+
+	// Direct normalization helper must return an error, NOT the raw string.
+	normalized, err := normalizeCapUrn(malformed)
+	require.Error(t, err, "normalizeCapUrn on a malformed URN must error, not fall back to the raw string")
+	assert.Empty(t, normalized, "no normalized value on parse failure")
+	assert.Contains(t, err.Error(), "malformed cap URN",
+		"the error must name the malformation, not masquerade as not-found")
+
+	// Public path (GetCap) must surface the parse error, NOT a not-found /
+	// manifest error. It must not panic.
+	registry := NewFabricRegistryForTest()
+	cap, gerr := registry.GetCap(malformed)
+	require.Error(t, gerr, "malformed cap URN must not resolve")
+	assert.Nil(t, cap, "no cap returned for a malformed URN")
+	assert.Contains(t, gerr.Error(), "malformed cap URN",
+		"GetCap on a malformed URN must be a parse/malformed error, not a not-found error")
+	assert.NotContains(t, gerr.Error(), "not found",
+		"the malformed-URN error must not be reported as a not-found")
+	assert.NotContains(t, gerr.Error(), "manifest",
+		"the malformed-URN error must not be reported as a manifest miss")
+
+	// Lookup contract (value, found): a malformed URN is a graceful miss, no panic.
+	got, ok := registry.GetCachedCap(malformed)
+	assert.False(t, ok, "GetCachedCap on a malformed URN must report not-found")
+	assert.Nil(t, got, "GetCachedCap on a malformed URN must return nil")
+}

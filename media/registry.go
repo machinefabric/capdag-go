@@ -3,6 +3,7 @@ package media
 import (
 	"crypto/sha256"
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -70,11 +71,11 @@ func (s *StoredMediaDef) ToMediaDef() MediaDef {
 // fetch from the remote catalogue — callers populate the cache via
 // AddSpec or load it from a previously persisted state.
 type FabricRegistry struct {
-	mu          sync.RWMutex
-	cachedSpecs map[string]StoredMediaDef
+	mu            sync.RWMutex
+	cachedSpecs   map[string]StoredMediaDef
 	cachedAliases map[string]StoredAlias
-	extIndex    map[string][]string // lowercase extension -> list of URNs
-	config      RegistryConfig
+	extIndex      map[string][]string // lowercase extension -> list of URNs
+	config        RegistryConfig
 	// manifestVersion is the pinned fabric manifest version. 0 ⇒ legacy v0 /
 	// flat-path mode (no manifest consulted). >= 1 ⇒ manifest-driven.
 	manifestVersion uint32
@@ -133,7 +134,13 @@ func (r *FabricRegistry) GetMediaDef(urnStr string) (*StoredMediaDef, error) {
 		return r.GetMediaDef(target)
 	}
 
-	normalizedUrn := normalizeMediaUrn(urnStr)
+	// This path returns an error, so a malformed URN propagates rather than
+	// silently keeping the raw string (which would surface as a misleading
+	// "not found in registry" instead of the truth).
+	normalizedUrn, err := normalizeMediaUrn(urnStr)
+	if err != nil {
+		return nil, err
+	}
 
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -148,16 +155,19 @@ func (r *FabricRegistry) GetMediaDef(urnStr string) (*StoredMediaDef, error) {
 	return &spec, nil
 }
 
-// normalizeMediaUrn normalizes a media URN for consistent lookups
-// This matches Rust's normalize_media_urn function
-func normalizeMediaUrn(urnStr string) string {
-	// Parse and re-serialize to get canonical form
+// normalizeMediaUrn parses a media URN and returns its canonical form. A parse
+// failure is a HARD error — it is NEVER silently swallowed into the raw string,
+// which would let a malformed URN masquerade as a cache-miss downstream.
+// Callers on a path that returns an error propagate this; lookup/void paths log
+// and skip. This never panics. Matches Rust's normalize_media_urn.
+func normalizeMediaUrn(urnStr string) (string, error) {
 	parsed, err := urn.NewMediaUrnFromString(urnStr)
 	if err != nil {
-		// If parsing fails, return as-is
-		return urnStr
+		return "", &FabricRegistryError{
+			Message: fmt.Sprintf("malformed media URN '%s': %v", urnStr, err),
+		}
 	}
-	return parsed.String()
+	return parsed.String(), nil
 }
 
 // toLower is a helper to convert string to lowercase
@@ -175,7 +185,13 @@ func (r *FabricRegistry) AddSpec(spec StoredMediaDef) {
 	if spec.Version == 0 && r.manifestVersion >= 1 {
 		spec.Version = r.manifestVersion
 	}
-	normalizedUrn := normalizeMediaUrn(spec.Urn)
+	// Void mutator: a malformed URN is SKIPPED (logged), never stored under a
+	// raw key and never a crash.
+	normalizedUrn, err := normalizeMediaUrn(spec.Urn)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[WARN] AddSpec: skipping spec: %v\n", err)
+		return
+	}
 	r.cachedSpecs[normalizedUrn] = spec
 	if r.manifestVersion >= 1 {
 		r.manifest.Media[normalizedUrn] = spec.Version
@@ -191,7 +207,14 @@ func (r *FabricRegistry) AddSpec(spec StoredMediaDef) {
 // GetCachedMediaDef retrieves a cached spec by URN without network access.
 // Returns nil if not found (no error — absence is expected).
 func (r *FabricRegistry) GetCachedMediaDef(urnStr string) *StoredMediaDef {
-	normalizedUrn := normalizeMediaUrn(urnStr)
+	// Lookup contract is a nil-on-absence pointer. A malformed URN can never
+	// match a canonically-keyed entry, so treat it as a miss — but log it
+	// rather than silently keying on the raw string.
+	normalizedUrn, err := normalizeMediaUrn(urnStr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[WARN] GetCachedMediaDef: %v\n", err)
+		return nil
+	}
 
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -252,7 +275,14 @@ func (r *FabricRegistry) GetExtensionMappings() []struct {
 // CacheKey returns a deterministic cache key for a media URN.
 // Uses SHA256 hash of the normalized URN.
 func (r *FabricRegistry) CacheKey(urnStr string) string {
-	normalized := normalizeMediaUrn(urnStr)
+	// This helper has no error channel. A malformed URN cannot be canonicalized,
+	// so it is keyed by its raw bytes — but the malformation is logged rather
+	// than silently passing as a valid canonical key.
+	normalized, err := normalizeMediaUrn(urnStr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[WARN] CacheKey: %v\n", err)
+		normalized = urnStr
+	}
 	hash := sha256.Sum256([]byte(normalized))
 	return fmt.Sprintf("%x", hash)
 }

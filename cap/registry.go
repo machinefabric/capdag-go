@@ -223,9 +223,14 @@ func (r *FabricRegistry) GetCap(urnStr string) (*Cap, error) {
 	// cached cap is unreachable via a non-canonical lookup string, falling
 	// through to a network fetch (and failing hard when offline). Mirrors
 	// Rust get_cap's normalize_cap_urn.
-	normalized := urnStr
-	if parsed, perr := urn.NewCapUrnFromString(urnStr); perr == nil {
-		normalized = parsed.String()
+	//
+	// A malformed URN is a hard error here: this path returns an error, so the
+	// parse failure PROPAGATES rather than silently keeping the raw string —
+	// otherwise a bad URN surfaces later as a misleading "not in manifest" /
+	// cache-miss instead of the truth.
+	normalized, err := normalizeCapUrn(urnStr)
+	if err != nil {
+		return nil, err
 	}
 
 	// Check in-memory cache first
@@ -316,9 +321,13 @@ func (r *FabricRegistry) GetCachedCaps() []*Cap {
 // GetCachedCap returns a cap from the in-memory cache synchronously.
 // Returns (*Cap, true) if found, (nil, false) otherwise.
 func (r *FabricRegistry) GetCachedCap(capUrn string) (*Cap, bool) {
-	normalized := capUrn
-	if parsed, err := urn.NewCapUrnFromString(capUrn); err == nil {
-		normalized = parsed.String()
+	// Lookup contract is (value, found). A malformed URN can never match a
+	// canonically-keyed cache entry, so treat it as a miss — but log it rather
+	// than silently keying on the raw string, which would hide the malformation.
+	normalized, err := normalizeCapUrn(capUrn)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[WARN] GetCachedCap: %v\n", err)
+		return nil, false
 	}
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
@@ -345,6 +354,21 @@ func (r *FabricRegistry) ClearCache() error {
 }
 
 // Private helper methods
+
+// normalizeCapUrn parses a cap URN and returns its canonical (tag-sorted)
+// string form. A parse failure is a HARD error — it is NEVER silently swallowed
+// into the raw string, which would let a malformed URN masquerade as a
+// cache-miss / "not in manifest" downstream. Callers on a path that returns an
+// error propagate this; lookup/void paths log and skip. This never panics.
+//
+// Mirrors Rust fabric::registry::normalize_cap_urn.
+func normalizeCapUrn(urnStr string) (string, error) {
+	parsed, err := urn.NewCapUrnFromString(urnStr)
+	if err != nil {
+		return "", fmt.Errorf("malformed cap URN %q: %w", urnStr, err)
+	}
+	return parsed.String(), nil
+}
 
 // getCacheDir returns the on-disk cache root for a given registry origin.
 //
@@ -440,8 +464,17 @@ func loadAllCachedCaps(cacheDir string) (map[string]*Cap, error) {
 			continue
 		}
 
-		urn := entry.Definition.UrnString()
-		caps[urn] = &entry.Definition
+		// Key the cache under the canonical (tag-sorted) URN so disk-hydrated
+		// caps are reachable by the same normalized key GetCap/AddCapsToCache
+		// use. A cache file whose stored URN is malformed is SKIPPED (logged) —
+		// never inserted under a raw key, never a crash. Mirrors Rust's
+		// loadAllCachedCaps using normalize_cap_urn.
+		normalizedUrn, nerr := normalizeCapUrn(entry.Definition.UrnString())
+		if nerr != nil {
+			fmt.Fprintf(os.Stderr, "[WARN] loadAllCachedCaps: skipping cache file %s: %v\n", filePath, nerr)
+			continue
+		}
+		caps[normalizedUrn] = &entry.Definition
 	}
 
 	return caps, nil
@@ -475,10 +508,12 @@ func (r *FabricRegistry) fetchFromRegistry(capUrn string) (*Cap, error) {
 		return nil, fmt.Errorf("Network access blocked by policy — cannot fetch cap '%s'", capUrn)
 	}
 
-	// Normalize the cap URN using the proper parser
-	normalizedUrn := capUrn
-	if parsed, err := urn.NewCapUrnFromString(capUrn); err == nil {
-		normalizedUrn = parsed.String()
+	// Normalize the cap URN using the proper parser. This path returns an
+	// error, so a malformed URN propagates rather than being hashed/fetched
+	// under a raw key (which would 404 with a misleading "not found").
+	normalizedUrn, err := normalizeCapUrn(capUrn)
+	if err != nil {
+		return nil, err
 	}
 
 	// The registry serves each cap at /caps/<sha256>, where
@@ -536,12 +571,14 @@ func ValidateCapCanonical(registry *FabricRegistry, cap *Cap) error {
 // The identity cap accepts any media type as input and echoes it as output unchanged.
 // It is mandatory in every capability set so the resolver's source-to-cap-arg
 // matching can route through identity in any notation.
-func identityCap() *Cap {
+func identityCap() (*Cap, error) {
 	identityUrn := standard.CapIdentity
 	u, err := urn.NewCapUrnFromString(identityUrn)
 	if err != nil {
-		// CAP_IDENTITY must always be valid — this is a programming error
-		panic("identityCap: failed to parse identity URN: " + err.Error())
+		// CAP_IDENTITY is a build-time constant and must always parse. A bad
+		// one is a serious defect, but it must NOT crash registry construction
+		// — return the error so the caller can log and skip identity seeding.
+		return nil, fmt.Errorf("identityCap: failed to parse identity URN %q: %w", identityUrn, err)
 	}
 	desc := "The categorical identity morphism. Echoes input as output unchanged. Mandatory in every capability set."
 	c := &Cap{
@@ -555,7 +592,7 @@ func identityCap() *Cap {
 		},
 	}
 	c.SetOutput(NewCapOutput("media:", "The input data, unchanged"))
-	return c
+	return c, nil
 }
 
 // strPtr returns a pointer to the given string (helper for ArgSource.Stdin).
@@ -565,12 +602,22 @@ func strPtr(s string) *string { return &s }
 // if it is not already present. This is idempotent — calling it multiple times
 // is safe.
 func (r *FabricRegistry) EnsureIdentityCap() {
-	identity := identityCap()
+	identity, err := identityCap()
+	if err != nil {
+		// The identity URN is a build-time constant; a parse failure here is a
+		// defect, but it must not crash registry construction. Log and skip
+		// seeding the identity cap rather than panicking.
+		fmt.Fprintf(os.Stderr, "[WARN] EnsureIdentityCap: %v\n", err)
+		return
+	}
 	urnStr := identity.UrnString()
-	// Normalize via parsing, same as how GetCachedCap and GetCap key the cache
-	normalized := urnStr
-	if parsed, err := urn.NewCapUrnFromString(urnStr); err == nil {
-		normalized = parsed.String()
+	// Normalize via parsing, same as how GetCachedCap and GetCap key the cache.
+	// The identity URN just parsed successfully above, so this normalization
+	// cannot fail; on the off chance it does, log and skip rather than crash.
+	normalized, nerr := normalizeCapUrn(urnStr)
+	if nerr != nil {
+		fmt.Fprintf(os.Stderr, "[WARN] EnsureIdentityCap: %v\n", nerr)
+		return
 	}
 
 	// STANDARD_CAPS travel with the manifest: their per-def version is the
@@ -752,9 +799,12 @@ func (r *FabricRegistry) AddCapsToCache(caps []*Cap) {
 			cap.Version = r.manifestVersion
 		}
 		urnStr := cap.UrnString()
-		normalized := urnStr
-		if parsed, err := urn.NewCapUrnFromString(urnStr); err == nil {
-			normalized = parsed.String()
+		// Void mutator: a malformed URN is SKIPPED (logged), never stored under
+		// a raw key and never a crash, so the rest of the batch still caches.
+		normalized, err := normalizeCapUrn(urnStr)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "[WARN] AddCapsToCache: skipping cap: %v\n", err)
+			continue
 		}
 		r.cachedCaps[normalized] = cap
 		if r.manifestVersion >= 1 {
