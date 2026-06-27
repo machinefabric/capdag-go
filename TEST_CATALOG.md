@@ -1,8 +1,8 @@
 # Go Test Catalog
 
-**Total Tests:** 1143
+**Total Tests:** 1144
 
-**Numbered Tests:** 1143
+**Numbered Tests:** 1144
 
 **Unnumbered Tests:** 0
 
@@ -278,8 +278,8 @@ This catalog lists all tests in the Go codebase.
 | test285 | `Test285_RequestResponseSimple` | TEST285: Simple request-response flow (REQ → END with payload) | bifaci/integration_test.go:306 |
 | test286 | `Test286_StreamingChunks` | TEST286: Streaming response with multiple CHUNK frames | bifaci/integration_test.go:368 |
 | test287 | `Test287_HeartbeatFromHost` | TEST287: Host-initiated heartbeat | bifaci/integration_test.go:446 |
-| test288 | `Test288_media_documentation_propagates_through_resolve` | TEST288: Documentation propagates from MediaDef through ResolveMediaUrn into ResolvedMediaDef. Verifies description and documentation remain distinct. | media/spec_test.go:648 |
-| test0289 | `Test0289_media_def_def_documentation_round_trip` | TEST289: MediaDef serializes documentation only when present and round-trips losslessly. Mirrors TEST1127/1128 for the cap side. | media/spec_test.go:674 |
+| test288 | `Test288_media_documentation_propagates_through_resolve` | TEST288: Documentation propagates from MediaDef through ResolveMediaUrn into ResolvedMediaDef. Verifies description and documentation remain distinct. | media/spec_test.go:650 |
+| test0289 | `Test0289_media_def_def_documentation_round_trip` | TEST289: MediaDef serializes documentation only when present and round-trips losslessly. Mirrors TEST1127/1128 for the cap side. | media/spec_test.go:676 |
 | test290 | `Test290_LimitsNegotiation` | TEST290: Limit negotiation picks minimum | bifaci/integration_test.go:637 |
 | test291 | `Test291_BinaryPayloadRoundtrip` | TEST291: Binary payload roundtrip (all 256 byte values) | bifaci/integration_test.go:677 |
 | test292 | `Test292_MessageIdUniqueness` | TEST292: Sequential requests get distinct MessageIds | bifaci/integration_test.go:751 |
@@ -548,7 +548,7 @@ This catalog lists all tests in the Go codebase.
 | test626 | `Test626_unknown_profile_skips_validation` | TEST626: Verify unknown profile URL skips validation and returns Ok | media/profile_test.go:193 |
 | test627 | `Test627_insert_schema_rejects_invalid_schema` | TEST627: insert_schema rejects malformed JSON Schemas instead of caching them. A registry that silently accepted invalid schemas would hide compilation problems until the first validation call. | media/profile_test.go:199 |
 | test628 | `Test628_media_urn_constants_format` | TEST628: Verify media URN constants all start with "media:" prefix | urn/media_urn_test.go:666 |
-| test629 | `Test629_profile_constants_format` | TEST629: Verify profile URL constants all start with capdag.com schema prefix | media/spec_test.go:726 |
+| test629 | `Test629_profile_constants_format` | TEST629: Verify profile URL constants all start with capdag.com schema prefix | media/spec_test.go:728 |
 | test630 | `Test630_cartridge_repo_creation` | TEST630: CartridgeRepo creation starts with empty cartridge list. | bifaci/cartridge_repo_test.go:752 |
 | test631 | `Test631_needs_sync_empty_cache` | TEST631: needs_sync returns true with empty cache and non-empty URLs. | bifaci/cartridge_repo_test.go:760 |
 | test632 | `Test632_deserialize_minimal_registry_cap` | TEST632: A registry cap with only the three required fields parses. | bifaci/cartridge_repo_test.go:921 |
@@ -893,7 +893,7 @@ This catalog lists all tests in the Go codebase.
 | test1128 | `Test1128_cap_documentation_omitted_when_none` | TEST1128: When Documentation is nil, the serializer must omit the field entirely. There must be no "documentation":null — only absence. | cap/definition_test.go:557 |
 | test1129 | `Test1129_cap_documentation_parses_from_capfab_json` | TEST1129: A capfab-shaped JSON document with a documentation field must deserialize into a Cap with the body intact. | cap/definition_test.go:575 |
 | test1130 | `Test1130_cap_documentation_set_and_clear_lifecycle` | TEST1130: Documentation set/clear lifecycle must not cross-contaminate cap_description. | cap/definition_test.go:592 |
-| test1133 | `Test1133_media_def_def_documentation_lifecycle` | TEST1133: MediaDef set/clear lifecycle for documentation. Setter and clearer must not cross-contaminate the description field. | media/spec_test.go:704 |
+| test1133 | `Test1133_media_def_def_documentation_lifecycle` | TEST1133: MediaDef set/clear lifecycle for documentation. Setter and clearer must not cross-contaminate the description field. | media/spec_test.go:706 |
 | test1135 | `Test1135_StrandNodeUrnReturnsMediaUrnAtNodeId` | TEST1135: MachineStrand::node_urn(id) returns the MediaUrn at that NodeId. For a single-cap strand (pdf → extract → txt), there are exactly two nodes and each returns a valid URN. | machine/machine_test.go:174 |
 | test1136 | `Test1136_ParseMachineUndefinedAliasRaisesSyntaxError` | TEST1136: parse_machine with an undefined cap alias raises MachineParseError wrapping MachineSyntaxError::UndefinedAlias. This pins the error path so an alias lookup failure is always surfaced as a syntax error (not a resolution error or a panic). | machine/machine_test.go:472 |
 | test1140 | `Test1140_write_stream_chunked_splits_data_into_protocol_v2_sequence` | TEST1140: write_stream_chunked (protocol v2) splits payload into STREAM_START → CHUNK(s) → STREAM_END → END with correct frame types, stream_id, media_urn, and data integrity. | bifaci/io_test.go:1312 |
@@ -1095,6 +1095,7 @@ This catalog lists all tests in the Go codebase.
 | test6382 | `Test6382_parse_registry_json` | TEST6382: Test parsing registry JSON without stdin args verifies cap structure | cap/registry_test.go:81 |
 | test6388 | `Test6388_per_cap_url_uses_sha256` | TEST6388: Per-cap URL is /caps/<sha256-hex> — no URN-grammar characters in the path, no percent-encoding gymnastics. | cap/registry_test.go:137 |
 | test6391 | `Test6391_same_cap_different_spellings_same_url` | TEST6391: Equivalent URNs (different tag order, etc.) hash to the same key. This is the property that makes cross-language lookups land at the same registry object regardless of which capdag implementation issued the request. | cap/registry_test.go:151 |
+| test6396 | `Test6396_MalformedCapUrnFailsHard` | TEST6396: A malformed cap URN must FAIL HARD, not be passed through raw (the old silent fallback) and surface later as a misleading "not in manifest" / cache-miss. The `out` value below contains an unquoted `=`, which the cap grammar rejects. Against the old `if err == nil { normalized = ... }` fallback, normalizeCapUrn returned the raw string and GetCap then reported a not-found/manifest error; this test asserts the truthful parse error and that no path panics on a bad URN. | cap/registry_test.go:283 |
 | test6423 | `Test6423_CartridgeAttachmentErrorDecodesProtoSnakeCaseStrings` | Test6423_CartridgeAttachmentErrorDecodesProtoSnakeCaseStrings is the engine→Go-host (or Swift→Go-host) decode path: incoming JSON uses the snake_case wire format, and the Go side must resolve each string into the matching variant. CartridgeAttachmentErrorKind is just `type ... string`, so this test is also a check that the JSON unmarshaller doesn't normalise/lowercase/etc the bytes behind our backs. | bifaci/relay_switch_test.go:1005 |
 | test6428 | `Test6428_IntegrationVersionlessCapCreation` | Test6428_IntegrationVersionlessCapCreation verifies caps can be created without version fields | bifaci/integration_test.go:47 |
 | test6431 | `Test6431_IntegrationCaseInsensitiveUrns` | Test6431_IntegrationCaseInsensitiveUrns verifies URNs are case-insensitive | bifaci/integration_test.go:75 |
@@ -1253,13 +1254,13 @@ These tests have a numbering disagreement between the function name and the auth
 - `test0137` / `test137` / `Test0137_all_masters_ready_false_when_partially_connected` — bifaci/relay_switch_test.go:1374
 - `test0139` / `test139` / `Test0139_all_masters_ready_true_when_masters_connected_but_capless` — bifaci/relay_switch_test.go:1387
 - `test0140` / `test140` / `Test0140_all_masters_ready_does_not_overshoot` — bifaci/relay_switch_test.go:1403
-- `test0289` / `test289` / `Test0289_media_def_def_documentation_round_trip` — media/spec_test.go:674
+- `test0289` / `test289` / `Test0289_media_def_def_documentation_round_trip` — media/spec_test.go:676
 
 ---
 
 *Generated from Go source tree*
-*Total tests: 1143*
-*Total numbered tests: 1143*
+*Total tests: 1144*
+*Total numbered tests: 1144*
 *Total unnumbered tests: 0*
 *Total numbered tests missing descriptions: 0*
 *Total numbering mismatches: 89*
