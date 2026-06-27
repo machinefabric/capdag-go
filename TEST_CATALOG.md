@@ -1,4 +1,4 @@
-# Go Test Catalog
+# CapDag-Go Test Catalog
 
 **Total Tests:** 943
 
@@ -10,10 +10,9 @@
 
 **Numbering Mismatches:** 0
 
-**⚠ Duplicate test numbers detected: 5 number(s) used more than once.**
-Unique numbered tests are listed first. Duplicate-number entries are grouped after them and marked with ⚠. Unnumbered tests are listed in their own group.
+All numbered test numbers are unique.
 
-This catalog lists all tests in the Go codebase.
+This catalog lists all tests in the CapDag-Go codebase.
 
 | Test # | Function Name | Description | File |
 |--------|---------------|-------------|------|
@@ -105,7 +104,11 @@ This catalog lists all tests in the Go codebase.
 | test0087 | `Test0087_SchemaValidator_ArraySchemaValidation` | TEST0087: Schema validator  array schema validation | cap/schema_validation_test.go:244 |
 | test088 | `Test088_resolve_seeded_spec` | TEST088: Resolving a media URN seeded into the registry returns the seeded spec verbatim. A regression in the registry-resolution path would surface as a missing or empty result here, since there is no local-override fallback to mask it. Mirrors Rust test088. | media/spec_test.go:45 |
 | test089 | `Test089_resolve_seeded_record_spec` | TEST089: A seeded record-shaped media def carries its schema and profile_uri intact through resolution. Catches a regression that dropped optional fields when copying into ResolvedMediaDef. Mirrors Rust test089. | media/spec_test.go:62 |
+| test0090 | `Test0090_absent_scan_root_yields_empty_roster` | TEST0090: Absent scan root yields empty roster | bifaci/cartridge_discovery_test.go:65 |
+| test0091 | `Test0091_missing_cartridge_json_is_manifest_invalid` | TEST0091: Missing cartridge json is manifest invalid | bifaci/cartridge_discovery_test.go:73 |
+| test0092 | `Test0092_channel_mismatch_is_bad_installation` | TEST0092: Channel mismatch is bad installation | bifaci/cartridge_discovery_test.go:82 |
 | test093 | `Test093_resolve_unresolvable_fails_hard` | TEST093: Test resolving unknown media URN fails with UnresolvableMediaUrn error | media/spec_test.go:92 |
+| test0094 | `Test0094_fabric_manifest_mismatch_is_flagged` | TEST0094: Fabric manifest mismatch is flagged | bifaci/cartridge_discovery_test.go:93 |
 | test095 | `Test095_media_def_def_serialize` | TEST095: Test MediaDef serializes with required fields and skips None fields | media/spec_test.go:109 |
 | test096 | `Test096_media_def_def_deserialize` | TEST096: Test deserializing MediaDef from JSON object | media/spec_test.go:135 |
 | test097 | `Test097_validate_no_duplicate_urns_catches_duplicates` | TEST097: Test duplicate URN validation catches duplicates | media/spec_test.go:151 |
@@ -131,6 +134,7 @@ This catalog lists all tests in the Go codebase.
 | test0117 | `Test0117_ComplexNestedSchemaValidation` | TEST0117: Complex nested schema validation | cap/schema_validation_test.go:542 |
 | test0118 | `Test0118_MediaUrnResolutionWithRegistry` | TEST0118: Media urn resolution with registry | cap/schema_validation_test.go:621 |
 | test0119 | `Test0119_CustomMediaUrnResolution` | TEST0119: Custom media urn resolution | cap/schema_validation_test.go:656 |
+| test0120 | `Test0120_registry_url_under_dev_slug_is_rejected` | TEST0120: Registry url under dev slug is rejected | bifaci/cartridge_discovery_test.go:103 |
 | test0121 | `Test0121_RegistryValidation` | TEST0121: Registry validation | cap/registry_test.go:54 |
 | test0122 | `Test0122_CacheOperations` | TEST0122: Cache operations | cap/registry_test.go:69 |
 | test0123 | `Test0123_CapExists` | TEST0123: Cap exists | cap/registry_test.go:113 |
@@ -950,62 +954,14 @@ This catalog lists all tests in the Go codebase.
 | test1890 | `Test1890_GetCapViaAliasAndTypeMismatch` | Test1890: GetCap accepts a cap alias and returns the aliased cap; a media alias passed to GetCap fails hard (typed boundary). | machine/alias_test.go:108 |
 | test1891 | `Test1891_GetMediaDefViaAliasAndTypeMismatch` | Test1891: GetMediaDef accepts a media alias and returns the aliased spec; a cap alias passed to GetMediaDef fails hard. | machine/alias_test.go:126 |
 | test1892 | `Test1892_UnknownAliasIsNotFound` | Test1892: an unknown alias name is a hard not-found, never a silent empty. | machine/alias_test.go:146 |
-| | | | |
-| test0090 ⚠ | `Test0090_InputValidator_WithSchemaValidation` | TEST0090: Input validator  with schema validation | cap/schema_validation_test.go:296 |
-| test0090 ⚠ | `Test0090_absent_scan_root_yields_empty_roster` | TEST0090: Absent scan root yields empty roster | bifaci/cartridge_discovery_test.go:65 |
-| test0091 ⚠ | `Test0091_OutputValidator_WithSchemaValidation` | TEST0091: Output validator  with schema validation | cap/schema_validation_test.go:356 |
-| test0091 ⚠ | `Test0091_missing_cartridge_json_is_manifest_invalid` | TEST0091: Missing cartridge json is manifest invalid | bifaci/cartridge_discovery_test.go:73 |
-| test0092 ⚠ | `Test0092_CapValidationCoordinator_EndToEnd` | TEST0092: Cap validation coordinator  end to end | cap/schema_validation_test.go:415 |
-| test0092 ⚠ | `Test0092_channel_mismatch_is_bad_installation` | TEST0092: Channel mismatch is bad installation | bifaci/cartridge_discovery_test.go:82 |
-| test0094 ⚠ | `Test0094_FileSchemaResolver_ErrorHandling` | TEST0094: File schema resolver  error handling | cap/schema_validation_test.go:530 |
-| test0094 ⚠ | `Test0094_fabric_manifest_mismatch_is_flagged` | TEST0094: Fabric manifest mismatch is flagged | bifaci/cartridge_discovery_test.go:93 |
-| test0120 ⚠ | `Test0120_RegistryGetCap` | TEST136 (deleted): exercised the private `cacheKey` method on the unified FabricRegistry. The on-disk cache filename scheme is an implementation detail of the persistence layer; equivalent observable behavior — that two equivalent URNs land in the same cache slot — is covered by Test140 (`same_cap_different_spellings_same_url`). Rust and Python dropped this; this deletion keeps the Go mirror in parity. | cap/registry_test.go:40 |
-| test0120 ⚠ | `Test0120_registry_url_under_dev_slug_is_rejected` | TEST0120: Registry url under dev slug is rejected | bifaci/cartridge_discovery_test.go:103 |
-
+| test6182 | `Test6182_InputValidator_WithSchemaValidation` | TEST6182: Input validator  with schema validation | cap/schema_validation_test.go:296 |
+| test6183 | `Test6183_OutputValidator_WithSchemaValidation` | TEST6183: Output validator  with schema validation | cap/schema_validation_test.go:356 |
+| test6184 | `Test6184_CapValidationCoordinator_EndToEnd` | TEST6184: Cap validation coordinator  end to end | cap/schema_validation_test.go:415 |
+| test6185 | `Test6185_FileSchemaResolver_ErrorHandling` | TEST6185: File schema resolver  error handling | cap/schema_validation_test.go:530 |
+| test6186 | `Test6186_RegistryGetCap` | TEST136 (deleted): exercised the private `cacheKey` method on the unified FabricRegistry. The on-disk cache filename scheme is an implementation detail of the persistence layer; equivalent observable behavior — that two equivalent URNs land in the same cache slot — is covered by Test140 (`same_cap_different_spellings_same_url`). Rust and Python dropped this; this deletion keeps the Go mirror in parity. | cap/registry_test.go:40 |
 ---
 
-## ⚠ Duplicate Test Numbers
-
-The following test numbers are assigned to more than one function. Keep the first occurrence at the existing number and renumber the rest using the suggested free numbers below.
-
-### test0090 (2 occurrences)
-
-- `Test0090_InputValidator_WithSchemaValidation` — cap/schema_validation_test.go:296
-- `Test0090_absent_scan_root_yields_empty_roster` — bifaci/cartridge_discovery_test.go:65
-
-**Suggested free number(s):** test61
-
-### test0091 (2 occurrences)
-
-- `Test0091_OutputValidator_WithSchemaValidation` — cap/schema_validation_test.go:356
-- `Test0091_missing_cartridge_json_is_manifest_invalid` — bifaci/cartridge_discovery_test.go:73
-
-**Suggested free number(s):** test294
-
-### test0092 (2 occurrences)
-
-- `Test0092_CapValidationCoordinator_EndToEnd` — cap/schema_validation_test.go:415
-- `Test0092_channel_mismatch_is_bad_installation` — bifaci/cartridge_discovery_test.go:82
-
-**Suggested free number(s):** test295
-
-### test0094 (2 occurrences)
-
-- `Test0094_FileSchemaResolver_ErrorHandling` — cap/schema_validation_test.go:530
-- `Test0094_fabric_manifest_mismatch_is_flagged` — bifaci/cartridge_discovery_test.go:93
-
-**Suggested free number(s):** test296
-
-### test0120 (2 occurrences)
-
-- `Test0120_RegistryGetCap` — cap/registry_test.go:40
-- `Test0120_registry_url_under_dev_slug_is_rejected` — bifaci/cartridge_discovery_test.go:103
-
-**Suggested free number(s):** test297
-
----
-
-*Generated from Go source tree*
+*Generated from CapDag-Go source tree*
 *Total tests: 943*
 *Total numbered tests: 943*
 *Total unnumbered tests: 0*

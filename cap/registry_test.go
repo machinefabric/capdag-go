@@ -37,7 +37,7 @@ func Test135_registry_creation(t *testing.T) {
 // Rust and Python dropped this; this deletion keeps the Go mirror
 // in parity.
 
-func Test0120_RegistryGetCap(t *testing.T) {
+func Test6186_RegistryGetCap(t *testing.T) {
 	registry, err := NewFabricRegistry()
 	require.NoError(t, err)
 

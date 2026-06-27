@@ -292,8 +292,8 @@ func Test0087_SchemaValidator_ArraySchemaValidation(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// TEST0090: Input validator  with schema validation
-func Test0090_InputValidator_WithSchemaValidation(t *testing.T) {
+// TEST6182: Input validator  with schema validation
+func Test6182_InputValidator_WithSchemaValidation(t *testing.T) {
 	registry := testRegistry(t)
 	validator := NewInputValidator()
 
@@ -352,8 +352,8 @@ func Test0090_InputValidator_WithSchemaValidation(t *testing.T) {
 	assert.Equal(t, "InvalidArgumentType", validationErr.Type)
 }
 
-// TEST0091: Output validator  with schema validation
-func Test0091_OutputValidator_WithSchemaValidation(t *testing.T) {
+// TEST6183: Output validator  with schema validation
+func Test6183_OutputValidator_WithSchemaValidation(t *testing.T) {
 	registry := testRegistry(t)
 	validator := NewOutputValidator()
 
@@ -411,8 +411,8 @@ func Test0091_OutputValidator_WithSchemaValidation(t *testing.T) {
 	assert.Equal(t, "InvalidOutputType", validationErr.Type)
 }
 
-// TEST0092: Cap validation coordinator  end to end
-func Test0092_CapValidationCoordinator_EndToEnd(t *testing.T) {
+// TEST6184: Cap validation coordinator  end to end
+func Test6184_CapValidationCoordinator_EndToEnd(t *testing.T) {
 	registry := testRegistry(t)
 	coordinator := NewCapValidationCoordinator()
 
@@ -526,8 +526,8 @@ func Test0092_CapValidationCoordinator_EndToEnd(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// TEST0094: File schema resolver  error handling
-func Test0094_FileSchemaResolver_ErrorHandling(t *testing.T) {
+// TEST6185: File schema resolver  error handling
+func Test6185_FileSchemaResolver_ErrorHandling(t *testing.T) {
 	resolver := NewFileSchemaResolver("/nonexistent/path")
 
 	_, err := resolver.ResolveSchema("test.schema.json")
