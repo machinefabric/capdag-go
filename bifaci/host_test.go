@@ -6,6 +6,27 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// TEST119: CartridgeResponse::Streaming concatenated() and final_payload() diverge for
+// multi-chunk responses: concatenated returns all chunk data joined; final_payload returns
+// only the last chunk. A consumer that confuses the two will silently drop all but the
+// last chunk of a multi-chunk response.
+func Test119_cartridge_response_concatenated_and_final_payload_diverge_for_multi_chunk(t *testing.T) {
+	chunks := []*ResponseChunk{
+		{Payload: []byte("AAAA"), Seq: 0, IsEof: false},
+		{Payload: []byte("BBBB"), Seq: 1, IsEof: false},
+		{Payload: []byte("CCCC"), Seq: 2, IsEof: true},
+	}
+	response := &CartridgeResponse{
+		Type:      CartridgeResponseTypeStreaming,
+		Streaming: chunks,
+	}
+
+	assert.Equal(t, []byte("AAAABBBBCCCC"), response.Concatenated())
+	assert.Equal(t, []byte("CCCC"), response.FinalPayload())
+	assert.NotEqual(t, response.Concatenated(), response.FinalPayload(),
+		"concatenated and final_payload must diverge for multi-chunk responses")
+}
+
 // TEST235: Test ResponseChunk stores payload, seq, offset, len, and eof fields correctly
 func Test235_response_chunk_fields(t *testing.T) {
 	payload := []byte{1, 2, 3, 4, 5}

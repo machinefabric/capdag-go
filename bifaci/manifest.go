@@ -153,13 +153,13 @@ func NewCapManifest(name, version, channel string, registryURL *string, descript
 // `Option<&str>`):
 //
 //   - raw == nil               => dev build. Registry identity is absent; the
-//                                 build uses the on-disk `dev/` slot. Returns nil.
+//     build uses the on-disk `dev/` slot. Returns nil.
 //   - raw != nil, *raw != ""   => published-registry build. Returns raw unchanged.
 //   - raw != nil, *raw == ""   => INVALID. The variable was exported with an
-//                                 empty value — neither a dev build nor a valid
-//                                 registry identity. This MUST fail hard so the
-//                                 build cannot silently hash the empty string
-//                                 into a fake registry slug. Panics.
+//     empty value — neither a dev build nor a valid
+//     registry identity. This MUST fail hard so the
+//     build cannot silently hash the empty string
+//     into a fake registry slug. Panics.
 //
 // Failing hard on the empty-but-set case is deliberate: a fallback that treated
 // "" as dev would hide a real build-script bug. Callers that genuinely mean a

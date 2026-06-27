@@ -3574,7 +3574,7 @@ func Test533_input_stream_error_propagation(t *testing.T) {
 
 // TEST534: InputStream::media_urn returns correct URN
 func Test534_input_stream_media_urn(t *testing.T) {
-	frames := singleStreamFrames("media:image;format=png", []interface{}{[]byte("data")})
+	frames := singleStreamFrames("media:ext=png;image", []interface{}{[]byte("data")})
 
 	var streamStartUrn string
 	found := false
@@ -3589,8 +3589,8 @@ func Test534_input_stream_media_urn(t *testing.T) {
 	if !found {
 		t.Fatal("must have STREAM_START carrying media URN")
 	}
-	if streamStartUrn != "media:image;format=png" {
-		t.Errorf("Expected 'media:image;format=png', got %q", streamStartUrn)
+	if streamStartUrn != "media:ext=png;image" {
+		t.Errorf("Expected 'media:ext=png;image', got %q", streamStartUrn)
 	}
 }
 

@@ -963,7 +963,7 @@ func (sw *RelaySwitch) findMasterForCap(capURN string, preferredCap *string) (in
 	// Collect ALL dispatchable masters with their signed distance scores
 	type match struct {
 		masterIdx      int
-		signedDistance  int
+		signedDistance int
 		isPreferred    bool
 	}
 	var matches []match
@@ -984,9 +984,9 @@ func (sw *RelaySwitch) findMasterForCap(capURN string, preferredCap *string) (in
 				isPreferred = preferredURN.IsEquivalent(registeredURN)
 			}
 			matches = append(matches, match{
-				masterIdx:     entry.MasterIdx,
+				masterIdx:      entry.MasterIdx,
 				signedDistance: signedDistance,
-				isPreferred:   isPreferred,
+				isPreferred:    isPreferred,
 			})
 		}
 	}

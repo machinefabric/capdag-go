@@ -281,8 +281,8 @@ type handlerEntry struct {
 	handler FrameHandler
 }
 
-// capTableEntry maps a cap URN string to a handler index.
-type capTableEntry struct {
+// inProcessCapTableEntry maps a cap URN string to a handler index.
+type inProcessCapTableEntry struct {
 	capUrn     string
 	handlerIdx int
 }
@@ -410,11 +410,11 @@ func (h *InProcessCartridgeHost) BuildManifest() []byte {
 
 // buildCapTable builds the cap table for routing: flat list of (cap_urn,
 // handler_idx).
-func buildCapTable(handlers []handlerEntry) []capTableEntry {
-	var table []capTableEntry
+func buildCapTable(handlers []handlerEntry) []inProcessCapTableEntry {
+	var table []inProcessCapTableEntry
 	for idx, entry := range handlers {
 		for _, c := range entry.caps {
-			table = append(table, capTableEntry{capUrn: c.Urn.String(), handlerIdx: idx})
+			table = append(table, inProcessCapTableEntry{capUrn: c.Urn.String(), handlerIdx: idx})
 		}
 	}
 	return table
@@ -431,7 +431,7 @@ func buildCapTable(handlers []handlerEntry) []capTableEntry {
 //  3. More generic providers (negative distance) - fallbacks
 //
 // Returns the handler index and true, or 0 and false when no handler matches.
-func findHandlerForCap(capTable []capTableEntry, capUrn string) (int, bool) {
+func findHandlerForCap(capTable []inProcessCapTableEntry, capUrn string) (int, bool) {
 	requestUrn, err := urn.NewCapUrnFromString(capUrn)
 	if err != nil {
 		return 0, false

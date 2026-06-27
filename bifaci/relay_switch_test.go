@@ -1030,7 +1030,6 @@ func Test6423_CartridgeAttachmentErrorDecodesProtoSnakeCaseStrings(t *testing.T)
 	}
 }
 
-
 // ============================================================
 // Reattach-by-id tests for the cardinality-stable slot model.
 //

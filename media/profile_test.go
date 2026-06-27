@@ -105,12 +105,13 @@ func Test613_validate_cached(t *testing.T) {
 	assert.Nil(t, registry.ValidateCached("https://example.com/unknown", "anything"))
 }
 
-// TEST6606: A freshly constructed registry over a temp cache dir is operational:
-// the cache directory exists on disk and the registry is usable. Inserting then
-// reopening a registry on the same directory must load the persisted schema —
-// this genuinely exercises the disk-cache round-trip (Rust new_with_cache_dir +
+// TEST618: Verify profile schema registry creation succeeds with temp cache.
+// A freshly constructed registry over a temp cache dir is operational: the cache
+// directory exists on disk and the registry is usable. Inserting then reopening a
+// registry on the same directory must load the persisted schema — this genuinely
+// exercises the disk-cache round-trip (Rust new_with_cache_dir +
 // load_all_cached_schemas), not just the in-memory map.
-func Test6606_registry_creation(t *testing.T) {
+func Test618_registry_creation(t *testing.T) {
 	dir := t.TempDir()
 	registry, err := NewProfileSchemaRegistryWithCacheDir(dir)
 	require.NoError(t, err)

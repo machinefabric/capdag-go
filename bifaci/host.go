@@ -1001,9 +1001,9 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 		key := makeRxidKey(xid, frame.Id)
 
 		var (
-			cartridgeIdx       int
-			routedViaIncoming  bool
-			haveRoute          bool
+			cartridgeIdx      int
+			routedViaIncoming bool
+			haveRoute         bool
 		)
 		if route, ok := h.incomingRxids[key]; ok {
 			cartridgeIdx = route.cartridgeIdx

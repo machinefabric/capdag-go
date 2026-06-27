@@ -2,12 +2,15 @@ package bifaci
 
 import (
 	"encoding/json"
+	"math"
 	"net"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/machinefabric/capdag-go/standard"
+	"github.com/machinefabric/capdag-go/urn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -972,4 +975,504 @@ func Test425_find_cartridge_for_cap_unknown(t *testing.T) {
 
 	_, found = host.FindCartridgeForCap("cap:unknown")
 	assert.False(t, found, "unknown cap must not be found")
+}
+
+// hostAdvertisedCapUrns returns the de-duplicated, declaration-ordered cap URNs
+// the host advertises to the engine, derived from buildInstalledCartridgeIdentities
+// (the Go analog of Rust's aggregate_installed_cartridges). Mirrors the Rust test
+// helper host_advertised_cap_urns. Caller must hold no lock — this locks h.mu.
+func hostAdvertisedCapUrns(h *CartridgeHost) []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	seen := make(map[string]struct{})
+	var out []string
+	for _, ic := range h.buildInstalledCartridgeIdentities() {
+		for _, group := range ic.CapGroups {
+			for i := range group.Caps {
+				u := group.Caps[i].Urn.String()
+				if _, ok := seen[u]; ok {
+					continue
+				}
+				seen[u] = struct{}{}
+				out = append(out, u)
+			}
+		}
+	}
+	return out
+}
+
+func anyContains(haystack []string, needle string) bool {
+	for _, s := range haystack {
+		if strings.Contains(s, needle) {
+			return true
+		}
+	}
+	return false
+}
+
+// TEST6600: parse_cap_groups_from_manifest classifies failures by kind
+//
+// Manifest JSON that parses but lacks CAP_IDENTITY is `Incompatible`
+// (schema-rejected). Manifest bytes that don't parse as CapManifest are
+// `ManifestInvalid` (JSON-level failure). The split lets the host's
+// attachment-error reporter surface the right kind to the UI.
+func Test6600_parse_cap_groups_rejects_manifest_without_identity(t *testing.T) {
+	// JSON-valid manifest, missing CAP_IDENTITY → Incompatible.
+	manifest := `{"name":"Test","version":"1.0","channel":"release","registry_url":null,"description":"Test","cap_groups":[{"name":"default","caps":[{"urn":"cap:in=\"media:void\";convert;out=\"media:void\"","title":"Test","command":"test","args":[]}],"adapter_urns":[]}]}`
+	_, err := parseCapGroupsFromManifest([]byte(manifest))
+	require.Error(t, err, "Manifest without CAP_IDENTITY must be rejected")
+	var parseErr *ParseCapsError
+	require.ErrorAs(t, err, &parseErr)
+	assert.True(t, parseErr.Incompatible, "Missing CAP_IDENTITY must classify as Incompatible, got %+v", parseErr)
+	assert.Equal(t, CartridgeAttachmentErrorKindIncompatible, parseErr.AttachmentKind(),
+		"attachment_kind() must agree with the variant")
+	assert.Contains(t, parseErr.Error(), "CAP_IDENTITY", "Error must mention CAP_IDENTITY, got: %s", parseErr.Error())
+
+	// Garbage bytes that don't deserialize → ManifestInvalid.
+	badJSON := []byte("{not even json")
+	_, errBad := parseCapGroupsFromManifest(badJSON)
+	require.Error(t, errBad, "Non-JSON manifest must be rejected")
+	var parseErrBad *ParseCapsError
+	require.ErrorAs(t, errBad, &parseErrBad)
+	assert.False(t, parseErrBad.Incompatible, "Non-JSON manifest must classify as InvalidJson, got %+v", parseErrBad)
+	assert.Equal(t, CartridgeAttachmentErrorKindManifestInvalid, parseErrBad.AttachmentKind(),
+		"attachment_kind() must agree with the variant")
+
+	// Valid manifest WITH CAP_IDENTITY must succeed.
+	manifestOk := `{"name":"Test","version":"1.0","channel":"release","registry_url":null,"description":"Test","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity","args":[]},{"urn":"cap:in=\"media:void\";convert;out=\"media:void\"","title":"Test","command":"test","args":[]}],"adapter_urns":[]}]}`
+	groups, errOk := parseCapGroupsFromManifest([]byte(manifestOk))
+	require.NoError(t, errOk, "Manifest with CAP_IDENTITY must be accepted")
+	totalCaps := 0
+	for _, g := range groups {
+		totalCaps += len(g.Caps)
+	}
+	assert.Equal(t, 2, totalCaps, "Must parse both caps")
+}
+
+// TEST485: attach_cartridge completes identity verification with working cartridge
+func Test485_attach_cartridge_identity_verification_succeeds(t *testing.T) {
+	manifest := `{"name":"IdentityTest","version":"1.0","channel":"release","registry_url":null,"description":"Test","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity","args":[]},{"urn":"cap:in=\"media:void\";test;out=\"media:void\"","title":"Test","command":"test","args":[]}],"adapter_urns":[]}]}`
+
+	hostRead, cartridgeWrite := net.Pipe()
+	cartridgeRead, hostWrite := net.Pipe()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// simulateCartridge answers the identity REQ before the (nil) handler.
+		simulateCartridge(t, cartridgeRead, cartridgeWrite, manifest, nil)
+		cartridgeRead.Close()
+		cartridgeWrite.Close()
+	}()
+
+	host := NewCartridgeHost()
+	idx, err := host.AttachCartridge(hostRead, hostWrite)
+	require.NoError(t, err)
+	assert.Equal(t, 0, idx)
+
+	host.mu.Lock()
+	assert.True(t, host.cartridges[0].running, "Cartridge must be running after identity verification")
+	// Verify both caps are registered (identity is included).
+	parsedCaps := 0
+	hasIdentity := false
+	identityUrn, _ := urn.NewCapUrnFromString(standard.CapIdentity)
+	for _, g := range host.cartridges[0].capGroups {
+		for i := range g.Caps {
+			parsedCaps++
+			if g.Caps[i].Urn != nil && identityUrn.ConformsTo(g.Caps[i].Urn) {
+				hasIdentity = true
+			}
+		}
+	}
+	host.mu.Unlock()
+	assert.True(t, hasIdentity, "Must have identity cap")
+	assert.Equal(t, 2, parsedCaps, "Must have both caps")
+
+	hostRead.Close()
+	hostWrite.Close()
+	wg.Wait()
+}
+
+// TEST486: attach_cartridge rejects cartridge that fails identity verification
+func Test486_attach_cartridge_identity_verification_fails(t *testing.T) {
+	manifest := `{"name":"BrokenIdentity","version":"1.0","channel":"release","registry_url":null,"description":"Test","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity","args":[]}],"adapter_urns":[]}]}`
+
+	hostRead, cartridgeWrite := net.Pipe()
+	cartridgeRead, hostWrite := net.Pipe()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		reader := NewFrameReader(cartridgeRead)
+		writer := NewFrameWriter(cartridgeWrite)
+		limits, err := HandshakeAccept(reader, writer, []byte(manifest))
+		require.NoError(t, err)
+		reader.SetLimits(limits)
+		writer.SetLimits(limits)
+
+		// Read identity REQ, respond with ERR (broken identity handler).
+		req, err := reader.ReadFrame()
+		require.NoError(t, err)
+		assert.Equal(t, FrameTypeReq, req.FrameType)
+		require.NoError(t, writer.WriteFrame(NewErr(req.Id, "BROKEN", "identity handler is broken")))
+		cartridgeRead.Close()
+		cartridgeWrite.Close()
+	}()
+
+	host := NewCartridgeHost()
+	_, err := host.AttachCartridge(hostRead, hostWrite)
+	require.Error(t, err, "attach_cartridge must fail when identity verification fails")
+	assert.Contains(t, err.Error(), "Identity verification failed",
+		"Error must mention identity verification: %v", err)
+
+	// The cartridge must NOT have been attached.
+	host.mu.Lock()
+	assert.Empty(t, host.cartridges, "failed cartridge must not be attached")
+	host.mu.Unlock()
+
+	hostRead.Close()
+	hostWrite.Close()
+	wg.Wait()
+}
+
+// TEST6623: Cartridge death keeps caps advertised for on-demand respawn.
+// The cartridge's `cap_groups` survive process death, so the host can
+// continue advertising the cartridge's caps and the relay can route
+// a fresh REQ to it (which triggers an on-demand respawn).
+func Test6623_cartridge_death_keeps_caps_advertised(t *testing.T) {
+	host := NewCartridgeHost()
+	host.RegisterCartridge("/path/thumbnailcartridge", []string{
+		standard.CapIdentity,
+		`cap:in="media:ext=pdf";out="media:ext=png;image";thumbnail`,
+	})
+
+	// cap_table is the routing source of truth: both caps are present even
+	// though the process has not been spawned (running == false).
+	host.mu.Lock()
+	assert.Equal(t, 2, len(host.capTable))
+	assert.Equal(t, standard.CapIdentity, host.capTable[0].capUrn)
+	host.rebuildCapabilities()
+	host.mu.Unlock()
+
+	advertised := hostAdvertisedCapUrns(host)
+	assert.Contains(t, advertised, standard.CapIdentity, "Identity cap must be advertised, got %v", advertised)
+	assert.True(t, anyContains(advertised, "thumbnail"), "Thumbnail cap must be advertised, got %v", advertised)
+}
+
+// TEST662: rebuild_capabilities includes non-running cartridges' caps
+// (each cartridge's `cap_groups` is the source of truth, regardless
+// of whether its process has been spawned yet).
+func Test662_rebuild_capabilities_includes_non_running_cartridges(t *testing.T) {
+	host := NewCartridgeHost()
+	host.RegisterCartridge("/path/extractcartridge", []string{
+		standard.CapIdentity,
+		`cap:in="media:ext=pdf";extract;out="media:text"`,
+	})
+	host.RegisterCartridge("/path/ocrcartridge", []string{
+		standard.CapIdentity,
+		`cap:in="media:image";ocr;out="media:text"`,
+	})
+
+	host.mu.Lock()
+	host.rebuildCapabilities()
+	host.mu.Unlock()
+
+	// Both cartridges advertised; the union of their cap_groups contains
+	// identity + extract + ocr.
+	advertised := hostAdvertisedCapUrns(host)
+	assert.Contains(t, advertised, standard.CapIdentity, "Identity cap must be advertised, got %v", advertised)
+	assert.True(t, anyContains(advertised, "extract"), "Extract cap must be advertised, got %v", advertised)
+	assert.True(t, anyContains(advertised, "ocr"), "OCR cap must be advertised, got %v", advertised)
+}
+
+// TEST663: Cartridge with hello_failed is permanently removed from capabilities
+func Test663_hello_failed_cartridge_removed_from_capabilities(t *testing.T) {
+	host := NewCartridgeHost()
+	host.RegisterCartridge("/path/brokencartridge", []string{
+		standard.CapIdentity,
+		`cap:in="media:void";broken;out="media:void"`,
+	})
+
+	// Manually mark it as hello_failed (simulating HELLO handshake failure).
+	host.mu.Lock()
+	host.cartridges[0].helloFailed = true
+	host.updateCapTable()
+	// cap_table is empty: hello_failed cartridges are not routable.
+	foundBroken := false
+	for _, entry := range host.capTable {
+		if strings.Contains(entry.capUrn, "broken") {
+			foundBroken = true
+		}
+	}
+	host.rebuildCapabilities()
+	host.mu.Unlock()
+	assert.False(t, foundBroken, "hello_failed cartridge caps should not be in cap_table")
+
+	// The host-level inventory likewise excludes hello_failed cartridges.
+	advertised := hostAdvertisedCapUrns(host)
+	assert.False(t, anyContains(advertised, "broken"),
+		"hello_failed cartridge must not be advertised, got %v", advertised)
+}
+
+// TEST664: Attached cartridge replaces pre-registration caps with
+// manifest caps. The pre-attach `cap_groups` (from probe-time
+// discovery) get superseded by the post-HELLO `cap_groups` from
+// the actual handshake.
+func Test664_running_cartridge_uses_manifest_caps(t *testing.T) {
+	// Manifest declares different caps than the pre-registration probe —
+	// the post-HELLO snapshot must win.
+	manifest := `{"name":"Test","version":"1.0","channel":"release","registry_url":null,"description":"Test cartridge","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity","args":[]},{"urn":"cap:in=\"media:text\";uppercase;out=\"media:text\"","title":"Uppercase","command":"uppercase","args":[]}],"adapter_urns":[]}]}`
+
+	hostRead, cartridgeWrite := net.Pipe()
+	cartridgeRead, hostWrite := net.Pipe()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		simulateCartridge(t, cartridgeRead, cartridgeWrite, manifest, func(r *FrameReader, w *FrameWriter) {
+			// Keep the connection alive for the duration of the test.
+			r.ReadFrame()
+		})
+		cartridgeRead.Close()
+		cartridgeWrite.Close()
+	}()
+
+	host := NewCartridgeHost()
+
+	// Register with stale (probe-time) caps BEFORE attaching.
+	host.RegisterCartridge("/path/extractcartridge", []string{
+		standard.CapIdentity,
+		`cap:in="media:ext=pdf";extract;out="media:text"`,
+	})
+
+	// Now attach the actual cartridge (which sends a different manifest).
+	_, err := host.AttachCartridge(hostRead, hostWrite)
+	require.NoError(t, err)
+
+	// cap_table is the routing source of truth and includes both the
+	// registered cartridge AND the attached cartridge. The running
+	// cartridge's manifest cap (uppercase) must be routable.
+	host.mu.Lock()
+	hasUppercase := false
+	for _, entry := range host.capTable {
+		if strings.Contains(entry.capUrn, "uppercase") {
+			hasUppercase = true
+		}
+	}
+	host.mu.Unlock()
+	assert.True(t, hasUppercase, "Running cartridge's manifest cap must be in cap_table")
+
+	hostRead.Close()
+	hostWrite.Close()
+	wg.Wait()
+}
+
+// TEST665: Cap table aggregates caps from every healthy cartridge —
+// attached/running cartridges contribute their post-HELLO cap_groups,
+// registered-but-not-yet-spawned cartridges contribute their
+// probe-time cap_groups. Both flow through the same `cap_urns()` view.
+func Test665_cap_table_mixed_running_and_non_running(t *testing.T) {
+	manifest := `{"name":"Running","version":"1.0","channel":"release","registry_url":null,"description":"Running cartridge","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity","args":[]},{"urn":"cap:in=\"media:text\";running-op;out=\"media:text\"","title":"RunningOp","command":"running","args":[]}],"adapter_urns":[]}]}`
+
+	hostRead, cartridgeWrite := net.Pipe()
+	cartridgeRead, hostWrite := net.Pipe()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		simulateCartridge(t, cartridgeRead, cartridgeWrite, manifest, func(r *FrameReader, w *FrameWriter) {
+			r.ReadFrame()
+		})
+		cartridgeRead.Close()
+		cartridgeWrite.Close()
+	}()
+
+	host := NewCartridgeHost()
+
+	// Attach running cartridge.
+	_, err := host.AttachCartridge(hostRead, hostWrite)
+	require.NoError(t, err)
+
+	// Register a non-running cartridge with probe-time caps.
+	host.RegisterCartridge("/fake/not-running", []string{
+		standard.CapIdentity,
+		`cap:in="media:ext=pdf";not-running-op;out="media:text"`,
+	})
+
+	host.mu.Lock()
+	host.updateCapTable()
+	hasRunningOp := false
+	hasNotRunningOp := false
+	for _, entry := range host.capTable {
+		if strings.Contains(entry.capUrn, "running-op") && !strings.Contains(entry.capUrn, "not-running-op") {
+			hasRunningOp = true
+		}
+		if strings.Contains(entry.capUrn, "not-running-op") {
+			hasNotRunningOp = true
+		}
+	}
+	host.mu.Unlock()
+
+	assert.True(t, hasRunningOp, "Cap table should have running cartridge's manifest caps")
+	assert.True(t, hasNotRunningOp, "Cap table should have non-running cartridge's probe-time caps")
+
+	hostRead.Close()
+	hostWrite.Close()
+	wg.Wait()
+}
+
+// =========================================================================
+// Routing-table GC contract tests
+//
+// The routing tables must stay bounded under a runaway producer:
+//
+//   1. NO ROUTING TABLE GROWS WITHOUT BOUND. On every insert,
+//      the GC fires and reduces the table size. After enough
+//      passes — at most one per insertion — no routing table
+//      can exceed the hard cap. Failure means a cartridge or
+//      relay path could create RIDs faster than the cleanup
+//      paths drain them, regressing the leak class we just
+//      fixed in capdag-objc.
+//
+//   2. EVICTION IS ORDERED BY touch-sequence, OLDEST FIRST.
+//      A still-active flow (one that has been routed through
+//      recently) must NOT be evicted before a stale one. A
+//      regression where the GC drops dictionary-iteration-
+//      order victims would still pass invariant #1 but fail
+//      this one — and dropping fresh entries silently kills
+//      in-flight continuation frames.
+// =========================================================================
+
+// seedIncomingRxidsForTest inserts count synthetic incoming_rxids entries with
+// deterministic touch sequences (key i has touched_at == i; smallest i means
+// oldest). Returns the keys in insertion order so the test can compute the
+// expected victim/survivor sets. Mirrors Rust seed_incoming_rxids_for_test.
+func seedIncomingRxidsForTest(host *CartridgeHost, count int) []rxidKey {
+	keys := make([]rxidKey, 0, count)
+	for i := 0; i < count; i++ {
+		xid := NewMessageIdFromUint(uint64(i))
+		rid := NewMessageIdFromUint(uint64(i))
+		key := makeRxidKey(xid, rid)
+		host.incomingRxids[key] = incomingRoute{cartridgeIdx: 0, xid: xid, rid: rid}
+		// Bypass touchIncomingRxid so we can assign a deterministic age.
+		host.incomingRxidsTouched[key] = uint64(i)
+		keys = append(keys, key)
+	}
+	return keys
+}
+
+// TEST988: Contract #1 — the GC keeps the table strictly below the
+// hard cap. Seed the table well above the soft watermark
+// (matching what a runaway producer would do mid-frame-
+// burst) and call the production GC entry point. The
+// post-state must be at most `SOFT_WATERMARK` entries
+// because the GC drops at least
+// `EVICTION_FRACTION × pre_state` entries in one pass and
+// the pre-state is below the hard cap (i.e. one pass is
+// enough; the secondary "hard cap" pass would only fire if
+// pre-state crossed the hard cap before insertion completed,
+// which production prevents by gc-ing on every insert).
+func Test988_gc_reduces_table_below_soft_watermark_in_one_pass(t *testing.T) {
+	host := NewCartridgeHost()
+	preCount := RoutingTableSoftWatermark + 256
+	require.Less(t, preCount, RoutingTableHardCap,
+		"Test precondition: pre_count must stay under the hard cap so we verify the SOFT watermark path")
+
+	seedIncomingRxidsForTest(host, preCount)
+	require.Equal(t, preCount, len(host.incomingRxids),
+		"Seeder must populate exactly pre_count entries before the GC runs")
+
+	host.gcRoutingTablesIfNeeded()
+
+	assert.Less(t, len(host.incomingRxids), RoutingTableHardCap,
+		"Post-GC table size %d must stay strictly under the hard cap (%d)",
+		len(host.incomingRxids), RoutingTableHardCap)
+	assert.Equal(t, uint64(1), host.routingGcRunsTotal,
+		"Exactly one GC pass should have fired; %d runs means the single-pass invariant has changed",
+		host.routingGcRunsTotal)
+	expectedEvicted := int(float64(preCount) * RoutingTableGcEvictionFraction)
+	if expectedEvicted < 1 {
+		expectedEvicted = 1
+	}
+	assert.Equal(t, expectedEvicted, int(host.routingGcEvictedTotal),
+		"GC pass evicted %d entries; expected %d", host.routingGcEvictedTotal, expectedEvicted)
+}
+
+// TEST129: Contract #2 — the GC drops the OLDEST entries by
+// touch-sequence, not arbitrary keys. Seed a known age
+// distribution and assert the post-GC keyset is exactly
+// what the test computes should survive (test recomputes
+// independently of production code).
+//
+// A regression where the GC e.g. iterates the HashMap and
+// drops the first N (HashMap iteration order is arbitrary
+// in Rust) would still pass contract #1 but fail this one —
+// the more dangerous bug because it silently drops
+// in-flight continuation frames.
+func Test129_gc_evicts_oldest_entries_by_touch_sequence(t *testing.T) {
+	host := NewCartridgeHost()
+	preCount := RoutingTableSoftWatermark + 256
+	evictionCount := int(float64(preCount) * RoutingTableGcEvictionFraction)
+	if evictionCount < 1 {
+		evictionCount = 1
+	}
+
+	// Seed: key i has touched_at == i. Smallest i means oldest.
+	// Expected victims: keys 0 ..< eviction_count.
+	// Expected survivors: keys eviction_count ..< pre_count.
+	keys := seedIncomingRxidsForTest(host, preCount)
+
+	host.gcRoutingTablesIfNeeded()
+
+	for i := 0; i < evictionCount; i++ {
+		key := keys[i]
+		_, present := host.incomingRxids[key]
+		assert.False(t, present,
+			"Key index %d should have been evicted (touched_at=%d, one of the %d oldest), but it survived the GC",
+			i, i, evictionCount)
+		_, touchedPresent := host.incomingRxidsTouched[key]
+		assert.False(t, touchedPresent,
+			"Touched-map entry for key index %d must be removed alongside the primary entry", i)
+	}
+	for i := evictionCount; i < preCount; i++ {
+		key := keys[i]
+		_, present := host.incomingRxids[key]
+		assert.True(t, present,
+			"Key index %d should have survived the GC (touched_at=%d, one of the %d most-recently-touched), but was evicted",
+			i, i, preCount-evictionCount)
+	}
+}
+
+// TEST987: Contract #3 — the secondary hard-cap pass kicks in if the
+// table somehow exceeds `HARD_CAP` (extreme runaway). Without
+// it, a single GC at the soft watermark would not be enough
+// to recover headroom and the table could grow without bound
+// between bursts.
+func Test987_gc_secondary_pass_enforces_hard_cap(t *testing.T) {
+	host := NewCartridgeHost()
+	// Size the seed so a SINGLE eviction-fraction pass is NOT enough to
+	// bring the table under the hard cap. We need
+	// pre * (1 - eviction_fraction) >= hard_cap.
+	oneMinusFraction := 1.0 - RoutingTableGcEvictionFraction
+	preCount := int(math.Ceil(float64(RoutingTableHardCap)/oneMinusFraction)) + 256
+	seedIncomingRxidsForTest(host, preCount)
+	require.GreaterOrEqual(t, len(host.incomingRxids), RoutingTableHardCap,
+		"Seeder must populate at or above the hard cap so the secondary pass actually fires")
+
+	host.gcRoutingTablesIfNeeded()
+
+	assert.Less(t, len(host.incomingRxids), RoutingTableHardCap,
+		"Post-GC table size %d must be strictly under the hard cap (%d)",
+		len(host.incomingRxids), RoutingTableHardCap)
+	// The secondary pass uses the same routing_gc_evicted_total counter but
+	// does not increment routing_gc_runs_total. Verify the eviction count
+	// exceeds one full eviction-fraction pass over the pre-count.
+	singlePassMax := uint64(float64(preCount) * RoutingTableGcEvictionFraction)
+	assert.Greater(t, host.routingGcEvictedTotal, singlePassMax,
+		"Total evicted %d should exceed single-pass max %d (the secondary pass must have evicted additional entries)",
+		host.routingGcEvictedTotal, singlePassMax)
 }

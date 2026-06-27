@@ -502,6 +502,27 @@ func Test023_builder_preserves_case(t *testing.T) {
 	assert.Equal(t, "ValueWithCase", value)
 }
 
+// TEST6544: Builder rejects reserved structural keys on tag/marker helpers
+func Test6544_builder_rejects_structural_keys(t *testing.T) {
+	assert.Panics(t, func() {
+		_, _ = NewCapUrnBuilder().Tag("in", "media:void").Build()
+	}, "Tag with reserved structural key 'in' must panic")
+	assert.Panics(t, func() {
+		_, _ = NewCapUrnBuilder().Marker("effect").Build()
+	}, "Marker with reserved structural key 'effect' must panic")
+
+	invalid, err := NewCapUrnBuilder().
+		InSpec("media:void").
+		OutSpec("media:enc=utf-8;record").
+		Tag("123", "value").
+		Build()
+	assert.Nil(t, invalid)
+	require.Error(t, err)
+	capError, ok := err.(*CapUrnError)
+	require.True(t, ok)
+	assert.Equal(t, ErrorNumericKey, capError.Code)
+}
+
 // TEST24: Directional accepts — pattern's tags are constraints, instance must satisfy
 func Test024_directional_accepts(t *testing.T) {
 	cap1, err := NewCapUrnFromString(testUrn("generate;ext=pdf"))
@@ -1868,13 +1889,13 @@ func Test1842_truth_table_full_cross_product(t *testing.T) {
 	forms := []string{"", "?x", "x?=v", "x", "x!=v", "x=v", "!x"}
 	expected := [7][7]bool{
 		//         miss   ?x    x?=v   x      x!=v   x=v    !x
-		/*miss*/  {true, true, true, false, false, false, true},
-		/*?x*/    {true, true, true, true, true, true, true},
-		/*x?=v*/  {true, true, true, false, false, false, true},
-		/*x*/     {true, true, true, true, true, true, false},
-		/*x!=v*/  {true, true, true, true, true, false, false},
-		/*x=v*/   {true, true, false, true, false, true, false},
-		/*!x*/    {true, true, true, false, false, false, true},
+		/*miss*/ {true, true, true, false, false, false, true},
+		/*?x*/ {true, true, true, true, true, true, true},
+		/*x?=v*/ {true, true, true, false, false, false, true},
+		/*x*/ {true, true, true, true, true, true, false},
+		/*x!=v*/ {true, true, true, true, true, false, false},
+		/*x=v*/ {true, true, false, true, false, true, false},
+		/*!x*/ {true, true, true, false, false, false, true},
 	}
 	for i, instForm := range forms {
 		for j, pattForm := range forms {

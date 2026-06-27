@@ -73,6 +73,52 @@ func Test089_resolve_seeded_record_spec(t *testing.T) {
 	assert.Equal(t, schema, resolved.Schema)
 }
 
+// TEST6282: Test resolving a custom media URN from a registry-seeded media def
+func Test6282_resolve_custom_media_def(t *testing.T) {
+	registry, err := NewFabricRegistryForTest()
+	require.NoError(t, err)
+	registry.AddSpec(StoredMediaDef{
+		Urn:        "media:custom-spec;fmt=json",
+		MediaType:  "application/json",
+		Title:      "Custom Spec",
+		ProfileURI: "https://example.com/schema",
+	})
+	resolved, err := ResolveMediaUrn("media:custom-spec;fmt=json", registry)
+	require.NoError(t, err)
+	require.NotNil(t, resolved)
+	assert.Equal(t, "media:custom-spec;fmt=json", resolved.SpecID)
+	assert.Equal(t, "application/json", resolved.MediaType)
+	assert.Equal(t, "https://example.com/schema", resolved.ProfileURI)
+	assert.Nil(t, resolved.Schema)
+}
+
+// TEST6283: Test resolving a custom record media def carrying a schema from a registry-seeded media def
+func Test6283_resolve_custom_with_schema(t *testing.T) {
+	registry, err := NewFabricRegistryForTest()
+	require.NoError(t, err)
+	schema := map[string]any{
+		"type":       "object",
+		"properties": map[string]any{"name": map[string]any{"type": "string"}},
+	}
+	registry.AddSpec(StoredMediaDef{
+		Urn:        "media:fmt=json;output-spec;record",
+		MediaType:  "application/json",
+		Title:      "Output Spec",
+		ProfileURI: "https://example.com/schema/output",
+		Schema:     schema,
+	})
+	resolved, err := ResolveMediaUrn("media:fmt=json;output-spec;record", registry)
+	require.NoError(t, err)
+	require.NotNil(t, resolved)
+	assert.Equal(t, "media:fmt=json;output-spec;record", resolved.SpecID)
+	assert.Equal(t, "application/json", resolved.MediaType)
+	assert.Equal(t, "https://example.com/schema/output", resolved.ProfileURI)
+	require.NotNil(t, resolved.Schema)
+	schemaMap, ok := resolved.Schema.(map[string]any)
+	require.True(t, ok, "resolved schema must be an object")
+	assert.Equal(t, "object", schemaMap["type"])
+}
+
 // TESTs 090-092, 094 (deleted): exercised the legacy "local
 // `media_defs` overrides registry" path. The unified registry is
 // the only source of media defs in the new regime — there is no
@@ -300,7 +346,9 @@ func Test105_metadata_propagation(t *testing.T) {
 	}
 
 	registry := testRegistry(t)
-	for _, d := range mediaDefs { registry.AddSpec(d.ToStored()) }
+	for _, d := range mediaDefs {
+		registry.AddSpec(d.ToStored())
+	}
 	resolved, err := ResolveMediaUrn("media:custom-setting", registry)
 	require.NoError(t, err)
 	require.NotNil(t, resolved.Metadata)
@@ -333,7 +381,9 @@ func Test106_metadata_with_validation(t *testing.T) {
 	}
 
 	registry := testRegistry(t)
-	for _, d := range mediaDefs { registry.AddSpec(d.ToStored()) }
+	for _, d := range mediaDefs {
+		registry.AddSpec(d.ToStored())
+	}
 	resolved, err := ResolveMediaUrn("media:bounded-number;numeric", registry)
 	require.NoError(t, err)
 
@@ -368,7 +418,9 @@ func Test107_extensions_propagation(t *testing.T) {
 	}
 
 	registry := testRegistry(t)
-	for _, d := range mediaDefs { registry.AddSpec(d.ToStored()) }
+	for _, d := range mediaDefs {
+		registry.AddSpec(d.ToStored())
+	}
 	resolved, err := ResolveMediaUrn("media:custom-pdf", registry)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"pdf"}, resolved.Extensions)
@@ -423,7 +475,9 @@ func Test893_extensions_with_metadata_and_validation(t *testing.T) {
 	}
 
 	registry := testRegistry(t)
-	for _, d := range mediaDefs { registry.AddSpec(d.ToStored()) }
+	for _, d := range mediaDefs {
+		registry.AddSpec(d.ToStored())
+	}
 	resolved, err := ResolveMediaUrn("media:custom-output;json", registry)
 	require.NoError(t, err)
 
@@ -450,7 +504,9 @@ func Test894_multiple_extensions(t *testing.T) {
 	}
 
 	registry := testRegistry(t)
-	for _, d := range mediaDefs { registry.AddSpec(d.ToStored()) }
+	for _, d := range mediaDefs {
+		registry.AddSpec(d.ToStored())
+	}
 	resolved, err := ResolveMediaUrn("media:ext=jpeg;image", registry)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"jpg", "jpeg"}, resolved.Extensions)
@@ -549,12 +605,10 @@ func Test610_get_cached_spec(t *testing.T) {
 	assert.Equal(t, "Test Spec", retrieved.Title)
 }
 
-// TEST618: Verify profile schema registry creation succeeds with temp cache
-func Test618_registry_creation(t *testing.T) {
-	registry, err := NewFabricRegistryForTest()
-	require.NoError(t, err)
-	require.NotNil(t, registry)
-}
+// TEST618 lives in profile_test.go (profile schema registry creation with a
+// temp disk cache) — it is the genuine Rust TEST618 (media/profile.rs). The
+// former spec_test.go TEST618 was a tautological NotNil-only duplicate over the
+// in-memory FabricRegistry and was removed.
 
 // TEST615 (deleted): exercised the on-disk cache-key hashing
 // scheme — an internal persistence detail with no user-observable
@@ -603,7 +657,9 @@ func Test288_media_documentation_propagates_through_resolve(t *testing.T) {
 		Documentation: &body,
 	}
 
-	for _, d := range []MediaDef{spec} { registry.AddSpec(d.ToStored()) }
+	for _, d := range []MediaDef{spec} {
+		registry.AddSpec(d.ToStored())
+	}
 
 	resolved, err := ResolveMediaUrn(docUrn, registry)
 	require.NoError(t, err)
@@ -684,4 +740,3 @@ func Test629_profile_constants_format(t *testing.T) {
 // publisher (`fabric/src/fabric.js`), which validates spec contents
 // at publish time. Asserting that invariant here against an empty
 // registry is a category error.
-

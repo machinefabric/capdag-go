@@ -1742,8 +1742,8 @@ func Test513_reorder_buffer_mixed_types_same_flow(t *testing.T) {
 	chunk := &Frame{FrameType: FrameTypeChunk, Id: rid}
 	chunk.Seq = 0
 
-	rb.Accept(req)  // buffered
-	rb.Accept(log)  // buffered
+	rb.Accept(req) // buffered
+	rb.Accept(log) // buffered
 
 	ready, err := rb.Accept(chunk)
 	require.NoError(t, err)

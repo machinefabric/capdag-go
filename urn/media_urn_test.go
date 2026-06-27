@@ -652,14 +652,14 @@ func Test858_lub_three_inputs(t *testing.T) {
 
 // TEST859: LUB with valued tags (non-marker) that differ
 func Test859_lub_valued_tags(t *testing.T) {
-	v1, err := NewMediaUrnFromString("media:image;format=png")
+	v1, err := NewMediaUrnFromString("media:ext=png;image")
 	require.NoError(t, err)
-	v2, err := NewMediaUrnFromString("media:image;format=jpeg")
+	v2, err := NewMediaUrnFromString("media:ext=jpeg;image")
 	require.NoError(t, err)
 	lub := LeastUpperBound([]*MediaUrn{v1, v2})
 	expected, err := NewMediaUrnFromString("media:image")
 	require.NoError(t, err)
-	assert.True(t, lub.IsEquivalent(expected), "LUB should drop conflicting format tag, got %s", lub.String())
+	assert.True(t, lub.IsEquivalent(expected), "LUB should drop conflicting ext tag, got %s", lub.String())
 }
 
 // TEST628: Verify media URN constants all start with "media:" prefix

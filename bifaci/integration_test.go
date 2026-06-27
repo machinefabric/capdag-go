@@ -2608,8 +2608,9 @@ func Test489_FullPathIdentityVerification(t *testing.T) {
 
 // TEST490: Identity verification with multiple cartridges through single relay
 //
-// Both cartridges must be live and routed independently after attach. (See the
-// DIVERGENCE NOTE: Go attach does not exchange an identity REQ.)
+// Both cartridges must be live and routed independently after attach. Each
+// cartridge answers the identity REQ during attach (simulateCartridge), matching
+// Rust's attach_cartridge identity verification.
 func Test490_IdentityVerificationMultipleCartridges(t *testing.T) {
 	manifestA := `{"name":"CartridgeA","version":"1.0","channel":"release","registry_url":null,"description":"Cartridge A","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity","args":[]},{"urn":"cap:in=\"media:void\";alpha;out=\"media:void\"","title":"Alpha","command":"alpha","args":[]}]}]}`
 	manifestB := `{"name":"CartridgeB","version":"1.0","channel":"release","registry_url":null,"description":"Cartridge B","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity","args":[]},{"urn":"cap:in=\"media:void\";beta;out=\"media:void\"","title":"Beta","command":"beta","args":[]}]}]}`
