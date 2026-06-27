@@ -4,11 +4,14 @@ import (
 	"encoding/json"
 	"math"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/machinefabric/capdag-go/cap"
 	"github.com/machinefabric/capdag-go/standard"
 	"github.com/machinefabric/capdag-go/urn"
 	"github.com/stretchr/testify/assert"
@@ -16,6 +19,34 @@ import (
 )
 
 const testHostManifest = `{"name":"Test","version":"1.0","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","command":"identity"}]}]}`
+
+// capGroupsFromURNs builds a single default cap_group from cap-URN strings,
+// the test-side analogue of the reference cap_groups_from_urns helper. Each
+// URN is parsed (a malformed URN fails the test loudly) so the resulting
+// CapGroup carries real cap.Cap values, exactly as a manifest-derived group
+// would.
+func capGroupsFromURNs(t *testing.T, urns ...string) []CapGroup {
+	t.Helper()
+	caps := make([]cap.Cap, 0, len(urns))
+	for _, u := range urns {
+		parsed, err := urn.NewCapUrnFromString(u)
+		require.NoErrorf(t, err, "cap URN %q must parse", u)
+		caps = append(caps, *cap.NewCap(parsed, u, ""))
+	}
+	return []CapGroup{DefaultGroup(caps)}
+}
+
+// registerTempCartridge writes a real (dummy) binary into a temp dir and
+// registers it, so the binary-hash install identity resolves and the cartridge
+// is advertised. Mirrors the reference tests, which register against a real
+// tempfile rather than a fabricated path. Returns the binary path.
+func registerTempCartridge(t *testing.T, host *CartridgeHost, name string, urns ...string) string {
+	t.Helper()
+	binPath := filepath.Join(t.TempDir(), name)
+	require.NoError(t, os.WriteFile(binPath, []byte("#!/bin/false\n"), 0o755))
+	host.RegisterCartridge(binPath, name, "0.0.0", CartridgeChannelRelease, nil, capGroupsFromURNs(t, urns...))
+	return binPath
+}
 
 // recvCartridgeFrame reads from the engine side of the relay, skipping the
 // host's RelayNotify inventory frames (the host publishes one on Run start and
@@ -100,7 +131,7 @@ func echoIdentityRequest(t *testing.T, reader *FrameReader, writer *FrameWriter)
 // TEST413: Register cartridge adds entries to cap_table
 func Test413_register_cartridge_adds_cap_table(t *testing.T) {
 	host := NewCartridgeHost()
-	host.RegisterCartridge("/path/to/converter", []string{"cap:convert", "cap:analyze"})
+	host.RegisterCartridge("/path/to/converter", "converter", "1.0", CartridgeChannelRelease, nil, capGroupsFromURNs(t, "cap:convert", "cap:analyze"))
 
 	host.mu.Lock()
 	defer host.mu.Unlock()
@@ -122,14 +153,14 @@ func Test6594_capabilities_empty_initially(t *testing.T) {
 	assert.Nil(t, host.Capabilities(), "no cartridges → nil capabilities")
 
 	// Case 2: Cartridge registered but not running
-	host.RegisterCartridge("/path/to/cartridge", []string{"cap:test"})
+	host.RegisterCartridge("/path/to/cartridge", "cartridge", "1.0", CartridgeChannelRelease, nil, capGroupsFromURNs(t, "cap:test"))
 	assert.Nil(t, host.Capabilities(), "registered but not running → nil capabilities")
 }
 
 // TEST415: REQ for known cap triggers spawn attempt (verified by expected spawn error for non-existent binary)
 func Test415_req_triggers_spawn(t *testing.T) {
 	host := NewCartridgeHost()
-	host.RegisterCartridge("/nonexistent/cartridge/binary", []string{"cap:test"})
+	host.RegisterCartridge("/nonexistent/cartridge/binary", "cartridge", "1.0", CartridgeChannelRelease, nil, capGroupsFromURNs(t, "cap:test"))
 
 	// Set up relay pipes
 	relayRead, engineWrite := net.Pipe()
@@ -996,7 +1027,7 @@ func Test424_concurrent_requests_same_cartridge(t *testing.T) {
 // TEST425: find_cartridge_for_cap returns None for unregistered cap
 func Test425_find_cartridge_for_cap_unknown(t *testing.T) {
 	host := NewCartridgeHost()
-	host.RegisterCartridge("/path/to/cartridge", []string{"cap:known"})
+	host.RegisterCartridge("/path/to/cartridge", "cartridge", "1.0", CartridgeChannelRelease, nil, capGroupsFromURNs(t, "cap:known"))
 
 	idx, found := host.FindCartridgeForCap("cap:known")
 	assert.True(t, found, "known cap must be found")
@@ -1168,10 +1199,10 @@ func Test486_attach_cartridge_identity_verification_fails(t *testing.T) {
 // TEST6623: Cartridge death keeps caps advertised for on-demand respawn. The cartridge's `cap_groups` survive process death, so the host can continue advertising the cartridge's caps and the relay can route a fresh REQ to it (which triggers an on-demand respawn).
 func Test6623_cartridge_death_keeps_caps_advertised(t *testing.T) {
 	host := NewCartridgeHost()
-	host.RegisterCartridge("/path/thumbnailcartridge", []string{
+	registerTempCartridge(t, host, "thumbnailcartridge",
 		standard.CapIdentity,
 		`cap:in="media:ext=pdf";out="media:ext=png;image";thumbnail`,
-	})
+	)
 
 	// cap_table is the routing source of truth: both caps are present even
 	// though the process has not been spawned (running == false).
@@ -1189,14 +1220,14 @@ func Test6623_cartridge_death_keeps_caps_advertised(t *testing.T) {
 // TEST662: rebuild_capabilities includes non-running cartridges' caps (each cartridge's `cap_groups` is the source of truth, regardless of whether its process has been spawned yet).
 func Test662_rebuild_capabilities_includes_non_running_cartridges(t *testing.T) {
 	host := NewCartridgeHost()
-	host.RegisterCartridge("/path/extractcartridge", []string{
+	registerTempCartridge(t, host, "extractcartridge",
 		standard.CapIdentity,
 		`cap:in="media:ext=pdf";extract;out="media:text"`,
-	})
-	host.RegisterCartridge("/path/ocrcartridge", []string{
+	)
+	registerTempCartridge(t, host, "ocrcartridge",
 		standard.CapIdentity,
 		`cap:in="media:image";ocr;out="media:text"`,
-	})
+	)
 
 	host.mu.Lock()
 	host.rebuildCapabilities()
@@ -1213,10 +1244,10 @@ func Test662_rebuild_capabilities_includes_non_running_cartridges(t *testing.T) 
 // TEST663: Cartridge with hello_failed is permanently removed from capabilities
 func Test663_hello_failed_cartridge_removed_from_capabilities(t *testing.T) {
 	host := NewCartridgeHost()
-	host.RegisterCartridge("/path/brokencartridge", []string{
+	registerTempCartridge(t, host, "brokencartridge",
 		standard.CapIdentity,
 		`cap:in="media:void";broken;out="media:void"`,
-	})
+	)
 
 	// Manually mark it as hello_failed (simulating HELLO handshake failure).
 	host.mu.Lock()
@@ -1263,10 +1294,10 @@ func Test664_running_cartridge_uses_manifest_caps(t *testing.T) {
 	host := NewCartridgeHost()
 
 	// Register with stale (probe-time) caps BEFORE attaching.
-	host.RegisterCartridge("/path/extractcartridge", []string{
+	registerTempCartridge(t, host, "extractcartridge",
 		standard.CapIdentity,
 		`cap:in="media:ext=pdf";extract;out="media:text"`,
-	})
+	)
 
 	// Now attach the actual cartridge (which sends a different manifest).
 	_, err := host.AttachCartridge(hostRead, hostWrite)
@@ -1315,10 +1346,10 @@ func Test665_cap_table_mixed_running_and_non_running(t *testing.T) {
 	require.NoError(t, err)
 
 	// Register a non-running cartridge with probe-time caps.
-	host.RegisterCartridge("/fake/not-running", []string{
+	registerTempCartridge(t, host, "not-running",
 		standard.CapIdentity,
 		`cap:in="media:ext=pdf";not-running-op;out="media:text"`,
-	})
+	)
 
 	host.mu.Lock()
 	host.updateCapTable()

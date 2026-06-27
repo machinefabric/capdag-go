@@ -6,11 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"sort"
 	"sync"
 
-	"github.com/machinefabric/capdag-go/cap"
 	"github.com/machinefabric/capdag-go/standard"
 	"github.com/machinefabric/capdag-go/urn"
 )
@@ -201,18 +201,18 @@ type ManagedCartridge struct {
 	// reads `installed_cartridges[*].cap_groups` and computes its own
 	// flat list.
 	capGroups                []CapGroup
-	knownCaps                []string
 	running                  bool
 	helloFailed              bool
 	LastHeartbeatUnixSeconds *int64
 	RestartCount             uint64
 	// installedIdentity is the resolvable (registry_url, channel, id,
-	// version) identity of a cartridge registered from a version
-	// directory (or attached with a known identity). nil for the
-	// legacy RegisterCartridge / AttachCartridge paths that carry no
-	// on-disk anchor — such cartridges are advertised with a synthetic
-	// identity by rebuildCapabilities. When set, it gates this
-	// cartridge's appearance in the RelayNotify inventory.
+	// version) identity of the cartridge. Every registration path stamps
+	// one: RegisterCartridgeDir from the directory-tree hash,
+	// RegisterCartridge from the binary hash, and AttachCartridge from the
+	// HELLO manifest. It gates this cartridge's appearance in the
+	// RelayNotify inventory — a nil identity (binary unreadable / manifest
+	// unparseable) means the cartridge is dropped from advertisement rather
+	// than exposed under a fabricated id.
 	installedIdentity *InstalledCartridgeRecord
 	// cartridgeDir is the version directory a dir-registered cartridge
 	// was created from (empty for binary/attached cartridges). Its
@@ -479,22 +479,61 @@ func (p *CartridgeProcessHandle) SyncRoster(cartridges []RegisteredDirSpec) erro
 	return nil
 }
 
+// installedCartridgeRecordFromBinary builds the install identity for a
+// cartridge registered by binary path (on-demand spawn). The identity tuple
+// (registry_url, channel, id, version) comes from the cartridge's manifest
+// (supplied by the caller — the binary path has no bearing on them); the
+// sha256 is taken over the binary bytes. Mirrors the reference
+// installed_cartridge_record_from_binary. Returns nil if the binary is
+// unreadable (the cartridge is then dropped from advertisement rather than
+// advertised without a resolvable identity).
+func installedCartridgeRecordFromBinary(path, name, version string, channel CartridgeChannel, registryURL *string) *InstalledCartridgeRecord {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	digest := sha256.Sum256(data)
+	return &InstalledCartridgeRecord{
+		RegistryURL: registryURL,
+		Id:          name,
+		Channel:     string(channel),
+		Version:     version,
+		Sha256:      hex.EncodeToString(digest[:]),
+		// On-demand binary: not yet probed/verified at registration time.
+		Lifecycle: CartridgeLifecycleDiscovered,
+	}
+}
+
 // RegisterCartridge registers a cartridge binary for on-demand spawning.
-// The cartridge is not spawned until a REQ arrives for one of its known caps.
-func (h *CartridgeHost) RegisterCartridge(path string, knownCaps []string) {
+// The cartridge is not spawned until a REQ arrives for one of its caps.
+//
+// The install identity is stamped from the binary: (name, version, channel,
+// registryURL) come from the cartridge's own manifest and the sha256 is over
+// the binary bytes. Mirrors the reference register_cartridge /
+// new_registered_binary — advertisement is identity-gated, so a cartridge with
+// no resolvable identity is dropped from every RelayNotify, never silently
+// advertised under a synthetic id.
+//
+// capGroups is the cartridge's manifest cap-group structure (captured at
+// probe-time HELLO during discovery); the flat cap-URN routing view is derived
+// from it via ManagedCartridge.cap_urns, so no parallel knownCaps list is kept.
+func (h *CartridgeHost) RegisterCartridge(path, name, version string, channel CartridgeChannel, registryURL *string, capGroups []CapGroup) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	cartridgeIdx := len(h.cartridges)
-	h.cartridges = append(h.cartridges, &ManagedCartridge{
-		path:      path,
-		knownCaps: knownCaps,
-		running:   false,
-		limits:    DefaultLimits(),
-	})
+	cartridge := &ManagedCartridge{
+		path:              path,
+		capGroups:         capGroups,
+		caps:              capURNsFromGroups(capGroups),
+		running:           false,
+		limits:            DefaultLimits(),
+		installedIdentity: installedCartridgeRecordFromBinary(path, name, version, channel, registryURL),
+	}
+	h.cartridges = append(h.cartridges, cartridge)
 
-	for _, cap := range knownCaps {
-		h.capTable = append(h.capTable, capTableEntry{capUrn: cap, cartridgeIdx: cartridgeIdx})
+	for _, capURN := range cartridge.caps {
+		h.capTable = append(h.capTable, capTableEntry{capUrn: capURN, cartridgeIdx: cartridgeIdx})
 	}
 }
 
@@ -1370,27 +1409,22 @@ func (h *CartridgeHost) updateCapTable() {
 		if cartridge.helloFailed {
 			continue
 		}
-		caps := cartridge.knownCaps
-		if cartridge.running && len(cartridge.caps) > 0 {
-			caps = cartridge.caps
-		}
-		for _, cap := range caps {
-			h.capTable = append(h.capTable, capTableEntry{capUrn: cap, cartridgeIdx: idx})
+		for _, capURN := range cartridge.caps {
+			h.capTable = append(h.capTable, capTableEntry{capUrn: capURN, cartridgeIdx: idx})
 		}
 	}
 }
 
 // buildInstalledCartridgeIdentities builds the installed-cartridge inventory
 // the host advertises to the engine. Cartridges that have permanently failed
-// HELLO are filtered out. A cartridge with a resolvable installedIdentity (a
-// dir-registered roster cartridge) advertises that real (registry_url, channel,
-// id, version) identity plus live runtime stats; a legacy cartridge with no
-// on-disk anchor (RegisterCartridge / AttachCartridge) advertises a synthetic
-// identity so the inventory shape stays uniform.
-//
-// cap_groups is the source of truth. For cartridges registered with a flat
-// knownCaps list (no manifest yet), we synthesize a default cap_group from those
-// URNs.
+// HELLO are filtered out, and so are cartridges with no resolvable
+// installedIdentity — identity gates advertisement, mirroring the reference
+// build_installed_cartridge_identities. Every registration path
+// (RegisterCartridge / RegisterCartridgeDir / AttachCartridge) now stamps a
+// real (registry_url, channel, id, version) identity, so a nil identity here
+// means a genuinely anchorless cartridge that is correctly dropped rather than
+// advertised under a fabricated id. The base identity is overlaid with the live
+// cap_groups + runtime stats before emission.
 func (h *CartridgeHost) buildInstalledCartridgeIdentities() []InstalledCartridgeRecord {
 	activeCounts := make(map[int]uint64)
 	for _, route := range h.incomingRxids {
@@ -1407,25 +1441,10 @@ func (h *CartridgeHost) buildInstalledCartridgeIdentities() []InstalledCartridge
 			continue // Permanently broken, not advertised.
 		}
 
-		// Prefer manifest-derived cap_groups (the source of truth once HELLO
-		// has succeeded); fall back to a synthetic group built from knownCaps
-		// when the cartridge has not started yet.
-		var capGroups []CapGroup
-		if len(cartridge.capGroups) > 0 {
-			capGroups = cartridge.capGroups
-		} else if len(cartridge.knownCaps) > 0 {
-			caps := make([]cap.Cap, 0, len(cartridge.knownCaps))
-			for _, urnStr := range cartridge.knownCaps {
-				parsed, err := urn.NewCapUrnFromString(urnStr)
-				if err != nil {
-					// Registration accepted this string upstream; re-parsing it
-					// here must succeed. Fail hard rather than silently dropping.
-					panic(fmt.Sprintf("BUG: known cap URN %q failed to re-parse: %v", urnStr, err))
-				}
-				caps = append(caps, *cap.NewCap(parsed, urnStr, ""))
-			}
-			capGroups = []CapGroup{{Name: "default", Caps: caps}}
-		}
+		// cap_groups is the manifest-derived source of truth, captured at
+		// probe-time HELLO for both the dir-registered and binary-registered
+		// paths.
+		capGroups := cartridge.capGroups
 
 		stats := &CartridgeRuntimeStats{
 			Running:            cartridge.running,
@@ -1437,26 +1456,24 @@ func (h *CartridgeHost) buildInstalledCartridgeIdentities() []InstalledCartridge
 			stats.PID = &pid
 		}
 
-		if rec := cartridge.installedCartridgeRecord(); rec != nil {
-			// Real identity (dir-registered roster cartridge). Copy the base
-			// identity and overlay the live cap_groups + runtime stats.
-			out := *rec
-			out.CapGroups = capGroups
-			out.RuntimeStats = stats
-			installed = append(installed, out)
+		// Identity gates advertisement. A cartridge with no resolvable
+		// installedIdentity is NOT part of the inventory the engine can route
+		// to and is dropped — mirroring the reference
+		// build_installed_cartridge_identities. (Attached cartridges get a
+		// manifest-derived identity at attach time, so a nil identity here
+		// means a genuinely anchorless cartridge; we expose that by dropping
+		// it rather than fabricating a synthetic `cartridge-N` record that
+		// would hide the gap.)
+		rec := cartridge.installedCartridgeRecord()
+		if rec == nil {
 			continue
 		}
-
-		// Legacy cartridge with no on-disk anchor — synthetic identity.
-		installed = append(installed, InstalledCartridgeRecord{
-			RegistryURL:  nil,
-			Id:           fmt.Sprintf("cartridge-%d", idx),
-			Channel:      "release",
-			Version:      "0.0.0",
-			Sha256:       "",
-			CapGroups:    capGroups,
-			RuntimeStats: stats,
-		})
+		// Copy the base identity and overlay the live cap_groups + runtime
+		// stats.
+		out := *rec
+		out.CapGroups = capGroups
+		out.RuntimeStats = stats
+		installed = append(installed, out)
 	}
 	return installed
 }
