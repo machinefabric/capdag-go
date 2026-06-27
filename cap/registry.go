@@ -2,6 +2,7 @@ package cap
 
 import (
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -167,7 +168,7 @@ func NewFabricRegistry(opts ...RegistryOption) (*FabricRegistry, error) {
 		opt(&config)
 	}
 
-	cacheDir, err := getCacheDir()
+	cacheDir, err := getCacheDir(config.RegistryBaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to determine cache directory: %w", err)
 	}
@@ -345,7 +346,20 @@ func (r *FabricRegistry) ClearCache() error {
 
 // Private helper methods
 
-func getCacheDir() (string, error) {
+// getCacheDir returns the on-disk cache root for a given registry origin.
+//
+// The root is namespaced by a stable slug of the registry base URL, using the
+// SAME slug scheme as the cartridge registry layout
+// (`<os_cache>/capdag/<registry_slug>/…`). Without this, a cache populated from
+// one origin (e.g. prod https://fabric.capdag.com) would be reused to satisfy
+// lookups against another origin (e.g. staging https://fabric-staging.capdag.com)
+// — prod and staging serve different bytes for the same URN/version, so an
+// origin-blind cache silently resolves against the wrong snapshot. Two origins
+// therefore never share a cache slot; switching origins switches cache trees,
+// and the same origin maps to a stable root so caching actually hits.
+//
+// Mirrors Rust's FabricRegistry::default_cache_root.
+func getCacheDir(registryBaseURL string) (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
@@ -359,7 +373,20 @@ func getCacheDir() (string, error) {
 		cacheBase = filepath.Join(homeDir, ".cache")
 	}
 
-	return filepath.Join(cacheBase, "capdag"), nil
+	return filepath.Join(cacheBase, "capdag", registrySlug(registryBaseURL)), nil
+}
+
+// registrySlug computes the on-disk slug for a registry base URL: the first 16
+// lowercase hex characters of sha256(url). This is byte-for-byte identical to
+// the cartridge-registry slug scheme (bifaci.SlugFor for a non-nil URL) so caps
+// and cartridges from the same origin live under the same per-origin folder
+// name. It is inlined here rather than imported because bifaci depends on this
+// package, and the slug is a stable on-disk format with no internal dependencies.
+//
+// Mirrors Rust's crate::bifaci::cartridge_slug::slug_for(Some(url)).
+func registrySlug(registryBaseURL string) string {
+	digest := sha256.Sum256([]byte(registryBaseURL))
+	return hex.EncodeToString(digest[:])[:16]
 }
 
 func (r *FabricRegistry) cacheKey(urn string) string {

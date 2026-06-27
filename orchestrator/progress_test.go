@@ -146,10 +146,7 @@ func Test914_progress_mapper_sub_mapper(t *testing.T) {
 	}
 }
 
-// TEST915: Per-group subdivision produces monotonic, bounded progress for N groups
-//
-// Uses pre-computed boundaries (same pattern as production code) to guarantee
-// monotonicity regardless of f32 rounding.
+// TEST915: Per-group subdivision produces monotonic, bounded progress for N groups Uses pre-computed boundaries (same pattern as production code) to guarantee monotonicity regardless of f32 rounding.
 func Test915_per_group_subdivision_monotonic_bounded(t *testing.T) {
 	var mu sync.Mutex
 	var allProgress []float32
@@ -204,8 +201,7 @@ func Test915_per_group_subdivision_monotonic_bounded(t *testing.T) {
 	}
 }
 
-// TEST917: High-frequency progress emission does not violate bounds
-// (Regression test for the deadlock scenario — verifies computation stays bounded)
+// TEST917: High-frequency progress emission does not violate bounds (Regression test for the deadlock scenario — verifies computation stays bounded)
 func Test917_high_frequency_progress_bounded(t *testing.T) {
 	var count atomic.Uint32
 	var mu sync.Mutex

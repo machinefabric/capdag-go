@@ -3344,11 +3344,7 @@ func Test676_build_request_frames_round_trip_find_stream_succeeds(t *testing.T) 
 	}
 }
 
-// TEST677: build_request_frames with BASE URN → find_stream with FULL URN FAILS
-// This documents the root cause of the cartridge_client.rs bug:
-// sender used "media:llm-generation-request" (base), receiver looked for
-// "media:fmt=json;llm-generation-request;record" (full). is_equivalent requires
-// exact tag set match, so base != full.
+// TEST677: build_request_frames with BASE URN → find_stream with FULL URN FAILS This documents the root cause of the cartridge_client.rs bug: sender used "media:llm-generation-request" (base), receiver looked for "media:fmt=json;llm-generation-request;record" (full). is_equivalent requires exact tag set match, so base != full.
 func Test677_base_urn_does_not_match_full_urn_in_find_stream(t *testing.T) {
 	// Sender uses BASE URN (the bug)
 	baseUrn := "media:llm-generation-request"

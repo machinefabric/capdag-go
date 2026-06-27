@@ -404,10 +404,7 @@ func Test1874_registry_url_from_build_env_rejects_empty_string(t *testing.T) {
 	)
 }
 
-// TEST117: A manifest's channel round-trips through serde and the
-// serialized form uses the canonical lowercase wire word
-// ("release" / "nightly"). A missing or unrecognized channel is
-// a hard parse error — no defaults.
+// TEST117: A manifest's channel round-trips through serde and the serialized form uses the canonical lowercase wire word ("release" / "nightly"). A missing or unrecognized channel is a hard parse error — no defaults.
 func Test117_cap_manifest_channel_roundtrip(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(manifestTestUrn("extract;target=metadata"))
 	require.NoError(t, err)
@@ -456,11 +453,7 @@ func Test117_cap_manifest_channel_roundtrip(t *testing.T) {
 	assert.Error(t, err, "manifest with channel='staging' must fail to parse")
 }
 
-// TEST118: A dev manifest (built without `MFR_CARTRIDGE_REGISTRY_URL`) carries
-// `registry_url: null` and serializes the field explicitly. The
-// null-vs-absent distinction matters because the parser refuses
-// to accept absent (test117) — so an old SDK can't accidentally
-// pass for a dev build.
+// TEST118: A dev manifest (built without `MFR_CARTRIDGE_REGISTRY_URL`) carries `registry_url: null` and serializes the field explicitly. The null-vs-absent distinction matters because the parser refuses to accept absent (test117) — so an old SDK can't accidentally pass for a dev build.
 func Test118_dev_manifest_registry_url_is_explicit_null(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(manifestTestUrn("dev"))
 	require.NoError(t, err)

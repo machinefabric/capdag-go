@@ -2043,7 +2043,7 @@ func Test653_effect_none_illegal_declaration_rejected(t *testing.T) {
 	assertIllegalDeclaration(t, `cap:in="media:ext=pdf";out="media:enc=utf-8";effect=none`)
 }
 
-// TEST0125: effect=none preserves runtime media identity
+// TEST125: effect=none preserves runtime media identity
 func Test0125_effect_none_preserves_runtime_media(t *testing.T) {
 	decimate, err := NewCapUrnFromString("cap:decimate-sequence;effect=none")
 	require.NoError(t, err)
@@ -2061,7 +2061,7 @@ func Test0125_effect_none_preserves_runtime_media(t *testing.T) {
 	assert.Equal(t, pdf.String(), outPdf.String())
 }
 
-// TEST0126: default effect=declared uses the declared output
+// TEST126: default effect=declared uses the declared output
 func Test0126_effect_declared_uses_declared_output(t *testing.T) {
 	resize, err := NewCapUrnFromString("cap:in=media:image;out=media:image;resize")
 	require.NoError(t, err)
@@ -2073,12 +2073,12 @@ func Test0126_effect_declared_uses_declared_output(t *testing.T) {
 	assert.Equal(t, "media:image", out.String())
 }
 
-// TEST0127: invalid effect=none declarations fail hard
+// TEST127: invalid effect=none declarations fail hard
 func Test0127_invalid_effect_none_fails_hard(t *testing.T) {
 	assertIllegalDeclaration(t, `cap:in="media:ext=pdf";out="media:enc=utf-8";effect=none`)
 }
 
-// TEST0128: omitted effect means declared; unconstrained effect must be explicit
+// TEST128: omitted effect means declared; unconstrained effect must be explicit
 func Test0128_effect_dispatch_requires_explicit_wildcard(t *testing.T) {
 	noneProvider, err := NewCapUrnFromString("cap:effect=none")
 	require.NoError(t, err)

@@ -170,8 +170,7 @@ func txtToVecStrand() *planner.Strand {
 // FromStrand tests
 // ===================================================================
 
-// TEST1135: MachineStrand::node_urn(id) returns the MediaUrn at that NodeId. For a single-cap
-// strand (pdf → extract → txt), there are exactly two nodes and each returns a valid URN.
+// TEST1135: MachineStrand::node_urn(id) returns the MediaUrn at that NodeId. For a single-cap strand (pdf → extract → txt), there are exactly two nodes and each returns a valid URN.
 func Test1135_StrandNodeUrnReturnsMediaUrnAtNodeId(t *testing.T) {
 	registry := registryWith([]*cap.Cap{extractCapDef()})
 	m, err := FromStrand(pdfToTxtStrand(), registry)
@@ -469,9 +468,7 @@ func Test1171_ParseEmptyInputReturnsError(t *testing.T) {
 	}
 }
 
-// TEST1136: parse_machine with an undefined cap alias raises MachineParseError wrapping
-// MachineSyntaxError::UndefinedAlias. This pins the error path so an alias lookup failure
-// is always surfaced as a syntax error (not a resolution error or a panic).
+// TEST1136: parse_machine with an undefined cap alias raises MachineParseError wrapping MachineSyntaxError::UndefinedAlias. This pins the error path so an alias lookup failure is always surfaced as a syntax error (not a resolution error or a panic).
 func Test1136_ParseMachineUndefinedAliasRaisesSyntaxError(t *testing.T) {
 	registry := registryWith([]*cap.Cap{})
 	notation := "[doc -> undefined_alias -> text]"
@@ -1156,9 +1153,7 @@ func Test1177_render_payload_for_empty_machine_has_empty_strands_array(t *testin
 	}
 }
 
-// TEST1308: A wiring set that feeds a cap's output back into an ancestor
-// forms a cycle and must fail hard with CyclicMachineStrand carrying the
-// strand index. Cycle: node 0 → cap A → node 1 → cap B → node 0.
+// TEST1308: A wiring set that feeds a cap's output back into an ancestor forms a cycle and must fail hard with CyclicMachineStrand carrying the strand index. Cycle: node 0 → cap A → node 1 → cap B → node 0.
 func Test1308_CyclicStrandFailsHard(t *testing.T) {
 	urnA := `cap:in="media:ext=pdf";op-a;out="media:enc=utf-8;ext=txt"`
 	urnB := `cap:in="media:enc=utf-8;ext=txt";op-b;out="media:ext=pdf"`

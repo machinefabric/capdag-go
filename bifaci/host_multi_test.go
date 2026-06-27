@@ -1039,12 +1039,7 @@ func anyContains(haystack []string, needle string) bool {
 	return false
 }
 
-// TEST6600: parse_cap_groups_from_manifest classifies failures by kind
-//
-// Manifest JSON that parses but lacks CAP_IDENTITY is `Incompatible`
-// (schema-rejected). Manifest bytes that don't parse as CapManifest are
-// `ManifestInvalid` (JSON-level failure). The split lets the host's
-// attachment-error reporter surface the right kind to the UI.
+// TEST6600: parse_cap_groups_from_manifest classifies failures by kind Manifest JSON that parses but lacks CAP_IDENTITY is `Incompatible` (schema-rejected). Manifest bytes that don't parse as CapManifest are `ManifestInvalid` (JSON-level failure). The split lets the host's attachment-error reporter surface the right kind to the UI.
 func Test6600_parse_cap_groups_rejects_manifest_without_identity(t *testing.T) {
 	// JSON-valid manifest, missing CAP_IDENTITY → Incompatible.
 	manifest := `{"name":"Test","version":"1.0","channel":"release","registry_url":null,"description":"Test","cap_groups":[{"name":"default","caps":[{"urn":"cap:in=\"media:void\";convert;out=\"media:void\"","title":"Test","command":"test","args":[]}],"adapter_urns":[]}]}`
@@ -1170,10 +1165,7 @@ func Test486_attach_cartridge_identity_verification_fails(t *testing.T) {
 	wg.Wait()
 }
 
-// TEST6623: Cartridge death keeps caps advertised for on-demand respawn.
-// The cartridge's `cap_groups` survive process death, so the host can
-// continue advertising the cartridge's caps and the relay can route
-// a fresh REQ to it (which triggers an on-demand respawn).
+// TEST6623: Cartridge death keeps caps advertised for on-demand respawn. The cartridge's `cap_groups` survive process death, so the host can continue advertising the cartridge's caps and the relay can route a fresh REQ to it (which triggers an on-demand respawn).
 func Test6623_cartridge_death_keeps_caps_advertised(t *testing.T) {
 	host := NewCartridgeHost()
 	host.RegisterCartridge("/path/thumbnailcartridge", []string{
@@ -1194,9 +1186,7 @@ func Test6623_cartridge_death_keeps_caps_advertised(t *testing.T) {
 	assert.True(t, anyContains(advertised, "thumbnail"), "Thumbnail cap must be advertised, got %v", advertised)
 }
 
-// TEST662: rebuild_capabilities includes non-running cartridges' caps
-// (each cartridge's `cap_groups` is the source of truth, regardless
-// of whether its process has been spawned yet).
+// TEST662: rebuild_capabilities includes non-running cartridges' caps (each cartridge's `cap_groups` is the source of truth, regardless of whether its process has been spawned yet).
 func Test662_rebuild_capabilities_includes_non_running_cartridges(t *testing.T) {
 	host := NewCartridgeHost()
 	host.RegisterCartridge("/path/extractcartridge", []string{
@@ -1249,10 +1239,7 @@ func Test663_hello_failed_cartridge_removed_from_capabilities(t *testing.T) {
 		"hello_failed cartridge must not be advertised, got %v", advertised)
 }
 
-// TEST664: Attached cartridge replaces pre-registration caps with
-// manifest caps. The pre-attach `cap_groups` (from probe-time
-// discovery) get superseded by the post-HELLO `cap_groups` from
-// the actual handshake.
+// TEST664: Attached cartridge replaces pre-registration caps with manifest caps. The pre-attach `cap_groups` (from probe-time discovery) get superseded by the post-HELLO `cap_groups` from the actual handshake.
 func Test664_running_cartridge_uses_manifest_caps(t *testing.T) {
 	// Manifest declares different caps than the pre-registration probe —
 	// the post-HELLO snapshot must win.
@@ -1303,10 +1290,7 @@ func Test664_running_cartridge_uses_manifest_caps(t *testing.T) {
 	wg.Wait()
 }
 
-// TEST665: Cap table aggregates caps from every healthy cartridge —
-// attached/running cartridges contribute their post-HELLO cap_groups,
-// registered-but-not-yet-spawned cartridges contribute their
-// probe-time cap_groups. Both flow through the same `cap_urns()` view.
+// TEST665: Cap table aggregates caps from every healthy cartridge — attached/running cartridges contribute their post-HELLO cap_groups, registered-but-not-yet-spawned cartridges contribute their probe-time cap_groups. Both flow through the same `cap_urns()` view.
 func Test665_cap_table_mixed_running_and_non_running(t *testing.T) {
 	manifest := `{"name":"Running","version":"1.0","channel":"release","registry_url":null,"description":"Running cartridge","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity","args":[]},{"urn":"cap:in=\"media:text\";running-op;out=\"media:text\"","title":"RunningOp","command":"running","args":[]}],"adapter_urns":[]}]}`
 
@@ -1398,17 +1382,7 @@ func seedIncomingRxidsForTest(host *CartridgeHost, count int) []rxidKey {
 	return keys
 }
 
-// TEST988: Contract #1 — the GC keeps the table strictly below the
-// hard cap. Seed the table well above the soft watermark
-// (matching what a runaway producer would do mid-frame-
-// burst) and call the production GC entry point. The
-// post-state must be at most `SOFT_WATERMARK` entries
-// because the GC drops at least
-// `EVICTION_FRACTION × pre_state` entries in one pass and
-// the pre-state is below the hard cap (i.e. one pass is
-// enough; the secondary "hard cap" pass would only fire if
-// pre-state crossed the hard cap before insertion completed,
-// which production prevents by gc-ing on every insert).
+// TEST988: / Contract #1 — the GC keeps the table strictly below the / hard cap. Seed the table well above the soft watermark / (matching what a runaway producer would do mid-frame- / burst) and call the production GC entry point. The / post-state must be at most `SOFT_WATERMARK` entries / because the GC drops at least / `EVICTION_FRACTION × pre_state` entries in one pass and / the pre-state is below the hard cap (i.e. one pass is / enough; the secondary "hard cap" pass would only fire if / pre-state crossed the hard cap before insertion completed, / which production prevents by gc-ing on every insert).
 func Test988_gc_reduces_table_below_soft_watermark_in_one_pass(t *testing.T) {
 	host := NewCartridgeHost()
 	preCount := RoutingTableSoftWatermark + 256
@@ -1435,17 +1409,7 @@ func Test988_gc_reduces_table_below_soft_watermark_in_one_pass(t *testing.T) {
 		"GC pass evicted %d entries; expected %d", host.routingGcEvictedTotal, expectedEvicted)
 }
 
-// TEST129: Contract #2 — the GC drops the OLDEST entries by
-// touch-sequence, not arbitrary keys. Seed a known age
-// distribution and assert the post-GC keyset is exactly
-// what the test computes should survive (test recomputes
-// independently of production code).
-//
-// A regression where the GC e.g. iterates the HashMap and
-// drops the first N (HashMap iteration order is arbitrary
-// in Rust) would still pass contract #1 but fail this one —
-// the more dangerous bug because it silently drops
-// in-flight continuation frames.
+// TEST129: / Contract #2 — the GC drops the OLDEST entries by / touch-sequence, not arbitrary keys. Seed a known age / distribution and assert the post-GC keyset is exactly / what the test computes should survive (test recomputes / independently of production code). / / A regression where the GC e.g. iterates the HashMap and / drops the first N (HashMap iteration order is arbitrary / in Rust) would still pass contract #1 but fail this one — / the more dangerous bug because it silently drops / in-flight continuation frames.
 func Test129_gc_evicts_oldest_entries_by_touch_sequence(t *testing.T) {
 	host := NewCartridgeHost()
 	preCount := RoutingTableSoftWatermark + 256
@@ -1480,11 +1444,7 @@ func Test129_gc_evicts_oldest_entries_by_touch_sequence(t *testing.T) {
 	}
 }
 
-// TEST987: Contract #3 — the secondary hard-cap pass kicks in if the
-// table somehow exceeds `HARD_CAP` (extreme runaway). Without
-// it, a single GC at the soft watermark would not be enough
-// to recover headroom and the table could grow without bound
-// between bursts.
+// TEST987: / Contract #3 — the secondary hard-cap pass kicks in if the / table somehow exceeds `HARD_CAP` (extreme runaway). Without / it, a single GC at the soft watermark would not be enough / to recover headroom and the table could grow without bound / between bursts.
 func Test987_gc_secondary_pass_enforces_hard_cap(t *testing.T) {
 	host := NewCartridgeHost()
 	// Size the seed so a SINGLE eviction-fraction pass is NOT enough to

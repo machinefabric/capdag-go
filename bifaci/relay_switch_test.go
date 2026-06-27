@@ -1185,7 +1185,7 @@ func Test6745_RelaySwitchNewRejectsDuplicateIDs(t *testing.T) {
 	}
 }
 
-// TEST487: RelaySwitch construction succeeds when master's identity verification passes
+// TEST487: RelaySwitch construction verifies identity through relay chain
 func Test487_relay_switch_identity_verification_succeeds(t *testing.T) {
 	engineRead, slaveWrite := net.Pipe()
 	slaveRead, engineWrite := net.Pipe()
@@ -1356,7 +1356,7 @@ func buildSwitchWithNCaplessMasters(t *testing.T, n int) *RelaySwitch {
 	return sw
 }
 
-// TEST0136: All masters ready false when expected count unset
+// TEST136: All masters ready false when expected count unset
 func Test0136_all_masters_ready_false_when_expected_count_unset(t *testing.T) {
 	// Even with a connected, fully-RelayNotify'd master, the
 	// predicate must return false until the engine explicitly
@@ -1370,7 +1370,7 @@ func Test0136_all_masters_ready_false_when_expected_count_unset(t *testing.T) {
 	}
 }
 
-// TEST0137: All masters ready false when partially connected
+// TEST137: All masters ready false when partially connected
 func Test0137_all_masters_ready_false_when_partially_connected(t *testing.T) {
 	// 1 master connected, 2 expected. This is the live regression we
 	// shipped: the internal master had caps from t=0 but the
@@ -1383,7 +1383,7 @@ func Test0137_all_masters_ready_false_when_partially_connected(t *testing.T) {
 	}
 }
 
-// TEST0139: All masters ready true when masters connected but capless
+// TEST139: All masters ready true when masters connected but capless
 func Test0139_all_masters_ready_true_when_masters_connected_but_capless(t *testing.T) {
 	// Cartridges in `.discovered` / `.inspecting` / `.verifying`
 	// contribute zero caps to their master's RelayNotify. The engine
@@ -1399,7 +1399,7 @@ func Test0139_all_masters_ready_true_when_masters_connected_but_capless(t *testi
 	}
 }
 
-// TEST0140: All masters ready does not overshoot
+// TEST140: All masters ready does not overshoot
 func Test0140_all_masters_ready_does_not_overshoot(t *testing.T) {
 	// 2 masters connected, 1 expected. The predicate should still
 	// report ready — the engine got more masters than it declared,
@@ -1479,7 +1479,7 @@ func readSwitchResponse(t *testing.T, sw *RelaySwitch, rid MessageId) []byte {
 	return nil
 }
 
-// TEST0132: add_master dynamically connects new host to running switch
+// TEST132: add_master dynamically connects new host to running switch
 func Test0132_add_master_dynamic(t *testing.T) {
 	// Create initial switch with handler A (alpha).
 	capA := `cap:in="media:void";alpha;out="media:void"`

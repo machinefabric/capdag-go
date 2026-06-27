@@ -6,10 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TEST119: CartridgeResponse::Streaming concatenated() and final_payload() diverge for
-// multi-chunk responses: concatenated returns all chunk data joined; final_payload returns
-// only the last chunk. A consumer that confuses the two will silently drop all but the
-// last chunk of a multi-chunk response.
+// TEST119: CartridgeResponse::Streaming concatenated() and final_payload() diverge for multi-chunk responses: concatenated returns all chunk data joined; final_payload returns only the last chunk. A consumer that confuses the two will silently drop all but the last chunk of a multi-chunk response.
 func Test119_cartridge_response_concatenated_and_final_payload_diverge_for_multi_chunk(t *testing.T) {
 	chunks := []*ResponseChunk{
 		{Payload: []byte("AAAA"), Seq: 0, IsEof: false},
