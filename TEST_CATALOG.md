@@ -1,8 +1,8 @@
 # Go Test Catalog
 
-**Total Tests:** 930
+**Total Tests:** 943
 
-**Numbered Tests:** 930
+**Numbered Tests:** 943
 
 **Unnumbered Tests:** 0
 
@@ -937,6 +937,19 @@ This catalog lists all tests in the Go codebase.
 | test1877 | `Test1877_registry_cartridge_under_wrong_slug_is_bad_install` | TEST1877: a registry cartridge hand-copied under the WRONG registry slug folder fails the three-place rule (BadInstallation) — scan-all does not mean "accept anywhere", placement must still be self-consistent. | bifaci/cartridge_discovery_test.go:167 |
 | test1878 | `Test1878_bundled_provider_without_baked_hash_is_rejected` | TEST1878: a cartridge marked `installed_from: bundle` with no baked hash in BundledProviderHashes (the slice is empty under a plain build) is rejected as BadInstallation — the bundled-integrity gate fires before the probe. Proves the verify is wired into discovery. Non-macOS only: on macOS the baked-hash path is intentionally absent (OS code-signature is the guard), so a bundled provider is accepted there and would instead end at the probe. | bifaci/cartridge_discovery_test.go:185 |
 | test1879 | `Test1879_sync_roster_adds_and_removes_registered_dir_live` | TEST1879: SyncRoster updates the LIVE host inventory in place — the engine sees an added registered-dir cartridge via a fresh RelayNotify without reconnecting, and a subsequent empty sync removes it. This is the macOS-XPC syncDiscoveryOutcomes parity path the daemon uses after a registry verdict flips a held cartridge to Listed. | bifaci/host_roster_test.go:67 |
+| test1880 | `Test1880_AliasNameNormalizationRules` | Test1880: alias name normalization lowercases and accepts the allowed char class; rejects colon, whitespace, and out-of-class chars. | machine/alias_test.go:19 |
+| test1881 | `Test1881_TokenURNvsAliasDetection` | Test1881: URN-vs-alias detection keys purely on the presence of ':'. | machine/alias_test.go:35 |
+| test1882 | `Test1882_ClassifyAliasTargetByPrefix` | Test1882: alias target classification distinguishes cap from media by prefix and rejects a non-URN target. | machine/alias_test.go:45 |
+| test1883 | `Test1883_CapPositionAliasResolvesToCap` | Test1883: a cap-position name with no local header resolves as a cap alias. | machine/alias_test.go:171 |
+| test1884 | `Test1884_LocalHeaderShadowsCapAlias` | Test1884: a local header alias shadows a fabric alias of the same name. | machine/alias_test.go:182 |
+| test1885 | `Test1885_CapPositionAliasToMediaIsError` | Test1885: a cap-position alias that resolves to a MEDIA URN is a hard error. | machine/alias_test.go:195 |
+| test1886 | `Test1886_UnregisteredCapNameIsUndefinedAlias` | Test1886: a cap-position name that is neither a local header nor a registered alias raises the undefined-alias error. | machine/alias_test.go:208 |
+| test1887 | `Test1887_ManifestSerdeRoundTripsAliases` | Test1887: the Manifest type round-trips an `aliases` map. | machine/alias_test.go:59 |
+| test1888 | `Test1888_ResolveAliasReturnsTarget` | Test1888: ResolveAlias returns the alias target untyped; case-insensitive; malformed name rejected. | machine/alias_test.go:77 |
+| test1889 | `Test1889_ResolveAliasTypedEnforcesKind` | Test1889: ResolveAliasTyped enforces the expected kind. | machine/alias_test.go:94 |
+| test1890 | `Test1890_GetCapViaAliasAndTypeMismatch` | Test1890: GetCap accepts a cap alias and returns the aliased cap; a media alias passed to GetCap fails hard (typed boundary). | machine/alias_test.go:108 |
+| test1891 | `Test1891_GetMediaDefViaAliasAndTypeMismatch` | Test1891: GetMediaDef accepts a media alias and returns the aliased spec; a cap alias passed to GetMediaDef fails hard. | machine/alias_test.go:126 |
+| test1892 | `Test1892_UnknownAliasIsNotFound` | Test1892: an unknown alias name is a hard not-found, never a silent empty. | machine/alias_test.go:146 |
 | | | | |
 | test0090 ⚠ | `Test0090_InputValidator_WithSchemaValidation` | TEST0090: Input validator  with schema validation | cap/schema_validation_test.go:296 |
 | test0090 ⚠ | `Test0090_absent_scan_root_yields_empty_roster` | TEST0090: Absent scan root yields empty roster | bifaci/cartridge_discovery_test.go:65 |
@@ -993,8 +1006,8 @@ The following test numbers are assigned to more than one function. Keep the firs
 ---
 
 *Generated from Go source tree*
-*Total tests: 930*
-*Total numbered tests: 930*
+*Total tests: 943*
+*Total numbered tests: 943*
 *Total unnumbered tests: 0*
 *Total numbered tests missing descriptions: 0*
 *Total numbering mismatches: 0*
