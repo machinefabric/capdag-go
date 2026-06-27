@@ -207,32 +207,43 @@ func (r *FabricRegistry) Config() RegistryConfig {
 // The argument may be a cap URN (cap:...) or an alias (a colon-free token).
 // An alias is resolved first; because this is the typed cap boundary, an
 // alias whose target is not a cap URN is a hard error.
-func (r *FabricRegistry) GetCap(urn string) (*Cap, error) {
-	if media.IsAliasToken(urn) {
-		target, err := r.ResolveAliasTyped(urn, media.AliasTargetCap)
+func (r *FabricRegistry) GetCap(urnStr string) (*Cap, error) {
+	if media.IsAliasToken(urnStr) {
+		target, err := r.ResolveAliasTyped(urnStr, media.AliasTargetCap)
 		if err != nil {
 			return nil, err
 		}
 		return r.GetCap(target)
 	}
 
+	// Normalize the lookup URN the same way AddCapsToCache normalizes the
+	// storage key, so a cap cached under its canonical (tag-sorted) form is
+	// found regardless of the tag order the caller passes. Without this a
+	// cached cap is unreachable via a non-canonical lookup string, falling
+	// through to a network fetch (and failing hard when offline). Mirrors
+	// Rust get_cap's normalize_cap_urn.
+	normalized := urnStr
+	if parsed, perr := urn.NewCapUrnFromString(urnStr); perr == nil {
+		normalized = parsed.String()
+	}
+
 	// Check in-memory cache first
 	r.mutex.RLock()
-	if cap, exists := r.cachedCaps[urn]; exists {
+	if cap, exists := r.cachedCaps[normalized]; exists {
 		r.mutex.RUnlock()
 		return cap, nil
 	}
 	r.mutex.RUnlock()
 
 	// Not in cache, fetch from registry and update in-memory cache
-	cap, err := r.fetchFromRegistry(urn)
+	cap, err := r.fetchFromRegistry(normalized)
 	if err != nil {
 		return nil, err
 	}
 
 	// Update in-memory cache
 	r.mutex.Lock()
-	r.cachedCaps[urn] = cap
+	r.cachedCaps[normalized] = cap
 	r.mutex.Unlock()
 
 	return cap, nil
