@@ -488,9 +488,9 @@ func Test6670_StrandInputInvalidSingle(t *testing.T) {
 		{FilePath: "/path/2.pdf", MediaUrn: "media:ext=pdf"},
 	}
 	input := &StrandInput{
-		Files:           files,
+		Files:            files,
 		ExpectedMediaUrn: "media:ext=pdf",
-		Cardinality:     CardinalitySingle,
+		Cardinality:      CardinalitySingle,
 	}
 	if input.IsValid() {
 		t.Fatal("expected IsValid() to be false for Single with multiple files")
@@ -550,6 +550,129 @@ func Test960_argument_binding_literal_string(t *testing.T) {
 	}
 	if s != "test" {
 		t.Errorf("literal value = %q, want test", s)
+	}
+}
+
+// TEST793: Tests ArgumentBinding PreviousOutput serializes/deserializes correctly Verifies JSON round-trip preserves node_id and output_field values
+func Test793_argument_binding_serialization(t *testing.T) {
+	outputField := "result_path"
+	binding := NewPreviousOutputBinding("node_0", &outputField)
+	data, err := json.Marshal(binding)
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+	if !contains(string(data), "previous_output") {
+		t.Errorf("serialized form must contain previous_output, got %s", string(data))
+	}
+	if !contains(string(data), "node_0") {
+		t.Errorf("serialized form must contain node_0, got %s", string(data))
+	}
+
+	var deserialized ArgumentBinding
+	if err := json.Unmarshal(data, &deserialized); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+	if deserialized.Kind != BindingPreviousOutput {
+		t.Fatalf("expected BindingPreviousOutput, got %v", deserialized.Kind)
+	}
+	if deserialized.NodeID != "node_0" {
+		t.Errorf("node_id = %q, want node_0", deserialized.NodeID)
+	}
+	if deserialized.OutputField == nil || *deserialized.OutputField != "result_path" {
+		t.Errorf("output_field = %v, want result_path", deserialized.OutputField)
+	}
+}
+
+// TEST799: Tests StrandInput single constructor creates valid Single cardinality input Verifies single() wraps one file with Single cardinality and validates correctly
+func Test799_machine_input_single(t *testing.T) {
+	file := NewCapInputFile("/path/to/file.pdf", "media:ext=pdf")
+	input := NewSingleStrandInput(file)
+	if len(input.Files) != 1 {
+		t.Errorf("files len = %d, want 1", len(input.Files))
+	}
+	if input.Cardinality != CardinalitySingle {
+		t.Errorf("cardinality = %v, want Single", input.Cardinality)
+	}
+	if !input.IsValid() {
+		t.Error("single-file Single input must be valid")
+	}
+}
+
+// TEST800: Tests StrandInput sequence constructor creates valid Sequence cardinality input Verifies sequence() wraps multiple files with Sequence cardinality
+func Test800_machine_input_vector(t *testing.T) {
+	files := []*CapInputFile{
+		NewCapInputFile("/path/1.pdf", "media:ext=pdf"),
+		NewCapInputFile("/path/2.pdf", "media:ext=pdf"),
+	}
+	input := NewSequenceStrandInput(files, "media:ext=pdf")
+	if len(input.Files) != 2 {
+		t.Errorf("files len = %d, want 2", len(input.Files))
+	}
+	if input.Cardinality != CardinalitySequence {
+		t.Errorf("cardinality = %v, want Sequence", input.Cardinality)
+	}
+	if !input.IsValid() {
+		t.Error("two-file Sequence input must be valid")
+	}
+}
+
+// TEST801: Tests CapInputFile deserializes from JSON with source metadata fields Verifies JSON with source_id and source_type deserializes to CapInputFile correctly
+func Test801_cap_input_file_deserialization_from_dry_context(t *testing.T) {
+	jsonStr := `[
+        {
+            "file_path": "/Users/bahram/ws/prj/machinefabric/pdfcartridge/test_files/aws_in_action.pdf",
+            "media_urn": "media:ext=pdf",
+            "source_id": "1b964d3b-f409-4f51-8684-884348ec2501",
+            "source_type": "listing"
+        }
+    ]`
+	var files []*CapInputFile
+	if err := json.Unmarshal([]byte(jsonStr), &files); err != nil {
+		t.Fatalf("Deserialization should succeed: %v", err)
+	}
+	if len(files) != 1 {
+		t.Fatalf("files len = %d, want 1", len(files))
+	}
+	if files[0].SourceType == nil || *files[0].SourceType != SourceListing {
+		t.Errorf("source_type = %v, want Listing", files[0].SourceType)
+	}
+}
+
+// TEST802: Tests CapInputFile deserializes from compact JSON via serde_json::Value Verifies deserialization through Value intermediate works correctly
+func Test802_cap_input_file_deserialization_via_value(t *testing.T) {
+	jsonStr := `[{"file_path": "/path/to/file.pdf","media_urn": "media:ext=pdf","source_id": "abc123","source_type": "listing"}]`
+	// Go analog of the serde_json::Value intermediate: decode into a generic
+	// value, re-encode, then decode into the typed slice.
+	var value any
+	if err := json.Unmarshal([]byte(jsonStr), &value); err != nil {
+		t.Fatalf("parse to value failed: %v", err)
+	}
+	reencoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("re-encode failed: %v", err)
+	}
+	var files []*CapInputFile
+	if err := json.Unmarshal(reencoded, &files); err != nil {
+		t.Fatalf("deserialization via value failed: %v", err)
+	}
+	if len(files) != 1 {
+		t.Fatalf("files len = %d, want 1", len(files))
+	}
+}
+
+// TEST803: Tests StrandInput validation detects mismatched Single cardinality with multiple files Verifies is_valid() returns false when Single cardinality has more than one file
+func Test803_machine_input_invalid_single(t *testing.T) {
+	files := []*CapInputFile{
+		NewCapInputFile("/path/1.pdf", "media:ext=pdf"),
+		NewCapInputFile("/path/2.pdf", "media:ext=pdf"),
+	}
+	input := &StrandInput{
+		Files:            files,
+		ExpectedMediaUrn: "media:ext=pdf",
+		Cardinality:      CardinalitySingle,
+	}
+	if input.IsValid() {
+		t.Error("Single cardinality with multiple files must be invalid")
 	}
 }
 

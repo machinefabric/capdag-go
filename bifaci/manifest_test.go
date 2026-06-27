@@ -403,3 +403,82 @@ func Test1874_registry_url_from_build_env_rejects_empty_string(t *testing.T) {
 		func() { RegistryURLFromBuildEnv(&empty) },
 	)
 }
+
+// TEST117: A manifest's channel round-trips through serde and the
+// serialized form uses the canonical lowercase wire word
+// ("release" / "nightly"). A missing or unrecognized channel is
+// a hard parse error — no defaults.
+func Test117_cap_manifest_channel_roundtrip(t *testing.T) {
+	id, err := urn.NewCapUrnFromString(manifestTestUrn("extract;target=metadata"))
+	require.NoError(t, err)
+	capDef := cap.NewCap(id, "Extract Metadata", "extract-metadata")
+
+	registryURL := "https://cartridges.machinefabric.com/manifest"
+	manifest := NewCapManifest("TestComponent", "0.1.0", string(CartridgeChannelNightly),
+		&registryURL,
+		"Channel round-trip",
+		[]CapGroup{DefaultGroup([]cap.Cap{*capDef})},
+	)
+
+	jsonData, err := json.Marshal(manifest)
+	require.NoError(t, err)
+	jsonStr := string(jsonData)
+	assert.Contains(t, jsonStr, `"channel":"nightly"`,
+		"expected lowercase wire form, got: %s", jsonStr)
+	// registry_url round-trips as the exact string the operator typed —
+	// used to validate against the on-disk slug at scan time, so a single
+	// byte of drift here would silently break discovery.
+	assert.Contains(t, jsonStr, `"registry_url":"https://cartridges.machinefabric.com/manifest"`,
+		"expected verbatim registry_url in serialized form, got: %s", jsonStr)
+
+	var parsed CapManifest
+	err = json.Unmarshal(jsonData, &parsed)
+	require.NoError(t, err)
+	assert.Equal(t, string(CartridgeChannelNightly), parsed.Channel)
+	require.NotNil(t, parsed.RegistryURL)
+	assert.Equal(t, "https://cartridges.machinefabric.com/manifest", *parsed.RegistryURL)
+
+	// No-channel JSON must fail to parse.
+	noChannel := `{"name":"X","version":"1.0.0","registry_url":null,"description":"x","cap_groups":[]}`
+	err = json.Unmarshal([]byte(noChannel), &CapManifest{})
+	assert.Error(t, err, "manifest without `channel` must fail to parse")
+
+	// No-registry_url JSON must fail to parse — the field is required-but-
+	// nullable, so a missing key means an old SDK, which can't be trusted
+	// to know the new schema.
+	noRegistry := `{"name":"X","version":"1.0.0","channel":"nightly","description":"x","cap_groups":[]}`
+	err = json.Unmarshal([]byte(noRegistry), &CapManifest{})
+	assert.Error(t, err, "manifest without `registry_url` must fail to parse")
+
+	// Bogus channel string must fail.
+	bogus := `{"name":"X","version":"1.0.0","channel":"staging","registry_url":null,"description":"x","cap_groups":[]}`
+	err = json.Unmarshal([]byte(bogus), &CapManifest{})
+	assert.Error(t, err, "manifest with channel='staging' must fail to parse")
+}
+
+// TEST118: A dev manifest (built without `MFR_CARTRIDGE_REGISTRY_URL`) carries
+// `registry_url: null` and serializes the field explicitly. The
+// null-vs-absent distinction matters because the parser refuses
+// to accept absent (test117) — so an old SDK can't accidentally
+// pass for a dev build.
+func Test118_dev_manifest_registry_url_is_explicit_null(t *testing.T) {
+	id, err := urn.NewCapUrnFromString(manifestTestUrn("dev"))
+	require.NoError(t, err)
+	capDef := cap.NewCap(id, "Dev", "dev")
+
+	manifest := NewCapManifest("DevComponent", "0.1.0", string(CartridgeChannelNightly),
+		nil,
+		"Dev build",
+		[]CapGroup{DefaultGroup([]cap.Cap{*capDef})},
+	)
+
+	jsonData, err := json.Marshal(manifest)
+	require.NoError(t, err)
+	assert.Contains(t, string(jsonData), `"registry_url":null`,
+		"dev manifest must serialize registry_url=null explicitly, got: %s", string(jsonData))
+
+	var parsed CapManifest
+	err = json.Unmarshal(jsonData, &parsed)
+	require.NoError(t, err)
+	assert.Nil(t, parsed.RegistryURL)
+}

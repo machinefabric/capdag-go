@@ -182,6 +182,37 @@ func Test770_rejects_foreach(t *testing.T) {
 	}
 }
 
+// TEST771: plan_to_resolved_graph rejects plans containing Collect nodes
+func Test771_rejects_collect(t *testing.T) {
+	registry := buildTestRegistry(t, []string{
+		`cap:in="media:ext=pdf";disbind;out=media:pdf-page`,
+		"cap:in=media:pdf-page;process;out=media:text",
+	})
+
+	plan := planner.NewMachinePlan("collect_plan")
+	plan.AddNode(planner.NewInputSlotNode("input", "input", "media:ext=pdf", planner.CardinalitySingle))
+	plan.AddNode(planner.NewMachineNode("cap_0", `cap:in="media:ext=pdf";disbind;out=media:pdf-page`))
+	plan.AddNode(planner.NewForEachNode("foreach_0", "cap_0", "cap_1", "cap_1"))
+	plan.AddNode(planner.NewMachineNode("cap_1", "cap:in=media:pdf-page;process;out=media:text"))
+	plan.AddNode(planner.NewCollectNode("collect_0", []string{"cap_1"}))
+	plan.AddNode(planner.NewOutputNode("output", "result", "collect_0"))
+
+	plan.AddEdge(planner.NewDirectEdge("input", "cap_0"))
+	plan.AddEdge(planner.NewDirectEdge("cap_0", "foreach_0"))
+	plan.AddEdge(planner.NewIterationEdge("foreach_0", "cap_1"))
+	plan.AddEdge(planner.NewCollectionEdge("cap_1", "collect_0"))
+	plan.AddEdge(planner.NewDirectEdge("collect_0", "output"))
+
+	_, err := PlanToResolvedGraph(plan, registry)
+	if err == nil {
+		t.Fatal("Expected error for plan with Collect node, got nil")
+	}
+	// Could hit either ForEach or Collect first depending on map iteration order
+	if !strings.Contains(err.Error(), "ForEach node") && !strings.Contains(err.Error(), "Collect node") {
+		t.Fatalf("Expected ForEach or Collect rejection, got: %v", err)
+	}
+}
+
 // TEST953: Linear plans (no ForEach/Collect) still convert successfully
 func Test953_linear_plan_still_works(t *testing.T) {
 	registry := buildTestRegistry(t, []string{"cap:in=\"media:ext=pdf\";extract;out=media:text"})
@@ -310,6 +341,94 @@ func Test1257_parse_two_step_chain(t *testing.T) {
 	}
 }
 
+// TEST1258: One source node can fan out into multiple caps and target nodes.
+func Test1258_parse_fan_out(t *testing.T) {
+	registry := buildParserTestRegistry(t, []string{
+		`cap:in="media:ext=pdf";extract-metadata;out="media:enc=utf-8;file-metadata;record"`,
+		`cap:in="media:ext=pdf";extract-outline;out="media:document-outline;enc=utf-8;record"`,
+		`cap:in="media:ext=pdf";generate-thumbnail;out="media:ext=png;image;thumbnail"`,
+	})
+
+	notation := `[meta cap:in="media:ext=pdf";extract-metadata;out="media:enc=utf-8;file-metadata;record"]` +
+		`[outline cap:in="media:ext=pdf";extract-outline;out="media:document-outline;enc=utf-8;record"]` +
+		`[thumb cap:in="media:ext=pdf";generate-thumbnail;out="media:ext=png;image;thumbnail"]` +
+		`[doc -> meta -> metadata]` +
+		`[doc -> outline -> outline_data]` +
+		`[doc -> thumb -> thumbnail]`
+
+	graph, err := ParseMachineToCapDag(notation, registry)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	if len(graph.Nodes) != 4 { // doc + 3 targets
+		t.Fatalf("Expected 4 nodes, got %d: %v", len(graph.Nodes), graph.Nodes)
+	}
+	if len(graph.Edges) != 3 {
+		t.Fatalf("Expected 3 edges, got %d", len(graph.Edges))
+	}
+}
+
+// TEST1259: Fan-in wiring resolves multiple upstream outputs into one multi-arg cap.
+func Test1259_parse_fan_in(t *testing.T) {
+	// The describe cap has TWO input args: image;png (the primary, declared
+	// in= spec) and enc=utf-8;model-spec (a secondary fan-in input). The
+	// resolver's matching assigns each source URN to the right arg slot.
+	registry := cap.NewFabricRegistryForTest()
+	thumb := buildTestCapWithStdin(t, `cap:in="media:ext=pdf";generate-thumbnail;out="media:ext=png;image;thumbnail"`, "thumb")
+	modelDl := buildTestCapWithStdin(t, `cap:in="media:enc=utf-8;model-spec";download;out="media:enc=utf-8;model-spec"`, "download")
+	// describe: two args (image;png and model-spec), each with a stdin source.
+	describeUrn, err := urn.NewCapUrnFromString(`cap:in="media:ext=png;image";describe-image;out="media:enc=utf-8;image-description"`)
+	if err != nil {
+		t.Fatalf("parse describe urn: %v", err)
+	}
+	imgArgUrn := "media:ext=png;image"
+	specArgUrn := "media:enc=utf-8;model-spec"
+	describe := cap.NewCapWithArgs(describeUrn, "describe", "test-command", []cap.CapArg{
+		cap.NewCapArg(imgArgUrn, true, []cap.ArgSource{{Stdin: &imgArgUrn}}),
+		cap.NewCapArg(specArgUrn, true, []cap.ArgSource{{Stdin: &specArgUrn}}),
+	})
+	describe.Output = &cap.CapOutput{MediaUrn: describeUrn.OutSpec(), OutputDescription: "describe output"}
+	registry.AddCapsToCache([]*cap.Cap{thumb, modelDl, describe})
+
+	notation := `[thumb cap:in="media:ext=pdf";generate-thumbnail;out="media:ext=png;image;thumbnail"]` +
+		`[model_dl cap:in="media:enc=utf-8;model-spec";download;out="media:enc=utf-8;model-spec"]` +
+		`[describe cap:in="media:ext=png;image";describe-image;out="media:enc=utf-8;image-description"]` +
+		`[doc -> thumb -> thumbnail]` +
+		`[spec_input -> model_dl -> model_spec]` +
+		`[(thumbnail, model_spec) -> describe -> description]`
+
+	graph, err := ParseMachineToCapDag(notation, registry)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	// Fan-in produces 2 resolved edges for the describe cap (one per source)
+	// plus 2 edges for thumb and model_dl = 4 total.
+	if len(graph.Edges) != 4 {
+		t.Fatalf("Expected 4 edges, got %d", len(graph.Edges))
+	}
+}
+
+// TEST1260: LOOP wiring parses as a single edge while preserving the loop marker semantics.
+func Test1260_parse_loop_wiring(t *testing.T) {
+	registry := buildParserTestRegistry(t, []string{
+		`cap:in="media:disbound-page;enc=utf-8";page-to-text;out="media:enc=utf-8;ext=txt"`,
+	})
+
+	notation := `[p2t cap:in="media:disbound-page;enc=utf-8";page-to-text;out="media:enc=utf-8;ext=txt"]` +
+		`[pages -> LOOP p2t -> texts]`
+
+	graph, err := ParseMachineToCapDag(notation, registry)
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	if len(graph.Edges) != 1 {
+		t.Fatalf("Expected 1 edge, got %d", len(graph.Edges))
+	}
+	if len(graph.Nodes) != 2 {
+		t.Fatalf("Expected 2 nodes, got %d: %v", len(graph.Nodes), graph.Nodes)
+	}
+}
+
 // TEST1261: Parsing fails when a declared cap is absent from the registry.
 // In Go the machine parser resolves caps before the orchestrator layer checks,
 // so the error may be ErrMachineSyntaxParseFailed or ErrCapNotFound.
@@ -411,6 +530,40 @@ func Test1265_compatible_media_urns_at_shared_node(t *testing.T) {
 	}
 }
 
+// TEST1266: Record-to-opaque structure mismatches are rejected once structure checking is enabled.
+//
+// Divergence from Rust: the Rust test is #[ignore]'d ("structure mismatch
+// detection between node media and cap input not yet implemented"). The Go
+// orchestrator parser DOES implement this check (checkStructureCompatibility),
+// so this test runs as a genuine assertion rather than being skipped.
+func Test1266_structure_mismatch_record_to_opaque(t *testing.T) {
+	// Cap A outputs record (media:fmt=json;record); cap B inputs opaque
+	// (media:fmt=json, no record). The machine parser's lexical IsComparable
+	// passes (both on the fmt=json chain), so the orchestrator's
+	// structure-compatibility check is what catches the mismatch.
+	registry := buildParserTestRegistry(t, []string{
+		`cap:in="media:void";produce;out="media:fmt=json;record"`,
+		`cap:in="media:fmt=json";process;out="media:txt;enc=utf-8"`,
+	})
+
+	notation := `[produce cap:in="media:void";produce;out="media:fmt=json;record"]` +
+		`[process cap:in="media:fmt=json";process;out="media:txt;enc=utf-8"]` +
+		`[A -> produce -> B]` +
+		`[B -> process -> C]`
+
+	_, err := ParseMachineToCapDag(notation, registry)
+	if err == nil {
+		t.Fatal("Record to opaque structure mismatch must be detected, got nil")
+	}
+	orchErr, ok := err.(*ParseOrchestrationError)
+	if !ok {
+		t.Fatalf("Expected *ParseOrchestrationError, got: %T %v", err, err)
+	}
+	if orchErr.Kind != ErrStructureMismatch {
+		t.Fatalf("Expected ErrStructureMismatch, got: %v (%v)", orchErr.Kind, err)
+	}
+}
+
 // TEST1267: Record-shaped outputs can feed record-shaped inputs without error.
 func Test1267_structure_match_both_record(t *testing.T) {
 	registry := buildParserTestRegistry(t, []string{
@@ -493,5 +646,148 @@ func Test6649_rejects_foreach_paired_collect(t *testing.T) {
 	// ForEach node is encountered first in typical iteration — but either rejection is valid
 	if !strings.Contains(err.Error(), "ForEach node") && !strings.Contains(err.Error(), "Collect node") {
 		t.Fatalf("Expected ForEach or Collect rejection, got: %v", err)
+	}
+}
+
+// =============================================================================
+// Orchestrator integration ports — parse-only tests from
+// tests/orchestrator_integration.rs. The execution-engine tests (execute_dag +
+// testcartridge binary) are deferred and not ported here.
+// =============================================================================
+
+// createTestFabricRegistry builds a registry pre-loaded with the testcartridge
+// synthetic caps the orchestrator integration parse tests depend on. Each cap
+// carries a single stdin arg = its in_spec, matching the Rust helper
+// build_testcartridge_cap so the resolver's source-to-arg matching works.
+func createTestFabricRegistry(t *testing.T) *cap.FabricRegistry {
+	t.Helper()
+	return buildParserTestRegistry(t, []string{
+		`cap:in="media:enc=utf-8;node1";test-edge1;out="media:enc=utf-8;node2"`,
+		`cap:in="media:enc=utf-8;node2";test-edge2;out="media:enc=utf-8;node3"`,
+		`cap:in="media:enc=utf-8;node3";test-edge3;out="media:enc=utf-8;list;node4"`,
+		`cap:in="media:enc=utf-8;list;node4";test-edge4;out="media:enc=utf-8;node5"`,
+		`cap:in="media:enc=utf-8;node3";test-edge7;out="media:enc=utf-8;node6"`,
+		`cap:in="media:enc=utf-8;node6";test-edge8;out="media:enc=utf-8;node7"`,
+		`cap:in="media:enc=utf-8;node7";test-edge9;out="media:enc=utf-8;node8"`,
+		`cap:in="media:enc=utf-8;node8";test-edge10;out="media:enc=utf-8;node1"`,
+		`cap:in="media:void";test-large;out="media:"`,
+		`cap:in="media:enc=utf-8;node1";test-peer;out="media:enc=utf-8;node3"`,
+		`cap:in="media:enc=utf-8;node1";identity;out="media:enc=utf-8;node1"`,
+	})
+}
+
+// TEST919: Parse simple machine notation graph with test-edge1
+func Test919_parse_simple_testcartridge_graph(t *testing.T) {
+	registry := createTestFabricRegistry(t)
+
+	route := `
+[test_edge1 cap:in="media:enc=utf-8;node1";test-edge1;out="media:enc=utf-8;node2"]
+[A -> test_edge1 -> B]
+`
+
+	graph, err := ParseMachineToCapDag(route, registry)
+	if err != nil {
+		t.Fatalf("Failed to parse: %v", err)
+	}
+	if len(graph.Nodes) != 2 {
+		t.Fatalf("Expected 2 nodes, got %d: %v", len(graph.Nodes), graph.Nodes)
+	}
+	if len(graph.Edges) != 1 {
+		t.Fatalf("Expected 1 edge, got %d", len(graph.Edges))
+	}
+
+	nodeA, err := urn.NewMediaUrnFromString(graph.Nodes["A"])
+	if err != nil {
+		t.Fatalf("parse node A media: %v", err)
+	}
+	expectedA, _ := urn.NewMediaUrnFromString("media:enc=utf-8;node1")
+	if !nodeA.IsEquivalent(expectedA) {
+		t.Errorf("Node A: expected media:enc=utf-8;node1, got %s", graph.Nodes["A"])
+	}
+	nodeB, err := urn.NewMediaUrnFromString(graph.Nodes["B"])
+	if err != nil {
+		t.Fatalf("parse node B media: %v", err)
+	}
+	expectedB, _ := urn.NewMediaUrnFromString("media:enc=utf-8;node2")
+	if !nodeB.IsEquivalent(expectedB) {
+		t.Errorf("Node B: expected media:enc=utf-8;node2, got %s", graph.Nodes["B"])
+	}
+}
+
+// TEST950: Validate that cycles are rejected
+func Test950_reject_cycles(t *testing.T) {
+	registry := createTestFabricRegistry(t)
+
+	// Create a self-loop using identity cap
+	route := `
+[identity cap:in="media:enc=utf-8;node1";identity;out="media:enc=utf-8;node1"]
+[A -> identity -> A]
+`
+
+	_, err := ParseMachineToCapDag(route, registry)
+	if err == nil {
+		t.Fatal("Should reject cycle")
+	}
+	orchErr, ok := err.(*ParseOrchestrationError)
+	if !ok {
+		t.Fatalf("Expected *ParseOrchestrationError, got: %T %v", err, err)
+	}
+	// In Go a cycle may be rejected at the machine-parser layer or the
+	// orchestrator layer.
+	if orchErr.Kind != ErrNotADag && orchErr.Kind != ErrMachineSyntaxParseFailed {
+		t.Errorf("Expected NotADag (or MachineSyntaxParseFailed), got: %v", orchErr.Kind)
+	}
+}
+
+// TEST949: Empty machine notation (no edges)
+func Test949_empty_graph(t *testing.T) {
+	registry := createTestFabricRegistry(t)
+
+	_, err := ParseMachineToCapDag("", registry)
+	if err == nil {
+		t.Fatal("Should fail on empty machine notation")
+	}
+	orchErr, ok := err.(*ParseOrchestrationError)
+	if !ok {
+		t.Fatalf("Expected *ParseOrchestrationError, got: %T %v", err, err)
+	}
+	if orchErr.Kind != ErrMachineSyntaxParseFailed {
+		t.Errorf("Expected MachineSyntaxParseFailed, got: %v", orchErr.Kind)
+	}
+}
+
+// TEST948: Invalid cap URN in machine notation
+func Test948_invalid_cap_urn(t *testing.T) {
+	registry := createTestFabricRegistry(t)
+
+	route := `[bad cap:INVALID][A -> bad -> B]`
+
+	_, err := ParseMachineToCapDag(route, registry)
+	if err == nil {
+		t.Fatal("Should reject invalid cap URN")
+	}
+}
+
+// TEST947: Cap not found in registry
+func Test947_cap_not_found(t *testing.T) {
+	registry := createTestFabricRegistry(t)
+
+	route := `
+[nonexistent cap:in="media:unknown";nonexistent;out="media:unknown"]
+[A -> nonexistent -> B]
+`
+
+	_, err := ParseMachineToCapDag(route, registry)
+	if err == nil {
+		t.Fatal("Should fail when cap not found")
+	}
+	orchErr, ok := err.(*ParseOrchestrationError)
+	if !ok {
+		t.Fatalf("Expected *ParseOrchestrationError, got: %T %v", err, err)
+	}
+	// The parser resolves header caps and wraps lookup failure as a machine
+	// syntax parse failure; ErrCapNotFound is also acceptable in Go.
+	if orchErr.Kind != ErrMachineSyntaxParseFailed && orchErr.Kind != ErrCapNotFound {
+		t.Errorf("Expected MachineSyntaxParseFailed or CapNotFound, got: %v", orchErr.Kind)
 	}
 }

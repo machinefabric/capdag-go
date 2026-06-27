@@ -77,6 +77,89 @@ func testManifestWithCaps(capURNs []string) map[string]interface{} {
 	}
 }
 
+// serveRelayHandshake sends the initial RelayNotify carrying capURNs
+// and, when that cap list is non-empty, answers the relay switch's
+// end-to-end identity probe by echoing the nonce back verbatim. It
+// mirrors Rust's `slave_notify_with_identity` test helper: the
+// constructor (and Rust's add_master) run an identity verification
+// round-trip whenever the master advertises at least one cap, so a
+// slave that advertises caps MUST satisfy the probe before any further
+// REQ/response traffic. An empty cap list skips the probe (no handler
+// chain to test), matching the production gate.
+//
+// On any I/O error it reports via t.Errorf and returns false so the
+// caller's goroutine can bail out cleanly.
+func serveRelayHandshake(t *testing.T, reader *FrameReader, writer *FrameWriter, capURNs []string) bool {
+	t.Helper()
+	manifest := testManifestWithCaps(capURNs)
+	manifestJSON, _ := json.Marshal(manifest)
+	if err := SendNotify(writer, manifestJSON, DefaultLimits()); err != nil {
+		t.Errorf("serveRelayHandshake: SendNotify: %v", err)
+		return false
+	}
+	if len(capURNs) == 0 {
+		// No caps advertised — production skips the identity probe.
+		return true
+	}
+
+	// Read identity REQ.
+	req, err := reader.ReadFrame()
+	if err != nil || req == nil {
+		t.Errorf("serveRelayHandshake: expected identity REQ: %v", err)
+		return false
+	}
+	if req.FrameType != FrameTypeReq {
+		t.Errorf("serveRelayHandshake: first frame after RelayNotify must be identity REQ, got %d", req.FrameType)
+		return false
+	}
+
+	// Read request body: STREAM_START → CHUNK(s) → STREAM_END → END.
+	var payload []byte
+	for {
+		f, err := reader.ReadFrame()
+		if err != nil || f == nil {
+			t.Errorf("serveRelayHandshake: expected frame during identity request: %v", err)
+			return false
+		}
+		if f.FrameType == FrameTypeStreamStart || f.FrameType == FrameTypeStreamEnd {
+			continue
+		}
+		if f.FrameType == FrameTypeChunk {
+			payload = append(payload, f.Payload...)
+			continue
+		}
+		if f.FrameType == FrameTypeEnd {
+			break
+		}
+		t.Errorf("serveRelayHandshake: unexpected frame type during identity request: %d", f.FrameType)
+		return false
+	}
+
+	// Echo response: STREAM_START → CHUNK → STREAM_END → END. The
+	// payload is echoed verbatim — VerifyIdentity CBOR-decodes each
+	// chunk back to the nonce, so the slave must return exactly the
+	// bytes it received.
+	streamId := "identity-echo"
+	if err := writer.WriteFrame(NewStreamStart(req.Id, streamId, "media:", nil)); err != nil {
+		t.Errorf("serveRelayHandshake: write STREAM_START: %v", err)
+		return false
+	}
+	checksum := ComputeChecksum(payload)
+	if err := writer.WriteFrame(NewChunk(req.Id, streamId, 0, payload, 0, checksum)); err != nil {
+		t.Errorf("serveRelayHandshake: write CHUNK: %v", err)
+		return false
+	}
+	if err := writer.WriteFrame(NewStreamEnd(req.Id, streamId, 1)); err != nil {
+		t.Errorf("serveRelayHandshake: write STREAM_END: %v", err)
+		return false
+	}
+	if err := writer.WriteFrame(NewEnd(req.Id, nil)); err != nil {
+		t.Errorf("serveRelayHandshake: write END: %v", err)
+		return false
+	}
+	return true
+}
+
 // TEST426: Single master REQ/response routing
 func Test426_relay_switch_single_master_req_response(t *testing.T) {
 	// Create socket pairs
@@ -88,12 +171,7 @@ func Test426_relay_switch_single_master_req_response(t *testing.T) {
 		reader := NewFrameReader(slaveRead)
 		writer := NewFrameWriter(slaveWrite)
 
-		// Send initial RelayNotify
-		manifest := testManifestWithCaps([]string{testCapEcho})
-		manifestJSON, _ := json.Marshal(manifest)
-		limits := DefaultLimits()
-		if err := SendNotify(writer, manifestJSON, limits); err != nil {
-			t.Errorf("Failed to send notify: %v", err)
+		if !serveRelayHandshake(t, reader, writer, []string{testCapEcho}) {
 			return
 		}
 
@@ -153,9 +231,9 @@ func Test427_relay_switch_multi_master_cap_routing(t *testing.T) {
 		reader := NewFrameReader(slaveRead1)
 		writer := NewFrameWriter(slaveWrite1)
 
-		manifest := testManifestWithCaps([]string{testCapEcho})
-		manifestJSON, _ := json.Marshal(manifest)
-		SendNotify(writer, manifestJSON, DefaultLimits())
+		if !serveRelayHandshake(t, reader, writer, []string{testCapEcho}) {
+			return
+		}
 
 		for {
 			frame, err := reader.ReadFrame()
@@ -174,9 +252,9 @@ func Test427_relay_switch_multi_master_cap_routing(t *testing.T) {
 		reader := NewFrameReader(slaveRead2)
 		writer := NewFrameWriter(slaveWrite2)
 
-		manifest := testManifestWithCaps([]string{`cap:in="media:void";double;out="media:void"`})
-		manifestJSON, _ := json.Marshal(manifest)
-		SendNotify(writer, manifestJSON, DefaultLimits())
+		if !serveRelayHandshake(t, reader, writer, []string{`cap:in="media:void";double;out="media:void"`}) {
+			return
+		}
 
 		for {
 			frame, err := reader.ReadFrame()
@@ -234,9 +312,9 @@ func Test428_relay_switch_unknown_cap_returns_error(t *testing.T) {
 		reader := NewFrameReader(slaveRead)
 		writer := NewFrameWriter(slaveWrite)
 
-		manifest := testManifestWithCaps([]string{testCapEcho})
-		manifestJSON, _ := json.Marshal(manifest)
-		SendNotify(writer, manifestJSON, DefaultLimits())
+		if !serveRelayHandshake(t, reader, writer, []string{testCapEcho}) {
+			return
+		}
 
 		// Keep reading to prevent blocking
 		for {
@@ -278,9 +356,9 @@ func Test429_relay_switch_find_master_for_cap(t *testing.T) {
 	go func() {
 		reader := NewFrameReader(slaveRead1)
 		writer := NewFrameWriter(slaveWrite1)
-		manifest := testManifestWithCaps([]string{testCapEcho})
-		manifestJSON, _ := json.Marshal(manifest)
-		SendNotify(writer, manifestJSON, DefaultLimits())
+		if !serveRelayHandshake(t, reader, writer, []string{testCapEcho}) {
+			return
+		}
 		for {
 			if _, err := reader.ReadFrame(); err != nil {
 				return
@@ -291,9 +369,9 @@ func Test429_relay_switch_find_master_for_cap(t *testing.T) {
 	go func() {
 		reader := NewFrameReader(slaveRead2)
 		writer := NewFrameWriter(slaveWrite2)
-		manifest := testManifestWithCaps([]string{`cap:in="media:void";double;out="media:void"`})
-		manifestJSON, _ := json.Marshal(manifest)
-		SendNotify(writer, manifestJSON, DefaultLimits())
+		if !serveRelayHandshake(t, reader, writer, []string{`cap:in="media:void";double;out="media:void"`}) {
+			return
+		}
 		for {
 			if _, err := reader.ReadFrame(); err != nil {
 				return
@@ -367,9 +445,9 @@ func Test430_relay_switch_tie_breaking(t *testing.T) {
 	go func() {
 		reader := NewFrameReader(slaveRead1)
 		writer := NewFrameWriter(slaveWrite1)
-		manifest := testManifestWithCaps([]string{sameCap})
-		manifestJSON, _ := json.Marshal(manifest)
-		SendNotify(writer, manifestJSON, DefaultLimits())
+		if !serveRelayHandshake(t, reader, writer, []string{sameCap}) {
+			return
+		}
 
 		for {
 			frame, err := reader.ReadFrame()
@@ -387,9 +465,9 @@ func Test430_relay_switch_tie_breaking(t *testing.T) {
 	go func() {
 		reader := NewFrameReader(slaveRead2)
 		writer := NewFrameWriter(slaveWrite2)
-		manifest := testManifestWithCaps([]string{sameCap})
-		manifestJSON, _ := json.Marshal(manifest)
-		SendNotify(writer, manifestJSON, DefaultLimits())
+		if !serveRelayHandshake(t, reader, writer, []string{sameCap}) {
+			return
+		}
 
 		for {
 			frame, err := reader.ReadFrame()
@@ -434,9 +512,9 @@ func Test431_relay_switch_continuation_frame_routing(t *testing.T) {
 		reader := NewFrameReader(slaveRead)
 		writer := NewFrameWriter(slaveWrite)
 
-		manifest := testManifestWithCaps([]string{`cap:in="media:void";test;out="media:void"`})
-		manifestJSON, _ := json.Marshal(manifest)
-		SendNotify(writer, manifestJSON, DefaultLimits())
+		if !serveRelayHandshake(t, reader, writer, []string{`cap:in="media:void";test;out="media:void"`}) {
+			return
+		}
 
 		// Read REQ
 		req, _ := reader.ReadFrame()
@@ -525,12 +603,12 @@ func Test433_relay_switch_capability_aggregation_deduplicates(t *testing.T) {
 	go func() {
 		reader := NewFrameReader(slaveRead1)
 		writer := NewFrameWriter(slaveWrite1)
-		manifest := testManifestWithCaps([]string{
+		if !serveRelayHandshake(t, reader, writer, []string{
 			testCapEcho,
 			`cap:in="media:void";double;out="media:void"`,
-		})
-		manifestJSON, _ := json.Marshal(manifest)
-		SendNotify(writer, manifestJSON, DefaultLimits())
+		}) {
+			return
+		}
 		for {
 			if _, err := reader.ReadFrame(); err != nil {
 				return
@@ -541,12 +619,12 @@ func Test433_relay_switch_capability_aggregation_deduplicates(t *testing.T) {
 	go func() {
 		reader := NewFrameReader(slaveRead2)
 		writer := NewFrameWriter(slaveWrite2)
-		manifest := testManifestWithCaps([]string{
+		if !serveRelayHandshake(t, reader, writer, []string{
 			testCapEcho, // Duplicate
 			`cap:in="media:void";triple;out="media:void"`,
-		})
-		manifestJSON, _ := json.Marshal(manifest)
-		SendNotify(writer, manifestJSON, DefaultLimits())
+		}) {
+			return
+		}
 		for {
 			if _, err := reader.ReadFrame(); err != nil {
 				return
@@ -637,9 +715,9 @@ func Test435_relay_switch_urn_matching(t *testing.T) {
 	go func() {
 		reader := NewFrameReader(slaveRead)
 		writer := NewFrameWriter(slaveWrite)
-		manifest := testManifestWithCaps([]string{registeredCap})
-		manifestJSON, _ := json.Marshal(manifest)
-		SendNotify(writer, manifestJSON, DefaultLimits())
+		if !serveRelayHandshake(t, reader, writer, []string{registeredCap}) {
+			return
+		}
 
 		for {
 			frame, err := reader.ReadFrame()
@@ -703,9 +781,9 @@ func Test437_preferred_cap_routes_to_generic(t *testing.T) {
 		go func() {
 			reader := NewFrameReader(r)
 			writer := NewFrameWriter(w)
-			manifest := testManifestWithCaps(caps)
-			manifestJSON, _ := json.Marshal(manifest)
-			SendNotify(writer, manifestJSON, DefaultLimits())
+			if !serveRelayHandshake(t, reader, writer, caps) {
+				return
+			}
 			for {
 				if _, err := reader.ReadFrame(); err != nil {
 					return
@@ -760,9 +838,9 @@ func Test438_preferred_cap_falls_back_when_not_comparable(t *testing.T) {
 	go func() {
 		reader := NewFrameReader(slaveRead)
 		writer := NewFrameWriter(slaveWrite)
-		manifest := testManifestWithCaps([]string{testCapIdentity, registered})
-		manifestJSON, _ := json.Marshal(manifest)
-		SendNotify(writer, manifestJSON, DefaultLimits())
+		if !serveRelayHandshake(t, reader, writer, []string{testCapIdentity, registered}) {
+			return
+		}
 		for {
 			if _, err := reader.ReadFrame(); err != nil {
 				return
@@ -798,9 +876,9 @@ func Test439_generic_provider_can_dispatch_specific_request(t *testing.T) {
 	go func() {
 		reader := NewFrameReader(slaveRead)
 		writer := NewFrameWriter(slaveWrite)
-		manifest := testManifestWithCaps([]string{testCapIdentity, genericCap})
-		manifestJSON, _ := json.Marshal(manifest)
-		SendNotify(writer, manifestJSON, DefaultLimits())
+		if !serveRelayHandshake(t, reader, writer, []string{testCapIdentity, genericCap}) {
+			return
+		}
 		for {
 			if _, err := reader.ReadFrame(); err != nil {
 				return
@@ -964,19 +1042,16 @@ func Test133_ReattachByIDPreservesSlotIndex(t *testing.T) {
 	engineRead, slaveWrite := net.Pipe()
 	slaveRead, engineWrite := net.Pipe()
 
-	// Slave 1: send RelayNotify and stay alive until pipe closes.
+	// Slave 1: send RelayNotify, answer the identity probe, and stay
+	// alive until the pipe closes.
 	go func() {
 		writer := NewFrameWriter(slaveWrite)
-		manifest := testManifestWithCaps([]string{testCapIdentity})
-		manifestJSON, _ := json.Marshal(manifest)
-		limits := DefaultLimits()
-		if err := SendNotify(writer, manifestJSON, limits); err != nil {
-			t.Errorf("slave1 SendNotify: %v", err)
+		reader := NewFrameReader(slaveRead)
+		if !serveRelayHandshake(t, reader, writer, []string{testCapIdentity}) {
 			return
 		}
 		// Block on a read so the pipe stays open until the test
 		// closes its end.
-		reader := NewFrameReader(slaveRead)
 		_, _ = reader.ReadFrame()
 	}()
 
@@ -1053,14 +1128,10 @@ func Test134_AddMasterWithDuplicateHealthyIDErrors(t *testing.T) {
 
 	go func() {
 		writer := NewFrameWriter(slaveWrite)
-		manifest := testManifestWithCaps([]string{testCapIdentity})
-		manifestJSON, _ := json.Marshal(manifest)
-		limits := DefaultLimits()
-		if err := SendNotify(writer, manifestJSON, limits); err != nil {
-			t.Errorf("slave SendNotify: %v", err)
+		reader := NewFrameReader(slaveRead)
+		if !serveRelayHandshake(t, reader, writer, []string{testCapIdentity}) {
 			return
 		}
-		reader := NewFrameReader(slaveRead)
 		_, _ = reader.ReadFrame()
 	}()
 

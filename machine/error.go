@@ -16,6 +16,9 @@ import "fmt"
 type MachineAbstractionError struct {
 	Kind    AbstractionErrorKind
 	Message string
+	// StrandIndex carries the strand index for ErrAbstractionCyclicMachineStrand,
+	// mirroring Rust's CyclicMachineStrand { strand_index }. nil for other kinds.
+	StrandIndex *int
 }
 
 func (e *MachineAbstractionError) Error() string {
@@ -73,9 +76,11 @@ func ambiguousNotationError(strandIndex int, capUrn string) *MachineAbstractionE
 }
 
 func cyclicStrandError(strandIndex int) *MachineAbstractionError {
+	idx := strandIndex
 	return &MachineAbstractionError{
-		Kind:    ErrAbstractionCyclicMachineStrand,
-		Message: fmt.Sprintf("strand %d: resolved data-flow graph contains a cycle", strandIndex),
+		Kind:        ErrAbstractionCyclicMachineStrand,
+		Message:     fmt.Sprintf("strand %d: resolved data-flow graph contains a cycle", strandIndex),
+		StrandIndex: &idx,
 	}
 }
 

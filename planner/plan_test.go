@@ -1,6 +1,7 @@
 package planner
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -609,7 +610,7 @@ func Test926_topological_order_detects_cycle(t *testing.T) {
 // TEST927: Tests MachineResult structure for successful execution outcomes Verifies that success status, outputs, and primary_output() accessor work correctly
 func Test927_execution_result(t *testing.T) {
 	result := &MachineResult{
-		Success: true,
+		Success:     true,
 		NodeResults: map[string]*NodeExecutionResult{},
 		Outputs: map[string]any{
 			"output": map[string]any{"result": "success"},
@@ -734,6 +735,105 @@ func Test937_extract_prefix_to(t *testing.T) {
 	order, err := prefix.TopologicalOrder()
 	require.NoError(t, err)
 	assert.Equal(t, 3, len(order))
+}
+
+// TEST739: Tests NodeExecutionResult structure for successful node execution Verifies that success status, outputs (binary and text), and error fields work correctly
+func Test739_node_execution_result_success(t *testing.T) {
+	result := &NodeExecutionResult{
+		NodeID:           "node_0",
+		Success:          true,
+		BinaryOutput:     []byte{1, 2, 3},
+		BinaryItems:      nil,
+		SavedPaths:       nil,
+		IsSequenceOutput: false,
+		TotalBytes:       0,
+		MediaUrnOutput:   "",
+		Error:            "",
+		DurationMs:       50,
+	}
+
+	assert.True(t, result.Success)
+	assert.NotNil(t, result.BinaryOutput)
+	assert.Equal(t, "", result.Error)
+}
+
+// TEST742: Tests EdgeType enum serialization and deserialization to/from JSON Verifies that edge types like Direct and JsonField correctly round-trip through serde_json
+func Test742_edge_type_serialization(t *testing.T) {
+	direct := DirectEdgeType()
+	data, err := json.Marshal(direct)
+	require.NoError(t, err)
+	assert.Equal(t, `"direct"`, string(data))
+
+	var deserialized EdgeType
+	require.NoError(t, json.Unmarshal(data, &deserialized))
+	assert.Equal(t, EdgeKindDirect, deserialized.Kind)
+
+	jsonField := JsonFieldEdgeType("data")
+	data, err = json.Marshal(jsonField)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "json_field")
+	assert.Contains(t, string(data), "data")
+}
+
+// TEST743: Tests ExecutionNodeType enum serialization and deserialization to/from JSON Verifies that node types like Cap and ForEach correctly serialize with their fields
+func Test743_execution_node_type_serialization(t *testing.T) {
+	capNode := NewMachineNodeType("cap:test", NewArgumentBindings(), nil)
+	data, err := json.Marshal(capNode)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "cap")
+	assert.Contains(t, string(data), "cap:test")
+
+	foreachNode := NewForEachNodeType("input", "body", "body")
+	data, err = json.Marshal(foreachNode)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "for_each")
+}
+
+// TEST744: Tests MachinePlan serialization and deserialization to/from JSON Verifies that complete plans with nodes and edges correctly round-trip through JSON
+func Test744_plan_serialization(t *testing.T) {
+	plan := SingleCap("cap:test", "media:ext=pdf", "media:ext=png;image", "input_file")
+
+	data, err := json.Marshal(plan)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "cap:test")
+	assert.Contains(t, string(data), "input_slot")
+	assert.Contains(t, string(data), "output")
+
+	var deserialized MachinePlan
+	require.NoError(t, json.Unmarshal(data, &deserialized))
+	assert.Equal(t, len(plan.Nodes), len(deserialized.Nodes))
+	assert.Equal(t, len(plan.Edges), len(deserialized.Edges))
+}
+
+// TEST745: Tests MergeStrategy enum serialization to JSON Verifies that merge strategies like Concat and ZipWith serialize to correct string values
+func Test745_merge_strategy_serialization(t *testing.T) {
+	data, err := json.Marshal(MergeConcat)
+	require.NoError(t, err)
+	assert.Equal(t, `"concat"`, string(data))
+
+	data, err = json.Marshal(MergeZipWith)
+	require.NoError(t, err)
+	assert.Equal(t, `"zip_with"`, string(data))
+}
+
+// TEST746: Tests creation of Output node type that references a source node Verifies that MachineNode::output() correctly constructs an Output node with name and source
+func Test746_cap_node_output(t *testing.T) {
+	output := NewOutputNode("out", "result", "source")
+	require.Equal(t, NodeKindOutput, output.NodeType.Kind)
+	assert.Equal(t, "result", output.NodeType.OutputName)
+	assert.Equal(t, "source", output.NodeType.SourceNode)
+}
+
+// TEST748: Tests creation of Split node that distributes input to multiple outputs Verifies that Split nodes correctly specify an input node and output count
+func Test748_cap_node_split(t *testing.T) {
+	splitNode := &MachineNode{
+		ID:       "split",
+		NodeType: NewSplitNodeType("input", 3),
+	}
+
+	require.Equal(t, NodeKindSplit, splitNode.NodeType.Kind)
+	assert.Equal(t, "input", splitNode.NodeType.InputNode)
+	assert.Equal(t, 3, splitNode.NodeType.OutputCount)
 }
 
 // TEST764: extract_prefix_to with InputSlot as target (trivial prefix)

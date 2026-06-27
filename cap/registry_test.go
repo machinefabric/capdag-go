@@ -222,3 +222,17 @@ func Test147_registry_for_test_with_config(t *testing.T) {
 	registry := NewFabricRegistryForTestWithConfig(config)
 	assert.Equal(t, "https://test-registry.local", registry.Config().RegistryBaseURL)
 }
+
+// TEST908: cached caps remain accessible while offline.
+func Test908_cached_caps_accessible_when_offline(t *testing.T) {
+	registry := NewFabricRegistryForTest()
+	capUrn, err := urn.NewCapUrnFromString("cap:in=media:void;test-offline;out=media:void")
+	require.NoError(t, err)
+	c := NewCap(capUrn, "Test Cap", "test")
+	c.SetOutput(NewCapOutput("media:void", "void"))
+	registry.AddCapsToCache([]*Cap{c})
+	registry.SetOffline(true)
+	got, err := registry.GetCap("cap:in=media:void;test-offline;out=media:void")
+	require.NoError(t, err, "cached cap accessible offline")
+	assert.Equal(t, "Test Cap", got.Title)
+}

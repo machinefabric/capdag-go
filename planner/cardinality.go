@@ -2,6 +2,7 @@
 package planner
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/machinefabric/capdag-go/urn"
@@ -31,6 +32,30 @@ func (c InputCardinality) String() string {
 	default:
 		return "single"
 	}
+}
+
+// MarshalJSON implements json.Marshaler, serializing as a snake_case string.
+func (c InputCardinality) MarshalJSON() ([]byte, error) {
+	return json.Marshal(c.String())
+}
+
+// UnmarshalJSON implements json.Unmarshaler, parsing a snake_case string.
+func (c *InputCardinality) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	switch s {
+	case "single":
+		*c = CardinalitySingle
+	case "sequence":
+		*c = CardinalitySequence
+	case "at_least_one":
+		*c = CardinalityAtLeastOne
+	default:
+		return fmt.Errorf("unknown InputCardinality: %s", s)
+	}
+	return nil
 }
 
 // IsMultiple checks if this cardinality accepts multiple items.
@@ -234,8 +259,8 @@ const (
 )
 
 var (
-	ShapeCompatibilityDirect        = ShapeCompatibility{Kind: ShapeDirect}
-	ShapeCompatibilityWrapInArray   = ShapeCompatibility{Kind: ShapeWrapInArray}
+	ShapeCompatibilityDirect         = ShapeCompatibility{Kind: ShapeDirect}
+	ShapeCompatibilityWrapInArray    = ShapeCompatibility{Kind: ShapeWrapInArray}
 	ShapeCompatibilityRequiresFanOut = ShapeCompatibility{Kind: ShapeRequiresFanOut}
 )
 
@@ -325,6 +350,32 @@ func (p CardinalityPattern) String() string {
 	default:
 		return "one_to_one"
 	}
+}
+
+// MarshalJSON implements json.Marshaler, serializing as a snake_case string.
+func (p CardinalityPattern) MarshalJSON() ([]byte, error) {
+	return json.Marshal(p.String())
+}
+
+// UnmarshalJSON implements json.Unmarshaler, parsing a snake_case string.
+func (p *CardinalityPattern) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	switch s {
+	case "one_to_one":
+		*p = PatternOneToOne
+	case "one_to_many":
+		*p = PatternOneToMany
+	case "many_to_one":
+		*p = PatternManyToOne
+	case "many_to_many":
+		*p = PatternManyToMany
+	default:
+		return fmt.Errorf("unknown CardinalityPattern: %s", s)
+	}
+	return nil
 }
 
 // CardinalityPatternOf describes the cardinality transformation pattern.

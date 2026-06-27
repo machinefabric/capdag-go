@@ -772,3 +772,42 @@ func Test1154_sync_from_caps(t *testing.T) {
 	assert.Equal(t, 1, edgeCount)
 	assert.Equal(t, 2, nodeCount)
 }
+
+// allBookends builds the set of every in/out media URN appearing in the given
+// caps, keyed by canonical media-URN string. Mirrors the Rust test helper
+// all_bookends used by sync_from_cap_urns tests.
+func allBookends(caps []*cap.Cap) map[string]bool {
+	s := make(map[string]bool)
+	for _, c := range caps {
+		if u, err := urn.NewMediaUrnFromString(c.Urn.InSpec()); err == nil {
+			s[u.String()] = true
+		}
+		if u, err := urn.NewMediaUrnFromString(c.Urn.OutSpec()); err == nil {
+			s[u.String()] = true
+		}
+	}
+	return s
+}
+
+// TEST791: Tests sync_from_cap_urns actually adds edges
+func Test791_sync_from_cap_urns_adds_edges(t *testing.T) {
+	registry := cap.NewFabricRegistryForTest()
+
+	disbind := makeTestCapForGraph("media:ext=pdf", "media:enc=utf-8;page", "disbind", "Disbind PDF")
+	choose := makeTestCapForGraph("media:enc=utf-8", "media:decision;fmt=json;record", "choose", "Make a Decision")
+	registry.AddCapsToCache([]*cap.Cap{disbind, choose})
+
+	// Cap URN strings as cartridges would report them.
+	capUrns := []string{disbind.Urn.String(), choose.Urn.String()}
+
+	// The bookend set treats every URN appearing in either cap as eligible —
+	// this is a registry-graph sync test, not a bookend-filter test.
+	bookends := allBookends([]*cap.Cap{disbind, choose})
+
+	graph := NewLiveCapFab()
+	graph.SyncFromCapUrns(capUrns, registry, bookends)
+
+	// Should have exactly 2 Cap edges (no pre-computed cardinality edges).
+	_, edgeCount := graph.Stats()
+	assert.Equal(t, 2, edgeCount, "Should have exactly 2 Cap edges, got %d", edgeCount)
+}

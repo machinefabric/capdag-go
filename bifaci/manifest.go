@@ -2,6 +2,7 @@
 package bifaci
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/machinefabric/capdag-go/cap"
@@ -67,6 +68,62 @@ type CapManifest struct {
 
 	// Human-readable page URL for the cartridge (e.g., repository page, documentation)
 	PageUrl *string `json:"page_url,omitempty"`
+}
+
+// UnmarshalJSON deserializes a CapManifest, enforcing the stricter
+// wire contract Rust's manual Deserialize impl enforces (capdag/src/
+// bifaci/manifest.rs):
+//
+//   - `channel` is REQUIRED. A missing key is a hard parse error — Go's
+//     stock encoding/json would silently leave it the zero value, so the
+//     presence check is explicit. The value must be the canonical
+//     lowercase wire word ("release" / "nightly"); anything else (e.g.
+//     "staging") is rejected via CartridgeChannel's UnmarshalJSON. No
+//     defaults.
+//   - `registry_url` is REQUIRED-BUT-NULLABLE: the key MUST be present,
+//     the value MAY be null. present-and-null means dev build; an absent
+//     key means the cartridge SDK is too old to know the field exists,
+//     which is a parse error. This is the null-vs-absent distinction
+//     stock decoders collapse for pointer fields.
+//   - `author` and `page_url` remain optional (absent -> nil).
+func (cm *CapManifest) UnmarshalJSON(data []byte) error {
+	// First pass: a presence map so we can distinguish absent keys from
+	// explicit nulls — encoding/json does not surface this otherwise.
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal(data, &keys); err != nil {
+		return err
+	}
+	if _, ok := keys["channel"]; !ok {
+		return fmt.Errorf("missing field `channel`")
+	}
+	if _, ok := keys["registry_url"]; !ok {
+		return fmt.Errorf("missing field `registry_url`")
+	}
+
+	type rawManifest struct {
+		Name        string           `json:"name"`
+		Version     string           `json:"version"`
+		Channel     CartridgeChannel `json:"channel"`
+		RegistryURL *string          `json:"registry_url"`
+		Description string           `json:"description"`
+		CapGroups   []CapGroup       `json:"cap_groups"`
+		Author      *string          `json:"author"`
+		PageUrl     *string          `json:"page_url"`
+	}
+	var raw rawManifest
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	cm.Name = raw.Name
+	cm.Version = raw.Version
+	cm.Channel = string(raw.Channel)
+	cm.RegistryURL = raw.RegistryURL
+	cm.Description = raw.Description
+	cm.CapGroups = raw.CapGroups
+	cm.Author = raw.Author
+	cm.PageUrl = raw.PageUrl
+	return nil
 }
 
 // NewCapManifest creates a new cap manifest with cap groups.

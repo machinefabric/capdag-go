@@ -170,6 +170,24 @@ func txtToVecStrand() *planner.Strand {
 // FromStrand tests
 // ===================================================================
 
+// TEST1135: MachineStrand::node_urn(id) returns the MediaUrn at that NodeId. For a single-cap
+// strand (pdf → extract → txt), there are exactly two nodes and each returns a valid URN.
+func Test1135_StrandNodeUrnReturnsMediaUrnAtNodeId(t *testing.T) {
+	registry := registryWith([]*cap.Cap{extractCapDef()})
+	m, err := FromStrand(pdfToTxtStrand(), registry)
+	if err != nil {
+		t.Fatalf("FromStrand failed: %s", err)
+	}
+	strand := m.Strands()[0]
+
+	for id := range strand.Nodes() {
+		nodeUrn := strand.NodeUrn(NodeId(id))
+		if nodeUrn.String() == "" {
+			t.Fatalf("node_urn(%d) must return a non-empty URN", id)
+		}
+	}
+}
+
 // TEST1155: Building a machine from one strand produces one strand with one resolved edge.
 func Test1155_FromStrandProducesSingleStrandMachine(t *testing.T) {
 	registry := registryWith([]*cap.Cap{extractCapDef()})
@@ -451,6 +469,21 @@ func Test1171_ParseEmptyInputReturnsError(t *testing.T) {
 	}
 }
 
+// TEST1136: parse_machine with an undefined cap alias raises MachineParseError wrapping
+// MachineSyntaxError::UndefinedAlias. This pins the error path so an alias lookup failure
+// is always surfaced as a syntax error (not a resolution error or a panic).
+func Test1136_ParseMachineUndefinedAliasRaisesSyntaxError(t *testing.T) {
+	registry := registryWith([]*cap.Cap{})
+	notation := "[doc -> undefined_alias -> text]"
+	_, err := ParseMachine(notation, registry)
+	if err == nil {
+		t.Fatal("expected error for undefined alias")
+	}
+	if err.Syntax == nil || err.Syntax.Kind != ErrUndefinedAlias {
+		t.Errorf("undefined alias must produce a MachineParseError syntax UndefinedAlias, got %v", err)
+	}
+}
+
 // Test0124_ParseHeadersWithNoWiringsReturnsNoEdgesError verifies the ErrNoEdges case.
 func Test0124_ParseHeadersWithNoWiringsReturnsNoEdgesError(t *testing.T) {
 	registry := registryWith([]*cap.Cap{extractCapDef()})
@@ -552,6 +585,34 @@ func Test1173_ToMachineNotationRoundTrips(t *testing.T) {
 	if !m1.IsEquivalent(m2) {
 		t.Errorf("round-tripped machine is not equivalent to the original.\nOriginal: %s\nSerialized: %s",
 			notation, serialized)
+	}
+}
+
+// TEST1174: The line-based notation format round-trips back to the same machine.
+func Test1174_LineBasedFormatRoundTripsToSameMachine(t *testing.T) {
+	registry := pdfExtractEmbedRegistry()
+	notation := `[extract cap:in="media:ext=pdf";extract;out="media:txt;enc=utf-8"]` +
+		`[embed cap:in="media:enc=utf-8";embed;out="media:vec;record"]` +
+		`[doc -> extract -> txt]` +
+		`[txt -> embed -> vec]`
+
+	m1, parseErr := ParseMachine(notation, registry)
+	if parseErr != nil {
+		t.Fatalf("first parse failed: %s", parseErr)
+	}
+
+	lineBased := m1.ToMachineNotationFormatted(NotationFormatLineBased)
+	// Line-based form is one statement per line, with no enclosing brackets.
+	if containsStr(lineBased, "[") {
+		t.Fatalf("line-based form must not contain brackets, got: %s", lineBased)
+	}
+
+	m2, parseErr2 := ParseMachine(lineBased, registry)
+	if parseErr2 != nil {
+		t.Fatalf("line-based form must parse: %s", parseErr2)
+	}
+	if !m1.IsEquivalent(m2) {
+		t.Errorf("line-based round-trip not equivalent.\nOriginal: %s\nLine-based: %s", notation, lineBased)
 	}
 }
 
@@ -1092,6 +1153,45 @@ func Test1177_render_payload_for_empty_machine_has_empty_strands_array(t *testin
 	payload := m.ToRenderPayloadJSON()
 	if payload != `{"strands":[]}` {
 		t.Errorf("empty machine must produce {\"strands\":[]}, got: %q", payload)
+	}
+}
+
+// TEST1308: A wiring set that feeds a cap's output back into an ancestor
+// forms a cycle and must fail hard with CyclicMachineStrand carrying the
+// strand index. Cycle: node 0 → cap A → node 1 → cap B → node 0.
+func Test1308_CyclicStrandFailsHard(t *testing.T) {
+	urnA := `cap:in="media:ext=pdf";op-a;out="media:enc=utf-8;ext=txt"`
+	urnB := `cap:in="media:enc=utf-8;ext=txt";op-b;out="media:ext=pdf"`
+	capA := buildCap(urnA, "op_a", []string{"media:ext=pdf"}, "media:enc=utf-8;ext=txt")
+	capB := buildCap(urnB, "op_b", []string{"media:enc=utf-8;ext=txt"}, "media:ext=pdf")
+	registry := registryWith([]*cap.Cap{capA, capB})
+
+	nodes := []*urn.MediaUrn{mediaUrn("media:ext=pdf"), mediaUrn("media:enc=utf-8;ext=txt")}
+	// node 0 -> cap_a -> node 1  and  node 1 -> cap_b -> node 0 (cycle)
+	wirings := []preInternedWiring{
+		{
+			capUrn:        capUrnVal(urnA),
+			sourceNodeIds: []NodeId{0},
+			targetNodeId:  1,
+			isLoop:        false,
+		},
+		{
+			capUrn:        capUrnVal(urnB),
+			sourceNodeIds: []NodeId{1},
+			targetNodeId:  0,
+			isLoop:        false,
+		},
+	}
+
+	_, err := resolvePreInterned(nodes, wirings, registry, 5)
+	if err == nil {
+		t.Fatal("expected CyclicMachineStrand error, got nil")
+	}
+	if err.Kind != ErrAbstractionCyclicMachineStrand {
+		t.Fatalf("expected ErrAbstractionCyclicMachineStrand, got %v", err)
+	}
+	if err.StrandIndex == nil || *err.StrandIndex != 5 {
+		t.Fatalf("expected strand_index 5, got %v", err.StrandIndex)
 	}
 }
 

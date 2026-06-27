@@ -12,7 +12,7 @@ type NodeId = string
 type MergeStrategy int
 
 const (
-	MergeConcat         MergeStrategy = iota
+	MergeConcat MergeStrategy = iota
 	MergeZipWith
 	MergeFirstSuccess
 	MergeAllSuccessful
@@ -740,23 +740,23 @@ func (p *MachinePlan) ExtractSuffixFrom(sourceNodeID, sourceMediaUrn string) (*M
 
 // NodeExecutionResult holds the result of executing a single node.
 type NodeExecutionResult struct {
-	NodeID       string   `json:"node_id"`
-	Success      bool     `json:"success"`
-	BinaryOutput []byte   `json:"-"`
+	NodeID       string `json:"node_id"`
+	Success      bool   `json:"success"`
+	BinaryOutput []byte `json:"-"`
 	// BinaryItems holds individual output items when the terminal cap emitted a sequence (is_sequence=true).
 	// Used by the standalone executor. Pipeline executor uses SavedPaths.
-	BinaryItems  [][]byte `json:"-"`
+	BinaryItems [][]byte `json:"-"`
 	// SavedPaths holds file paths of output already saved to disk by an IncrementalWriter.
 	// Populated by the pipeline executor. Empty for the standalone executor.
-	SavedPaths   []string `json:"saved_paths,omitempty"`
+	SavedPaths []string `json:"saved_paths,omitempty"`
 	// IsSequenceOutput indicates whether the output is a sequence (from is_sequence on STREAM_START).
-	IsSequenceOutput bool   `json:"is_sequence_output,omitempty"`
+	IsSequenceOutput bool `json:"is_sequence_output,omitempty"`
 	// TotalBytes is the total bytes written to disk. 0 when BinaryOutput is used instead.
-	TotalBytes   uint64   `json:"total_bytes,omitempty"`
+	TotalBytes uint64 `json:"total_bytes,omitempty"`
 	// MediaUrnOutput is the output media URN from the terminal cap's STREAM_START or plan derivation.
-	MediaUrnOutput string  `json:"media_urn_output,omitempty"`
-	Error        string   `json:"error,omitempty"`
-	DurationMs   uint64   `json:"duration_ms"`
+	MediaUrnOutput string `json:"media_urn_output,omitempty"`
+	Error          string `json:"error,omitempty"`
+	DurationMs     uint64 `json:"duration_ms"`
 }
 
 // BodyOutcome tracks what happened during a single ForEach body execution.
@@ -765,23 +765,23 @@ type NodeExecutionResult struct {
 // represents the entire execution.
 type BodyOutcome struct {
 	// BodyIndex is the index of this body within the ForEach (0-based). 0 for linear pipelines.
-	BodyIndex  int      `json:"body_index"`
+	BodyIndex int `json:"body_index"`
 	// Success indicates whether this body completed successfully.
-	Success    bool     `json:"success"`
+	Success bool `json:"success"`
 	// CapUrns are the cap URNs in the body's execution pathway (in execution order).
-	CapUrns    []string `json:"cap_urns"`
+	CapUrns []string `json:"cap_urns"`
 	// FailedCap is the cap URN that was executing when the body failed. Nil if succeeded.
-	FailedCap  *string  `json:"failed_cap,omitempty"`
+	FailedCap *string `json:"failed_cap,omitempty"`
 	// Error is the error message if the body failed.
-	Error      *string  `json:"error,omitempty"`
+	Error *string `json:"error,omitempty"`
 	// Title is the human-readable title for this body, from stream metadata.
-	Title      *string  `json:"title,omitempty"`
+	Title *string `json:"title,omitempty"`
 	// SavedPaths are the file paths saved by this body's IncrementalWriter.
 	SavedPaths []string `json:"saved_paths"`
 	// TotalBytes is the total bytes written by this body.
-	TotalBytes uint64   `json:"total_bytes"`
+	TotalBytes uint64 `json:"total_bytes"`
 	// DurationMs is the execution duration in milliseconds.
-	DurationMs uint64   `json:"duration_ms"`
+	DurationMs uint64 `json:"duration_ms"`
 }
 
 // MachineResult holds the result of executing a complete plan.
@@ -793,7 +793,7 @@ type MachineResult struct {
 	TotalDurationMs uint64                          `json:"total_duration_ms"`
 	// BodyOutcomes holds per-body outcomes for ForEach pipelines, or a single entry for linear plans.
 	// Populated by the pipeline executor; empty for the standalone executor.
-	BodyOutcomes    []BodyOutcome                   `json:"body_outcomes,omitempty"`
+	BodyOutcomes []BodyOutcome `json:"body_outcomes,omitempty"`
 }
 
 // PrimaryOutput returns the first output value (non-deterministic).
@@ -801,5 +801,355 @@ func (r *MachineResult) PrimaryOutput() any {
 	for _, v := range r.Outputs {
 		return v
 	}
+	return nil
+}
+
+// edgeKindName returns the snake_case wire name for an EdgeKind.
+func edgeKindName(k EdgeKind) string {
+	switch k {
+	case EdgeKindDirect:
+		return "direct"
+	case EdgeKindJsonField:
+		return "json_field"
+	case EdgeKindJsonPath:
+		return "json_path"
+	case EdgeKindIteration:
+		return "iteration"
+	case EdgeKindCollection:
+		return "collection"
+	default:
+		return "direct"
+	}
+}
+
+// MarshalJSON serializes EdgeType as an externally-tagged enum mirroring serde's
+// `rename_all = "snake_case"`: unit variants become bare strings ("direct"),
+// struct variants become a single-key object ({"json_field":{"field":"x"}}).
+func (e *EdgeType) MarshalJSON() ([]byte, error) {
+	switch e.Kind {
+	case EdgeKindDirect, EdgeKindIteration, EdgeKindCollection:
+		return json.Marshal(edgeKindName(e.Kind))
+	case EdgeKindJsonField:
+		return json.Marshal(map[string]any{
+			"json_field": map[string]string{"field": e.Field},
+		})
+	case EdgeKindJsonPath:
+		return json.Marshal(map[string]any{
+			"json_path": map[string]string{"path": e.Path},
+		})
+	default:
+		return json.Marshal("direct")
+	}
+}
+
+// UnmarshalJSON deserializes the externally-tagged EdgeType form.
+func (e *EdgeType) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		switch s {
+		case "direct":
+			e.Kind = EdgeKindDirect
+		case "iteration":
+			e.Kind = EdgeKindIteration
+		case "collection":
+			e.Kind = EdgeKindCollection
+		default:
+			return fmt.Errorf("unknown EdgeType: %s", s)
+		}
+		return nil
+	}
+
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return err
+	}
+	if raw, ok := obj["json_field"]; ok {
+		var v struct {
+			Field string `json:"field"`
+		}
+		if err := json.Unmarshal(raw, &v); err != nil {
+			return err
+		}
+		e.Kind = EdgeKindJsonField
+		e.Field = v.Field
+		return nil
+	}
+	if raw, ok := obj["json_path"]; ok {
+		var v struct {
+			Path string `json:"path"`
+		}
+		if err := json.Unmarshal(raw, &v); err != nil {
+			return err
+		}
+		e.Kind = EdgeKindJsonPath
+		e.Path = v.Path
+		return nil
+	}
+	return fmt.Errorf("unknown EdgeType object: %s", string(data))
+}
+
+// nodeKindName returns the snake_case wire name for an ExecutionNodeKind.
+func nodeKindName(k ExecutionNodeKind) string {
+	switch k {
+	case NodeKindCap:
+		return "cap"
+	case NodeKindForEach:
+		return "for_each"
+	case NodeKindCollect:
+		return "collect"
+	case NodeKindMerge:
+		return "merge"
+	case NodeKindSplit:
+		return "split"
+	case NodeKindInputSlot:
+		return "input_slot"
+	case NodeKindOutput:
+		return "output"
+	default:
+		return "cap"
+	}
+}
+
+// MarshalJSON serializes ExecutionNodeType as an internally-tagged enum mirroring
+// serde's `tag = "node_type", rename_all = "snake_case"`. The variant name is
+// written under the "node_type" key and the variant fields are flattened in.
+func (n *ExecutionNodeType) MarshalJSON() ([]byte, error) {
+	m := map[string]any{"node_type": nodeKindName(n.Kind)}
+	switch n.Kind {
+	case NodeKindCap:
+		m["cap_urn"] = n.CapUrn
+		bindings := n.ArgBindings
+		if bindings == nil {
+			bindings = NewArgumentBindings()
+		}
+		m["arg_bindings"] = bindings
+		if n.PreferredCap != nil {
+			m["preferred_cap"] = *n.PreferredCap
+		}
+	case NodeKindForEach:
+		m["input_node"] = n.InputNode
+		m["body_entry"] = n.BodyEntry
+		m["body_exit"] = n.BodyExit
+	case NodeKindCollect:
+		m["input_nodes"] = n.InputNodes
+		if n.OutputMediaUrn != nil {
+			m["output_media_urn"] = *n.OutputMediaUrn
+		}
+	case NodeKindMerge:
+		m["input_nodes"] = n.InputNodes
+		m["merge_strategy"] = n.MergeStrat
+	case NodeKindSplit:
+		m["input_node"] = n.InputNode
+		m["output_count"] = n.OutputCount
+	case NodeKindInputSlot:
+		m["slot_name"] = n.SlotName
+		m["expected_media_urn"] = n.ExpectedMediaUrn
+		m["cardinality"] = n.Cardinality
+	case NodeKindOutput:
+		m["output_name"] = n.OutputName
+		m["source_node"] = n.SourceNode
+	}
+	return json.Marshal(m)
+}
+
+// UnmarshalJSON deserializes the internally-tagged ExecutionNodeType form.
+func (n *ExecutionNodeType) UnmarshalJSON(data []byte) error {
+	var tag struct {
+		NodeType string `json:"node_type"`
+	}
+	if err := json.Unmarshal(data, &tag); err != nil {
+		return err
+	}
+	switch tag.NodeType {
+	case "cap":
+		var v struct {
+			CapUrn       string            `json:"cap_urn"`
+			ArgBindings  *ArgumentBindings `json:"arg_bindings"`
+			PreferredCap *string           `json:"preferred_cap"`
+		}
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		n.Kind = NodeKindCap
+		n.CapUrn = v.CapUrn
+		if v.ArgBindings == nil {
+			v.ArgBindings = NewArgumentBindings()
+		}
+		n.ArgBindings = v.ArgBindings
+		n.PreferredCap = v.PreferredCap
+	case "for_each":
+		var v struct {
+			InputNode string `json:"input_node"`
+			BodyEntry string `json:"body_entry"`
+			BodyExit  string `json:"body_exit"`
+		}
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		n.Kind = NodeKindForEach
+		n.InputNode = v.InputNode
+		n.BodyEntry = v.BodyEntry
+		n.BodyExit = v.BodyExit
+	case "collect":
+		var v struct {
+			InputNodes     []string `json:"input_nodes"`
+			OutputMediaUrn *string  `json:"output_media_urn"`
+		}
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		n.Kind = NodeKindCollect
+		n.InputNodes = v.InputNodes
+		n.OutputMediaUrn = v.OutputMediaUrn
+	case "merge":
+		var v struct {
+			InputNodes    []string      `json:"input_nodes"`
+			MergeStrategy MergeStrategy `json:"merge_strategy"`
+		}
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		n.Kind = NodeKindMerge
+		n.InputNodes = v.InputNodes
+		n.MergeStrat = v.MergeStrategy
+	case "split":
+		var v struct {
+			InputNode   string `json:"input_node"`
+			OutputCount int    `json:"output_count"`
+		}
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		n.Kind = NodeKindSplit
+		n.InputNode = v.InputNode
+		n.OutputCount = v.OutputCount
+	case "input_slot":
+		var v struct {
+			SlotName         string           `json:"slot_name"`
+			ExpectedMediaUrn string           `json:"expected_media_urn"`
+			Cardinality      InputCardinality `json:"cardinality"`
+		}
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		n.Kind = NodeKindInputSlot
+		n.SlotName = v.SlotName
+		n.ExpectedMediaUrn = v.ExpectedMediaUrn
+		n.Cardinality = v.Cardinality
+	case "output":
+		var v struct {
+			OutputName string `json:"output_name"`
+			SourceNode string `json:"source_node"`
+		}
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		n.Kind = NodeKindOutput
+		n.OutputName = v.OutputName
+		n.SourceNode = v.SourceNode
+	default:
+		return fmt.Errorf("unknown ExecutionNodeType node_type: %s", tag.NodeType)
+	}
+	return nil
+}
+
+// MarshalJSON serializes MachineNode mirroring the Rust struct: id, node_type
+// (the internally-tagged ExecutionNodeType object), and an optional description.
+func (n *MachineNode) MarshalJSON() ([]byte, error) {
+	m := map[string]any{
+		"id":        n.ID,
+		"node_type": n.NodeType,
+	}
+	if n.Description != nil {
+		m["description"] = *n.Description
+	}
+	return json.Marshal(m)
+}
+
+// UnmarshalJSON deserializes MachineNode.
+func (n *MachineNode) UnmarshalJSON(data []byte) error {
+	var v struct {
+		ID          string             `json:"id"`
+		NodeType    *ExecutionNodeType `json:"node_type"`
+		Description *string            `json:"description"`
+	}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	n.ID = v.ID
+	n.NodeType = v.NodeType
+	n.Description = v.Description
+	return nil
+}
+
+// MarshalJSON serializes MachinePlanEdge: from_node, to_node, edge_type.
+func (e *MachinePlanEdge) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]any{
+		"from_node": e.FromNode,
+		"to_node":   e.ToNode,
+		"edge_type": e.Type,
+	})
+}
+
+// UnmarshalJSON deserializes MachinePlanEdge. Mirrors serde's `#[serde(default)]`
+// on edge_type: an absent edge_type defaults to Direct.
+func (e *MachinePlanEdge) UnmarshalJSON(data []byte) error {
+	var v struct {
+		FromNode string    `json:"from_node"`
+		ToNode   string    `json:"to_node"`
+		EdgeType *EdgeType `json:"edge_type"`
+	}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	e.FromNode = v.FromNode
+	e.ToNode = v.ToNode
+	if v.EdgeType != nil {
+		e.Type = v.EdgeType
+	} else {
+		e.Type = DirectEdgeType()
+	}
+	return nil
+}
+
+// MarshalJSON serializes MachinePlan: name, nodes, edges, entry_nodes,
+// output_nodes, and optional metadata (omitted when nil, mirroring serde).
+func (p *MachinePlan) MarshalJSON() ([]byte, error) {
+	m := map[string]any{
+		"name":         p.Name,
+		"nodes":        p.Nodes,
+		"edges":        p.Edges,
+		"entry_nodes":  p.EntryNodes,
+		"output_nodes": p.OutputNodes,
+	}
+	if p.Metadata != nil {
+		m["metadata"] = p.Metadata
+	}
+	return json.Marshal(m)
+}
+
+// UnmarshalJSON deserializes MachinePlan.
+func (p *MachinePlan) UnmarshalJSON(data []byte) error {
+	var v struct {
+		Name        string                  `json:"name"`
+		Nodes       map[string]*MachineNode `json:"nodes"`
+		Edges       []*MachinePlanEdge      `json:"edges"`
+		EntryNodes  []string                `json:"entry_nodes"`
+		OutputNodes []string                `json:"output_nodes"`
+		Metadata    map[string]any          `json:"metadata"`
+	}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	p.Name = v.Name
+	if v.Nodes != nil {
+		p.Nodes = v.Nodes
+	} else {
+		p.Nodes = make(map[string]*MachineNode)
+	}
+	p.Edges = v.Edges
+	p.EntryNodes = v.EntryNodes
+	p.OutputNodes = v.OutputNodes
+	p.Metadata = v.Metadata
 	return nil
 }

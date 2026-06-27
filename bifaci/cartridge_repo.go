@@ -210,6 +210,39 @@ const (
 	CartridgeChannelNightly CartridgeChannel = "nightly"
 )
 
+// ParseCartridgeChannel parses the wire-form string ("release" /
+// "nightly") at runtime. Anything else is a hard error so a typo never
+// silently masquerades as a known channel. Mirrors Rust's
+// CartridgeChannel::parse (capdag/src/bifaci/cartridge_repo.rs).
+func ParseCartridgeChannel(s string) (CartridgeChannel, error) {
+	switch s {
+	case "release":
+		return CartridgeChannelRelease, nil
+	case "nightly":
+		return CartridgeChannelNightly, nil
+	default:
+		return "", fmt.Errorf("invalid CartridgeChannel '%s'; expected 'release' or 'nightly'", s)
+	}
+}
+
+// UnmarshalJSON deserializes a CartridgeChannel from its lowercase wire
+// form, rejecting any value that is not "release" or "nightly". Mirrors
+// the Rust enum's `#[serde(rename_all = "lowercase")]` Deserialize, which
+// fails on unknown variants — there are no defaults and no tolerated
+// aliases.
+func (c *CartridgeChannel) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	parsed, err := ParseCartridgeChannel(s)
+	if err != nil {
+		return err
+	}
+	*c = parsed
+	return nil
+}
+
 // CartridgeChannelEntries is one channel's cartridges map. Always
 // present in the parent registry, possibly empty.
 type CartridgeChannelEntries struct {

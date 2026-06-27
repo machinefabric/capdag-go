@@ -312,7 +312,15 @@ type RelaySwitch struct {
 	aggregateInstalledCartridges []InstalledCartridgeRecord
 	negotiatedLimits             Limits
 	frameRx                      chan MasterFrame
-	mu                           sync.Mutex
+	// expectedMasterCount is the number of cardinality slots the
+	// engine intends to wire up. Set once via SetExpectedMasterCount
+	// shortly after construction (the engine knows the count only
+	// after it decides how many providers to register). Defaults to
+	// 0; AllMastersReady returns false until it is declared so an
+	// engine that forgets to declare it hangs at "configuring"
+	// rather than advancing to "ready" prematurely.
+	expectedMasterCount int
+	mu                  sync.Mutex
 	// addMasterMu serialises AddMaster across the whole switch.
 	// `masterIdx` is the routing key for capTable / requestRouting;
 	// it must be decided once per slot and stay stable for the slot's
@@ -370,7 +378,18 @@ func NewRelaySwitch(sockets []SocketPair) (*RelaySwitch, error) {
 	frameRx := make(chan MasterFrame, 100)
 	var masters []*MasterConnection
 
-	// Connect to all masters and spawn reader goroutines
+	// pendingReader carries a verified master's reader to phase 2 so
+	// reader goroutines are spawned only after every master has
+	// cleared identity verification — mirroring the Rust two-phase
+	// constructor.
+	type pendingReader struct {
+		masterIdx    int
+		socketReader *FrameReader
+	}
+	var pendingReaders []pendingReader
+
+	// Phase 1: For each master, read RelayNotify and verify identity.
+	// Reader goroutines are spawned only after verification succeeds.
 	for masterIdx, sockPair := range sockets {
 		socketReader := NewFrameReader(sockPair.Read)
 		socketWriter := NewFrameWriter(sockPair.Write)
@@ -414,8 +433,45 @@ func NewRelaySwitch(sockets []SocketPair) (*RelaySwitch, error) {
 			return nil, err
 		}
 
-		// Spawn reader goroutine
-		idx := masterIdx
+		caps := payload.CapURNs()
+
+		// End-to-end identity verification. The probe only makes sense
+		// when the host has at least one advertised cap — an empty cap
+		// list means "no cartridges attached successfully" and there is
+		// no handler chain to test. The master still joins so its
+		// installed_cartridges attachment errors reach the engine.
+		if len(caps) > 0 {
+			if err := VerifyIdentity(socketReader, socketWriter); err != nil {
+				return nil, &RelaySwitchError{
+					Type: RelaySwitchErrorTypeProtocol,
+					Message: fmt.Sprintf(
+						"master %d: identity verification failed: %v",
+						masterIdx, err,
+					),
+				}
+			}
+		}
+
+		pendingReaders = append(pendingReaders, pendingReader{
+			masterIdx:    masterIdx,
+			socketReader: socketReader,
+		})
+
+		masters = append(masters, &MasterConnection{
+			id:                  sockPair.ID,
+			socketWriter:        socketWriter,
+			manifest:            manifest,
+			limits:              *limits,
+			caps:                caps,
+			installedCartridges: payload.InstalledCartridges,
+			healthy:             true,
+		})
+	}
+
+	// Phase 2: All masters verified — spawn reader goroutines.
+	for _, pr := range pendingReaders {
+		idx := pr.masterIdx
+		socketReader := pr.socketReader
 		go func() {
 			for {
 				frame, err := socketReader.ReadFrame()
@@ -431,16 +487,6 @@ func NewRelaySwitch(sockets []SocketPair) (*RelaySwitch, error) {
 				frameRx <- MasterFrame{MasterIdx: idx, Frame: frame, Err: nil}
 			}
 		}()
-
-		masters = append(masters, &MasterConnection{
-			id:                  sockPair.ID,
-			socketWriter:        socketWriter,
-			manifest:            manifest,
-			limits:              *limits,
-			caps:                payload.CapURNs(),
-			installedCartridges: payload.InstalledCartridges,
-			healthy:             true,
-		})
 	}
 
 	sw := &RelaySwitch{
@@ -669,6 +715,57 @@ func (sw *RelaySwitch) Limits() Limits {
 	sw.mu.Lock()
 	defer sw.mu.Unlock()
 	return sw.negotiatedLimits
+}
+
+// SetExpectedMasterCount declares how many cardinality slots the
+// engine intends to wire up. The host's ".configuring → .ready"
+// advance is gated on AllMastersReady, which returns false until this
+// count is both declared (non-zero) and met. Both editions expect 2
+// masters (internal + external/XPC); set once at engine boot from the
+// same call site that registers the providers.
+func (sw *RelaySwitch) SetExpectedMasterCount(expected int) {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	sw.expectedMasterCount = expected
+}
+
+// AllMastersReady reports true when:
+//
+//  1. The number of connected masters is at least
+//     expectedMasterCount (declared via SetExpectedMasterCount), AND
+//  2. Every connected master is healthy.
+//
+// Cap-set non-emptiness is intentionally NOT required. A master can be
+// healthy and connected with zero caps while its cartridges are still
+// inspecting / verifying — see `machfab-mac/docs/cartridge state
+// machine.md`. Tying readiness to caps would mean the splash screen
+// waits for every cartridge to clear inspection + verification, which
+// can take many seconds for large model cartridges + slow registry
+// fetches. Caps register incrementally as cartridges progress to
+// Operational; the dispatch table grows under the engine over time.
+//
+// When expectedMasterCount is 0 the engine never declared a count, so
+// this returns false — treat as not-yet-configured rather than guess.
+func (sw *RelaySwitch) AllMastersReady() bool {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+
+	expected := sw.expectedMasterCount
+	if expected == 0 {
+		// Engine never declared an expected count — treat as
+		// not-yet-configured rather than guess. Caller bug.
+		return false
+	}
+	if len(sw.masters) < expected {
+		return false
+	}
+	for _, master := range sw.masters {
+		// An unhealthy master is by definition not ready.
+		if !master.healthy {
+			return false
+		}
+	}
+	return true
 }
 
 // CancelRequest cancels a specific in-flight request by request ID.

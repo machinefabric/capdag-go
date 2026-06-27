@@ -93,11 +93,11 @@ func Test320_cartridge_info_construction(t *testing.T) {
 // TEST321: CartridgeInfo.is_signed() returns true when signature (team_id + signed_at) is present, false when either is empty.
 func Test321_cartridge_info_is_signed(t *testing.T) {
 	cartridge := CartridgeInfo{
-		Id:       "testcartridge",
-		Name:     "Test",
-		Version:  "1.0.0",
-		TeamId:   "TEAM123",
-		SignedAt: "2026-02-07T00:00:00Z",
+		Id:        "testcartridge",
+		Name:      "Test",
+		Version:   "1.0.0",
+		TeamId:    "TEAM123",
+		SignedAt:  "2026-02-07T00:00:00Z",
 		CapGroups: []RegistryCapGroup{},
 	}
 
@@ -120,9 +120,9 @@ func Test321_cartridge_info_is_signed(t *testing.T) {
 // TEST322: CartridgeInfo.build_for_platform() returns the build that matches the requested platform string and None otherwise.
 func Test322_cartridge_info_build_for_platform(t *testing.T) {
 	cartridge := CartridgeInfo{
-		Id:      "testcartridge",
-		Name:    "Test",
-		Version: "1.0.0",
+		Id:        "testcartridge",
+		Name:      "Test",
+		Version:   "1.0.0",
 		CapGroups: []RegistryCapGroup{},
 		Versions: map[string]CartridgeVersionData{
 			"1.0.0": {

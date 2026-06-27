@@ -13,7 +13,7 @@ import (
 type ArgumentResolution int
 
 const (
-	ResolutionFromInputFile     ArgumentResolution = iota
+	ResolutionFromInputFile ArgumentResolution = iota
 	ResolutionFromPreviousOutput
 	ResolutionHasDefault
 	ResolutionRequiresUserInput
@@ -35,15 +35,44 @@ func (r ArgumentResolution) String() string {
 	}
 }
 
+// MarshalJSON implements json.Marshaler, serializing as a snake_case string
+// mirroring serde's `rename_all = "snake_case"`.
+func (r ArgumentResolution) MarshalJSON() ([]byte, error) {
+	return json.Marshal(r.String())
+}
+
+// UnmarshalJSON implements json.Unmarshaler, parsing a snake_case string.
+func (r *ArgumentResolution) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	switch s {
+	case "from_input_file":
+		*r = ResolutionFromInputFile
+	case "from_previous_output":
+		*r = ResolutionFromPreviousOutput
+	case "has_default":
+		*r = ResolutionHasDefault
+	case "requires_user_input":
+		*r = ResolutionRequiresUserInput
+	default:
+		return fmt.Errorf("unknown ArgumentResolution: %s", s)
+	}
+	return nil
+}
+
 // ArgumentInfo holds full argument metadata for one cap argument.
 type ArgumentInfo struct {
-	Name         string `json:"name"`
-	MediaUrn     string `json:"media_urn"`
-	Description  string `json:"description"`
+	Name         string             `json:"name"`
+	MediaUrn     string             `json:"media_urn"`
+	Description  string             `json:"description"`
 	Resolution   ArgumentResolution `json:"resolution"`
-	DefaultValue any    `json:"default_value,omitempty"`
-	IsRequired   bool   `json:"is_required"`
-	Validation   any    `json:"validation,omitempty"`
+	DefaultValue any                `json:"default_value,omitempty"`
+	IsRequired   bool               `json:"is_required"`
+	// IsSequence indicates whether this argument carries a sequence of items.
+	IsSequence bool `json:"is_sequence"`
+	Validation any  `json:"validation,omitempty"`
 }
 
 // StepArgumentRequirements holds argument info for one step in a path.
@@ -53,25 +82,31 @@ type StepArgumentRequirements struct {
 	Title     string          `json:"title"`
 	Arguments []*ArgumentInfo `json:"arguments"`
 	Slots     []*ArgumentInfo `json:"slots"`
+	// SupportedModelTypes are the architecture identifiers (config.json
+	// model_type) the cap can run. Empty when the cap declares no restriction.
+	SupportedModelTypes []string `json:"supported_model_types"`
+	// DefaultModelSpec is the default model spec literal declared in the cap's
+	// capfab toml. Nil when the cap has no default model.
+	DefaultModelSpec *string `json:"default_model_spec,omitempty"`
 }
 
 // PathArgumentRequirements holds argument info for an entire path.
 type PathArgumentRequirements struct {
-	SourceMediaUrn          string                      `json:"source_media_urn"`
-	TargetMediaUrn          string                      `json:"target_media_urn"`
-	Steps                   []*StepArgumentRequirements `json:"steps"`
-	CanExecuteWithoutInput  bool                        `json:"can_execute_without_input"`
+	SourceMediaUrn         string                      `json:"source_media_urn"`
+	TargetMediaUrn         string                      `json:"target_media_urn"`
+	Steps                  []*StepArgumentRequirements `json:"steps"`
+	CanExecuteWithoutInput bool                        `json:"can_execute_without_input"`
 }
 
 // MachinePlanBuilder builds execution plans from resolved paths.
 type MachinePlanBuilder struct {
-	fabricRegistry   *cap.FabricRegistry
+	fabricRegistry *cap.FabricRegistry
 }
 
 // NewMachinePlanBuilder creates a new plan builder.
 func NewMachinePlanBuilder(fabricRegistry *cap.FabricRegistry) *MachinePlanBuilder {
 	return &MachinePlanBuilder{
-		fabricRegistry:   fabricRegistry,
+		fabricRegistry: fabricRegistry,
 	}
 }
 
@@ -384,6 +419,7 @@ func (b *MachinePlanBuilder) AnalyzePathArguments(
 				Resolution:   resolution,
 				DefaultValue: arg.DefaultValue,
 				IsRequired:   arg.Required,
+				IsSequence:   arg.IsSequence,
 			}
 
 			isIOArg := resolution == ResolutionFromInputFile || resolution == ResolutionFromPreviousOutput
@@ -394,11 +430,13 @@ func (b *MachinePlanBuilder) AnalyzePathArguments(
 		}
 
 		stepRequirements = append(stepRequirements, &StepArgumentRequirements{
-			CapUrn:    capUrnStr,
-			StepIndex: i,
-			Title:     step.Title(),
-			Arguments: arguments,
-			Slots:     slots,
+			CapUrn:              capUrnStr,
+			StepIndex:           i,
+			Title:               step.Title(),
+			Arguments:           arguments,
+			Slots:               slots,
+			SupportedModelTypes: c.SupportedModelTypes,
+			DefaultModelSpec:    c.DefaultModelSpec,
 		})
 		capStepIndex++
 	}

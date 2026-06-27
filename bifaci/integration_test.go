@@ -1,6 +1,7 @@
 package bifaci
 
 import (
+	"fmt"
 	"io"
 	"net"
 	"os"
@@ -8,11 +9,11 @@ import (
 	"syscall"
 	"testing"
 
+	cbor2 "github.com/fxamacker/cbor/v2"
 	"github.com/machinefabric/capdag-go/cap"
 	"github.com/machinefabric/capdag-go/media"
 	"github.com/machinefabric/capdag-go/standard"
 	"github.com/machinefabric/capdag-go/urn"
-	cbor2 "github.com/fxamacker/cbor/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -41,7 +42,6 @@ func intTestUrn(tags string) string {
 	}
 	return `cap:in="media:void";out="media:fmt=json;record";` + tags
 }
-
 
 // Test6428_IntegrationVersionlessCapCreation verifies caps can be created without version fields
 func Test6428_IntegrationVersionlessCapCreation(t *testing.T) {
@@ -1786,6 +1786,1025 @@ func Test6330_ChunkingDataIntegrity3x(t *testing.T) {
 	assert.Equal(t, expected, reassembled, "pattern must be preserved across chunk boundaries")
 
 	wg.Wait()
+}
+
+// =============================================================================
+// Full-path host-runtime integration tests (engine → host → cartridge → back).
+//
+// Mirrors capdag/src/bifaci/integration_tests.rs. The Rust CartridgeHostRuntime
+// maps to the Go CartridgeHost (AttachCartridge + Run). Cartridge simulators do
+// handshake on their side, then handle the routed REQ and stream a response. The
+// engine writes REQs (with routing_id/XID, as the RelaySwitch stamps in prod)
+// over the relay pipe and reads responses, skipping the host's RelayNotify
+// inventory frames via recvCartridgeFrame (defined in host_multi_test.go).
+//
+// DIVERGENCE NOTE: Rust's attach_cartridge() runs verify_identity() inline, so
+// the Rust tests use a cartridge_handshake_with_identity helper that answers an
+// identity REQ during attach. The Go CartridgeHost.AttachCartridge does NOT run
+// identity verification during attach (the whole host_multi_test.go suite — the
+// Go port of host_runtime.rs's attach tests — is built on this), so these Go
+// ports use the plain simulateCartridge handshake (no identity echo). The
+// request/response assertions are mirrored 1:1.
+// =============================================================================
+
+// TEST1122: Full path: engine REQ → runtime → cartridge → response back through relay
+func Test1122_FullPathEngineReqToCartridgeResponse(t *testing.T) {
+	manifest := `{"name":"EchoCartridge","version":"1.0","channel":"release","registry_url":null,"description":"Echo test cartridge","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Test","command":"test","args":[]}]}]}`
+
+	hostReadP, cartridgeWriteP := net.Pipe()
+	cartridgeReadP, hostWriteP := net.Pipe()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		simulateCartridge(t, cartridgeReadP, cartridgeWriteP, manifest, func(r *FrameReader, w *FrameWriter) {
+			req, err := r.ReadFrame()
+			require.NoError(t, err)
+			assert.Equal(t, FrameTypeReq, req.FrameType)
+			require.NotNil(t, req.Cap)
+			assert.Equal(t, standard.CapIdentity, *req.Cap)
+
+			// Collect the request argument data (CHUNK payloads) until END.
+			var argData []byte
+			for {
+				f, err := r.ReadFrame()
+				require.NoError(t, err)
+				if f.FrameType == FrameTypeChunk {
+					argData = append(argData, f.Payload...)
+				}
+				if f.FrameType == FrameTypeEnd {
+					break
+				}
+			}
+
+			seq := NewSeqAssigner()
+			sid := "resp"
+			start := NewStreamStart(req.Id, sid, "media:", nil)
+			seq.Assign(start)
+			require.NoError(t, w.WriteFrame(start))
+			checksum := ComputeChecksum(argData)
+			chunk := NewChunk(req.Id, sid, 0, argData, 0, checksum)
+			seq.Assign(chunk)
+			require.NoError(t, w.WriteFrame(chunk))
+			streamEnd := NewStreamEnd(req.Id, sid, 1)
+			seq.Assign(streamEnd)
+			require.NoError(t, w.WriteFrame(streamEnd))
+			end := NewEnd(req.Id, nil)
+			seq.Assign(end)
+			require.NoError(t, w.WriteFrame(end))
+			seq.Remove(FlowKeyFromFrame(end))
+		})
+		cartridgeReadP.Close()
+		cartridgeWriteP.Close()
+	}()
+
+	host := NewCartridgeHost()
+	_, err := host.AttachCartridge(hostReadP, hostWriteP)
+	require.NoError(t, err)
+
+	relayRead, engineWrite := net.Pipe()
+	engineRead, relayWrite := net.Pipe()
+
+	var response []byte
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		w := NewFrameWriter(engineWrite)
+		r := NewFrameReader(engineRead)
+
+		seq := NewSeqAssigner()
+		reqId := NewMessageIdRandom()
+		xid := NewMessageIdFromUint(1)
+		sid := NewMessageIdRandom().ToString()
+
+		reqFrame := NewReq(reqId, standard.CapIdentity, []byte{}, "text/plain")
+		reqFrame.RoutingId = &xid
+		seq.Assign(reqFrame)
+		require.NoError(t, w.WriteFrame(reqFrame))
+
+		streamStart := NewStreamStart(reqId, sid, "media:", nil)
+		streamStart.RoutingId = &xid
+		seq.Assign(streamStart)
+		require.NoError(t, w.WriteFrame(streamStart))
+
+		payload := []byte("hello world")
+		checksum := ComputeChecksum(payload)
+		chunk := NewChunk(reqId, sid, 0, payload, 0, checksum)
+		chunk.RoutingId = &xid
+		seq.Assign(chunk)
+		require.NoError(t, w.WriteFrame(chunk))
+
+		streamEnd := NewStreamEnd(reqId, sid, 1)
+		streamEnd.RoutingId = &xid
+		seq.Assign(streamEnd)
+		require.NoError(t, w.WriteFrame(streamEnd))
+
+		end := NewEnd(reqId, nil)
+		end.RoutingId = &xid
+		seq.Assign(end)
+		require.NoError(t, w.WriteFrame(end))
+		seq.Remove(FlowKeyFromFrame(end))
+
+		// Read response, accumulating CHUNK payloads until END.
+		for {
+			frame, err := recvCartridgeFrame(r)
+			if err != nil {
+				break
+			}
+			if frame.FrameType == FrameTypeChunk {
+				response = append(response, frame.Payload...)
+			}
+			if frame.FrameType == FrameTypeEnd {
+				break
+			}
+		}
+
+		engineWrite.Close()
+		engineRead.Close()
+	}()
+
+	host.Run(relayRead, relayWrite, nil)
+	relayRead.Close()
+	relayWrite.Close()
+	hostReadP.Close()
+	hostWriteP.Close()
+	wg.Wait()
+
+	assert.Equal(t, []byte("hello world"), response, "Cartridge should echo back the argument data")
+}
+
+// TEST1123: Cartridge ERR frame flows back to engine through relay
+func Test1123_CartridgeErrorFlowsToEngine(t *testing.T) {
+	manifest := `{"name":"ErrCartridge","version":"1.0","channel":"release","registry_url":null,"description":"Error test cartridge","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity","args":[]},{"urn":"cap:in=\"media:void\";fail;out=\"media:void\"","title":"Test","command":"test","args":[]}]}]}`
+
+	hostReadP, cartridgeWriteP := net.Pipe()
+	cartridgeReadP, hostWriteP := net.Pipe()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		simulateCartridge(t, cartridgeReadP, cartridgeWriteP, manifest, func(r *FrameReader, w *FrameWriter) {
+			req, err := r.ReadFrame()
+			require.NoError(t, err)
+			seq := NewSeqAssigner()
+			errFrame := NewErr(req.Id, "FAIL_CODE", "Something went wrong")
+			seq.Assign(errFrame)
+			require.NoError(t, w.WriteFrame(errFrame))
+			seq.Remove(FlowKeyFromFrame(errFrame))
+		})
+		cartridgeReadP.Close()
+		cartridgeWriteP.Close()
+	}()
+
+	host := NewCartridgeHost()
+	_, err := host.AttachCartridge(hostReadP, hostWriteP)
+	require.NoError(t, err)
+
+	relayRead, engineWrite := net.Pipe()
+	engineRead, relayWrite := net.Pipe()
+
+	var errCode, errMsg string
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		w := NewFrameWriter(engineWrite)
+		r := NewFrameReader(engineRead)
+
+		seq := NewSeqAssigner()
+		reqId := NewMessageIdRandom()
+		xid := NewMessageIdFromUint(1)
+		req := NewReq(reqId, `cap:in="media:void";fail;out="media:void"`, []byte{}, "text/plain")
+		req.RoutingId = &xid
+		seq.Assign(req)
+		require.NoError(t, w.WriteFrame(req))
+		end := NewEnd(reqId, nil)
+		end.RoutingId = &xid
+		seq.Assign(end)
+		require.NoError(t, w.WriteFrame(end))
+		seq.Remove(FlowKeyFromFrame(end))
+
+		for {
+			frame, err := recvCartridgeFrame(r)
+			if err != nil {
+				break
+			}
+			if frame.FrameType == FrameTypeErr {
+				errCode = frame.ErrorCode()
+				errMsg = frame.ErrorMessage()
+				break
+			}
+		}
+
+		engineWrite.Close()
+		engineRead.Close()
+	}()
+
+	host.Run(relayRead, relayWrite, nil)
+	relayRead.Close()
+	relayWrite.Close()
+	hostReadP.Close()
+	hostWriteP.Close()
+	wg.Wait()
+
+	assert.Equal(t, "FAIL_CODE", errCode)
+	assert.Equal(t, "Something went wrong", errMsg)
+}
+
+// TEST898: Binary data integrity through full relay path (256 byte values)
+func Test898_BinaryIntegrityThroughRelay(t *testing.T) {
+	manifest := `{"name":"BinCartridge","version":"1.0","channel":"release","registry_url":null,"description":"Binary test cartridge","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity","args":[]},{"urn":"cap:in=\"media:void\";binary;out=\"media:void\"","title":"Test","command":"test","args":[]}]}]}`
+
+	binaryData := make([]byte, 256)
+	for i := 0; i < 256; i++ {
+		binaryData[i] = byte(i)
+	}
+
+	hostReadP, cartridgeWriteP := net.Pipe()
+	cartridgeReadP, hostWriteP := net.Pipe()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		simulateCartridge(t, cartridgeReadP, cartridgeWriteP, manifest, func(r *FrameReader, w *FrameWriter) {
+			req, err := r.ReadFrame()
+			require.NoError(t, err)
+
+			var received []byte
+			for {
+				f, err := r.ReadFrame()
+				require.NoError(t, err)
+				if f.FrameType == FrameTypeChunk {
+					received = append(received, f.Payload...)
+				}
+				if f.FrameType == FrameTypeEnd {
+					break
+				}
+			}
+
+			assert.Equal(t, 256, len(received), "Must receive all 256 bytes")
+			for i, b := range received {
+				assert.Equal(t, byte(i), b, "Byte mismatch at position %d", i)
+			}
+
+			seq := NewSeqAssigner()
+			sid := "resp"
+			start := NewStreamStart(req.Id, sid, "media:", nil)
+			seq.Assign(start)
+			require.NoError(t, w.WriteFrame(start))
+			checksum := ComputeChecksum(received)
+			chunk := NewChunk(req.Id, sid, 0, received, 0, checksum)
+			seq.Assign(chunk)
+			require.NoError(t, w.WriteFrame(chunk))
+			streamEnd := NewStreamEnd(req.Id, sid, 1)
+			seq.Assign(streamEnd)
+			require.NoError(t, w.WriteFrame(streamEnd))
+			end := NewEnd(req.Id, nil)
+			seq.Assign(end)
+			require.NoError(t, w.WriteFrame(end))
+			seq.Remove(FlowKeyFromFrame(end))
+		})
+		cartridgeReadP.Close()
+		cartridgeWriteP.Close()
+	}()
+
+	host := NewCartridgeHost()
+	_, err := host.AttachCartridge(hostReadP, hostWriteP)
+	require.NoError(t, err)
+
+	relayRead, engineWrite := net.Pipe()
+	engineRead, relayWrite := net.Pipe()
+
+	var response []byte
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		w := NewFrameWriter(engineWrite)
+		r := NewFrameReader(engineRead)
+
+		seq := NewSeqAssigner()
+		reqId := NewMessageIdRandom()
+		xid := NewMessageIdFromUint(1)
+		sid := NewMessageIdRandom().ToString()
+		req := NewReq(reqId, `cap:in="media:void";binary;out="media:void"`, []byte{}, "application/octet-stream")
+		req.RoutingId = &xid
+		seq.Assign(req)
+		require.NoError(t, w.WriteFrame(req))
+		streamStart := NewStreamStart(reqId, sid, "media:", nil)
+		streamStart.RoutingId = &xid
+		seq.Assign(streamStart)
+		require.NoError(t, w.WriteFrame(streamStart))
+		checksum := ComputeChecksum(binaryData)
+		chunk := NewChunk(reqId, sid, 0, binaryData, 0, checksum)
+		chunk.RoutingId = &xid
+		seq.Assign(chunk)
+		require.NoError(t, w.WriteFrame(chunk))
+		streamEnd := NewStreamEnd(reqId, sid, 1)
+		streamEnd.RoutingId = &xid
+		seq.Assign(streamEnd)
+		require.NoError(t, w.WriteFrame(streamEnd))
+		end := NewEnd(reqId, nil)
+		end.RoutingId = &xid
+		seq.Assign(end)
+		require.NoError(t, w.WriteFrame(end))
+		seq.Remove(FlowKeyFromFrame(end))
+
+		for {
+			frame, err := recvCartridgeFrame(r)
+			if err != nil {
+				break
+			}
+			if frame.FrameType == FrameTypeChunk {
+				response = append(response, frame.Payload...)
+			}
+			if frame.FrameType == FrameTypeEnd {
+				break
+			}
+		}
+
+		engineWrite.Close()
+		engineRead.Close()
+	}()
+
+	host.Run(relayRead, relayWrite, nil)
+	relayRead.Close()
+	relayWrite.Close()
+	hostReadP.Close()
+	hostWriteP.Close()
+	wg.Wait()
+
+	assert.Equal(t, 256, len(response))
+	for i, b := range response {
+		assert.Equal(t, byte(i), b, "Response byte mismatch at position %d", i)
+	}
+}
+
+// TEST899: Streaming chunks flow through relay without accumulation
+func Test899_StreamingChunksThroughRelay(t *testing.T) {
+	manifest := `{"name":"StreamCartridge","version":"1.0","channel":"release","registry_url":null,"description":"Streaming test cartridge","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity","args":[]},{"urn":"cap:in=\"media:void\";stream;out=\"media:void\"","title":"Test","command":"test","args":[]}]}]}`
+
+	hostReadP, cartridgeWriteP := net.Pipe()
+	cartridgeReadP, hostWriteP := net.Pipe()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		simulateCartridge(t, cartridgeReadP, cartridgeWriteP, manifest, func(r *FrameReader, w *FrameWriter) {
+			req, err := r.ReadFrame()
+			require.NoError(t, err)
+
+			for {
+				f, err := r.ReadFrame()
+				require.NoError(t, err)
+				if f.FrameType == FrameTypeEnd {
+					break
+				}
+			}
+
+			sid := "resp"
+			seq := NewSeqAssigner()
+			start := NewStreamStart(req.Id, sid, "media:", nil)
+			seq.Assign(start)
+			require.NoError(t, w.WriteFrame(start))
+			for idx := uint64(0); idx < 5; idx++ {
+				data := []byte(fmt.Sprintf("chunk%d", idx))
+				checksum := ComputeChecksum(data)
+				chunk := NewChunk(req.Id, sid, 0, data, idx, checksum)
+				seq.Assign(chunk)
+				require.NoError(t, w.WriteFrame(chunk))
+			}
+			streamEnd := NewStreamEnd(req.Id, sid, 5)
+			seq.Assign(streamEnd)
+			require.NoError(t, w.WriteFrame(streamEnd))
+			end := NewEnd(req.Id, nil)
+			seq.Assign(end)
+			require.NoError(t, w.WriteFrame(end))
+		})
+		cartridgeReadP.Close()
+		cartridgeWriteP.Close()
+	}()
+
+	host := NewCartridgeHost()
+	_, err := host.AttachCartridge(hostReadP, hostWriteP)
+	require.NoError(t, err)
+
+	relayRead, engineWrite := net.Pipe()
+	engineRead, relayWrite := net.Pipe()
+
+	type chunkPair struct {
+		seq  uint64
+		data []byte
+	}
+	var chunks []chunkPair
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		w := NewFrameWriter(engineWrite)
+		r := NewFrameReader(engineRead)
+
+		seq := NewSeqAssigner()
+		reqId := NewMessageIdRandom()
+		xid := NewMessageIdFromUint(1)
+		req := NewReq(reqId, `cap:in="media:void";stream;out="media:void"`, []byte{}, "text/plain")
+		req.RoutingId = &xid
+		seq.Assign(req)
+		require.NoError(t, w.WriteFrame(req))
+		end := NewEnd(reqId, nil)
+		end.RoutingId = &xid
+		seq.Assign(end)
+		require.NoError(t, w.WriteFrame(end))
+		seq.Remove(FlowKeyFromFrame(end))
+
+		for {
+			frame, err := recvCartridgeFrame(r)
+			if err != nil {
+				break
+			}
+			if frame.FrameType == FrameTypeChunk {
+				chunks = append(chunks, chunkPair{frame.Seq, frame.Payload})
+			}
+			if frame.FrameType == FrameTypeEnd {
+				break
+			}
+		}
+
+		engineWrite.Close()
+		engineRead.Close()
+	}()
+
+	host.Run(relayRead, relayWrite, nil)
+	relayRead.Close()
+	relayWrite.Close()
+	hostReadP.Close()
+	hostWriteP.Close()
+	wg.Wait()
+
+	assert.Equal(t, 5, len(chunks), "All 5 chunks must arrive")
+	for i, c := range chunks {
+		assert.Equal(t, uint64(i+1), c.seq, "Chunk seq must be contiguous from 1 (StreamStart takes seq 0)")
+		assert.Equal(t, []byte(fmt.Sprintf("chunk%d", i)), c.data, "Chunk data must match")
+	}
+}
+
+// TEST900: Two cartridges routed independently by cap_urn
+func Test900_TwoCartridgesRoutedIndependently(t *testing.T) {
+	manifestA := `{"name":"CartridgeA","version":"1.0","channel":"release","registry_url":null,"description":"Cartridge A","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity","args":[]},{"urn":"cap:in=\"media:void\";alpha;out=\"media:void\"","title":"Test","command":"test","args":[]}]}]}`
+	manifestB := `{"name":"CartridgeB","version":"1.0","channel":"release","registry_url":null,"description":"Cartridge B","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity","args":[]},{"urn":"cap:in=\"media:void\";beta;out=\"media:void\"","title":"Test","command":"test","args":[]}]}]}`
+
+	hostReadA, cartridgeWriteA := net.Pipe()
+	cartridgeReadA, hostWriteA := net.Pipe()
+	hostReadB, cartridgeWriteB := net.Pipe()
+	cartridgeReadB, hostWriteB := net.Pipe()
+
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		simulateCartridge(t, cartridgeReadA, cartridgeWriteA, manifestA, func(r *FrameReader, w *FrameWriter) {
+			req, err := r.ReadFrame()
+			require.NoError(t, err)
+			require.NotNil(t, req.Cap)
+			assert.Equal(t, `cap:in="media:void";alpha;out="media:void"`, *req.Cap, "Cartridge A must receive alpha REQ")
+			for {
+				f, err := r.ReadFrame()
+				require.NoError(t, err)
+				if f.FrameType == FrameTypeEnd {
+					break
+				}
+			}
+			seq := NewSeqAssigner()
+			sid := "a"
+			start := NewStreamStart(req.Id, sid, "media:", nil)
+			seq.Assign(start)
+			require.NoError(t, w.WriteFrame(start))
+			payload := []byte("from-alpha")
+			checksum := ComputeChecksum(payload)
+			chunk := NewChunk(req.Id, sid, 0, payload, 0, checksum)
+			seq.Assign(chunk)
+			require.NoError(t, w.WriteFrame(chunk))
+			streamEnd := NewStreamEnd(req.Id, sid, 1)
+			seq.Assign(streamEnd)
+			require.NoError(t, w.WriteFrame(streamEnd))
+			end := NewEnd(req.Id, nil)
+			seq.Assign(end)
+			require.NoError(t, w.WriteFrame(end))
+			seq.Remove(FlowKeyFromFrame(end))
+		})
+		cartridgeReadA.Close()
+		cartridgeWriteA.Close()
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		simulateCartridge(t, cartridgeReadB, cartridgeWriteB, manifestB, func(r *FrameReader, w *FrameWriter) {
+			req, err := r.ReadFrame()
+			require.NoError(t, err)
+			require.NotNil(t, req.Cap)
+			assert.Equal(t, `cap:in="media:void";beta;out="media:void"`, *req.Cap, "Cartridge B must receive beta REQ")
+			for {
+				f, err := r.ReadFrame()
+				require.NoError(t, err)
+				if f.FrameType == FrameTypeEnd {
+					break
+				}
+			}
+			seq := NewSeqAssigner()
+			sid := "b"
+			start := NewStreamStart(req.Id, sid, "media:", nil)
+			seq.Assign(start)
+			require.NoError(t, w.WriteFrame(start))
+			payload := []byte("from-beta")
+			checksum := ComputeChecksum(payload)
+			chunk := NewChunk(req.Id, sid, 0, payload, 0, checksum)
+			seq.Assign(chunk)
+			require.NoError(t, w.WriteFrame(chunk))
+			streamEnd := NewStreamEnd(req.Id, sid, 1)
+			seq.Assign(streamEnd)
+			require.NoError(t, w.WriteFrame(streamEnd))
+			end := NewEnd(req.Id, nil)
+			seq.Assign(end)
+			require.NoError(t, w.WriteFrame(end))
+			seq.Remove(FlowKeyFromFrame(end))
+		})
+		cartridgeReadB.Close()
+		cartridgeWriteB.Close()
+	}()
+
+	host := NewCartridgeHost()
+	_, err := host.AttachCartridge(hostReadA, hostWriteA)
+	require.NoError(t, err)
+	_, err = host.AttachCartridge(hostReadB, hostWriteB)
+	require.NoError(t, err)
+
+	relayRead, engineWrite := net.Pipe()
+	engineRead, relayWrite := net.Pipe()
+
+	alphaId := NewMessageIdRandom()
+	betaId := NewMessageIdRandom()
+	var alphaData, betaData []byte
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		w := NewFrameWriter(engineWrite)
+		r := NewFrameReader(engineRead)
+
+		seq := NewSeqAssigner()
+		xidAlpha := NewMessageIdFromUint(1)
+		xidBeta := NewMessageIdFromUint(2)
+
+		reqAlpha := NewReq(alphaId, `cap:in="media:void";alpha;out="media:void"`, []byte{}, "text/plain")
+		reqAlpha.RoutingId = &xidAlpha
+		seq.Assign(reqAlpha)
+		require.NoError(t, w.WriteFrame(reqAlpha))
+		endAlpha := NewEnd(alphaId, nil)
+		endAlpha.RoutingId = &xidAlpha
+		seq.Assign(endAlpha)
+		require.NoError(t, w.WriteFrame(endAlpha))
+		seq.Remove(FlowKeyFromFrame(endAlpha))
+
+		reqBeta := NewReq(betaId, `cap:in="media:void";beta;out="media:void"`, []byte{}, "text/plain")
+		reqBeta.RoutingId = &xidBeta
+		seq.Assign(reqBeta)
+		require.NoError(t, w.WriteFrame(reqBeta))
+		endBeta := NewEnd(betaId, nil)
+		endBeta.RoutingId = &xidBeta
+		seq.Assign(endBeta)
+		require.NoError(t, w.WriteFrame(endBeta))
+		seq.Remove(FlowKeyFromFrame(endBeta))
+
+		endsReceived := 0
+		for {
+			f, err := recvCartridgeFrame(r)
+			if err != nil {
+				break
+			}
+			if f.FrameType == FrameTypeChunk {
+				if f.Id.ToString() == alphaId.ToString() {
+					alphaData = append(alphaData, f.Payload...)
+				} else if f.Id.ToString() == betaId.ToString() {
+					betaData = append(betaData, f.Payload...)
+				}
+			}
+			if f.FrameType == FrameTypeEnd {
+				endsReceived++
+				if endsReceived >= 2 {
+					break
+				}
+			}
+		}
+
+		engineWrite.Close()
+		engineRead.Close()
+	}()
+
+	host.Run(relayRead, relayWrite, nil)
+	relayRead.Close()
+	relayWrite.Close()
+	hostReadA.Close()
+	hostWriteA.Close()
+	hostReadB.Close()
+	hostWriteB.Close()
+	wg.Wait()
+
+	assert.Equal(t, []byte("from-alpha"), alphaData, "Alpha response must come from Cartridge A")
+	assert.Equal(t, []byte("from-beta"), betaData, "Beta response must come from Cartridge B")
+}
+
+// TEST901: REQ for unknown cap returns ERR frame (not fatal)
+func Test901_ReqForUnknownCapReturnsErrFrame(t *testing.T) {
+	manifest := `{"name":"OneCartridge","version":"1.0","channel":"release","registry_url":null,"description":"Known cap cartridge","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity","args":[]},{"urn":"cap:in=\"media:void\";known;out=\"media:void\"","title":"Test","command":"test","args":[]}]}]}`
+
+	hostReadP, cartridgeWriteP := net.Pipe()
+	cartridgeReadP, hostWriteP := net.Pipe()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		// Cartridge waits for EOF — no REQ should arrive since the cap is unknown.
+		simulateCartridge(t, cartridgeReadP, cartridgeWriteP, manifest, func(r *FrameReader, w *FrameWriter) {
+			frame, err := r.ReadFrame()
+			if err == nil {
+				assert.Fail(t, "Cartridge should not receive frames for unknown cap", "got %v", frame.FrameType)
+			}
+		})
+		cartridgeReadP.Close()
+		cartridgeWriteP.Close()
+	}()
+
+	host := NewCartridgeHost()
+	_, err := host.AttachCartridge(hostReadP, hostWriteP)
+	require.NoError(t, err)
+
+	relayRead, engineWrite := net.Pipe()
+	engineRead, relayWrite := net.Pipe()
+
+	reqId := NewMessageIdRandom()
+	var errFrame *Frame
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		w := NewFrameWriter(engineWrite)
+		r := NewFrameReader(engineRead)
+
+		seq := NewSeqAssigner()
+		xid := NewMessageIdFromUint(1)
+		req := NewReq(reqId, `cap:in="media:void";unknown;out="media:void"`, []byte{}, "text/plain")
+		req.RoutingId = &xid
+		seq.Assign(req)
+		require.NoError(t, w.WriteFrame(req))
+		end := NewEnd(reqId, nil)
+		end.RoutingId = &xid
+		seq.Assign(end)
+		require.NoError(t, w.WriteFrame(end))
+		seq.Remove(FlowKeyFromFrame(end))
+
+		// Read the ERR frame from the host (skipping RelayNotify inventory frames).
+		frame, err := recvCartridgeFrame(r)
+		require.NoError(t, err)
+		errFrame = frame
+
+		engineWrite.Close()
+		engineRead.Close()
+	}()
+
+	// Host run should NOT fail — it sends an ERR frame and continues.
+	host.Run(relayRead, relayWrite, nil)
+	relayRead.Close()
+	relayWrite.Close()
+	hostReadP.Close()
+	hostWriteP.Close()
+	wg.Wait()
+
+	require.NotNil(t, errFrame, "Should get ERR for unknown cap")
+	assert.Equal(t, FrameTypeErr, errFrame.FrameType, "Should get ERR for unknown cap")
+	assert.Equal(t, reqId.ToString(), errFrame.Id.ToString(), "ERR should reference the original request ID")
+	assert.Equal(t, "NO_HANDLER", errFrame.ErrorCode(), "Error code should be NO_HANDLER")
+}
+
+// TEST489: Full path identity verification: engine → host (AttachCartridge) → cartridge
+//
+// In the Rust mirror, attach_cartridge runs identity verification end-to-end; in
+// the Go mirror identity is not exchanged during attach (see DIVERGENCE NOTE
+// above), so this verifies the equivalent end state: after attach the cartridge
+// is live and handles a real request through the full relay path.
+func Test489_FullPathIdentityVerification(t *testing.T) {
+	manifest := `{"name":"IdentityE2E","version":"1.0","channel":"release","registry_url":null,"description":"Identity test","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity","args":[]},{"urn":"cap:in=\"media:void\";test;out=\"media:void\"","title":"Test","command":"test","args":[]}]}]}`
+
+	hostReadP, cartridgeWriteP := net.Pipe()
+	cartridgeReadP, hostWriteP := net.Pipe()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		simulateCartridge(t, cartridgeReadP, cartridgeWriteP, manifest, func(r *FrameReader, w *FrameWriter) {
+			req, err := r.ReadFrame()
+			require.NoError(t, err)
+			assert.Equal(t, FrameTypeReq, req.FrameType, "Must receive real REQ")
+
+			for {
+				f, err := r.ReadFrame()
+				require.NoError(t, err)
+				if f.FrameType == FrameTypeEnd {
+					break
+				}
+			}
+
+			seq := NewSeqAssigner()
+			sid := "resp"
+			ss := NewStreamStart(req.Id, sid, "media:", nil)
+			seq.Assign(ss)
+			require.NoError(t, w.WriteFrame(ss))
+			payload := []byte("verified-and-working")
+			checksum := ComputeChecksum(payload)
+			chunk := NewChunk(req.Id, sid, 0, payload, 0, checksum)
+			seq.Assign(chunk)
+			require.NoError(t, w.WriteFrame(chunk))
+			se := NewStreamEnd(req.Id, sid, 1)
+			seq.Assign(se)
+			require.NoError(t, w.WriteFrame(se))
+			end := NewEnd(req.Id, nil)
+			seq.Assign(end)
+			require.NoError(t, w.WriteFrame(end))
+		})
+		cartridgeReadP.Close()
+		cartridgeWriteP.Close()
+	}()
+
+	host := NewCartridgeHost()
+	_, err := host.AttachCartridge(hostReadP, hostWriteP)
+	require.NoError(t, err)
+
+	relayRead, engineWrite := net.Pipe()
+	engineRead, relayWrite := net.Pipe()
+
+	var response []byte
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		w := NewFrameWriter(engineWrite)
+		r := NewFrameReader(engineRead)
+
+		seq := NewSeqAssigner()
+		reqId := NewMessageIdRandom()
+		xid := NewMessageIdFromUint(1)
+		sid := NewMessageIdRandom().ToString()
+
+		req := NewReq(reqId, `cap:in="media:void";test;out="media:void"`, []byte{}, "text/plain")
+		req.RoutingId = &xid
+		seq.Assign(req)
+		require.NoError(t, w.WriteFrame(req))
+		ss := NewStreamStart(reqId, sid, "media:", nil)
+		ss.RoutingId = &xid
+		seq.Assign(ss)
+		require.NoError(t, w.WriteFrame(ss))
+		payload := []byte("test-data")
+		checksum := ComputeChecksum(payload)
+		chunk := NewChunk(reqId, sid, 0, payload, 0, checksum)
+		chunk.RoutingId = &xid
+		seq.Assign(chunk)
+		require.NoError(t, w.WriteFrame(chunk))
+		se := NewStreamEnd(reqId, sid, 1)
+		se.RoutingId = &xid
+		seq.Assign(se)
+		require.NoError(t, w.WriteFrame(se))
+		end := NewEnd(reqId, nil)
+		end.RoutingId = &xid
+		seq.Assign(end)
+		require.NoError(t, w.WriteFrame(end))
+
+		for {
+			frame, err := recvCartridgeFrame(r)
+			if err != nil {
+				break
+			}
+			if frame.FrameType == FrameTypeChunk {
+				response = append(response, frame.Payload...)
+			}
+			if frame.FrameType == FrameTypeEnd {
+				break
+			}
+		}
+
+		engineWrite.Close()
+		engineRead.Close()
+	}()
+
+	host.Run(relayRead, relayWrite, nil)
+	relayRead.Close()
+	relayWrite.Close()
+	hostReadP.Close()
+	hostWriteP.Close()
+	wg.Wait()
+
+	assert.Equal(t, []byte("verified-and-working"), response, "Cartridge must respond after attach")
+}
+
+// TEST490: Identity verification with multiple cartridges through single relay
+//
+// Both cartridges must be live and routed independently after attach. (See the
+// DIVERGENCE NOTE: Go attach does not exchange an identity REQ.)
+func Test490_IdentityVerificationMultipleCartridges(t *testing.T) {
+	manifestA := `{"name":"CartridgeA","version":"1.0","channel":"release","registry_url":null,"description":"Cartridge A","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity","args":[]},{"urn":"cap:in=\"media:void\";alpha;out=\"media:void\"","title":"Alpha","command":"alpha","args":[]}]}]}`
+	manifestB := `{"name":"CartridgeB","version":"1.0","channel":"release","registry_url":null,"description":"Cartridge B","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity","args":[]},{"urn":"cap:in=\"media:void\";beta;out=\"media:void\"","title":"Beta","command":"beta","args":[]}]}]}`
+
+	hostReadA, cartridgeWriteA := net.Pipe()
+	cartridgeReadA, hostWriteA := net.Pipe()
+	hostReadB, cartridgeWriteB := net.Pipe()
+	cartridgeReadB, hostWriteB := net.Pipe()
+
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		simulateCartridge(t, cartridgeReadA, cartridgeWriteA, manifestA, func(r *FrameReader, w *FrameWriter) {
+			req, err := r.ReadFrame()
+			require.NoError(t, err)
+			require.NotNil(t, req.Cap)
+			assert.Equal(t, `cap:in="media:void";alpha;out="media:void"`, *req.Cap)
+			for {
+				f, err := r.ReadFrame()
+				require.NoError(t, err)
+				if f.FrameType == FrameTypeEnd {
+					break
+				}
+			}
+			seq := NewSeqAssigner()
+			sid := "a"
+			ss := NewStreamStart(req.Id, sid, "media:", nil)
+			seq.Assign(ss)
+			require.NoError(t, w.WriteFrame(ss))
+			payload := []byte("from-alpha")
+			checksum := ComputeChecksum(payload)
+			chunk := NewChunk(req.Id, sid, 0, payload, 0, checksum)
+			seq.Assign(chunk)
+			require.NoError(t, w.WriteFrame(chunk))
+			se := NewStreamEnd(req.Id, sid, 1)
+			seq.Assign(se)
+			require.NoError(t, w.WriteFrame(se))
+			end := NewEnd(req.Id, nil)
+			seq.Assign(end)
+			require.NoError(t, w.WriteFrame(end))
+		})
+		cartridgeReadA.Close()
+		cartridgeWriteA.Close()
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		simulateCartridge(t, cartridgeReadB, cartridgeWriteB, manifestB, func(r *FrameReader, w *FrameWriter) {
+			req, err := r.ReadFrame()
+			require.NoError(t, err)
+			require.NotNil(t, req.Cap)
+			assert.Equal(t, `cap:in="media:void";beta;out="media:void"`, *req.Cap)
+			for {
+				f, err := r.ReadFrame()
+				require.NoError(t, err)
+				if f.FrameType == FrameTypeEnd {
+					break
+				}
+			}
+			seq := NewSeqAssigner()
+			sid := "b"
+			ss := NewStreamStart(req.Id, sid, "media:", nil)
+			seq.Assign(ss)
+			require.NoError(t, w.WriteFrame(ss))
+			payload := []byte("from-beta")
+			checksum := ComputeChecksum(payload)
+			chunk := NewChunk(req.Id, sid, 0, payload, 0, checksum)
+			seq.Assign(chunk)
+			require.NoError(t, w.WriteFrame(chunk))
+			se := NewStreamEnd(req.Id, sid, 1)
+			seq.Assign(se)
+			require.NoError(t, w.WriteFrame(se))
+			end := NewEnd(req.Id, nil)
+			seq.Assign(end)
+			require.NoError(t, w.WriteFrame(end))
+		})
+		cartridgeReadB.Close()
+		cartridgeWriteB.Close()
+	}()
+
+	host := NewCartridgeHost()
+	_, err := host.AttachCartridge(hostReadA, hostWriteA)
+	require.NoError(t, err)
+	_, err = host.AttachCartridge(hostReadB, hostWriteB)
+	require.NoError(t, err)
+
+	relayRead, engineWrite := net.Pipe()
+	engineRead, relayWrite := net.Pipe()
+
+	var respAlpha, respBeta []byte
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		w := NewFrameWriter(engineWrite)
+		r := NewFrameReader(engineRead)
+		seq := NewSeqAssigner()
+		xid := NewMessageIdFromUint(1)
+
+		// Alpha request
+		reqId := NewMessageIdRandom()
+		sid := NewMessageIdRandom().ToString()
+		req := NewReq(reqId, `cap:in="media:void";alpha;out="media:void"`, []byte{}, "text/plain")
+		req.RoutingId = &xid
+		seq.Assign(req)
+		require.NoError(t, w.WriteFrame(req))
+		ss := NewStreamStart(reqId, sid, "media:", nil)
+		ss.RoutingId = &xid
+		seq.Assign(ss)
+		require.NoError(t, w.WriteFrame(ss))
+		payloadA := []byte("alpha-data")
+		checksum := ComputeChecksum(payloadA)
+		chunk := NewChunk(reqId, sid, 0, payloadA, 0, checksum)
+		chunk.RoutingId = &xid
+		seq.Assign(chunk)
+		require.NoError(t, w.WriteFrame(chunk))
+		se := NewStreamEnd(reqId, sid, 1)
+		se.RoutingId = &xid
+		seq.Assign(se)
+		require.NoError(t, w.WriteFrame(se))
+		end := NewEnd(reqId, nil)
+		end.RoutingId = &xid
+		seq.Assign(end)
+		require.NoError(t, w.WriteFrame(end))
+
+		for {
+			f, err := recvCartridgeFrame(r)
+			if err != nil {
+				break
+			}
+			if f.FrameType == FrameTypeChunk {
+				respAlpha = append(respAlpha, f.Payload...)
+			}
+			if f.FrameType == FrameTypeEnd {
+				break
+			}
+		}
+
+		// Beta request
+		reqId2 := NewMessageIdRandom()
+		xid2 := NewMessageIdFromUint(2)
+		sid2 := NewMessageIdRandom().ToString()
+		req2 := NewReq(reqId2, `cap:in="media:void";beta;out="media:void"`, []byte{}, "text/plain")
+		req2.RoutingId = &xid2
+		seq.Assign(req2)
+		require.NoError(t, w.WriteFrame(req2))
+		ss2 := NewStreamStart(reqId2, sid2, "media:", nil)
+		ss2.RoutingId = &xid2
+		seq.Assign(ss2)
+		require.NoError(t, w.WriteFrame(ss2))
+		payloadB := []byte("beta-data")
+		checksum2 := ComputeChecksum(payloadB)
+		chunk2 := NewChunk(reqId2, sid2, 0, payloadB, 0, checksum2)
+		chunk2.RoutingId = &xid2
+		seq.Assign(chunk2)
+		require.NoError(t, w.WriteFrame(chunk2))
+		se2 := NewStreamEnd(reqId2, sid2, 1)
+		se2.RoutingId = &xid2
+		seq.Assign(se2)
+		require.NoError(t, w.WriteFrame(se2))
+		end2 := NewEnd(reqId2, nil)
+		end2.RoutingId = &xid2
+		seq.Assign(end2)
+		require.NoError(t, w.WriteFrame(end2))
+
+		for {
+			f, err := recvCartridgeFrame(r)
+			if err != nil {
+				break
+			}
+			if f.FrameType == FrameTypeChunk {
+				respBeta = append(respBeta, f.Payload...)
+			}
+			if f.FrameType == FrameTypeEnd {
+				break
+			}
+		}
+
+		engineWrite.Close()
+		engineRead.Close()
+	}()
+
+	host.Run(relayRead, relayWrite, nil)
+	relayRead.Close()
+	relayWrite.Close()
+	hostReadA.Close()
+	hostWriteA.Close()
+	hostReadB.Close()
+	hostWriteB.Close()
+	wg.Wait()
+
+	assert.Equal(t, []byte("from-alpha"), respAlpha, "Alpha cartridge must respond correctly after attach")
+	assert.Equal(t, []byte("from-beta"), respBeta, "Beta cartridge must respond correctly after attach")
 }
 
 // Helper functions

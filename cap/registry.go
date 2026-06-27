@@ -137,6 +137,19 @@ type FabricRegistry struct {
 	// flat-path mode. >= 1 ⇒ manifest-driven (alias resolution requires >= 1).
 	manifestVersion uint32
 	manifest        *media.Manifest
+	// offline, when true, blocks all network fetches. Cached caps remain
+	// accessible; uncached caps fail with a NetworkBlocked-style error.
+	// Mirrors Rust's offline_flag.
+	offline bool
+}
+
+// SetOffline toggles offline mode. When offline, fetchFromRegistry refuses to
+// make network requests; cached caps stay accessible via the in-memory cache.
+// Mirrors Rust's FabricRegistry::set_offline.
+func (r *FabricRegistry) SetOffline(offline bool) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	r.offline = offline
 }
 
 // NewFabricRegistry creates a new registry client
@@ -414,6 +427,16 @@ func (r *FabricRegistry) saveToCache(cap *Cap) error {
 }
 
 func (r *FabricRegistry) fetchFromRegistry(capUrn string) (*Cap, error) {
+	// Offline policy: refuse network fetches. Cached caps are served from the
+	// in-memory cache before this point; reaching here while offline means the
+	// cap is uncached. Mirrors Rust's offline_flag check in fetch_cap_from_registry.
+	r.mutex.RLock()
+	offline := r.offline
+	r.mutex.RUnlock()
+	if offline {
+		return nil, fmt.Errorf("Network access blocked by policy — cannot fetch cap '%s'", capUrn)
+	}
+
 	// Normalize the cap URN using the proper parser
 	normalizedUrn := capUrn
 	if parsed, err := urn.NewCapUrnFromString(capUrn); err == nil {

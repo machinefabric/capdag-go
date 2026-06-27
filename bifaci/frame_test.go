@@ -1988,3 +1988,85 @@ func Test460_reorder_buffer_err_frame(t *testing.T) {
 	assert.Equal(t, FrameTypeErr, r[0].FrameType)
 	assert.Equal(t, uint64(1), r[0].Seq)
 }
+
+// TEST902: Verify FNV-1a checksum handles empty data
+func Test902_compute_checksum_empty(t *testing.T) {
+	checksum := ComputeChecksum([]byte(""))
+	assert.Equal(t, uint64(0xcbf29ce484222325), checksum, "empty data produces FNV offset basis")
+}
+
+// TEST903: Verify CHUNK frame can store chunk_index and checksum fields
+func Test903_chunk_with_chunk_index_and_checksum(t *testing.T) {
+	uuidBytes := make([]byte, 16)
+	for i := range uuidBytes {
+		uuidBytes[i] = 1
+	}
+	id, err := NewMessageIdFromUuid(uuidBytes)
+	require.NoError(t, err)
+	streamId := "test-stream"
+	payload := []byte("chunk data")
+	checksum := ComputeChecksum(payload)
+
+	frame := NewChunk(id, streamId, 5, payload, 3, checksum)
+
+	assert.Equal(t, FrameTypeChunk, frame.FrameType)
+	assert.True(t, frame.Id.Equals(id))
+	require.NotNil(t, frame.StreamId)
+	assert.Equal(t, streamId, *frame.StreamId)
+	assert.Equal(t, uint64(5), frame.Seq)
+	require.NotNil(t, frame.ChunkIndex, "chunk_index should be set")
+	assert.Equal(t, uint64(3), *frame.ChunkIndex, "chunk_index should be set")
+	require.NotNil(t, frame.Checksum, "checksum should be set")
+	assert.Equal(t, checksum, *frame.Checksum, "checksum should be set")
+}
+
+// TEST904: Verify STREAM_END frame can store chunk_count field
+func Test904_stream_end_with_chunk_count(t *testing.T) {
+	uuidBytes := make([]byte, 16)
+	for i := range uuidBytes {
+		uuidBytes[i] = 1
+	}
+	id, err := NewMessageIdFromUuid(uuidBytes)
+	require.NoError(t, err)
+	streamId := "test-stream"
+
+	frame := NewStreamEnd(id, streamId, 42)
+
+	assert.Equal(t, FrameTypeStreamEnd, frame.FrameType)
+	assert.True(t, frame.Id.Equals(id))
+	require.NotNil(t, frame.StreamId)
+	assert.Equal(t, streamId, *frame.StreamId)
+	require.NotNil(t, frame.ChunkCount, "chunk_count should be set")
+	assert.Equal(t, uint64(42), *frame.ChunkCount, "chunk_count should be set")
+}
+
+// TEST6672: CBOR decode REJECTS STREAM_END frame missing chunk_count field
+func Test6672_cbor_rejects_stream_end_without_chunk_count(t *testing.T) {
+	reqId := NewMessageIdRandom()
+
+	// Create STREAM_END without chunk_count
+	frame := NewFrame(FrameTypeStreamEnd, reqId)
+	streamId := "s1"
+	frame.StreamId = &streamId
+	// chunk_count deliberately missing
+
+	encoded, err := EncodeFrame(frame)
+	require.NoError(t, err, "encoding should succeed")
+
+	// Decode should FAIL
+	_, decErr := DecodeFrame(encoded)
+	require.Error(t, decErr, "decode must reject STREAM_END without chunk_count")
+	msg := decErr.Error()
+	assert.True(t,
+		strings.Contains(msg, "chunk_count") || strings.Contains(msg, "STREAM_END"),
+		"error must mention missing chunk_count: %s", msg)
+}
+
+// TEST502: Keys module has constants for new fields
+func Test502_keys_module_new_field_constants(t *testing.T) {
+	assert.Equal(t, 13, keyRoutingId)
+	assert.Equal(t, 14, keyChunkIndex)
+	assert.Equal(t, 15, keyChunkCount)
+	assert.Equal(t, 16, keyChecksum)
+	assert.Equal(t, 17, keyIsSequence)
+}

@@ -1,10 +1,12 @@
 package planner
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TEST688: Tests is_multiple method correctly identifies multi-value cardinalities Verifies Single returns false while Sequence and AtLeastOne return true
@@ -142,6 +144,28 @@ func Test6632_pattern_string(t *testing.T) {
 	assert.Equal(t, "one_to_one", PatternOneToOne.String())
 	assert.Equal(t, "many_to_one", PatternManyToOne.String())
 	assert.Equal(t, "many_to_many", PatternManyToMany.String())
+}
+
+// TEST714: Tests InputCardinality serializes and deserializes correctly to/from JSON Verifies JSON round-trip preserves cardinality values
+func Test714_cardinality_serialization(t *testing.T) {
+	data, err := json.Marshal(CardinalitySingle)
+	require.NoError(t, err)
+	assert.Equal(t, `"single"`, string(data))
+
+	var deserialized InputCardinality
+	require.NoError(t, json.Unmarshal(data, &deserialized))
+	assert.Equal(t, CardinalitySingle, deserialized)
+}
+
+// TEST715: Tests CardinalityPattern serializes and deserializes correctly to/from JSON Verifies JSON round-trip preserves pattern values with snake_case formatting
+func Test715_pattern_serialization(t *testing.T) {
+	data, err := json.Marshal(PatternOneToMany)
+	require.NoError(t, err)
+	assert.Equal(t, `"one_to_many"`, string(data))
+
+	var deserialized CardinalityPattern
+	require.NoError(t, json.Unmarshal(data, &deserialized))
+	assert.Equal(t, PatternOneToMany, deserialized)
 }
 
 // TEST720: Tests InputStructure correctly identifies opaque media URNs Verifies that URNs without record marker are parsed as Opaque

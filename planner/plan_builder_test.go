@@ -1,6 +1,7 @@
 package planner
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 
@@ -340,4 +341,108 @@ func Test1104_is_dispatchable_rejects_non_dispatchable(t *testing.T) {
 
 	assert.False(t, provider.IsDispatchable(request),
 		"Provider missing required tag should not be dispatchable for request")
+}
+
+// TEST767: Tests ArgumentInfo struct serialization to JSON Verifies that argument metadata including resolution status and validation is correctly serialized
+func Test767_argument_info_serialization(t *testing.T) {
+	argInfo := &ArgumentInfo{
+		Name:         "width",
+		MediaUrn:     "media:integer",
+		Description:  "Width in pixels",
+		Resolution:   ResolutionHasDefault,
+		DefaultValue: 200,
+		IsRequired:   false,
+		IsSequence:   false,
+		Validation:   map[string]any{"min": 50, "max": 2000},
+	}
+
+	data, err := json.Marshal(argInfo)
+	require.NoError(t, err, "Should serialize")
+	assert.Contains(t, string(data), `"name":"width"`)
+	assert.Contains(t, string(data), `"resolution":"has_default"`)
+	assert.Contains(t, string(data), `"default_value":200`)
+}
+
+// TEST768: Tests PathArgumentRequirements structure for single-step execution paths Verifies that argument requirements are correctly organized by step with resolution information
+func Test768_path_argument_requirements_structure(t *testing.T) {
+	requirements := &PathArgumentRequirements{
+		SourceMediaUrn: "media:ext=pdf",
+		TargetMediaUrn: "media:ext=png;image",
+		Steps: []*StepArgumentRequirements{
+			{
+				CapUrn:    "cap:generate-thumbnail;in=pdf;out=png",
+				StepIndex: 0,
+				Title:     "Generate Thumbnail",
+				Arguments: []*ArgumentInfo{
+					{
+						Name:        "file_path",
+						MediaUrn:    "media:string",
+						Description: "Path to file",
+						Resolution:  ResolutionFromInputFile,
+						IsRequired:  true,
+						IsSequence:  false,
+					},
+				},
+				Slots:               []*ArgumentInfo{},
+				SupportedModelTypes: []string{},
+				DefaultModelSpec:    nil,
+			},
+		},
+		CanExecuteWithoutInput: true,
+	}
+
+	assert.True(t, requirements.CanExecuteWithoutInput)
+	assert.Equal(t, 1, len(requirements.Steps))
+	assert.Equal(t, 0, len(requirements.Steps[0].Slots))
+	assert.Equal(t, ResolutionFromInputFile, requirements.Steps[0].Arguments[0].Resolution)
+}
+
+// TEST769: Tests PathArgumentRequirements tracking of required user-input slots Verifies that arguments requiring user input are collected in slots and can_execute_without_input is false
+func Test769_path_with_required_slot(t *testing.T) {
+	requirements := &PathArgumentRequirements{
+		SourceMediaUrn: "media:text",
+		TargetMediaUrn: "media:translated",
+		Steps: []*StepArgumentRequirements{
+			{
+				CapUrn:    "cap:translate;in=text;out=translated",
+				StepIndex: 0,
+				Title:     "Translate",
+				Arguments: []*ArgumentInfo{
+					{
+						Name:        "file_path",
+						MediaUrn:    "media:string",
+						Description: "Path to file",
+						Resolution:  ResolutionFromInputFile,
+						IsRequired:  true,
+						IsSequence:  false,
+					},
+					{
+						Name:        "target_language",
+						MediaUrn:    "media:string",
+						Description: "Target language code",
+						Resolution:  ResolutionRequiresUserInput,
+						IsRequired:  true,
+						IsSequence:  false,
+					},
+				},
+				Slots: []*ArgumentInfo{
+					{
+						Name:        "target_language",
+						MediaUrn:    "media:string",
+						Description: "Target language code",
+						Resolution:  ResolutionRequiresUserInput,
+						IsRequired:  true,
+						IsSequence:  false,
+					},
+				},
+				SupportedModelTypes: []string{},
+				DefaultModelSpec:    nil,
+			},
+		},
+		CanExecuteWithoutInput: false,
+	}
+
+	assert.False(t, requirements.CanExecuteWithoutInput)
+	assert.Equal(t, 1, len(requirements.Steps[0].Slots))
+	assert.Equal(t, "target_language", requirements.Steps[0].Slots[0].Name)
 }

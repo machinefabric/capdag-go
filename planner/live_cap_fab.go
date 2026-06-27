@@ -21,12 +21,12 @@ const (
 
 // LiveMachinePlanEdge represents an edge in the live capability graph.
 type LiveMachinePlanEdge struct {
-	FromSpec        *urn.MediaUrn
-	ToSpec          *urn.MediaUrn
-	Type            LiveMachinePlanEdgeType
-	CapUrnVal       *urn.CapUrn
-	CapTitle        string
-	SpecificityVal  int
+	FromSpec         *urn.MediaUrn
+	ToSpec           *urn.MediaUrn
+	Type             LiveMachinePlanEdgeType
+	CapUrnVal        *urn.CapUrn
+	CapTitle         string
+	SpecificityVal   int
 	InputIsSequence  bool
 	OutputIsSequence bool
 }
@@ -82,7 +82,7 @@ type StrandStep struct {
 	CapUrnVal        *urn.CapUrn
 	StepTitle        string
 	SpecificityVal   int
-	MediaDef        *urn.MediaUrn
+	MediaDef         *urn.MediaUrn
 	InputIsSequence  bool
 	OutputIsSequence bool
 }
@@ -123,17 +123,17 @@ func (s *StrandStep) IsCap() bool {
 
 // Strand contains information about a complete capability chain path.
 type Strand struct {
-	Steps        []*StrandStep
+	Steps          []*StrandStep
 	SourceMediaUrn *urn.MediaUrn
 	TargetMediaUrn *urn.MediaUrn
-	TotalSteps   int
-	CapStepCount int
-	Description  string
+	TotalSteps     int
+	CapStepCount   int
+	Description    string
 }
 
 // ReachableTargetInfo contains information about a reachable target.
 type ReachableTargetInfo struct {
-	MediaDef     *urn.MediaUrn
+	MediaDef      *urn.MediaUrn
 	DisplayName   string
 	MinPathLength int
 	PathCount     int
@@ -171,20 +171,22 @@ func (PathFindingEventComplete) isPathFindingEvent() {}
 
 // LiveCapFab is a precomputed graph of capabilities for path finding.
 type LiveCapFab struct {
-	edges      []*LiveMachinePlanEdge
-	outgoing   map[string][]int
-	incoming   map[string][]int
-	nodes      map[string]bool
-	capToEdges map[string][]int
+	edges        []*LiveMachinePlanEdge
+	outgoing     map[string][]int
+	incoming     map[string][]int
+	nodes        map[string]bool
+	capToEdges   map[string][]int
+	bookendNodes map[string]bool
 }
 
 // NewLiveCapFab creates a new empty capability graph.
 func NewLiveCapFab() *LiveCapFab {
 	return &LiveCapFab{
-		outgoing:   make(map[string][]int),
-		incoming:   make(map[string][]int),
-		nodes:      make(map[string]bool),
-		capToEdges: make(map[string][]int),
+		outgoing:     make(map[string][]int),
+		incoming:     make(map[string][]int),
+		nodes:        make(map[string]bool),
+		capToEdges:   make(map[string][]int),
+		bookendNodes: make(map[string]bool),
 	}
 }
 
@@ -195,6 +197,7 @@ func (g *LiveCapFab) Clear() {
 	g.incoming = make(map[string][]int)
 	g.nodes = make(map[string]bool)
 	g.capToEdges = make(map[string][]int)
+	g.bookendNodes = make(map[string]bool)
 }
 
 // Stats returns (node_count, edge_count).
@@ -208,6 +211,67 @@ func (g *LiveCapFab) SyncFromCaps(caps []*cap.Cap) {
 	for _, c := range caps {
 		g.AddCap(c)
 	}
+}
+
+// refreshBookends recomputes the bookend node set as the intersection of the
+// graph's nodes and the supplied bookend media-URN set. Bookend URNs are keyed
+// by their canonical media-URN string. Mirrors Rust's LiveCapFab::refresh_bookends.
+func (g *LiveCapFab) refreshBookends(bookendUrns map[string]bool) {
+	g.bookendNodes = make(map[string]bool)
+	for node := range g.nodes {
+		if bookendUrns[node] {
+			g.bookendNodes[node] = true
+		}
+	}
+}
+
+// SyncFromCapUrns rebuilds the graph from a list of cap URN strings using the
+// registry to resolve each URN to its Cap definition.
+//
+// Caps are matched by equivalence (IsEquivalent): the cartridge's reported URN
+// must have an exact semantic match in the registry. Identity caps are skipped.
+// Unmatched URNs are dropped from this pass — a subsequent refresh picks them up
+// once the registry cache contains them.
+//
+// Mirrors Rust's LiveCapFab::sync_from_cap_urns. The Rust fallback to an
+// in-memory registry hydration path has no synchronous Go analog; Go's
+// FabricRegistry.GetCachedCaps already returns the full cached set, so the
+// equivalence lookup over that set is the complete match path.
+func (g *LiveCapFab) SyncFromCapUrns(capUrns []string, registry *cap.FabricRegistry, bookendUrns map[string]bool) {
+	g.Clear()
+
+	allCaps := registry.GetCachedCaps()
+
+	identityUrn, identityErr := urn.NewCapUrnFromString(standard.CapIdentity)
+
+	for _, capUrnStr := range capUrns {
+		capUrn, err := urn.NewCapUrnFromString(capUrnStr)
+		if err != nil {
+			// Cartridge reported an invalid cap URN — skip it.
+			continue
+		}
+
+		// Skip identity caps — they don't contribute to path finding.
+		if identityErr == nil && capUrn.IsEquivalent(identityUrn) {
+			continue
+		}
+
+		// Find the exact matching Cap in the registry using IsEquivalent.
+		var matchingCap *cap.Cap
+		for _, registryCap := range allCaps {
+			if capUrn.IsEquivalent(registryCap.Urn) {
+				matchingCap = registryCap
+				break
+			}
+		}
+
+		if matchingCap != nil {
+			g.AddCap(matchingCap)
+		}
+		// Unmatched URNs are dropped from this pass.
+	}
+
+	g.refreshBookends(bookendUrns)
 }
 
 // AddCap adds a capability as an edge in the graph.
@@ -378,7 +442,7 @@ func (g *LiveCapFab) GetReachableTargets(source *urn.MediaUrn, isSequence bool, 
 			}
 		} else {
 			visited[key] = &ReachableTargetInfo{
-				MediaDef:     item.urn,
+				MediaDef:      item.urn,
 				DisplayName:   key,
 				MinPathLength: item.depth,
 				PathCount:     1,
@@ -559,12 +623,12 @@ func (g *LiveCapFab) iddfsFind(
 					}
 				}
 				*results = append(*results, &Strand{
-					Steps:        steps,
+					Steps:          steps,
 					SourceMediaUrn: originalSource,
 					TargetMediaUrn: target,
-					TotalSteps:   len(steps),
-					CapStepCount: capCount,
-					Description:  strings.Join(titles, " → "),
+					TotalSteps:     len(steps),
+					CapStepCount:   capCount,
+					Description:    strings.Join(titles, " → "),
 				})
 			}
 		}
@@ -620,16 +684,16 @@ func edgeToStep(edge *LiveMachinePlanEdge) *StrandStep {
 		}
 	case EdgeTypeForEach:
 		return &StrandStep{
-			StepType:  StepTypeForEach,
-			FromSpec:  edge.FromSpec,
-			ToSpec:    edge.ToSpec,
+			StepType: StepTypeForEach,
+			FromSpec: edge.FromSpec,
+			ToSpec:   edge.ToSpec,
 			MediaDef: edge.FromSpec,
 		}
 	case EdgeTypeCollect:
 		return &StrandStep{
-			StepType:  StepTypeCollect,
-			FromSpec:  edge.FromSpec,
-			ToSpec:    edge.ToSpec,
+			StepType: StepTypeCollect,
+			FromSpec: edge.FromSpec,
+			ToSpec:   edge.ToSpec,
 			MediaDef: edge.FromSpec,
 		}
 	}

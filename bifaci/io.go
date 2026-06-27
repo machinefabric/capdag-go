@@ -7,6 +7,7 @@ import (
 	"io"
 
 	cbor2 "github.com/fxamacker/cbor/v2"
+	"github.com/machinefabric/capdag-go/standard"
 )
 
 // FrameReader reads length-prefixed CBOR frames from a stream
@@ -235,6 +236,145 @@ func HandshakeInitiate(reader *FrameReader, writer *FrameWriter) ([]byte, Limits
 	negotiated := NegotiateLimits(DefaultLimits(), cartridgeLimits)
 
 	return manifestData, negotiated, nil
+}
+
+// =============================================================================
+// IDENTITY VERIFICATION
+// =============================================================================
+
+// identityNonce returns the CBOR-encoded Text("bifaci") — a deterministic
+// 7-byte nonce for identity verification. (matches Rust identity_nonce)
+func identityNonce() []byte {
+	buf, err := cbor2.Marshal("bifaci")
+	if err != nil {
+		panic("BUG: failed to encode identity nonce")
+	}
+	return buf
+}
+
+// VerifyIdentity verifies a connection by invoking the identity capability.
+//
+// Sends a REQ with CAP_IDENTITY carrying the "bifaci" nonce with proper
+// XID and seq assignment, then verifies the response echoes it back unchanged.
+// This proves the entire protocol stack works end-to-end before the connection
+// is considered live.
+//
+// Must be called after handshake, before any other traffic.
+// (matches Rust verify_identity)
+func VerifyIdentity(reader *FrameReader, writer *FrameWriter) error {
+	nonce := identityNonce()
+	reqId := NewMessageIdRandom()
+	streamId := "identity-verify"
+	xid := NewMessageIdFromUint(0)
+	seq := NewSeqAssigner()
+
+	// Send REQ (empty payload) with XID + seq
+	req := NewReq(reqId, standard.CapIdentity, []byte{}, "application/cbor")
+	req.RoutingId = &xid
+	seq.Assign(req)
+	if err := writer.WriteFrame(req); err != nil {
+		return err
+	}
+
+	// Send request body: STREAM_START → CHUNK → STREAM_END → END
+	streamStart := NewStreamStart(reqId, streamId, "media:", nil)
+	streamStart.RoutingId = &xid
+	seq.Assign(streamStart)
+	if err := writer.WriteFrame(streamStart); err != nil {
+		return err
+	}
+
+	// CBOR-encode nonce before checksumming (protocol v2: CHUNK payload = CBOR-encoded data)
+	cborNonce, err := cbor2.Marshal(nonce)
+	if err != nil {
+		return fmt.Errorf("BUG: failed to CBOR-encode nonce: %w", err)
+	}
+	checksum := ComputeChecksum(cborNonce)
+	chunk := NewChunk(reqId, streamId, 0, cborNonce, 0, checksum)
+	chunk.RoutingId = &xid
+	seq.Assign(chunk)
+	if err := writer.WriteFrame(chunk); err != nil {
+		return err
+	}
+
+	streamEnd := NewStreamEnd(reqId, streamId, 1)
+	streamEnd.RoutingId = &xid
+	seq.Assign(streamEnd)
+	if err := writer.WriteFrame(streamEnd); err != nil {
+		return err
+	}
+
+	end := NewEnd(reqId, nil)
+	end.RoutingId = &xid
+	seq.Assign(end)
+	if err := writer.WriteFrame(end); err != nil {
+		return err
+	}
+
+	// Read response — expect STREAM_START → CHUNK(s) → STREAM_END → END
+	// Each CHUNK payload is CBOR-encoded (protocol v2), decode each and concatenate
+	var cborChunks [][]byte
+	for {
+		frame, err := reader.ReadFrame()
+		if err != nil {
+			if err == io.EOF {
+				return errors.New("Connection closed during identity verification")
+			}
+			return err
+		}
+
+		switch frame.FrameType {
+		case FrameTypeStreamStart:
+			// no-op
+		case FrameTypeChunk:
+			if frame.Payload != nil {
+				var decoded []byte
+				if err := cbor2.Unmarshal(frame.Payload, &decoded); err != nil {
+					return fmt.Errorf("Failed to decode CBOR chunk: %w", err)
+				}
+				cborChunks = append(cborChunks, decoded)
+			}
+		case FrameTypeStreamEnd:
+			// no-op
+		case FrameTypeEnd:
+			// Concatenate all decoded chunks
+			var accumulated []byte
+			for _, c := range cborChunks {
+				accumulated = append(accumulated, c...)
+			}
+			if !bytesEqual(accumulated, nonce) {
+				return fmt.Errorf(
+					"Identity verification failed: payload mismatch (expected %d bytes, got %d)",
+					len(nonce), len(accumulated),
+				)
+			}
+			return nil
+		case FrameTypeErr:
+			code := frame.ErrorCode()
+			if code == "" {
+				code = "UNKNOWN"
+			}
+			msg := frame.ErrorMessage()
+			if msg == "" {
+				msg = "no message"
+			}
+			return fmt.Errorf("Identity verification failed: [%s] %s", code, msg)
+		default:
+			return fmt.Errorf("Identity verification: unexpected frame type %v", frame.FrameType)
+		}
+	}
+}
+
+func bytesEqual(a, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // EncodeCBOR encodes Limits to CBOR

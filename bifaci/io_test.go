@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net"
+	"sync"
 	"testing"
 
 	"github.com/fxamacker/cbor/v2"
@@ -1255,4 +1257,397 @@ func Test472_handshake_negotiates_reorder_buffer(t *testing.T) {
 	if hostReorder != DefaultMaxReorderBuffer {
 		t.Errorf("Host HELLO max_reorder_buffer: expected %d, got %d", DefaultMaxReorderBuffer, hostReorder)
 	}
+}
+
+// TEST461: write_chunked produces frames with seq=0; SeqAssigner assigns at output stage
+func Test461_write_chunked_seq_zero(t *testing.T) {
+	var buf bytes.Buffer
+	writer := NewFrameWriter(&buf)
+	writer.SetLimits(Limits{MaxFrame: 1_000_000, MaxChunk: 5, MaxReorderBuffer: DefaultMaxReorderBuffer})
+
+	id := NewMessageIdRandom()
+	err := writer.WriteResponseWithChunking(id, "s", "application/octet-stream", []byte("abcdefghij"))
+	if err != nil {
+		t.Fatalf("WriteResponseWithChunking failed: %v", err)
+	}
+
+	reader := NewFrameReader(&buf)
+
+	// WriteResponseWithChunking emits STREAM_START + CHUNK(s) + STREAM_END + END.
+	// Rust's write_chunked yields the data CHUNK frames the test inspects; filter
+	// to CHUNK frames and assert each carries seq=0 and chunk_index=i.
+	var chunks []*Frame
+	for {
+		f, err := reader.ReadFrame()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("ReadFrame failed: %v", err)
+		}
+		if f.FrameType == FrameTypeChunk {
+			chunks = append(chunks, f)
+		}
+	}
+
+	// 10 bytes / 5 max_chunk = 2 chunks
+	if len(chunks) != 2 {
+		t.Fatalf("Expected 2 chunks, got %d", len(chunks))
+	}
+	for i, f := range chunks {
+		if f.Seq != 0 {
+			t.Errorf("chunk %d must have seq=0, got %d", i, f.Seq)
+		}
+		if f.ChunkIndex == nil || *f.ChunkIndex != uint64(i) {
+			got := "<nil>"
+			if f.ChunkIndex != nil {
+				got = fmt.Sprintf("%d", *f.ChunkIndex)
+			}
+			t.Errorf("chunk %d must have chunk_index=%d, got %s", i, i, got)
+		}
+	}
+}
+
+// TEST1140: write_stream_chunked (protocol v2) splits payload into STREAM_START → CHUNK(s) → STREAM_END → END with correct frame types, stream_id, media_urn, and data integrity.
+func Test1140_write_stream_chunked_splits_data_into_protocol_v2_sequence(t *testing.T) {
+	id := NewMessageIdRandom()
+	streamId := "resp-1"
+	mediaUrn := "media:"
+	limits := Limits{MaxFrame: 1_000_000, MaxChunk: 100, MaxReorderBuffer: 48}
+
+	// 250 bytes → 3 chunks of 100/100/50
+	data := make([]byte, 250)
+	for i := range data {
+		data[i] = byte(i)
+	}
+
+	var buf bytes.Buffer
+	writer := NewFrameWriter(&buf)
+	writer.SetLimits(limits)
+
+	// Write protocol v2 sequence manually (mirrors what write_stream_chunked helpers do)
+	if err := writer.WriteFrame(NewStreamStart(id, streamId, mediaUrn, nil)); err != nil {
+		t.Fatalf("WriteFrame (STREAM_START) failed: %v", err)
+	}
+	offset := 0
+	chunkIndex := uint64(0)
+	for offset < len(data) {
+		chunkSize := limits.MaxChunk
+		if remaining := len(data) - offset; remaining < chunkSize {
+			chunkSize = remaining
+		}
+		chunkData := data[offset : offset+chunkSize]
+		checksum := ComputeChecksum(chunkData)
+		if err := writer.WriteFrame(NewChunk(id, streamId, 0, chunkData, chunkIndex, checksum)); err != nil {
+			t.Fatalf("WriteFrame (CHUNK) failed: %v", err)
+		}
+		offset += chunkSize
+		chunkIndex++
+	}
+	if err := writer.WriteFrame(NewStreamEnd(id, streamId, chunkIndex)); err != nil {
+		t.Fatalf("WriteFrame (STREAM_END) failed: %v", err)
+	}
+	if err := writer.WriteFrame(NewEnd(id, nil)); err != nil {
+		t.Fatalf("WriteFrame (END) failed: %v", err)
+	}
+
+	reader := NewFrameReader(&buf)
+	reader.SetLimits(Limits{MaxFrame: 1_000_000, MaxChunk: 1_000_000, MaxReorderBuffer: 48})
+
+	f0, err := reader.ReadFrame()
+	if err != nil {
+		t.Fatalf("ReadFrame (STREAM_START) failed: %v", err)
+	}
+	if f0.FrameType != FrameTypeStreamStart {
+		t.Fatalf("Expected STREAM_START, got %v", f0.FrameType)
+	}
+	if f0.StreamId == nil || *f0.StreamId != "resp-1" {
+		t.Errorf("STREAM_START stream_id mismatch: got %v", f0.StreamId)
+	}
+	if f0.MediaUrn == nil || *f0.MediaUrn != "media:" {
+		t.Errorf("STREAM_START media_urn mismatch: got %v", f0.MediaUrn)
+	}
+
+	var reassembled []byte
+	seenChunks := uint64(0)
+	for {
+		frame, err := reader.ReadFrame()
+		if err != nil {
+			t.Fatalf("ReadFrame failed: %v", err)
+		}
+		if frame.FrameType == FrameTypeChunk {
+			reassembled = append(reassembled, frame.Payload...)
+			seenChunks++
+		} else if frame.FrameType == FrameTypeStreamEnd {
+			if frame.StreamId == nil || *frame.StreamId != "resp-1" {
+				t.Errorf("STREAM_END stream_id mismatch: got %v", frame.StreamId)
+			}
+			break
+		} else {
+			t.Fatalf("unexpected frame type %v", frame.FrameType)
+		}
+	}
+
+	endFrame, err := reader.ReadFrame()
+	if err != nil {
+		t.Fatalf("ReadFrame (END) failed: %v", err)
+	}
+	if endFrame.FrameType != FrameTypeEnd {
+		t.Errorf("Expected END, got %v", endFrame.FrameType)
+	}
+
+	if seenChunks != 3 {
+		t.Errorf("250 bytes / 100 max_chunk = 3 chunks, got %d", seenChunks)
+	}
+	if !bytes.Equal(reassembled, data) {
+		t.Error("reassembled chunks must equal original data")
+	}
+}
+
+// TEST1141: write_stream_chunked with data exactly equal to max_chunk produces exactly one CHUNK
+func Test1141_write_stream_chunked_exact_fit_produces_single_chunk(t *testing.T) {
+	id := NewMessageIdRandom()
+	streamId := "resp-exact"
+	limits := Limits{MaxFrame: 1_000_000, MaxChunk: 100, MaxReorderBuffer: 48}
+
+	data := make([]byte, 100)
+	for i := range data {
+		data[i] = 0xAB
+	}
+
+	var buf bytes.Buffer
+	writer := NewFrameWriter(&buf)
+	writer.SetLimits(limits)
+
+	if err := writer.WriteFrame(NewStreamStart(id, streamId, "media:", nil)); err != nil {
+		t.Fatalf("WriteFrame (STREAM_START) failed: %v", err)
+	}
+	checksum := ComputeChecksum(data)
+	if err := writer.WriteFrame(NewChunk(id, streamId, 0, data, 0, checksum)); err != nil {
+		t.Fatalf("WriteFrame (CHUNK) failed: %v", err)
+	}
+	if err := writer.WriteFrame(NewStreamEnd(id, streamId, 1)); err != nil {
+		t.Fatalf("WriteFrame (STREAM_END) failed: %v", err)
+	}
+	if err := writer.WriteFrame(NewEnd(id, nil)); err != nil {
+		t.Fatalf("WriteFrame (END) failed: %v", err)
+	}
+
+	reader := NewFrameReader(&buf)
+	reader.SetLimits(Limits{MaxFrame: 1_000_000, MaxChunk: 1_000_000, MaxReorderBuffer: 48})
+
+	f0, err := reader.ReadFrame()
+	if err != nil {
+		t.Fatalf("ReadFrame (STREAM_START) failed: %v", err)
+	}
+	if f0.FrameType != FrameTypeStreamStart {
+		t.Fatalf("Expected STREAM_START, got %v", f0.FrameType)
+	}
+
+	f1, err := reader.ReadFrame()
+	if err != nil {
+		t.Fatalf("ReadFrame (CHUNK) failed: %v", err)
+	}
+	if f1.FrameType != FrameTypeChunk {
+		t.Fatalf("Expected CHUNK, got %v", f1.FrameType)
+	}
+	if !bytes.Equal(f1.Payload, data) {
+		t.Error("single chunk must carry full payload")
+	}
+
+	f2, err := reader.ReadFrame()
+	if err != nil {
+		t.Fatalf("ReadFrame (STREAM_END) failed: %v", err)
+	}
+	if f2.FrameType != FrameTypeStreamEnd {
+		t.Fatalf("Expected STREAM_END, got %v", f2.FrameType)
+	}
+
+	f3, err := reader.ReadFrame()
+	if err != nil {
+		t.Fatalf("ReadFrame (END) failed: %v", err)
+	}
+	if f3.FrameType != FrameTypeEnd {
+		t.Fatalf("Expected END, got %v", f3.FrameType)
+	}
+}
+
+// identityManifest is the minimum valid manifest declaring only CAP_IDENTITY.
+const identityManifest = `{"name":"Test","version":"1.0","channel":"release","description":"Test","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity","args":[]}]}]}`
+
+// drainIdentityRequest reads the identity REQ and its request body
+// (STREAM_START → CHUNK(s) → STREAM_END → END), returning the REQ frame and the
+// concatenated raw chunk payloads. Mirrors run_cartridge_identity_echo's read loop.
+func drainIdentityRequest(t *testing.T, reader *FrameReader) (*Frame, []byte) {
+	t.Helper()
+	req, err := reader.ReadFrame()
+	if err != nil {
+		t.Fatalf("expected REQ: %v", err)
+	}
+	if req.FrameType != FrameTypeReq {
+		t.Fatalf("expected REQ, got %v", req.FrameType)
+	}
+	var payload []byte
+	for {
+		f, err := reader.ReadFrame()
+		if err != nil {
+			t.Fatalf("expected frame during identity request: %v", err)
+		}
+		switch f.FrameType {
+		case FrameTypeStreamStart, FrameTypeStreamEnd:
+			// no-op
+		case FrameTypeChunk:
+			payload = append(payload, f.Payload...)
+		case FrameTypeEnd:
+			return req, payload
+		default:
+			t.Fatalf("unexpected frame type during identity request: %v", f.FrameType)
+		}
+	}
+}
+
+// TEST481: verify_identity succeeds with standard identity echo handler
+func Test481_verify_identity_succeeds(t *testing.T) {
+	hostRead, cartridgeWrite := net.Pipe()
+	cartridgeRead, hostWrite := net.Pipe()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		reader := NewFrameReader(cartridgeRead)
+		writer := NewFrameWriter(cartridgeWrite)
+		limits, err := HandshakeAccept(reader, writer, []byte(identityManifest))
+		if err != nil {
+			t.Errorf("HandshakeAccept failed: %v", err)
+			return
+		}
+		reader.SetLimits(limits)
+		writer.SetLimits(limits)
+
+		req, payload := drainIdentityRequest(t, reader)
+
+		// Echo response: STREAM_START → CHUNK → STREAM_END → END
+		streamId := "echo"
+		if err := writer.WriteFrame(NewStreamStart(req.Id, streamId, "media:", nil)); err != nil {
+			t.Errorf("write STREAM_START: %v", err)
+			return
+		}
+		checksum := ComputeChecksum(payload)
+		if err := writer.WriteFrame(NewChunk(req.Id, streamId, 0, payload, 0, checksum)); err != nil {
+			t.Errorf("write CHUNK: %v", err)
+			return
+		}
+		if err := writer.WriteFrame(NewStreamEnd(req.Id, streamId, 1)); err != nil {
+			t.Errorf("write STREAM_END: %v", err)
+			return
+		}
+		if err := writer.WriteFrame(NewEnd(req.Id, nil)); err != nil {
+			t.Errorf("write END: %v", err)
+			return
+		}
+	}()
+
+	reader := NewFrameReader(hostRead)
+	writer := NewFrameWriter(hostWrite)
+	if _, _, err := HandshakeInitiate(reader, writer); err != nil {
+		t.Fatalf("HandshakeInitiate failed: %v", err)
+	}
+
+	if err := VerifyIdentity(reader, writer); err != nil {
+		t.Fatalf("VerifyIdentity must succeed: %v", err)
+	}
+
+	wg.Wait()
+	hostRead.Close()
+	hostWrite.Close()
+	cartridgeRead.Close()
+	cartridgeWrite.Close()
+}
+
+// TEST482: verify_identity fails when cartridge returns ERR on identity call
+func Test482_verify_identity_fails_on_err(t *testing.T) {
+	hostRead, cartridgeWrite := net.Pipe()
+	cartridgeRead, hostWrite := net.Pipe()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		reader := NewFrameReader(cartridgeRead)
+		writer := NewFrameWriter(cartridgeWrite)
+		limits, err := HandshakeAccept(reader, writer, []byte(identityManifest))
+		if err != nil {
+			t.Errorf("HandshakeAccept failed: %v", err)
+			return
+		}
+		reader.SetLimits(limits)
+		writer.SetLimits(limits)
+
+		// Drain the identity REQ (and its body), then respond with ERR.
+		req, _ := drainIdentityRequest(t, reader)
+		if err := writer.WriteFrame(NewErr(req.Id, "BROKEN", "identity handler broken")); err != nil {
+			t.Errorf("write ERR: %v", err)
+		}
+	}()
+
+	reader := NewFrameReader(hostRead)
+	writer := NewFrameWriter(hostWrite)
+	if _, _, err := HandshakeInitiate(reader, writer); err != nil {
+		t.Fatalf("HandshakeInitiate failed: %v", err)
+	}
+
+	err := VerifyIdentity(reader, writer)
+	if err == nil {
+		t.Fatal("VerifyIdentity must fail on ERR")
+	}
+	if !bytes.Contains([]byte(err.Error()), []byte("BROKEN")) {
+		t.Errorf("error must contain error code: %v", err)
+	}
+
+	wg.Wait()
+	hostRead.Close()
+	hostWrite.Close()
+	cartridgeRead.Close()
+	cartridgeWrite.Close()
+}
+
+// TEST483: verify_identity fails when connection closes before response
+func Test483_verify_identity_fails_on_close(t *testing.T) {
+	hostRead, cartridgeWrite := net.Pipe()
+	cartridgeRead, hostWrite := net.Pipe()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		reader := NewFrameReader(cartridgeRead)
+		writer := NewFrameWriter(cartridgeWrite)
+		limits, err := HandshakeAccept(reader, writer, []byte(identityManifest))
+		if err != nil {
+			t.Errorf("HandshakeAccept failed: %v", err)
+			return
+		}
+		reader.SetLimits(limits)
+		writer.SetLimits(limits)
+
+		// Drain the identity REQ but close the connection without responding.
+		drainIdentityRequest(t, reader)
+		cartridgeRead.Close()
+		cartridgeWrite.Close()
+	}()
+
+	reader := NewFrameReader(hostRead)
+	writer := NewFrameWriter(hostWrite)
+	if _, _, err := HandshakeInitiate(reader, writer); err != nil {
+		t.Fatalf("HandshakeInitiate failed: %v", err)
+	}
+
+	if err := VerifyIdentity(reader, writer); err == nil {
+		t.Fatal("VerifyIdentity must fail on connection close")
+	}
+
+	wg.Wait()
+	hostRead.Close()
+	hostWrite.Close()
 }

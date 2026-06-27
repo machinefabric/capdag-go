@@ -282,7 +282,7 @@ func NewCartridgeRuntimeWithManifest(manifest *CapManifest) (*CartridgeRuntime, 
 	if !hasIdentity {
 		return nil, fmt.Errorf(
 			"manifest validation failed - cartridge MUST declare CAP_IDENTITY (cap:effect=none). " +
-			"All cartridges must explicitly declare capabilities, no implicit fallbacks allowed",
+				"All cartridges must explicitly declare capabilities, no implicit fallbacks allowed",
 		)
 	}
 
@@ -485,7 +485,7 @@ func (pr *CartridgeRuntime) FindHandler(capUrn string) HandlerFunc {
 	requestSpecificity := requestUrn.Specificity()
 
 	type handlerMatch struct {
-		handler       HandlerFunc
+		handler        HandlerFunc
 		signedDistance int
 	}
 	var matches []handlerMatch

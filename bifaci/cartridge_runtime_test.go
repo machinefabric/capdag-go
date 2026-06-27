@@ -19,7 +19,7 @@ import (
 	"github.com/machinefabric/capdag-go/urn"
 )
 
-const testManifest = `{"name":"TestCartridge","version":"1.0.0","channel":"release","description":"Test cartridge","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity"},{"urn":"cap:in=\"media:void\";test;out=\"media:void\"","title":"Test","command":"test"}]}]}`
+const testManifest = `{"name":"TestCartridge","version":"1.0.0","channel":"release","registry_url":null,"description":"Test cartridge","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity"},{"urn":"cap:in=\"media:void\";test;out=\"media:void\"","title":"Test","command":"test"}]}]}`
 
 // Mock emitter that captures emitted data for testing
 type mockStreamEmitter struct {
@@ -3368,5 +3368,438 @@ func Test677_base_urn_does_not_match_full_urn_in_find_stream(t *testing.T) {
 	found, _ := FindStream(streams, fullUrn)
 	if found != nil {
 		t.Fatalf("Base URN %q must NOT match full URN %q — is_equivalent requires exact tag set", baseUrn, fullUrn)
+	}
+}
+
+// TEST478: CartridgeRuntime auto-registers identity and discard handlers on construction
+func Test478_auto_registers_identity_handler(t *testing.T) {
+	runtime, err := NewCartridgeRuntime([]byte(testManifest))
+	if err != nil {
+		t.Fatalf("Failed to create runtime: %v", err)
+	}
+
+	// Identity handler must be registered at exact CAP_IDENTITY URN
+	if runtime.FindHandler(standard.CapIdentity) == nil {
+		t.Fatal("CartridgeRuntime must auto-register identity handler")
+	}
+
+	// Discard handler must be registered at exact CAP_DISCARD URN
+	if runtime.FindHandler(standard.CapDiscard) == nil {
+		t.Fatal("CartridgeRuntime must auto-register discard handler")
+	}
+
+	// Standard handlers must NOT match arbitrary specific requests
+	// (request is pattern, registered cap is instance — broad caps don't
+	// satisfy specific patterns).
+	if runtime.FindHandler(`cap:in="media:void";nonexistent;out="media:void"`) != nil {
+		t.Fatal("Standard handlers must not catch arbitrary specific requests")
+	}
+}
+
+// TEST479: Custom identity Op overrides auto-registered default
+func Test479_custom_identity_overrides_default(t *testing.T) {
+	runtime, err := NewCartridgeRuntime([]byte(testManifest))
+	if err != nil {
+		t.Fatalf("Failed to create runtime: %v", err)
+	}
+
+	// Auto-registered identity handler must exist
+	if runtime.FindHandler(standard.CapIdentity) == nil {
+		t.Fatal("Auto-registered identity must exist before override")
+	}
+
+	// Count handlers before override
+	runtime.mu.RLock()
+	handlersBefore := len(runtime.handlers)
+	runtime.mu.RUnlock()
+
+	// Override identity with a custom handler (always fails when invoked, to
+	// prove it's the custom one).
+	runtime.Register(standard.CapIdentity, func(frames <-chan Frame, emitter StreamEmitter, peer PeerInvoker) error {
+		for range frames {
+		}
+		return fmt.Errorf("custom identity")
+	})
+
+	// Handler count must not change (map insert replaces, doesn't add).
+	runtime.mu.RLock()
+	handlersAfter := len(runtime.handlers)
+	runtime.mu.RUnlock()
+	if handlersAfter != handlersBefore {
+		t.Errorf("Overriding identity must replace, not add: before=%d after=%d", handlersBefore, handlersAfter)
+	}
+
+	// The handler at CAP_IDENTITY must still be findable.
+	if runtime.FindHandler(standard.CapIdentity) == nil {
+		t.Fatal("Identity handler must be findable after override")
+	}
+
+	// Discard was NOT affected by the override.
+	if runtime.FindHandler(standard.CapDiscard) == nil {
+		t.Fatal("Discard handler must still be present after overriding identity")
+	}
+}
+
+// =========================================================================
+// Stream Abstractions Tests (input frame streams, output emitter)
+//
+// The Go mirror models a cartridge's input as a <-chan Frame carrying
+// STREAM_START / CHUNK(s) / STREAM_END groups (one per argument) followed
+// by a terminal END, and models output through the StreamEmitter that
+// writes those same frame types. These tests port the Rust InputStream /
+// InputPackage / OutputStream behaviour onto that frame model.
+// =========================================================================
+
+// chunkFramesForStream builds the STREAM_START → CHUNK(s) → STREAM_END frame
+// group for a single named stream. Each chunk value is CBOR-encoded exactly
+// as the wire carries it. No END frame — callers concatenate groups then
+// append a single END.
+func chunkFramesForStream(requestID MessageId, streamID, mediaUrn string, chunkValues []interface{}) []Frame {
+	frames := []Frame{*NewStreamStart(requestID, streamID, mediaUrn, nil)}
+	for i, v := range chunkValues {
+		cborValue, err := cborlib.Marshal(v)
+		if err != nil {
+			panic(fmt.Sprintf("failed to encode chunk: %v", err))
+		}
+		checksum := ComputeChecksum(cborValue)
+		frames = append(frames, *NewChunk(requestID, streamID, uint64(i), cborValue, uint64(i), checksum))
+	}
+	frames = append(frames, *NewStreamEnd(requestID, streamID, uint64(len(chunkValues))))
+	return frames
+}
+
+// singleStreamFrames builds the full frame slice (one stream group + END)
+// for a one-argument request, the exact shape a handler receives.
+func singleStreamFrames(mediaUrn string, chunkValues []interface{}) []Frame {
+	requestID := NewMessageIdDefault()
+	frames := chunkFramesForStream(requestID, "arg-0", mediaUrn, chunkValues)
+	return append(frames, *NewEnd(requestID, nil))
+}
+
+// TEST529: InputStream recv yields chunks in order
+func Test529_input_stream_recv_order(t *testing.T) {
+	chunks := []interface{}{[]byte("chunk1"), []byte("chunk2"), []byte("chunk3")}
+	frames := singleStreamFrames("media:test", chunks)
+
+	var collected [][]byte
+	for i := range frames {
+		if frames[i].FrameType != FrameTypeChunk {
+			continue
+		}
+		decoded, err := DecodeChunkPayload(frames[i].Payload)
+		if err != nil {
+			t.Fatalf("CHUNK must decode: %v", err)
+		}
+		collected = append(collected, decoded)
+	}
+	if len(collected) != 3 {
+		t.Fatalf("Expected 3 chunks, got %d", len(collected))
+	}
+	if string(collected[0]) != "chunk1" || string(collected[1]) != "chunk2" || string(collected[2]) != "chunk3" {
+		t.Errorf("Chunks out of order: %q %q %q", collected[0], collected[1], collected[2])
+	}
+}
+
+// TEST530: InputStream::collect_bytes concatenates byte chunks
+func Test530_input_stream_collect_bytes(t *testing.T) {
+	chunks := []interface{}{[]byte("hello"), []byte(" "), []byte("world")}
+	frames := singleStreamFrames("media:", chunks)
+
+	streams := extractStreamsFromFrames(t, frames)
+	if len(streams) != 1 {
+		t.Fatalf("Expected 1 stream, got %d", len(streams))
+	}
+	if string(streams[0].Data) != "hello world" {
+		t.Errorf("Expected 'hello world', got %q", string(streams[0].Data))
+	}
+}
+
+// TEST531: InputStream::collect_bytes handles text chunks
+func Test531_input_stream_collect_bytes_text(t *testing.T) {
+	chunks := []interface{}{"hello", " world"}
+	frames := singleStreamFrames("media:text", chunks)
+
+	streams := extractStreamsFromFrames(t, frames)
+	if len(streams) != 1 {
+		t.Fatalf("Expected 1 stream, got %d", len(streams))
+	}
+	if string(streams[0].Data) != "hello world" {
+		t.Errorf("Expected 'hello world', got %q", string(streams[0].Data))
+	}
+}
+
+// TEST532: InputStream empty stream produces empty bytes
+func Test532_input_stream_empty(t *testing.T) {
+	frames := singleStreamFrames("media:void", []interface{}{})
+
+	streams := extractStreamsFromFrames(t, frames)
+	if len(streams) != 1 {
+		t.Fatalf("Expected 1 (empty) stream, got %d", len(streams))
+	}
+	if len(streams[0].Data) != 0 {
+		t.Errorf("Expected empty bytes, got %d bytes", len(streams[0].Data))
+	}
+}
+
+// TEST533: InputStream propagates errors
+func Test533_input_stream_error_propagation(t *testing.T) {
+	// A CHUNK whose checksum does not match its payload is a corrupted stream;
+	// the integrity check (the same VerifyChunkChecksum the runtime applies on
+	// every incoming CHUNK) must surface it as an error rather than silently
+	// accept it.
+	requestID := NewMessageIdDefault()
+	goodValue, _ := cborlib.Marshal([]byte("data"))
+	badValue, _ := cborlib.Marshal([]byte("more"))
+	frames := []Frame{
+		*NewStreamStart(requestID, "arg-0", "media:test", nil),
+		*NewChunk(requestID, "arg-0", 0, goodValue, 0, ComputeChecksum(goodValue)),
+		// Corrupt chunk: checksum deliberately wrong.
+		*NewChunk(requestID, "arg-0", 1, badValue, 1, ComputeChecksum(badValue)+1),
+		*NewStreamEnd(requestID, "arg-0", 2),
+		*NewEnd(requestID, nil),
+	}
+
+	sawError := false
+	for i := range frames {
+		if frames[i].FrameType == FrameTypeChunk {
+			if err := VerifyChunkChecksum(&frames[i]); err != nil {
+				sawError = true
+			}
+		}
+	}
+	if !sawError {
+		t.Fatal("error must propagate from corrupted chunk")
+	}
+}
+
+// TEST534: InputStream::media_urn returns correct URN
+func Test534_input_stream_media_urn(t *testing.T) {
+	frames := singleStreamFrames("media:image;format=png", []interface{}{[]byte("data")})
+
+	var streamStartUrn string
+	found := false
+	for i := range frames {
+		if frames[i].FrameType == FrameTypeStreamStart {
+			if frames[i].MediaUrn != nil {
+				streamStartUrn = *frames[i].MediaUrn
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatal("must have STREAM_START carrying media URN")
+	}
+	if streamStartUrn != "media:image;format=png" {
+		t.Errorf("Expected 'media:image;format=png', got %q", streamStartUrn)
+	}
+}
+
+// TEST535: InputPackage recv yields streams
+func Test535_input_package_iteration(t *testing.T) {
+	requestID := NewMessageIdDefault()
+	var frames []Frame
+	for i := 0; i < 3; i++ {
+		group := chunkFramesForStream(requestID,
+			fmt.Sprintf("arg-%d", i),
+			fmt.Sprintf("media:stream%d", i),
+			[]interface{}{[]byte(fmt.Sprintf("stream%d", i))})
+		frames = append(frames, group...)
+	}
+	frames = append(frames, *NewEnd(requestID, nil))
+
+	streams := extractStreamsFromFrames(t, frames)
+	if len(streams) != 3 {
+		t.Fatalf("must yield 3 streams, got %d", len(streams))
+	}
+	for i, s := range streams {
+		expected := fmt.Sprintf("media:stream%d", i)
+		if s.MediaUrn != expected {
+			t.Errorf("stream %d: expected media %q, got %q", i, expected, s.MediaUrn)
+		}
+	}
+}
+
+// TEST536: InputPackage::collect_all_bytes aggregates all streams
+func Test536_input_package_collect_all_bytes(t *testing.T) {
+	requestID := NewMessageIdDefault()
+	var frames []Frame
+	frames = append(frames, chunkFramesForStream(requestID, "arg-0", "media:s1", []interface{}{[]byte("hello")})...)
+	frames = append(frames, chunkFramesForStream(requestID, "arg-1", "media:s2", []interface{}{[]byte(" world")})...)
+	frames = append(frames, *NewEnd(requestID, nil))
+
+	streams := extractStreamsFromFrames(t, frames)
+	var allBytes []byte
+	for _, s := range streams {
+		allBytes = append(allBytes, s.Data...)
+	}
+	if string(allBytes) != "hello world" {
+		t.Errorf("Expected 'hello world', got %q", string(allBytes))
+	}
+}
+
+// TEST537: InputPackage empty package produces empty bytes
+func Test537_input_package_empty(t *testing.T) {
+	requestID := NewMessageIdDefault()
+	frames := []Frame{*NewEnd(requestID, nil)}
+
+	streams := extractStreamsFromFrames(t, frames)
+	var allBytes []byte
+	for _, s := range streams {
+		allBytes = append(allBytes, s.Data...)
+	}
+	if len(allBytes) != 0 {
+		t.Errorf("empty package must produce empty bytes, got %d", len(allBytes))
+	}
+}
+
+// TEST538: InputPackage propagates stream errors
+func Test538_input_package_error_propagation(t *testing.T) {
+	// A multi-stream input where the second stream carries a corrupted chunk:
+	// draining the package via the integrity-checking collector must fail.
+	requestID := NewMessageIdDefault()
+	ch := make(chan Frame, 16)
+	good, _ := cborlib.Marshal([]byte("data"))
+	// Good stream.
+	ch <- *NewStreamStart(requestID, "arg-0", "media:good", nil)
+	ch <- *NewChunk(requestID, "arg-0", 0, good, 0, ComputeChecksum(good))
+	ch <- *NewStreamEnd(requestID, "arg-0", 1)
+	// Bad stream: corrupted checksum.
+	bad, _ := cborlib.Marshal([]byte("oops"))
+	ch <- *NewStreamStart(requestID, "arg-1", "media:bad", nil)
+	ch <- *NewChunk(requestID, "arg-1", 0, bad, 0, ComputeChecksum(bad)+7)
+	ch <- *NewStreamEnd(requestID, "arg-1", 1)
+	ch <- *NewEnd(requestID, nil)
+	close(ch)
+
+	sawError := false
+	for frame := range ch {
+		if frame.FrameType == FrameTypeChunk {
+			if err := VerifyChunkChecksum(&frame); err != nil {
+				sawError = true
+			}
+		}
+	}
+	if !sawError {
+		t.Fatal("error must propagate from the corrupted stream")
+	}
+}
+
+// outputEmitterCapture wires a threadSafeEmitter to an in-memory buffer and
+// reads the frames it produced back out. This is the Go OutputStream: it
+// sends STREAM_START on first emit, CHUNK(s) per emit, and STREAM_END + END
+// on Finalize.
+func outputEmitterCapture(t *testing.T, streamID, mediaUrn string, maxChunk int, emit func(e *threadSafeEmitter)) []Frame {
+	t.Helper()
+	var buf bytes.Buffer
+	writer := NewFrameWriter(&buf)
+	syncWriter := &syncFrameWriter{writer: writer, seqAssigner: NewSeqAssigner()}
+	emitter := newThreadSafeEmitter(syncWriter, NewMessageIdRandom(), nil, streamID, mediaUrn, maxChunk)
+	emit(emitter)
+	emitter.Finalize()
+
+	reader := NewFrameReader(bytes.NewReader(buf.Bytes()))
+	var frames []Frame
+	for {
+		frame, err := reader.ReadFrame()
+		if err != nil {
+			break
+		}
+		frames = append(frames, *frame)
+	}
+	return frames
+}
+
+// TEST539: OutputStream sends STREAM_START on first write
+func Test539_output_stream_sends_stream_start(t *testing.T) {
+	frames := outputEmitterCapture(t, "stream-1", "media:test", 256000, func(e *threadSafeEmitter) {
+		if err := e.EmitCbor([]byte("test")); err != nil {
+			t.Fatalf("emit must succeed: %v", err)
+		}
+	})
+
+	if len(frames) < 1 {
+		t.Fatal("must send at least STREAM_START")
+	}
+	if frames[0].FrameType != FrameTypeStreamStart {
+		t.Errorf("first frame must be STREAM_START, got %v", frames[0].FrameType)
+	}
+	if frames[0].StreamId == nil || *frames[0].StreamId != "stream-1" {
+		t.Errorf("STREAM_START must carry stream_id 'stream-1', got %v", frames[0].StreamId)
+	}
+}
+
+// TEST540: OutputStream::close sends STREAM_END with correct chunk_count
+func Test540_output_stream_close_sends_stream_end(t *testing.T) {
+	frames := outputEmitterCapture(t, "stream-1", "media:test", 256000, func(e *threadSafeEmitter) {
+		_ = e.EmitCbor([]byte("chunk1"))
+		_ = e.EmitCbor([]byte("chunk2"))
+		_ = e.EmitCbor([]byte("chunk3"))
+	})
+
+	var streamEnd *Frame
+	for i := range frames {
+		if frames[i].FrameType == FrameTypeStreamEnd {
+			streamEnd = &frames[i]
+			break
+		}
+	}
+	if streamEnd == nil {
+		t.Fatal("must have STREAM_END")
+	}
+	if streamEnd.ChunkCount == nil || *streamEnd.ChunkCount != 3 {
+		t.Errorf("chunk_count must be 3, got %v", streamEnd.ChunkCount)
+	}
+}
+
+// TEST541: OutputStream chunks large data correctly
+func Test541_output_stream_chunks_large_data(t *testing.T) {
+	// 250 bytes with a 100-byte max chunk → 3 chunks (100, 100, 50).
+	largeData := make([]byte, 250)
+	for i := range largeData {
+		largeData[i] = 0xAA
+	}
+	frames := outputEmitterCapture(t, "stream-1", "media:", 100, func(e *threadSafeEmitter) {
+		if err := e.EmitCbor(largeData); err != nil {
+			t.Fatalf("emit must succeed: %v", err)
+		}
+	})
+
+	chunkCount := 0
+	for i := range frames {
+		if frames[i].FrameType == FrameTypeChunk {
+			chunkCount++
+		}
+	}
+	if chunkCount < 3 {
+		t.Errorf("large data must be chunked (got %d chunks)", chunkCount)
+	}
+}
+
+// TEST542: OutputStream empty stream sends STREAM_START and STREAM_END only
+func Test542_output_stream_empty(t *testing.T) {
+	frames := outputEmitterCapture(t, "stream-1", "media:void", 256000, func(e *threadSafeEmitter) {
+		// Emit nothing.
+	})
+
+	sawStart, sawEnd := false, false
+	chunkCount := 0
+	for i := range frames {
+		switch frames[i].FrameType {
+		case FrameTypeStreamStart:
+			sawStart = true
+		case FrameTypeStreamEnd:
+			sawEnd = true
+		case FrameTypeChunk:
+			chunkCount++
+		}
+	}
+	if !sawStart {
+		t.Error("empty stream must still send STREAM_START")
+	}
+	if !sawEnd {
+		t.Error("empty stream must send STREAM_END")
+	}
+	if chunkCount != 0 {
+		t.Errorf("empty stream must have zero chunks, got %d", chunkCount)
 	}
 }
