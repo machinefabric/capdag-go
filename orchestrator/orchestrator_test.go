@@ -151,9 +151,9 @@ func Test1161_simple_linear_chain_conversion(t *testing.T) {
 	}
 }
 
-// TEST770: PlanToResolvedGraph rejects plans containing ForEach nodes
+// TEST6648: PlanToResolvedGraph rejects plans containing ForEach nodes
 // Verifies that plans requiring decomposition (ForEach) are rejected before conversion
-func Test770_rejects_foreach(t *testing.T) {
+func Test6648_rejects_foreach(t *testing.T) {
 	registry := buildTestRegistry(t, []string{
 		"cap:in=media:pdf;disbind;out=media:pdf-page",
 		"cap:in=media:pdf-page;process;out=media:text",
@@ -314,10 +314,10 @@ func Test1257_parse_two_step_chain(t *testing.T) {
 	}
 }
 
-// TEST1261: Parsing fails when a declared cap is absent from the registry.
+// TEST6715: Parsing fails when a declared cap is absent from the registry.
 // In Go the machine parser resolves caps before the orchestrator layer checks,
 // so the error may be ErrMachineSyntaxParseFailed or ErrCapNotFound.
-func Test1261_cap_not_found_in_registry(t *testing.T) {
+func Test6715_cap_not_found_in_registry(t *testing.T) {
 	registry := buildParserTestRegistry(t, []string{})
 
 	notation := `[ex cap:in="media:unknown";test;out="media:unknown"][A -> ex -> B]`
@@ -468,9 +468,9 @@ func Test1269_parse_multiline_machine(t *testing.T) {
 	}
 }
 
-// TEST771: PlanToResolvedGraph rejects plans containing ForEach-paired Collect nodes
+// TEST6649: PlanToResolvedGraph rejects plans containing ForEach-paired Collect nodes
 // Verifies that Collect nodes without OutputMediaUrn (ForEach-paired) are rejected
-func Test771_rejects_foreach_paired_collect(t *testing.T) {
+func Test6649_rejects_foreach_paired_collect(t *testing.T) {
 	registry := buildTestRegistry(t, []string{
 		"cap:in=media:pdf;disbind;out=media:pdf-page",
 		"cap:in=media:pdf-page;process;out=media:text",

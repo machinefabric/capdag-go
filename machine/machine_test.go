@@ -736,9 +736,9 @@ func Test1120_FromStrand_unknown_cap_fails_hard(t *testing.T) {
 	}
 }
 
-// TEST1147: MachineSyntaxError.Error() includes position and detail.
+// TEST6695: MachineSyntaxError.Error() includes position and detail.
 // invalidWiringError(7) must produce a message containing "statement 7" and "invalid wiring".
-func Test1147_machine_syntax_error_display_is_specific(t *testing.T) {
+func Test6695_machine_syntax_error_display_is_specific(t *testing.T) {
 	err := invalidWiringError(7, "expected source -> cap -> target")
 	msg := err.Error()
 	if !containsStr(msg, "statement 7") {
@@ -781,10 +781,10 @@ func Test1149_machine_parse_error_from_resolution_preserves_variant(t *testing.T
 	}
 }
 
-// TEST1174: Line-based notation format round-trips back to the same machine.
+// TEST6700: Line-based notation format round-trips back to the same machine.
 // ToMachineNotationFormatted(NotationFormatLineBased) must not contain '[', and
 // re-parsing must yield an equivalent machine.
-func Test1174_line_based_format_round_trips(t *testing.T) {
+func Test6700_line_based_format_round_trips(t *testing.T) {
 	registry := pdfExtractEmbedRegistry()
 
 	strand := strandFromSteps([]*planner.StrandStep{
@@ -811,8 +811,8 @@ func Test1174_line_based_format_round_trips(t *testing.T) {
 	}
 }
 
-// TEST1178: matchSourcesToArgs assigns a single source to the single compatible cap arg.
-func Test1178_match_single_source_picks_unique_arg(t *testing.T) {
+// TEST6702: matchSourcesToArgs assigns a single source to the single compatible cap arg.
+func Test6702_match_single_source_picks_unique_arg(t *testing.T) {
 	sources := []*urn.MediaUrn{mediaUrn("media:ext=pdf")}
 	args := []*urn.MediaUrn{mediaUrn("media:ext=pdf")}
 	capUrnStr := `cap:in="media:ext=pdf";extract;out="media:txt;enc=utf-8"`
@@ -848,8 +848,8 @@ func Test1180_match_unmatched_source_fails_hard(t *testing.T) {
 	assert.Equal(t, ErrAbstractionUnmatchedSourceInCapArgs, err.Kind)
 }
 
-// TEST1181: matchSourcesToArgs disambiguates two sources by specificity.
-func Test1181_match_two_sources_disambiguated_by_specificity(t *testing.T) {
+// TEST6704: matchSourcesToArgs disambiguates two sources by specificity.
+func Test6704_match_two_sources_disambiguated_by_specificity(t *testing.T) {
 	sources := []*urn.MediaUrn{mediaUrn("media:ext=png;image"), mediaUrn("media:model-spec;enc=utf-8")}
 	args := []*urn.MediaUrn{mediaUrn("media:ext=png;image"), mediaUrn("media:enc=utf-8")}
 	capUrnStr := `cap:in="media:ext=png;image";describe;out="media:image-description;enc=utf-8"`
@@ -872,8 +872,8 @@ func Test1181_match_two_sources_disambiguated_by_specificity(t *testing.T) {
 	assert.True(t, foundImage && foundText, "both arg slots must be assigned")
 }
 
-// TEST1182: matchSourcesToArgs fails ambiguous when two identical sources can be swapped.
-func Test1182_match_ambiguous_when_two_sources_could_swap(t *testing.T) {
+// TEST6706: matchSourcesToArgs fails ambiguous when two identical sources can be swapped.
+func Test6706_match_ambiguous_when_two_sources_could_swap(t *testing.T) {
 	sources := []*urn.MediaUrn{mediaUrn("media:enc=utf-8"), mediaUrn("media:enc=utf-8")}
 	args := []*urn.MediaUrn{mediaUrn("media:enc=utf-8"), mediaUrn("media:enc=utf-8")}
 	capUrnStr := `cap:in="media:enc=utf-8";t;out="media:enc=utf-8"`
@@ -894,8 +894,8 @@ func Test1183_match_more_sources_than_args_fails_hard(t *testing.T) {
 	assert.Equal(t, ErrAbstractionUnmatchedSourceInCapArgs, err.Kind)
 }
 
-// TEST1184: resolveStrand with one cap produces one edge with correct input/output anchors.
-func Test1184_resolve_strand_single_cap_produces_one_edge(t *testing.T) {
+// TEST6707: resolveStrand with one cap produces one edge with correct input/output anchors.
+func Test6707_resolve_strand_single_cap_produces_one_edge(t *testing.T) {
 	c := buildCap(
 		`cap:in="media:ext=pdf";extract;out="media:txt;enc=utf-8"`,
 		"extract",
@@ -925,9 +925,9 @@ func Test1184_resolve_strand_single_cap_produces_one_edge(t *testing.T) {
 	assert.True(t, outputs[0].IsEquivalent(mediaUrn(`media:txt;enc=utf-8`)))
 }
 
-// TEST1185: resolveStrand chained caps share the intermediate node (positional interning).
+// TEST6708: resolveStrand chained caps share the intermediate node (positional interning).
 // 3 distinct nodes, not 4.
-func Test1185_resolve_strand_chained_caps_share_intermediate_node(t *testing.T) {
+func Test6708_resolve_strand_chained_caps_share_intermediate_node(t *testing.T) {
 	registry := pdfExtractEmbedRegistry()
 	strand := strandFromSteps([]*planner.StrandStep{
 		capStep(`cap:in="media:ext=pdf";extract;out="media:txt;enc=utf-8"`, "extract", "media:ext=pdf", `media:txt;enc=utf-8`),
@@ -1017,8 +1017,8 @@ func Test1188_resolve_strand_no_cap_steps_fails_hard(t *testing.T) {
 	assert.Equal(t, ErrAbstractionNoCapabilitySteps, err.Kind)
 }
 
-// TEST1190: resolveStrand with inverse format converters produces 3 distinct nodes, no cycle.
-func Test1190_resolve_strand_inverse_format_converters_no_cycle(t *testing.T) {
+// TEST6711: resolveStrand with inverse format converters produces 3 distinct nodes, no cycle.
+func Test6711_resolve_strand_inverse_format_converters_no_cycle(t *testing.T) {
 	toInt := buildCap(
 		`cap:in="media:numeric";coerce-int;out="media:integer;numeric"`,
 		"coerce_int",
@@ -1050,9 +1050,9 @@ func Test1190_resolve_strand_inverse_format_converters_no_cycle(t *testing.T) {
 	assert.Equal(t, intTarget, numSource, "intermediate node must be shared")
 }
 
-// TEST1191: resolveStrand with a disbind cap that uses file-path slot identity
+// TEST6712: resolveStrand with a disbind cap that uses file-path slot identity
 // (distinct from stdin URN) preserves the slot identity in the binding.
-func Test1191_resolve_strand_disbind_pdf_with_file_path_slot_identity(t *testing.T) {
+func Test6712_resolve_strand_disbind_pdf_with_file_path_slot_identity(t *testing.T) {
 	// The disbind cap declares `media:file-path;enc=utf-8` as the slot identity
 	// (CapArg.MediaUrn) but its stdin source is `media:ext=pdf`. The resolver must
 	// match the wiring's `media:ext=pdf` source against the stdin URN, then record
@@ -1089,9 +1089,9 @@ func Test1191_resolve_strand_disbind_pdf_with_file_path_slot_identity(t *testing
 		"source node URN must be media:ext=pdf (the data-type URN), got: %s", sourceUrn)
 }
 
-// TEST1176: ToRenderPayloadJSON for a populated machine includes strand with
+// TEST6701: ToRenderPayloadJSON for a populated machine includes strand with
 // nodes, edges, input_anchor_nodes, and output_anchor_nodes.
-func Test1176_render_payload_json_includes_strand_with_anchors(t *testing.T) {
+func Test6701_render_payload_json_includes_strand_with_anchors(t *testing.T) {
 	registry := pdfExtractEmbedRegistry()
 
 	strand := strandFromSteps([]*planner.StrandStep{

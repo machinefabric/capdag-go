@@ -141,15 +141,15 @@ func Test713_strand_shape_analysis_empty(t *testing.T) {
 	assert.False(t, analysis.RequiresTransformation())
 }
 
-// TEST714: Tests InputCardinality String() representation
-func Test714_cardinality_string(t *testing.T) {
+// TEST6630: Tests InputCardinality String() representation
+func Test6630_cardinality_string(t *testing.T) {
 	assert.Equal(t, "single", CardinalitySingle.String())
 	assert.Equal(t, "sequence", CardinalitySequence.String())
 	assert.Equal(t, "at_least_one", CardinalityAtLeastOne.String())
 }
 
-// TEST715: Tests CardinalityPattern String() representation
-func Test715_pattern_string(t *testing.T) {
+// TEST6632: Tests CardinalityPattern String() representation
+func Test6632_pattern_string(t *testing.T) {
 	assert.Equal(t, "one_to_many", PatternOneToMany.String())
 	assert.Equal(t, "one_to_one", PatternOneToOne.String())
 	assert.Equal(t, "many_to_one", PatternManyToOne.String())

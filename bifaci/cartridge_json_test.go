@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TEST1721: CartridgeJson with FabricManifestVersion=0 (zero value) is absent on the wire.
-func Test1721_cartridge_json_fabric_manifest_version_zero_round_trip(t *testing.T) {
+// TEST6726: CartridgeJson with FabricManifestVersion=0 (zero value) is absent on the wire.
+func Test6726_cartridge_json_fabric_manifest_version_zero_round_trip(t *testing.T) {
 	url := "https://registry.example.com"
 	cj := CartridgeJson{
 		Name:                  "testcartridge",
@@ -40,8 +40,8 @@ func Test1721_cartridge_json_fabric_manifest_version_zero_round_trip(t *testing.
 	assert.False(t, present, "fabric_manifest_version must not appear in serialized JSON when zero")
 }
 
-// TEST1722: CartridgeJson with FabricManifestVersion>0 round-trips the value correctly.
-func Test1722_cartridge_json_fabric_manifest_version_nonzero_round_trip(t *testing.T) {
+// TEST6727: CartridgeJson with FabricManifestVersion>0 round-trips the value correctly.
+func Test6727_cartridge_json_fabric_manifest_version_nonzero_round_trip(t *testing.T) {
 	url := "https://registry.example.com"
 	cj := CartridgeJson{
 		Name:                  "testcartridge",

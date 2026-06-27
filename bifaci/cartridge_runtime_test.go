@@ -1019,11 +1019,11 @@ func Test338_FilePathViaCliFlag(t *testing.T) {
 	}
 }
 
-// TEST339: file-path arg with is_sequence=true expands a glob to N files
+// TEST6584: file-path arg with is_sequence=true expands a glob to N files
 // and the runtime delivers them as a CBOR Array of Bytes — one array item
 // per matched file. List-ness comes from the arg declaration, not from any
 // `;list` URN tag. Mirrors Rust test339_file_path_array_glob_expansion.
-func Test339_FilePathArrayGlobExpansion(t *testing.T) {
+func Test6584_FilePathArrayGlobExpansion(t *testing.T) {
 	tempDir := filepath.Join(t.TempDir(), "test339")
 	if err := os.MkdirAll(tempDir, 0755); err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -1849,9 +1849,9 @@ func Test354_GlobPatternNoMatchesEmptyArray(t *testing.T) {
 	}
 }
 
-// TEST355: Glob pattern skips directories.
+// TEST6590: Glob pattern skips directories.
 // Mirrors Rust test355_glob_pattern_skips_directories.
-func Test355_GlobPatternSkipsDirectories(t *testing.T) {
+func Test6590_GlobPatternSkipsDirectories(t *testing.T) {
 	tempDir := filepath.Join(t.TempDir(), "test355")
 	if err := os.MkdirAll(tempDir, 0755); err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)

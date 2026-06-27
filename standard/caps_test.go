@@ -152,8 +152,8 @@ func Test1272_adapter_cap_constant_parses(t *testing.T) {
 		"CAP_ADAPTER_SELECTION must have adapter-selection out spec, got: %s", CapAdapterSelection)
 }
 
-// TEST1273: CapAdapterSelection has correct in/out specs (in=media: out=media:adapter-selection;json;record)
-func Test1273_adapter_selection_urn_builder(t *testing.T) {
+// TEST6718: CapAdapterSelection has correct in/out specs (in=media: out=media:adapter-selection;json;record)
+func Test6718_adapter_selection_urn_builder(t *testing.T) {
 	// in_spec should be bare "media:" (accepts any)
 	assert.True(t, strings.Contains(CapAdapterSelection, `in="media:"`),
 		`in spec must be "media:", got: %s`, CapAdapterSelection)

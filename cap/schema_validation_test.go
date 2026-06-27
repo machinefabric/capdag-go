@@ -94,7 +94,7 @@ func Test164_schema_validator_validate_argument_with_schema_failure(t *testing.T
 }
 
 // Additional Go-specific coverage: nil schema skips direct schema validation
-func Test0084_SchemaValidator_ValidateArgumentWithSchema_NilSchema(t *testing.T) {
+func Test6263_SchemaValidator_ValidateArgumentWithSchema_NilSchema(t *testing.T) {
 	validator := NewSchemaValidator()
 
 	// Create argument using new architecture
@@ -144,8 +144,8 @@ func Test165_schema_validator_validate_output_with_schema_success(t *testing.T) 
 	assert.NoError(t, err)
 }
 
-// TEST0085: Schema validator  validate output with schema  failure
-func Test0085_SchemaValidator_ValidateOutputWithSchema_Failure(t *testing.T) {
+// TEST6267: Schema validator  validate output with schema  failure
+func Test6267_SchemaValidator_ValidateOutputWithSchema_Failure(t *testing.T) {
 	validator := NewSchemaValidator()
 
 	// Define a JSON schema requiring result field
@@ -176,8 +176,8 @@ func Test0085_SchemaValidator_ValidateOutputWithSchema_Failure(t *testing.T) {
 	assert.Contains(t, schemaErr.Details, "result")
 }
 
-// TEST0086: Schema validator  validate arguments  integration
-func Test0086_SchemaValidator_ValidateArguments_Integration(t *testing.T) {
+// TEST6271: Schema validator  validate arguments  integration
+func Test6271_SchemaValidator_ValidateArguments_Integration(t *testing.T) {
 	registry := testRegistry(t)
 	validator := NewSchemaValidator()
 
@@ -240,8 +240,8 @@ func Test0086_SchemaValidator_ValidateArguments_Integration(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// TEST0087: Schema validator  array schema validation
-func Test0087_SchemaValidator_ArraySchemaValidation(t *testing.T) {
+// TEST6274: Schema validator  array schema validation
+func Test6274_SchemaValidator_ArraySchemaValidation(t *testing.T) {
 	validator := NewSchemaValidator()
 
 	// Define a JSON schema for an array of items
@@ -538,8 +538,8 @@ func Test6185_FileSchemaResolver_ErrorHandling(t *testing.T) {
 	assert.Equal(t, "SchemaRefNotResolved", schemaErr.Type)
 }
 
-// TEST0117: Complex nested schema validation
-func Test0117_ComplexNestedSchemaValidation(t *testing.T) {
+// TEST6314: Complex nested schema validation
+func Test6314_ComplexNestedSchemaValidation(t *testing.T) {
 	validator := NewSchemaValidator()
 
 	// Define a complex nested schema
@@ -617,8 +617,8 @@ func Test0117_ComplexNestedSchemaValidation(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// TEST0118: Media urn resolution with registry
-func Test0118_MediaUrnResolutionWithRegistry(t *testing.T) {
+// TEST6317: Media urn resolution with registry
+func Test6317_MediaUrnResolutionWithRegistry(t *testing.T) {
 	registry := testRegistry(t)
 
 	// Seed the registry with the specs the test resolves.
@@ -652,8 +652,8 @@ func Test0118_MediaUrnResolutionWithRegistry(t *testing.T) {
 	assert.False(t, resolved.HasEncoding(), "media: identity carries no enc= tag")
 }
 
-// TEST0119: Custom media urn resolution
-func Test0119_CustomMediaUrnResolution(t *testing.T) {
+// TEST6320: Custom media urn resolution
+func Test6320_CustomMediaUrnResolution(t *testing.T) {
 	registry := testRegistry(t)
 
 	for _, def := range []media.MediaDef{

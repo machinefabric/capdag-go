@@ -88,8 +88,8 @@ func Test089_resolve_seeded_record_spec(t *testing.T) {
 // reason; this deletion keeps the Go mirror in parity with the
 // Rust reference and the Python mirror.
 
-// TEST093: Test resolving unknown media URN fails with UnresolvableMediaUrn error
-func Test093_resolve_unresolvable_fails_hard(t *testing.T) {
+// TEST6284: Test resolving unknown media URN fails with UnresolvableMediaUrn error
+func Test6284_resolve_unresolvable_fails_hard(t *testing.T) {
 	registry := testRegistry(t)
 	// URN not in local media_defs and not in registry - FAIL HARD
 	_, err := ResolveMediaUrn("media:completely-unknown-urn-not-in-registry", registry)
@@ -173,10 +173,10 @@ func Test098_validate_no_duplicate_urns_passes_for_unique(t *testing.T) {
 // ResolvedMediaDef tests
 // -------------------------------------------------------------------------
 
-// TEST099: A media def with no enc= tag is not text-representable. The old
+// TEST6296: A media def with no enc= tag is not text-representable. The old
 // is_binary/is_text axis is gone; text is identified by the presence of an
 // encoding (HasEncoding), so "binary" is simply the absence of one.
-func Test099_resolved_is_binary(t *testing.T) {
+func Test6296_resolved_is_binary(t *testing.T) {
 	resolved := &ResolvedMediaDef{
 		SpecID:      "media:",
 		MediaType:   "application/octet-stream",
@@ -265,8 +265,8 @@ func Test103_resolved_is_json(t *testing.T) {
 	assert.True(t, resolved.IsRecord())
 }
 
-// TEST104: Test ResolvedMediaDef is_text returns true when enc tag is present
-func Test104_resolved_is_text(t *testing.T) {
+// TEST6297: Test ResolvedMediaDef is_text returns true when enc tag is present
+func Test6297_resolved_is_text(t *testing.T) {
 	resolved := &ResolvedMediaDef{
 		SpecID:      "media:enc=utf-8",
 		MediaType:   "text/plain",
@@ -595,9 +595,9 @@ func Test617_normalize_media_urn(t *testing.T) {
 	assert.Equal(t, urn1, urn2)
 }
 
-// TEST0288: Documentation propagates from MediaDef through ResolveMediaUrn
+// TEST6539: Documentation propagates from MediaDef through ResolveMediaUrn
 // into ResolvedMediaDef. Verifies description and documentation remain distinct.
-func Test0288_media_documentation_propagates_through_resolve(t *testing.T) {
+func Test6539_media_documentation_propagates_through_resolve(t *testing.T) {
 	registry := testRegistry(t)
 	body := "## Markdown body\n\nWith `code` and a [link](https://example.com)."
 	docUrn := "media:doc-test-1131;enc=utf-8"

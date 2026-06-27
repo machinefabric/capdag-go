@@ -1534,8 +1534,8 @@ func Test501_frame_new_initializes_optional_fields_none(t *testing.T) {
 	assert.Nil(t, frame.Checksum)
 }
 
-// TEST502: Codec key constants match protocol spec values
-func Test502_codec_key_constants(t *testing.T) {
+// TEST6602: Codec key constants match protocol spec values
+func Test6602_codec_key_constants(t *testing.T) {
 	assert.Equal(t, 13, keyRoutingId)
 	assert.Equal(t, 14, keyChunkIndex)
 	assert.Equal(t, 15, keyChunkCount)
@@ -1813,8 +1813,8 @@ func Test516_reorder_buffer_stale_error_details(t *testing.T) {
 	)
 }
 
-// TEST517: FlowKey with empty XID differs from non-empty XID (mirrors Rust None vs Some)
-func Test517_flow_key_none_vs_some_xid(t *testing.T) {
+// TEST6603: FlowKey with empty XID differs from non-empty XID (mirrors Rust None vs Some)
+func Test6603_flow_key_none_vs_some_xid(t *testing.T) {
 	rid := NewMessageIdRandom()
 	xid := NewMessageIdRandom()
 
@@ -1961,8 +1961,8 @@ func Test527_relay_notify_large_manifest(t *testing.T) {
 	assert.Equal(t, []byte(largeManifest), decoded.RelayNotifyManifest())
 }
 
-// TEST528: RelayNotify and RelayState use uint 0 as sentinel ID (not UUID)
-func Test528_relay_frames_use_uint_zero_id(t *testing.T) {
+// TEST6604: RelayNotify and RelayState use uint 0 as sentinel ID (not UUID)
+func Test6604_relay_frames_use_uint_zero_id(t *testing.T) {
 	notify := NewRelayNotify([]byte("test"), DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer)
 	state := NewRelayState([]byte("test"))
 

@@ -152,9 +152,9 @@ func Test738_linear_chain_empty(t *testing.T) {
 	assert.Equal(t, 0, len(plan.Edges))
 }
 
-// TEST739: Tests MachineResult PrimaryOutput returns populated output and nil when empty
+// TEST6634: Tests MachineResult PrimaryOutput returns populated output and nil when empty
 // Verifies the PrimaryOutput() accessor distinguishes populated vs empty outputs maps
-func Test739_machine_result_primary_output(t *testing.T) {
+func Test6634_machine_result_primary_output(t *testing.T) {
 	populated := &MachineResult{
 		Success: true,
 		Outputs: map[string]any{"result": map[string]any{"data": "success"}},
@@ -168,10 +168,10 @@ func Test739_machine_result_primary_output(t *testing.T) {
 	assert.Nil(t, empty.PrimaryOutput(), "empty outputs must return nil primary output")
 }
 
-// TEST742: Tests that edge types determine dependency direction in TopologicalOrder
+// TEST6635: Tests that edge types determine dependency direction in TopologicalOrder
 // Iteration edges must NOT create a topological dependency (ForEach body must not block ForEach node).
 // Direct edges MUST create a dependency. Verifies that edge kind affects plan execution order.
-func Test742_iteration_edge_does_not_create_topological_dependency(t *testing.T) {
+func Test6635_iteration_edge_does_not_create_topological_dependency(t *testing.T) {
 	plan := NewMachinePlan("edge_kind_test")
 	plan.AddNode(NewInputSlotNode("input", "input", "media:ext=pdf", CardinalitySingle))
 	plan.AddNode(NewMachineNode("cap_0", "cap:in=media:pdf;disbind;out=media:pdf-page"))
@@ -200,10 +200,10 @@ func Test742_iteration_edge_does_not_create_topological_dependency(t *testing.T)
 		"ForEach node must precede body cap in topological order")
 }
 
-// TEST743: Tests that ForEach node's body range fields are used correctly by ExtractForEachBody
+// TEST6636: Tests that ForEach node's body range fields are used correctly by ExtractForEachBody
 // The bodyEntry/bodyExit fields define which nodes are in scope. Verifies that wrong body bounds
 // produce a different extraction than correct ones — body_exit determines what gets included.
-func Test743_foreach_body_bounds_determine_extraction(t *testing.T) {
+func Test6636_foreach_body_bounds_determine_extraction(t *testing.T) {
 	// Build a plan where foreach_0 spans body_cap_0 through body_cap_1 (closed)
 	plan := buildForeachPlanWithCollect()
 
@@ -225,9 +225,9 @@ func Test743_foreach_body_bounds_determine_extraction(t *testing.T) {
 		"post-foreach cap must not appear in extracted body")
 }
 
-// TEST744: Tests SingleCap plan passes Validate and TopologicalOrder produces correct sequence
+// TEST6637: Tests SingleCap plan passes Validate and TopologicalOrder produces correct sequence
 // Verifies the plan is structurally sound: input_slot must precede cap_0 must precede output
-func Test744_single_cap_plan_validates_and_orders_correctly(t *testing.T) {
+func Test6637_single_cap_plan_validates_and_orders_correctly(t *testing.T) {
 	plan := SingleCap("cap:test", "media:ext=pdf", "media:ext=png;image", "input_file")
 
 	require.NoError(t, plan.Validate(), "SingleCap plan must pass validation")
@@ -250,16 +250,16 @@ func Test744_single_cap_plan_validates_and_orders_correctly(t *testing.T) {
 		"cap_0 must precede output")
 }
 
-// TEST745: Tests MergeStrategy enum values
+// TEST6638: Tests MergeStrategy enum values
 // Verifies MergeConcat and MergeZipWith have correct string representations
-func Test745_merge_strategy_values(t *testing.T) {
+func Test6638_merge_strategy_values(t *testing.T) {
 	assert.Equal(t, "concat", MergeConcat.String())
 	assert.Equal(t, "zip_with", MergeZipWith.String())
 }
 
-// TEST746: Tests Output node is automatically registered as output_node on AddNode
+// TEST6639: Tests Output node is automatically registered as output_node on AddNode
 // Verifies that Validate() accepts a plan where the Output node is the plan's only output_node
-func Test746_output_node_registered_on_add(t *testing.T) {
+func Test6639_output_node_registered_on_add(t *testing.T) {
 	plan := NewMachinePlan("output_test")
 	plan.AddNode(NewMachineNode("cap_0", "cap:test"))
 	plan.AddNode(NewOutputNode("out", "result", "cap_0"))
@@ -294,9 +294,9 @@ func Test747_cap_node_merge(t *testing.T) {
 	assert.NoError(t, plan.Validate())
 }
 
-// TEST748: Tests that IsCap/IsFanOut/IsFanIn return false for Split and Merge node types
+// TEST6640: Tests that IsCap/IsFanOut/IsFanIn return false for Split and Merge node types
 // Verifies that node type classification methods correctly reject non-cap, non-foreach, non-collect kinds
-func Test748_split_and_merge_not_classified_as_cap_fanout_fanin(t *testing.T) {
+func Test6640_split_and_merge_not_classified_as_cap_fanout_fanin(t *testing.T) {
 	splitNode := &MachineNode{
 		ID: "split",
 		NodeType: &ExecutionNodeType{
@@ -516,8 +516,8 @@ func Test763_suffix_is_dag(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-// TEST920: SingleCap creates a valid plan with input_slot, cap node, and output node.
-func Test920_single_cap_plan(t *testing.T) {
+// TEST6673: SingleCap creates a valid plan with input_slot, cap node, and output node.
+func Test6673_single_cap_plan(t *testing.T) {
 	plan := SingleCap("cap:test", "media:ext=pdf", "media:ext=png;image", "input_file")
 	// 3 nodes: input_slot, cap_0, output
 	assert.Equal(t, 3, len(plan.Nodes))
@@ -526,8 +526,8 @@ func Test920_single_cap_plan(t *testing.T) {
 	assert.NoError(t, plan.Validate())
 }
 
-// TEST921: LinearChain creates a plan with correct nodes and edges in topological order.
-func Test921_linear_chain_plan(t *testing.T) {
+// TEST6674: LinearChain creates a plan with correct nodes and edges in topological order.
+func Test6674_linear_chain_plan(t *testing.T) {
 	plan := LinearChain(
 		[]string{"cap:a", "cap:b", "cap:c"},
 		"media:ext=pdf",
@@ -545,15 +545,15 @@ func Test921_linear_chain_plan(t *testing.T) {
 	assert.Equal(t, 5, len(order))
 }
 
-// TEST922: An empty MachinePlan is valid with zero nodes.
-func Test922_empty_plan(t *testing.T) {
+// TEST6675: An empty MachinePlan is valid with zero nodes.
+func Test6675_empty_plan(t *testing.T) {
 	plan := NewMachinePlan("empty")
 	assert.Equal(t, 0, len(plan.Nodes))
 	assert.NoError(t, plan.Validate())
 }
 
-// TEST923: MachinePlan stores and retrieves metadata by key.
-func Test923_plan_with_metadata(t *testing.T) {
+// TEST6676: MachinePlan stores and retrieves metadata by key.
+func Test6676_plan_with_metadata(t *testing.T) {
 	plan := NewMachinePlan("test")
 	plan.Metadata = map[string]any{
 		"source":  "pdf",

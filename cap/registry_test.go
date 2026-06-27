@@ -50,8 +50,8 @@ func Test6186_RegistryGetCap(t *testing.T) {
 	assert.Contains(t, err.Error(), "not found in registry")
 }
 
-// TEST0121: Registry validation
-func Test0121_RegistryValidation(t *testing.T) {
+// TEST6325: Registry validation
+func Test6325_RegistryValidation(t *testing.T) {
 	registry, err := NewFabricRegistry()
 	require.NoError(t, err)
 
@@ -65,8 +65,8 @@ func Test0121_RegistryValidation(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// TEST0122: Cache operations
-func Test0122_CacheOperations(t *testing.T) {
+// TEST6329: Cache operations
+func Test6329_CacheOperations(t *testing.T) {
 	registry, err := NewFabricRegistry()
 	require.NoError(t, err)
 
@@ -75,8 +75,8 @@ func Test0122_CacheOperations(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-// TEST137: Test parsing registry JSON without stdin args verifies cap structure
-func Test137_parse_registry_json(t *testing.T) {
+// TEST6382: Test parsing registry JSON without stdin args verifies cap structure
+func Test6382_parse_registry_json(t *testing.T) {
 	// JSON without stdin args - means cap doesn't accept stdin
 	jsonData := `{"urn":"cap:in=\"media:listing-id\";use-grinder;out=\"media:task;id\"","command":"grinder_task","title":"Create Grinder Tool Task","cap_description":"Create a task for initial document analysis - first glance phase","metadata":{},"media_defs":[{"urn":"media:listing-id","media_type":"text/plain","title":"Listing ID","profile_uri":"https://machinefabric.com/schema/listing-id","schema":{"type":"string","pattern":"[0-9a-f-]{36}","description":"MachineFabric listing UUID"}},{"urn":"media:task;id","media_type":"application/json","title":"Task ID","profile_uri":"https://capdag.com/schema/grinder_task-output","schema":{"type":"object","additionalProperties":false,"properties":{"task_id":{"type":"string","description":"ID of the created task"},"task_type":{"type":"string","description":"Type of task created"}},"required":["task_id","task_type"]}}],"args":[{"media_urn":"media:listing-id","required":true,"sources":[{"cli_flag":"--listing-id"}],"arg_description":"ID of the listing to analyze"}],"output":{"media_urn":"media:task;id","output_description":"Created task information"},"registered_by":{"username":"joeharshamshiri","registered_at":"2026-01-15T00:44:29.851Z"}}`
 
@@ -131,9 +131,9 @@ func buildRegistryURL(capUrn string) string {
 	return fmt.Sprintf("%s/caps/%x", DefaultRegistryBaseURL, digest)
 }
 
-// TEST139: Per-cap URL is /caps/<sha256-hex> — no URN-grammar
+// TEST6388: Per-cap URL is /caps/<sha256-hex> — no URN-grammar
 // characters in the path, no percent-encoding gymnastics.
-func Test139_per_cap_url_uses_sha256(t *testing.T) {
+func Test6388_per_cap_url_uses_sha256(t *testing.T) {
 	registryURL := buildRegistryURL(`cap:in="media:string";test;out="media:object"`)
 
 	assert.Contains(t, registryURL, "/caps/", "URL must use the /caps/ path prefix")
@@ -143,11 +143,11 @@ func Test139_per_cap_url_uses_sha256(t *testing.T) {
 	assert.NotContains(t, registryURL, "%3B", "URL must not contain percent-encoded URN characters")
 }
 
-// TEST140: Equivalent URNs (different tag order, etc.) hash to the
+// TEST6391: Equivalent URNs (different tag order, etc.) hash to the
 // same key. This is the property that makes cross-language lookups
 // land at the same registry object regardless of which capdag
 // implementation issued the request.
-func Test140_same_cap_different_spellings_same_url(t *testing.T) {
+func Test6391_same_cap_different_spellings_same_url(t *testing.T) {
 	urlA := buildRegistryURL(`cap:in="media:listing-id";use-grinder;out="media:task;id"`)
 	urlB := buildRegistryURL(`cap:out="media:task;id";in="media:listing-id";use-grinder`)
 	assert.Equal(t, urlA, urlB, "Equivalent URNs must hash to the same registry key")

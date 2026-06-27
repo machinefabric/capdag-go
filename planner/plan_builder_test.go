@@ -45,10 +45,10 @@ func checkForDuplicateCaps(caps []*cap.Cap) (int, error) {
 	return count, nil
 }
 
-// TEST767: Tests ArgumentResolution String() returns correct snake_case names
+// TEST6645: Tests ArgumentResolution String() returns correct snake_case names
 // ArgumentInfo.Resolution is serialized to JSON using String(). Verifies that each
 // resolution variant maps to the correct identifier expected by API consumers.
-func Test767_argument_resolution_string_representations(t *testing.T) {
+func Test6645_argument_resolution_string_representations(t *testing.T) {
 	cases := []struct {
 		resolution ArgumentResolution
 		expected   string
@@ -64,10 +64,10 @@ func Test767_argument_resolution_string_representations(t *testing.T) {
 	}
 }
 
-// TEST768: Tests AnalyzePathArguments classifies stdin arg as FromInputFile for first cap
+// TEST6646: Tests AnalyzePathArguments classifies stdin arg as FromInputFile for first cap
 // Verifies that the argument analysis correctly identifies input-file arguments when the
 // cap's stdin arg media URN matches the cap's in_spec.
-func Test768_analyze_path_arguments_stdin_is_from_input_file(t *testing.T) {
+func Test6646_analyze_path_arguments_stdin_is_from_input_file(t *testing.T) {
 	// Build a cap whose stdin arg is the cap's in_spec (media:ext=pdf) — should resolve as FromInputFile
 	capUrnStr := `cap:in="media:ext=pdf";extract;out="media:txt;enc=utf-8"`
 	capUrnParsed, err := urn.NewCapUrnFromString(capUrnStr)
@@ -105,10 +105,10 @@ func Test768_analyze_path_arguments_stdin_is_from_input_file(t *testing.T) {
 		"FromInputFile args must not appear in slots (not user-input)")
 }
 
-// TEST769: Tests AnalyzePathArguments puts RequiresUserInput args in slots and sets CanExecuteWithoutInput=false
+// TEST6647: Tests AnalyzePathArguments puts RequiresUserInput args in slots and sets CanExecuteWithoutInput=false
 // Verifies that caps with non-stdin, non-default arguments are identified as requiring user input,
 // appear in slots, and the requirements reflect that execution cannot proceed without them.
-func Test769_analyze_path_arguments_user_input_arg_appears_in_slots(t *testing.T) {
+func Test6647_analyze_path_arguments_user_input_arg_appears_in_slots(t *testing.T) {
 	capUrnStr := `cap:in="media:txt;enc=utf-8";translate;out="media:translated;enc=utf-8"`
 	capUrnParsed, err := urn.NewCapUrnFromString(capUrnStr)
 	require.NoError(t, err)
@@ -191,9 +191,9 @@ func Test886_optional_non_io_arg_with_default_has_default(t *testing.T) {
 	assert.Equal(t, ResolutionHasDefault, resolution)
 }
 
-// TEST887: Tests duplicate detection passes for caps with unique URN combinations
+// TEST6671: Tests duplicate detection passes for caps with unique URN combinations
 // Verifies that checkForDuplicateCaps() correctly accepts caps with different op/in/out combinations
-func Test887_no_duplicates_with_unique_caps(t *testing.T) {
+func Test6671_no_duplicates_with_unique_caps(t *testing.T) {
 	c1, err := makeTestCap("extract_metadata", "media:ext=pdf", "media:file-metadata;record;enc=utf-8", "Extract Metadata")
 	require.NoError(t, err)
 	c2, err := makeTestCap("extract_outline", "media:ext=pdf", "media:document-outline;record;enc=utf-8", "Extract Outline")
@@ -331,9 +331,9 @@ func Test1100_cap_urn_normalizes_media_urn_tag_order(t *testing.T) {
 		"out specs with different tag ordering should normalize identically")
 }
 
-// TEST1103: Tests that IsDispatchable has correct directionality
+// TEST6684: Tests that IsDispatchable has correct directionality
 // A specific provider is dispatchable for a general request; the reverse is false.
-func Test1103_is_dispatchable_uses_correct_directionality(t *testing.T) {
+func Test6684_is_dispatchable_uses_correct_directionality(t *testing.T) {
 	generalRequest, err := urn.NewCapUrnFromString("cap:in=\"media:ext=pdf\";extract;out=media:text")
 	require.NoError(t, err)
 
@@ -346,9 +346,9 @@ func Test1103_is_dispatchable_uses_correct_directionality(t *testing.T) {
 		"General request should NOT be dispatchable for specific provider (missing version tag)")
 }
 
-// TEST1104: Tests that IsDispatchable rejects when provider is missing a required cap tag
+// TEST6685: Tests that IsDispatchable rejects when provider is missing a required cap tag
 // Provider without required=yes cannot handle a request that demands required=yes.
-func Test1104_is_dispatchable_rejects_non_dispatchable(t *testing.T) {
+func Test6685_is_dispatchable_rejects_non_dispatchable(t *testing.T) {
 	request, err := urn.NewCapUrnFromString("cap:in=\"media:ext=pdf\";extract;out=media:text;required=yes")
 	require.NoError(t, err)
 

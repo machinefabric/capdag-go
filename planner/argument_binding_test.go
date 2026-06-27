@@ -285,8 +285,8 @@ func Test1109_SlotKeyUsesNodeIDNotCapUrn(t *testing.T) {
 	}
 }
 
-// TEST792: ArgumentBinding RequiresInput distinguishes Slots from Literals
-func Test792_ArgumentBindingRequiresInput(t *testing.T) {
+// TEST6659: ArgumentBinding RequiresInput distinguishes Slots from Literals
+func Test6659_ArgumentBindingRequiresInput(t *testing.T) {
 	slot := NewSlotBinding("width", nil)
 	if !slot.RequiresInput() {
 		t.Fatal("Slot binding must require input")
@@ -297,8 +297,8 @@ func Test792_ArgumentBindingRequiresInput(t *testing.T) {
 	}
 }
 
-// TEST793: ArgumentBinding PreviousOutput serializes/deserializes correctly
-func Test793_ArgumentBindingSerializationPreviousOutput(t *testing.T) {
+// TEST6660: ArgumentBinding PreviousOutput serializes/deserializes correctly
+func Test6660_ArgumentBindingSerializationPreviousOutput(t *testing.T) {
 	field := "result_path"
 	binding := NewPreviousOutputBinding("node_0", &field)
 	data, err := json.Marshal(binding)
@@ -327,8 +327,8 @@ func Test793_ArgumentBindingSerializationPreviousOutput(t *testing.T) {
 	}
 }
 
-// TEST794: ArgumentBindings AddFilePath adds InputFilePath binding
-func Test794_ArgumentBindingsAddFilePath(t *testing.T) {
+// TEST6661: ArgumentBindings AddFilePath adds InputFilePath binding
+func Test6661_ArgumentBindingsAddFilePath(t *testing.T) {
 	bindings := NewArgumentBindings()
 	bindings.AddFilePath("input")
 	b, ok := bindings.Bindings["input"]
@@ -340,8 +340,8 @@ func Test794_ArgumentBindingsAddFilePath(t *testing.T) {
 	}
 }
 
-// TEST795: ArgumentBindings identifies unresolved Slot bindings
-func Test795_ArgumentBindingsUnresolvedSlots(t *testing.T) {
+// TEST6662: ArgumentBindings identifies unresolved Slot bindings
+func Test6662_ArgumentBindingsUnresolvedSlots(t *testing.T) {
 	bindings := NewArgumentBindings()
 	bindings.Add("width", NewSlotBinding("width", nil))
 	bindings.Add("height", NewLiteralBinding(json.RawMessage(`100`)))
@@ -355,8 +355,8 @@ func Test795_ArgumentBindingsUnresolvedSlots(t *testing.T) {
 	}
 }
 
-// TEST796: resolve_binding resolves InputFilePath to current file path
-func Test796_ResolveInputFilePath(t *testing.T) {
+// TEST6663: resolve_binding resolves InputFilePath to current file path
+func Test6663_ResolveInputFilePath(t *testing.T) {
 	ctx := emptyContext(func(c *ArgumentResolutionContext) {
 		c.InputFiles = []*CapInputFile{
 			{FilePath: "/path/to/file.pdf", MediaUrn: "media:ext=pdf"},
@@ -378,8 +378,8 @@ func Test796_ResolveInputFilePath(t *testing.T) {
 	}
 }
 
-// TEST797: resolve_binding resolves Literal to JSON-encoded bytes
-func Test797_ResolveLiteral(t *testing.T) {
+// TEST6664: resolve_binding resolves Literal to JSON-encoded bytes
+func Test6664_ResolveLiteral(t *testing.T) {
 	ctx := emptyContext()
 	binding := NewLiteralBinding(json.RawMessage(`42`))
 	result, err := ResolveBinding(binding, ctx, "cap:test", "step_0", nil, true)
@@ -397,8 +397,8 @@ func Test797_ResolveLiteral(t *testing.T) {
 	}
 }
 
-// TEST798: resolve_binding extracts value from previous node output
-func Test798_ResolvePreviousOutput(t *testing.T) {
+// TEST6665: resolve_binding extracts value from previous node output
+func Test6665_ResolvePreviousOutput(t *testing.T) {
 	field := "result_path"
 	ctx := emptyContext(func(c *ArgumentResolutionContext) {
 		c.PreviousOutputs = map[string]json.RawMessage{
@@ -421,8 +421,8 @@ func Test798_ResolvePreviousOutput(t *testing.T) {
 	}
 }
 
-// TEST799: StrandInput single constructor creates valid Single cardinality input
-func Test799_StrandInputSingle(t *testing.T) {
+// TEST6666: StrandInput single constructor creates valid Single cardinality input
+func Test6666_StrandInputSingle(t *testing.T) {
 	file := &CapInputFile{FilePath: "/path/to/file.pdf", MediaUrn: "media:ext=pdf"}
 	input := NewSingleStrandInput(file)
 	if len(input.Files) != 1 {
@@ -436,8 +436,8 @@ func Test799_StrandInputSingle(t *testing.T) {
 	}
 }
 
-// TEST800: StrandInput sequence constructor creates valid Sequence cardinality input
-func Test800_StrandInputSequence(t *testing.T) {
+// TEST6667: StrandInput sequence constructor creates valid Sequence cardinality input
+func Test6667_StrandInputSequence(t *testing.T) {
 	files := []*CapInputFile{
 		{FilePath: "/path/1.pdf", MediaUrn: "media:ext=pdf"},
 		{FilePath: "/path/2.pdf", MediaUrn: "media:ext=pdf"},
@@ -454,8 +454,8 @@ func Test800_StrandInputSequence(t *testing.T) {
 	}
 }
 
-// TEST801: CapInputFile deserializes from JSON with source metadata fields
-func Test801_CapInputFileDeserializationWithSourceMetadata(t *testing.T) {
+// TEST6668: CapInputFile deserializes from JSON with source metadata fields
+func Test6668_CapInputFileDeserializationWithSourceMetadata(t *testing.T) {
 	jsonStr := `[{"file_path":"/Users/bahram/ws/prj/machinefabric/pdfcartridge/test_files/aws_in_action.pdf","media_urn":"media:ext=pdf","source_id":"1b964d3b-f409-4f51-8684-884348ec2501","source_type":"listing"}]`
 	var files []CapInputFile
 	if err := json.Unmarshal([]byte(jsonStr), &files); err != nil {
@@ -469,8 +469,8 @@ func Test801_CapInputFileDeserializationWithSourceMetadata(t *testing.T) {
 	}
 }
 
-// TEST802: CapInputFile deserializes from compact JSON
-func Test802_CapInputFileDeserializationCompact(t *testing.T) {
+// TEST6669: CapInputFile deserializes from compact JSON
+func Test6669_CapInputFileDeserializationCompact(t *testing.T) {
 	jsonStr := `[{"file_path":"/path/to/file.pdf","media_urn":"media:ext=pdf","source_id":"abc123","source_type":"listing"}]`
 	var files []CapInputFile
 	if err := json.Unmarshal([]byte(jsonStr), &files); err != nil {
@@ -481,8 +481,8 @@ func Test802_CapInputFileDeserializationCompact(t *testing.T) {
 	}
 }
 
-// TEST803: StrandInput validation detects mismatched Single cardinality with multiple files
-func Test803_StrandInputInvalidSingle(t *testing.T) {
+// TEST6670: StrandInput validation detects mismatched Single cardinality with multiple files
+func Test6670_StrandInputInvalidSingle(t *testing.T) {
 	files := []*CapInputFile{
 		{FilePath: "/path/1.pdf", MediaUrn: "media:ext=pdf"},
 		{FilePath: "/path/2.pdf", MediaUrn: "media:ext=pdf"},
@@ -497,9 +497,9 @@ func Test803_StrandInputInvalidSingle(t *testing.T) {
 	}
 }
 
-// TEST957: NewCapInputFile creates a CapInputFile with correct path and media URN.
+// TEST6679: NewCapInputFile creates a CapInputFile with correct path and media URN.
 // Metadata and source fields must be nil.
-func Test957_cap_input_file_new(t *testing.T) {
+func Test6679_cap_input_file_new(t *testing.T) {
 	file := NewCapInputFile("/path/to/file.pdf", "media:ext=pdf")
 	if file.FilePath != "/path/to/file.pdf" {
 		t.Errorf("FilePath = %q, want /path/to/file.pdf", file.FilePath)
@@ -515,8 +515,8 @@ func Test957_cap_input_file_new(t *testing.T) {
 	}
 }
 
-// TEST958: CapInputFileFromListing sets source_id and source_type to Listing.
-func Test958_cap_input_file_from_listing(t *testing.T) {
+// TEST6680: CapInputFileFromListing sets source_id and source_type to Listing.
+func Test6680_cap_input_file_from_listing(t *testing.T) {
 	file := CapInputFileFromListing("listing-123", "/path/to/file.pdf", "media:ext=pdf")
 	if file.SourceID == nil || *file.SourceID != "listing-123" {
 		t.Errorf("SourceID = %v, want listing-123", file.SourceID)
@@ -526,8 +526,8 @@ func Test958_cap_input_file_from_listing(t *testing.T) {
 	}
 }
 
-// TEST959: CapInputFile.Filename() extracts the basename from a full path.
-func Test959_cap_input_file_filename(t *testing.T) {
+// TEST6681: CapInputFile.Filename() extracts the basename from a full path.
+func Test6681_cap_input_file_filename(t *testing.T) {
 	file := NewCapInputFile("/path/to/document.pdf", "media:ext=pdf")
 	name := file.Filename()
 	if name == nil {
@@ -538,8 +538,8 @@ func Test959_cap_input_file_filename(t *testing.T) {
 	}
 }
 
-// TEST960: NewLiteralStringBinding creates a Literal binding wrapping a JSON string.
-func Test960_argument_binding_literal_string(t *testing.T) {
+// TEST6682: NewLiteralStringBinding creates a Literal binding wrapping a JSON string.
+func Test6682_argument_binding_literal_string(t *testing.T) {
 	binding := NewLiteralStringBinding("test")
 	if binding.Kind != BindingLiteral {
 		t.Fatalf("expected BindingLiteral, got %v", binding.Kind)

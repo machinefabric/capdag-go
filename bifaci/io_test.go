@@ -1149,11 +1149,11 @@ func Test847_progress_double_roundtrip(t *testing.T) {
 	}
 }
 
-// TEST461: WriteResponseWithChunking splits payload into exactly N chunks per max_chunk,
+// TEST6597: WriteResponseWithChunking splits payload into exactly N chunks per max_chunk,
 // and chunk_index tracks ordering within the stream (0, 1, 2, ...).
 // Note: Go assigns seq at write time (Rust assigns seq=0 and uses SeqAssigner at output stage;
 // Go inlines the seq assignment into the write path instead).
-func Test461_write_chunked_chunk_index_ordering(t *testing.T) {
+func Test6597_write_chunked_chunk_index_ordering(t *testing.T) {
 	var buf bytes.Buffer
 	writer := NewFrameWriter(&buf)
 	writer.SetLimits(Limits{MaxFrame: DefaultMaxFrame, MaxChunk: 5})

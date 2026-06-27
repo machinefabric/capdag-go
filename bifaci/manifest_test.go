@@ -58,8 +58,8 @@ func Test149_cap_manifest_with_author(t *testing.T) {
 	assert.Equal(t, "Test Author", *manifest.Author)
 }
 
-// TEST0131: Cap manifest with page u r l
-func Test0131_CapManifestWithPageURL(t *testing.T) {
+// TEST6363: Cap manifest with page u r l
+func Test6363_CapManifestWithPageURL(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(manifestTestUrn("extract;target=metadata"))
 	require.NoError(t, err)
 
@@ -251,8 +251,8 @@ func Test155_component_metadata_interface(t *testing.T) {
 	assert.Contains(t, caps[0].UrnString(), "test")
 }
 
-// TEST0132: Cap manifest validation
-func Test0132_CapManifestValidation(t *testing.T) {
+// TEST6367: Cap manifest validation
+func Test6367_CapManifestValidation(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(manifestTestUrn("extract;target=metadata"))
 	require.NoError(t, err)
 
@@ -281,8 +281,8 @@ func Test0132_CapManifestValidation(t *testing.T) {
 	assert.True(t, all[0].AcceptsStdin())
 }
 
-// TEST0133: Cap manifest compatibility
-func Test0133_CapManifestCompatibility(t *testing.T) {
+// TEST6371: Cap manifest compatibility
+func Test6371_CapManifestCompatibility(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(manifestTestUrn("process"))
 	require.NoError(t, err)
 	capDef := cap.NewCap(id, "Data Processor", "process")
@@ -386,20 +386,20 @@ func Test1872_registry_url_from_build_env_passes_through_nonempty(t *testing.T) 
 	assert.Same(t, &url, got)
 }
 
-// TEST1873: an unset build-env value (nil) yields nil — a dev build has no baked
+// TEST6739: an unset build-env value (nil) yields nil — a dev build has no baked
 // registry, so the engine reports an empty primary-registry URL and loads only
 // `dev/` cartridges (mirror of Rust test1873).
-func Test1873_registry_url_from_build_env_none_for_dev(t *testing.T) {
+func Test6739_registry_url_from_build_env_none_for_dev(t *testing.T) {
 	assert.Nil(t, RegistryURLFromBuildEnv(nil))
 }
 
-// TEST1874: an exported-but-empty value (a pointer to "") is neither a dev build
+// TEST6741: an exported-but-empty value (a pointer to "") is neither a dev build
 // nor a valid identity and MUST fail hard, so the build can never silently hash
 // the empty string into a fake registry slug. We assert the panic AND its exact
 // message, so a regression that dropped the check (or replaced it with a silent
 // fallback) is caught rather than passing on a bogus empty primary registry
 // (mirror of Rust test1874).
-func Test1874_registry_url_from_build_env_rejects_empty_string(t *testing.T) {
+func Test6741_registry_url_from_build_env_rejects_empty_string(t *testing.T) {
 	empty := ""
 	assert.PanicsWithValue(t,
 		"MFR_CARTRIDGE_REGISTRY_URL must be unset for dev builds or set to a non-empty registry URL for published builds; empty string is invalid",

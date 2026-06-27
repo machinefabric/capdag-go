@@ -72,8 +72,7 @@ func Test1887_ManifestSerdeRoundTripsAliases(t *testing.T) {
 	assert.Equal(t, float64(1), aliases["jsondoc"])
 }
 
-// Test1888: ResolveAlias returns the alias target untyped; case-insensitive;
-// malformed name rejected.
+// Test1888: resolve alias returns the alias target untyped; case-insensitive; malformed name rejected.
 func Test1888_ResolveAliasReturnsTarget(t *testing.T) {
 	reg := cap.NewFabricRegistryForTest()
 	reg.InsertCachedAliasForTest(media.StoredAlias{Name: "jsondoc", Target: "media:fmt=json;record", Version: 1})
@@ -90,7 +89,7 @@ func Test1888_ResolveAliasReturnsTarget(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// Test1889: ResolveAliasTyped enforces the expected kind.
+// Test1889: resolve alias typed enforces the expected kind.
 func Test1889_ResolveAliasTypedEnforcesKind(t *testing.T) {
 	reg := cap.NewFabricRegistryForTest()
 	reg.InsertCachedAliasForTest(media.StoredAlias{Name: "jsondoc", Target: "media:fmt=json;record", Version: 1})

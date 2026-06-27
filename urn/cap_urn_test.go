@@ -628,8 +628,8 @@ func Test027_wildcard_tag(t *testing.T) {
 	assert.Equal(t, "media:", wildcardOut.OutSpec())
 }
 
-// TEST028: Bare top cap is illegal; identity must be explicit effect=none
-func Test028_empty_cap_urn_defaults_to_wildcard(t *testing.T) {
+// TEST6202: Bare top cap is illegal; identity must be explicit effect=none
+func Test6202_empty_cap_urn_defaults_to_wildcard(t *testing.T) {
 	result, err := NewCapUrnFromString("cap:")
 	assert.Nil(t, result)
 	assert.Error(t, err)
@@ -1201,8 +1201,8 @@ func Test567_str_variants(t *testing.T) {
 	assert.False(t, cap.AcceptsStr("invalid"))
 }
 
-// TEST639: bare top cap is illegal; identity must be explicit effect=none
-func Test639_wildcard_empty_cap_defaults_to_media_wildcard(t *testing.T) {
+// TEST6609: bare top cap is illegal; identity must be explicit effect=none
+func Test6609_wildcard_empty_cap_defaults_to_media_wildcard(t *testing.T) {
 	cap, err := NewCapUrnFromString("cap:")
 	assert.Nil(t, cap)
 	assert.Error(t, err)
@@ -1211,8 +1211,8 @@ func Test639_wildcard_empty_cap_defaults_to_media_wildcard(t *testing.T) {
 	assert.Equal(t, ErrorIllegalDeclaration, capError.Code)
 }
 
-// TEST648: Legal generic cap with marker-only y-axis matches specific caps
-func Test648_wildcard_accepts_specific(t *testing.T) {
+// TEST6614: Legal generic cap with marker-only y-axis matches specific caps
+func Test6614_wildcard_accepts_specific(t *testing.T) {
 	wildcard, err := NewCapUrnFromString("cap:raw")
 	require.NoError(t, err)
 
@@ -1223,8 +1223,8 @@ func Test648_wildcard_accepts_specific(t *testing.T) {
 	assert.True(t, specific.ConformsTo(wildcard), "Specific should conform to wildcard")
 }
 
-// TEST649: Specificity - marker-only wildcard scores on y-axis only
-func Test649_specificity_scoring(t *testing.T) {
+// TEST6615: Specificity - marker-only wildcard scores on y-axis only
+func Test6615_specificity_scoring(t *testing.T) {
 	wildcard, err := NewCapUrnFromString("cap:raw")
 	require.NoError(t, err)
 
@@ -1235,8 +1235,8 @@ func Test649_specificity_scoring(t *testing.T) {
 	assert.True(t, specific.Specificity() > 0, "Specific cap should have non-zero specificity")
 }
 
-// TEST651: Long and short explicit identity forms are equivalent
-func Test651_identity_forms_equivalent(t *testing.T) {
+// TEST6618: Long and short explicit identity forms are equivalent
+func Test6618_identity_forms_equivalent(t *testing.T) {
 	identity1, err := NewCapUrnFromString("cap:effect=none")
 	require.NoError(t, err)
 
@@ -1261,8 +1261,8 @@ func Test652_cap_identity_constant_works(t *testing.T) {
 	assert.False(t, specific.ConformsTo(identity), "Declared-effect transforms are not equivalent to cap identity")
 }
 
-// TEST653: Cap identity does not route as a declared-effect provider
-func Test653_identity_routing_isolation(t *testing.T) {
+// TEST6622: Cap identity does not route as a declared-effect provider
+func Test6622_identity_routing_isolation(t *testing.T) {
 	identity, err := NewCapUrnFromString("cap:effect=none")
 	require.NoError(t, err)
 
@@ -1439,7 +1439,7 @@ func Test838_dispatch_request_wildcard_output(t *testing.T) {
 }
 
 // JSON serialization test (not numbered in Rust)
-func Test0125_CapUrn_JSONSerialization(t *testing.T) {
+func Test6339_CapUrn_JSONSerialization(t *testing.T) {
 	original, err := NewCapUrnFromString(testUrn("generate"))
 	require.NoError(t, err)
 
@@ -1525,15 +1525,15 @@ func Test568_dispatch_output_tag_order(t *testing.T) {
 		"Provider should dispatch request with same tags in different order")
 }
 
-// TEST640: cap:in without a non-vacuous axis/tag is illegal bare top
-func Test640_wildcard_002_in_only_defaults_out_to_media(t *testing.T) {
+// TEST6610: cap:in without a non-vacuous axis/tag is illegal bare top
+func Test6610_wildcard_002_in_only_defaults_out_to_media(t *testing.T) {
 	cap, err := NewCapUrnFromString("cap:in")
 	assert.Nil(t, cap)
 	require.Error(t, err)
 }
 
-// TEST641: cap:out without a non-vacuous axis/tag is illegal bare top
-func Test641_wildcard_003_out_only_defaults_in_to_media(t *testing.T) {
+// TEST6611: cap:out without a non-vacuous axis/tag is illegal bare top
+func Test6611_wildcard_003_out_only_defaults_in_to_media(t *testing.T) {
 	cap, err := NewCapUrnFromString("cap:out")
 	assert.Nil(t, cap)
 	require.Error(t, err)
@@ -1546,15 +1546,15 @@ func Test642_wildcard_004_in_out_no_values_become_media(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TEST643: explicit wildcard in/out is still illegal bare top
-func Test643_wildcard_005_explicit_asterisk_becomes_media(t *testing.T) {
+// TEST6612: explicit wildcard in/out is still illegal bare top
+func Test6612_wildcard_005_explicit_asterisk_becomes_media(t *testing.T) {
 	cap, err := NewCapUrnFromString("cap:in=*;out=*")
 	assert.Nil(t, cap)
 	require.Error(t, err)
 }
 
-// TEST644: top in plus wildcard out is still illegal bare top
-func Test644_wildcard_006_specific_in_wildcard_out(t *testing.T) {
+// TEST6613: top in plus wildcard out is still illegal bare top
+func Test6613_wildcard_006_specific_in_wildcard_out(t *testing.T) {
 	cap, err := NewCapUrnFromString("cap:in=media:;out=*")
 	assert.Nil(t, cap)
 	require.Error(t, err)
@@ -1598,12 +1598,12 @@ func Test650_wildcard_012_preserve_other_tags(t *testing.T) {
 // surface, not a per-port detail.
 // -------------------------------------------------------------------
 
-// TEST1800: Identity classifier — only explicit effect=none qualifies.
+// TEST6728: Identity classifier — only explicit effect=none qualifies.
 // `cap:effect=none` is the fully generic identity on every axis; adding any
 // tag (even one that doesn't constrain in/out) demotes the cap to
 // Transform because the operation/metadata axis is no longer fully
 // generic.
-func Test1800_kind_identity_only_for_bare_cap(t *testing.T) {
+func Test6728_kind_identity_only_for_bare_cap(t *testing.T) {
 	identity, err := NewCapUrnFromString("cap:effect=none")
 	require.NoError(t, err)
 	kind, err := identity.Kind()

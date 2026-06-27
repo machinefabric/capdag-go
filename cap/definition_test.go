@@ -447,7 +447,7 @@ func Test598_cap_output_lifecycle(t *testing.T) {
 
 // Additional existing tests below (not part of TEST108-116 sequence)
 
-func Test0070_CapRequestHandling(t *testing.T) {
+func Test6238_CapRequestHandling(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(capTestUrn("extract;target=metadata"))
 	require.NoError(t, err)
 
@@ -463,8 +463,8 @@ func Test0070_CapRequestHandling(t *testing.T) {
 	assert.False(t, cap1.AcceptsRequest(cap3.Urn))
 }
 
-// TEST0079: Cap description
-func Test0079_CapDescription(t *testing.T) {
+// TEST6245: Cap description
+func Test6245_CapDescription(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(capTestUrn("parse;format=json;data"))
 	require.NoError(t, err)
 
@@ -476,8 +476,8 @@ func Test0079_CapDescription(t *testing.T) {
 	assert.True(t, cap1.Equals(cap3))  // Same everything
 }
 
-// TEST0080: Cap with media defs
-func Test0080_CapWithMediaDefs(t *testing.T) {
+// TEST6248: Cap with media defs
+func Test6248_CapWithMediaDefs(t *testing.T) {
 	// Use proper in/out in the URN - custom media URN in out
 	id, err := urn.NewCapUrnFromString(`cap:in="media:string";query;out="media:result";target=structured`)
 	require.NoError(t, err)
@@ -552,9 +552,9 @@ func Test1127_cap_documentation_round_trip_with_markdown_body(t *testing.T) {
 	assert.Equal(t, body, *restored.GetDocumentation(), "documentation body must not be mutated during round-trip")
 }
 
-// TEST1128: When Documentation is nil, the serializer must omit the field entirely.
+// TEST6686: When Documentation is nil, the serializer must omit the field entirely.
 // There must be no "documentation":null — only absence.
-func Test1128_cap_documentation_omitted_when_none(t *testing.T) {
+func Test6686_cap_documentation_omitted_when_none(t *testing.T) {
 	u, err := urn.NewCapUrnFromString(defTestUrn("undocumented"))
 	require.NoError(t, err)
 	c := NewCap(u, "Undocumented Cap", "undocumented")
@@ -570,9 +570,9 @@ func Test1128_cap_documentation_omitted_when_none(t *testing.T) {
 	assert.Nil(t, restored.GetDocumentation())
 }
 
-// TEST1129: A capfab-shaped JSON document with a documentation field
+// TEST6687: A capfab-shaped JSON document with a documentation field
 // must deserialize into a Cap with the body intact.
-func Test1129_cap_documentation_parses_from_capfab_json(t *testing.T) {
+func Test6687_cap_documentation_parses_from_capfab_json(t *testing.T) {
 	raw := `{
 		"urn": "cap:in=\"media:enc=utf-8\";docparse;out=\"media:enc=utf-8\"",
 		"title": "Doc Parse",
@@ -588,8 +588,8 @@ func Test1129_cap_documentation_parses_from_capfab_json(t *testing.T) {
 	assert.Equal(t, "short", *c.CapDescription)
 }
 
-// TEST1130: Documentation set/clear lifecycle must not cross-contaminate cap_description.
-func Test1130_cap_documentation_set_and_clear_lifecycle(t *testing.T) {
+// TEST6688: Documentation set/clear lifecycle must not cross-contaminate cap_description.
+func Test6688_cap_documentation_set_and_clear_lifecycle(t *testing.T) {
 	u, err := urn.NewCapUrnFromString(defTestUrn("lifecycle"))
 	require.NoError(t, err)
 	short := "short"
@@ -609,8 +609,8 @@ func Test1130_cap_documentation_set_and_clear_lifecycle(t *testing.T) {
 	assert.Equal(t, "short", *c.CapDescription)
 }
 
-// TEST0081: Cap.Version zero value is omitted on serialize and defaults to 0 on deserialize.
-func Test0081_cap_version_zero_round_trip(t *testing.T) {
+// TEST6251: Cap.Version zero value is omitted on serialize and defaults to 0 on deserialize.
+func Test6251_cap_version_zero_round_trip(t *testing.T) {
 	u, err := urn.NewCapUrnFromString(defTestUrn("versioned"))
 	require.NoError(t, err)
 	c := NewCap(u, "Versioned Cap", "versioned")
@@ -626,8 +626,8 @@ func Test0081_cap_version_zero_round_trip(t *testing.T) {
 	assert.Equal(t, uint32(0), restored.Version, "deserialized cap must have Version 0 when field absent")
 }
 
-// TEST0082: Cap.Version non-zero value round-trips through JSON serialize/deserialize.
-func Test0082_cap_version_nonzero_round_trip(t *testing.T) {
+// TEST6255: Cap.Version non-zero value round-trips through JSON serialize/deserialize.
+func Test6255_cap_version_nonzero_round_trip(t *testing.T) {
 	u, err := urn.NewCapUrnFromString(defTestUrn("versioned"))
 	require.NoError(t, err)
 	c := NewCap(u, "Versioned Cap", "versioned")
@@ -643,8 +643,8 @@ func Test0082_cap_version_nonzero_round_trip(t *testing.T) {
 	assert.Equal(t, uint32(3), restored.Version, "deserialized cap must have Version 3")
 }
 
-// TEST0083: Cap j s o n round trip
-func Test0083_CapJSONRoundTrip(t *testing.T) {
+// TEST6259: Cap j s o n round trip
+func Test6259_CapJSONRoundTrip(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(capTestUrn("test"))
 	require.NoError(t, err)
 
