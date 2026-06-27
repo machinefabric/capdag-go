@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-// TEST804: Tests basic JSON path extraction with dot notation for nested objects
+// TEST804: Tests basic JSON path extraction with dot notation for nested objects Verifies that simple paths like "data.message" correctly extract values from nested JSON structures
 func Test804_ExtractJsonPathSimple(t *testing.T) {
 	value := map[string]any{
 		"data": map[string]any{
@@ -37,7 +37,7 @@ func Test805_ExtractJsonPathWithArray(t *testing.T) {
 	}
 }
 
-// TEST806: Tests error handling when JSON path references non-existent fields
+// TEST806: Tests error handling when JSON path references non-existent fields Verifies that accessing missing fields returns an appropriate error message
 func Test806_ExtractJsonPathMissingField(t *testing.T) {
 	value := map[string]any{"data": map[string]any{}}
 	_, err := ExtractJsonPath(value, "data.nonexistent")
@@ -50,7 +50,7 @@ func Test806_ExtractJsonPathMissingField(t *testing.T) {
 	}
 }
 
-// TEST807: Tests EdgeType::Direct passes JSON values through unchanged
+// TEST807: Tests EdgeType::Direct passes JSON values through unchanged Verifies that Direct edge type acts as a transparent passthrough without transformation
 func Test807_ApplyEdgeTypeDirect(t *testing.T) {
 	value := map[string]any{"test": "value"}
 	result, err := ApplyEdgeType(value, DirectEdgeType())
@@ -63,7 +63,7 @@ func Test807_ApplyEdgeTypeDirect(t *testing.T) {
 	}
 }
 
-// TEST808: Tests EdgeType::JsonField extracts specific top-level fields from JSON objects
+// TEST808: Tests EdgeType::JsonField extracts specific top-level fields from JSON objects Verifies that JsonField edge type correctly isolates a single named field from the source output
 func Test808_ApplyEdgeTypeJsonField(t *testing.T) {
 	value := map[string]any{"test": "value", "other": "data"}
 	result, err := ApplyEdgeType(value, JsonFieldEdgeType("test"))
@@ -75,7 +75,7 @@ func Test808_ApplyEdgeTypeJsonField(t *testing.T) {
 	}
 }
 
-// TEST809: Tests EdgeType::JsonField error handling for missing fields
+// TEST809: Tests EdgeType::JsonField error handling for missing fields Verifies that attempting to extract a non-existent field returns an error
 func Test809_ApplyEdgeTypeJsonFieldMissing(t *testing.T) {
 	value := map[string]any{"test": "value"}
 	_, err := ApplyEdgeType(value, JsonFieldEdgeType("missing"))
@@ -84,7 +84,7 @@ func Test809_ApplyEdgeTypeJsonFieldMissing(t *testing.T) {
 	}
 }
 
-// TEST810: Tests EdgeType::JsonPath extracts values using nested path expressions
+// TEST810: Tests EdgeType::JsonPath extracts values using nested path expressions Verifies that JsonPath edge type correctly navigates through multiple levels like "data.nested.value"
 func Test810_ApplyEdgeTypeJsonPath(t *testing.T) {
 	value := map[string]any{
 		"data": map[string]any{
@@ -102,7 +102,7 @@ func Test810_ApplyEdgeTypeJsonPath(t *testing.T) {
 	}
 }
 
-// TEST811: Tests EdgeType::Iteration preserves array values for iterative processing
+// TEST811: Tests EdgeType::Iteration preserves array values for iterative processing Verifies that Iteration edge type passes through arrays unchanged to enable ForEach patterns
 func Test811_ApplyEdgeTypeIteration(t *testing.T) {
 	value := []any{1, 2, 3}
 	result, err := ApplyEdgeType(value, IterationEdgeType())
@@ -115,7 +115,7 @@ func Test811_ApplyEdgeTypeIteration(t *testing.T) {
 	}
 }
 
-// TEST812: Tests EdgeType::Collection preserves collected values without transformation
+// TEST812: Tests EdgeType::Collection preserves collected values without transformation Verifies that Collection edge type maintains structure for aggregation patterns
 func Test812_ApplyEdgeTypeCollection(t *testing.T) {
 	value := map[string]any{"collected": []any{1, 2, 3}}
 	result, err := ApplyEdgeType(value, CollectionEdgeType())
@@ -129,7 +129,7 @@ func Test812_ApplyEdgeTypeCollection(t *testing.T) {
 	_ = m
 }
 
-// TEST813: Tests JSON path extraction through deeply nested object hierarchies (4+ levels)
+// TEST813: Tests JSON path extraction through deeply nested object hierarchies (4+ levels) Verifies that paths can traverse multiple nested levels like "level1.level2.level3.level4.value"
 func Test813_ExtractJsonPathDeeplyNested(t *testing.T) {
 	value := map[string]any{
 		"level1": map[string]any{
@@ -151,7 +151,7 @@ func Test813_ExtractJsonPathDeeplyNested(t *testing.T) {
 	}
 }
 
-// TEST814: Tests error handling when array index exceeds available elements
+// TEST814: Tests error handling when array index exceeds available elements Verifies that out-of-bounds array access returns a descriptive error message
 func Test814_ExtractJsonPathArrayOutOfBounds(t *testing.T) {
 	value := map[string]any{
 		"items": []any{map[string]any{"name": "first"}},
@@ -165,7 +165,7 @@ func Test814_ExtractJsonPathArrayOutOfBounds(t *testing.T) {
 	}
 }
 
-// TEST815: Tests JSON path extraction with single-level paths (no nesting)
+// TEST815: Tests JSON path extraction with single-level paths (no nesting) Verifies that simple field names without dots correctly extract top-level values
 func Test815_ExtractJsonPathSingleSegment(t *testing.T) {
 	value := map[string]any{"value": 123}
 	result, err := ExtractJsonPath(value, "value")
@@ -177,7 +177,7 @@ func Test815_ExtractJsonPathSingleSegment(t *testing.T) {
 	}
 }
 
-// TEST816: Tests JSON path extraction preserves special characters in string values
+// TEST816: Tests JSON path extraction preserves special characters in string values Verifies that quotes, backslashes, and other special characters are correctly maintained
 func Test816_ExtractJsonPathWithSpecialCharacters(t *testing.T) {
 	msg := `hello "world" with 'quotes' and \ backslashes`
 	value := map[string]any{
@@ -194,7 +194,7 @@ func Test816_ExtractJsonPathWithSpecialCharacters(t *testing.T) {
 	}
 }
 
-// TEST817: Tests JSON path extraction correctly handles explicit null values
+// TEST817: Tests JSON path extraction correctly handles explicit null values Verifies that null is returned as serde_json::Value::Null rather than an error
 func Test817_ExtractJsonPathWithNullValue(t *testing.T) {
 	value := map[string]any{
 		"data": map[string]any{
@@ -210,7 +210,7 @@ func Test817_ExtractJsonPathWithNullValue(t *testing.T) {
 	}
 }
 
-// TEST818: Tests JSON path extraction correctly returns empty arrays
+// TEST818: Tests JSON path extraction correctly returns empty arrays Verifies that zero-length arrays are extracted as valid empty array values
 func Test818_ExtractJsonPathWithEmptyArray(t *testing.T) {
 	value := map[string]any{
 		"data": map[string]any{
@@ -227,7 +227,7 @@ func Test818_ExtractJsonPathWithEmptyArray(t *testing.T) {
 	}
 }
 
-// TEST819: Tests JSON path extraction handles various numeric types correctly
+// TEST819: Tests JSON path extraction handles various numeric types correctly Verifies extraction of integers, floats, negative numbers, and zero
 func Test819_ExtractJsonPathWithNumericTypes(t *testing.T) {
 	value := map[string]any{
 		"integers": 42,
@@ -255,7 +255,7 @@ func Test819_ExtractJsonPathWithNumericTypes(t *testing.T) {
 	}
 }
 
-// TEST820: Tests JSON path extraction correctly handles boolean values
+// TEST820: Tests JSON path extraction correctly handles boolean values Verifies that true and false are extracted as proper boolean JSON values
 func Test820_ExtractJsonPathWithBoolean(t *testing.T) {
 	value := map[string]any{
 		"flags": map[string]any{
@@ -279,7 +279,7 @@ func Test820_ExtractJsonPathWithBoolean(t *testing.T) {
 	}
 }
 
-// TEST821: Tests JSON path extraction with multi-dimensional arrays (matrix access)
+// TEST821: Tests JSON path extraction with multi-dimensional arrays (matrix access) Verifies that nested array structures like "matrix[1]" correctly extract inner arrays
 func Test821_ExtractJsonPathWithNestedArrays(t *testing.T) {
 	value := map[string]any{
 		"matrix": []any{
@@ -297,7 +297,7 @@ func Test821_ExtractJsonPathWithNestedArrays(t *testing.T) {
 	}
 }
 
-// TEST822: Tests error handling for non-numeric array indices
+// TEST822: Tests error handling for non-numeric array indices Verifies that invalid indices like "items[abc]" return a descriptive parse error
 func Test822_ExtractJsonPathInvalidArrayIndex(t *testing.T) {
 	value := map[string]any{"items": []any{1, 2, 3}}
 	_, err := ExtractJsonPath(value, "items[abc]")

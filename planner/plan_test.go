@@ -7,8 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TEST728: Tests MachineNode helper methods for identifying node types (cap, fan-out, fan-in)
-// Verifies IsCap(), IsFanOut(), IsFanIn(), and GetCapUrn() correctly classify node types
+// TEST728: Tests MachineNode helper methods for identifying node types (cap, fan-out, fan-in) Verifies is_cap(), is_fan_out(), is_fan_in(), and cap_urn() correctly classify node types
 func Test728_cap_node_helpers(t *testing.T) {
 	capNode := NewMachineNode("test", "cap:test")
 	assert.True(t, capNode.IsCap())
@@ -30,8 +29,7 @@ func Test728_cap_node_helpers(t *testing.T) {
 	assert.True(t, collectNode.IsFanIn())
 }
 
-// TEST729: Tests creation and classification of different edge types (Direct, Iteration, Collection, JsonField)
-// Verifies that edge constructors produce correct EdgeKind variants
+// TEST729: Tests creation and classification of different edge types (Direct, Iteration, Collection, JsonField) Verifies that edge constructors produce correct EdgeType variants
 func Test729_edge_types(t *testing.T) {
 	direct := NewDirectEdge("a", "b")
 	assert.Equal(t, EdgeKindDirect, direct.Type.Kind)
@@ -47,8 +45,7 @@ func Test729_edge_types(t *testing.T) {
 	assert.Equal(t, "data", jsonField.Type.Field)
 }
 
-// TEST734: Tests topological sort detects self-referencing cycles (A→A)
-// Verifies that self-loops are recognized as cycles and produce an error
+// TEST734: Tests topological sort detects self-referencing cycles (A→A) Verifies that self-loops are recognized as cycles and produce an error
 func Test734_topological_order_self_loop(t *testing.T) {
 	plan := NewMachinePlan("self_loop")
 	plan.Nodes["A"] = NewMachineNode("A", "cap:a")
@@ -59,8 +56,7 @@ func Test734_topological_order_self_loop(t *testing.T) {
 	assert.Contains(t, err.Error(), "Cycle detected")
 }
 
-// TEST735: Tests topological sort handles graphs with multiple independent starting nodes
-// Verifies that parallel entry points (A→C, B→C) both precede their merge point in ordering
+// TEST735: Tests topological sort handles graphs with multiple independent starting nodes Verifies that parallel entry points (A→C, B→C) both precede their merge point in ordering
 func Test735_topological_order_multiple_entry_points(t *testing.T) {
 	plan := NewMachinePlan("multi_entry")
 	plan.Nodes["A"] = NewMachineNode("A", "cap:a")
@@ -91,8 +87,7 @@ func Test735_topological_order_multiple_entry_points(t *testing.T) {
 	assert.Less(t, pos("C"), pos("D"))
 }
 
-// TEST736: Tests topological sort on a complex multi-path DAG with 6 nodes
-// Verifies that all dependency constraints are satisfied in a graph with multiple converging paths
+// TEST736: Tests topological sort on a complex multi-path DAG with 6 nodes Verifies that all dependency constraints are satisfied in a graph with multiple converging paths
 func Test736_topological_order_complex_dag(t *testing.T) {
 	// A --> B --> D
 	// |     |
@@ -135,8 +130,7 @@ func Test736_topological_order_complex_dag(t *testing.T) {
 	assert.Less(t, pos("E"), pos("F"))
 }
 
-// TEST737: Tests LinearChain() with exactly one capability
-// Verifies that a single-element chain produces a valid plan with input_slot, cap, and output
+// TEST737: Tests linear_chain() with exactly one capability Verifies that a single-element chain produces a valid plan with input_slot, cap, and output
 func Test737_linear_chain_single_cap(t *testing.T) {
 	plan := LinearChain([]string{"cap:only"}, "media:ext=pdf", "media:ext=png;image", []string{"source_file"})
 	assert.Equal(t, 3, len(plan.Nodes)) // input_slot, cap_0, output
@@ -144,8 +138,7 @@ func Test737_linear_chain_single_cap(t *testing.T) {
 	assert.NoError(t, plan.Validate())
 }
 
-// TEST738: Tests LinearChain() with empty capability list
-// Verifies that an empty chain produces a plan with zero nodes and edges
+// TEST738: Tests linear_chain() with empty capability list Verifies that an empty chain produces a plan with zero nodes and edges
 func Test738_linear_chain_empty(t *testing.T) {
 	plan := LinearChain([]string{}, "media:ext=pdf", "media:ext=png;image", []string{})
 	assert.Equal(t, 0, len(plan.Nodes))
@@ -271,8 +264,7 @@ func Test6639_output_node_registered_on_add(t *testing.T) {
 		"Output node must be auto-registered as an output node by AddNode")
 }
 
-// TEST747: Tests creation and validation of Merge node that combines multiple inputs
-// Verifies that Merge nodes with multiple input nodes and a strategy can be added to plans
+// TEST747: Tests creation and validation of Merge node that combines multiple inputs Verifies that Merge nodes with multiple input nodes and a strategy can be added to plans
 func Test747_cap_node_merge(t *testing.T) {
 	plan := NewMachinePlan("merge_test")
 
@@ -322,8 +314,7 @@ func Test6640_split_and_merge_not_classified_as_cap_fanout_fanin(t *testing.T) {
 	assert.False(t, mergeNode.IsFanIn(), "Merge node must not be classified as FanIn")
 }
 
-// TEST749: Tests GetNode() method for looking up nodes by ID in a plan
-// Verifies that existing nodes are found and non-existent nodes return nil
+// TEST749: Tests get_node() method for looking up nodes by ID in a plan Verifies that existing nodes are found and non-existent nodes return None
 func Test749_get_node(t *testing.T) {
 	plan := SingleCap("cap:test", "media:ext=pdf", "media:ext=png;image", "doc_path")
 
@@ -516,8 +507,8 @@ func Test763_suffix_is_dag(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-// TEST6673: SingleCap creates a valid plan with input_slot, cap node, and output node.
-func Test6673_single_cap_plan(t *testing.T) {
+// TEST920: Tests creation of a simple execution plan with a single capability Verifies that single_cap() generates a valid plan with input_slot, cap node, and output node
+func Test920_single_cap_plan(t *testing.T) {
 	plan := SingleCap("cap:test", "media:ext=pdf", "media:ext=png;image", "input_file")
 	// 3 nodes: input_slot, cap_0, output
 	assert.Equal(t, 3, len(plan.Nodes))
@@ -526,8 +517,8 @@ func Test6673_single_cap_plan(t *testing.T) {
 	assert.NoError(t, plan.Validate())
 }
 
-// TEST6674: LinearChain creates a plan with correct nodes and edges in topological order.
-func Test6674_linear_chain_plan(t *testing.T) {
+// TEST921: LinearChain creates a plan with correct nodes and edges in topological order.
+func Test921_linear_chain_plan(t *testing.T) {
 	plan := LinearChain(
 		[]string{"cap:a", "cap:b", "cap:c"},
 		"media:ext=pdf",
@@ -545,15 +536,15 @@ func Test6674_linear_chain_plan(t *testing.T) {
 	assert.Equal(t, 5, len(order))
 }
 
-// TEST6675: An empty MachinePlan is valid with zero nodes.
-func Test6675_empty_plan(t *testing.T) {
+// TEST922: An empty MachinePlan is valid with zero nodes.
+func Test922_empty_plan(t *testing.T) {
 	plan := NewMachinePlan("empty")
 	assert.Equal(t, 0, len(plan.Nodes))
 	assert.NoError(t, plan.Validate())
 }
 
-// TEST6676: MachinePlan stores and retrieves metadata by key.
-func Test6676_plan_with_metadata(t *testing.T) {
+// TEST923: MachinePlan stores and retrieves metadata by key.
+func Test923_plan_with_metadata(t *testing.T) {
 	plan := NewMachinePlan("test")
 	plan.Metadata = map[string]any{
 		"source":  "pdf",
@@ -564,8 +555,7 @@ func Test6676_plan_with_metadata(t *testing.T) {
 	assert.Equal(t, 1, plan.Metadata["version"])
 }
 
-// TEST924: Tests plan validation detects edges pointing to non-existent nodes
-// Verifies that Validate() returns an error when an edge references a missing to_node
+// TEST924: Tests plan validation detects edges pointing to non-existent nodes Verifies that validate() returns an error when an edge references a missing to_node
 func Test924_validate_invalid_edge(t *testing.T) {
 	plan := NewMachinePlan("invalid")
 	plan.Nodes["node_0"] = NewMachineNode("node_0", "cap:test")
@@ -576,8 +566,7 @@ func Test924_validate_invalid_edge(t *testing.T) {
 	assert.Contains(t, err.Error(), "nonexistent")
 }
 
-// TEST925: Tests topological sort correctly orders a diamond-shaped DAG (A->B,C->D)
-// Verifies that nodes with multiple paths respect dependency constraints (A first, D last)
+// TEST925: Tests topological sort correctly orders a diamond-shaped DAG (A->B,C->D) Verifies that nodes with multiple paths respect dependency constraints (A first, D last)
 func Test925_topological_order_diamond(t *testing.T) {
 	plan := NewMachinePlan("diamond")
 	plan.Nodes["A"] = NewMachineNode("A", "cap:a")
@@ -599,8 +588,7 @@ func Test925_topological_order_diamond(t *testing.T) {
 	assert.Equal(t, "D", order[3].ID)
 }
 
-// TEST926: Tests topological sort detects and rejects cyclic dependencies (A->B->C->A)
-// Verifies that circular references produce a "Cycle detected" error
+// TEST926: Tests topological sort detects and rejects cyclic dependencies (A->B->C->A) Verifies that circular references produce a "Cycle detected" error
 func Test926_topological_order_detects_cycle(t *testing.T) {
 	plan := NewMachinePlan("cyclic")
 	plan.Nodes["A"] = NewMachineNode("A", "cap:a")
@@ -618,8 +606,7 @@ func Test926_topological_order_detects_cycle(t *testing.T) {
 	assert.Contains(t, err.Error(), "Cycle detected")
 }
 
-// TEST927: Tests MachineResult structure for successful execution outcomes
-// Verifies that success status, outputs, and PrimaryOutput() accessor work correctly
+// TEST927: Tests MachineResult structure for successful execution outcomes Verifies that success status, outputs, and primary_output() accessor work correctly
 func Test927_execution_result(t *testing.T) {
 	result := &MachineResult{
 		Success: true,
@@ -634,8 +621,7 @@ func Test927_execution_result(t *testing.T) {
 	assert.NotNil(t, result.PrimaryOutput())
 }
 
-// TEST928: Tests plan validation detects edges originating from non-existent nodes
-// Verifies that Validate() returns an error when an edge references a missing from_node
+// TEST928: Tests plan validation detects edges originating from non-existent nodes Verifies that validate() returns an error when an edge references a missing from_node
 func Test928_validate_invalid_from_node(t *testing.T) {
 	plan := NewMachinePlan("invalid")
 	plan.Nodes["node_0"] = NewMachineNode("node_0", "cap:test")
@@ -646,8 +632,7 @@ func Test928_validate_invalid_from_node(t *testing.T) {
 	assert.Contains(t, err.Error(), "nonexistent")
 }
 
-// TEST929: Tests plan validation detects invalid entry node references
-// Verifies that Validate() returns an error when EntryNodes contains a non-existent node ID
+// TEST929: Tests plan validation detects invalid entry node references Verifies that validate() returns an error when entry_nodes contains a non-existent node ID
 func Test929_validate_invalid_entry_node(t *testing.T) {
 	plan := NewMachinePlan("invalid_entry")
 	plan.Nodes["cap_0"] = NewMachineNode("cap_0", "cap:test")
@@ -658,8 +643,7 @@ func Test929_validate_invalid_entry_node(t *testing.T) {
 	assert.Contains(t, err.Error(), "nonexistent_entry")
 }
 
-// TEST930: Tests plan validation detects invalid output node references
-// Verifies that Validate() returns an error when OutputNodes contains a non-existent node ID
+// TEST930: Tests plan validation detects invalid output node references Verifies that validate() returns an error when output_nodes contains a non-existent node ID
 func Test930_validate_invalid_output_node(t *testing.T) {
 	plan := NewMachinePlan("invalid_output")
 	plan.Nodes["cap_0"] = NewMachineNode("cap_0", "cap:test")
@@ -670,8 +654,7 @@ func Test930_validate_invalid_output_node(t *testing.T) {
 	assert.Contains(t, err.Error(), "nonexistent_output")
 }
 
-// TEST931: Tests NodeExecutionResult structure for failed node execution
-// Verifies that failure status, error message, and absence of outputs are correctly represented
+// TEST931: Tests NodeExecutionResult structure for failed node execution Verifies that failure status, error message, and absence of outputs are correctly represented
 func Test931_node_execution_result_failure(t *testing.T) {
 	result := &NodeExecutionResult{
 		NodeID:       "node_0",
@@ -686,8 +669,7 @@ func Test931_node_execution_result_failure(t *testing.T) {
 	assert.Equal(t, "Cap execution failed", result.Error)
 }
 
-// TEST932: Tests MachineResult structure for failed chain execution
-// Verifies that failure status, error message, and absence of outputs are correctly represented
+// TEST932: Tests MachineResult structure for failed chain execution Verifies that failure status, error message, and absence of outputs are correctly represented
 func Test932_execution_result_failure(t *testing.T) {
 	result := &MachineResult{
 		Success:         false,
@@ -702,7 +684,7 @@ func Test932_execution_result_failure(t *testing.T) {
 	assert.Nil(t, result.PrimaryOutput())
 }
 
-// TEST934: FindFirstForEach detects ForEach in a plan
+// TEST934: find_first_foreach detects ForEach in a plan
 func Test934_find_first_foreach(t *testing.T) {
 	plan := buildForeachPlanWithCollect()
 	foreachID := plan.FindFirstForEach()
@@ -710,13 +692,13 @@ func Test934_find_first_foreach(t *testing.T) {
 	assert.Equal(t, "foreach_0", *foreachID)
 }
 
-// TEST935: FindFirstForEach returns nil for linear plans
+// TEST935: find_first_foreach returns None for linear plans
 func Test935_find_first_foreach_linear(t *testing.T) {
 	plan := LinearChain([]string{"cap:a", "cap:b"}, "media:ext=pdf", "media:ext=png;image", []string{"input_a", "input_b"})
 	assert.Nil(t, plan.FindFirstForEach())
 }
 
-// TEST936: HasForeach detects ForEach nodes
+// TEST936: has_foreach detects ForEach nodes
 func Test936_has_foreach(t *testing.T) {
 	foreachPlan := buildForeachPlanWithCollect()
 	assert.True(t, foreachPlan.HasForeach(), "Plan with ForEach+Collect should detect ForEach")
@@ -733,7 +715,7 @@ func Test936_has_foreach(t *testing.T) {
 	assert.False(t, standalonePlan.HasForeach(), "Plan with standalone Collect (no ForEach) should NOT trigger HasForeach")
 }
 
-// TEST937: ExtractPrefixTo extracts input_slot -> cap_0 as a standalone plan
+// TEST937: extract_prefix_to extracts input_slot -> cap_0 as a standalone plan
 func Test937_extract_prefix_to(t *testing.T) {
 	plan := buildForeachPlanWithCollect()
 

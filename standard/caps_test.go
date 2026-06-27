@@ -31,7 +31,7 @@ func Test309_model_availability_and_path_are_distinct(t *testing.T) {
 		"availability and path must be distinct cap URNs")
 }
 
-// TEST310: llm_generate_text_urn() produces a valid cap URN with textable in/out specs
+// TEST310: llm_generate_text_urn() produces a valid cap URN with a UTF-8 text input and plain-text terminal output.
 func Test310_llm_generate_text_urn_shape(t *testing.T) {
 	urnStr := LlmGenerateTextUrn()
 	assert.True(t, strings.HasPrefix(urnStr, "cap:"), "must be a cap URN")
@@ -152,8 +152,8 @@ func Test1272_adapter_cap_constant_parses(t *testing.T) {
 		"CAP_ADAPTER_SELECTION must have adapter-selection out spec, got: %s", CapAdapterSelection)
 }
 
-// TEST6718: CapAdapterSelection has correct in/out specs (in=media: out=media:adapter-selection;json;record)
-func Test6718_adapter_selection_urn_builder(t *testing.T) {
+// TEST1273: CapAdapterSelection has correct in/out specs (in=media: out=media:adapter-selection;json;record)
+func Test1273_adapter_selection_urn_builder(t *testing.T) {
 	// in_spec should be bare "media:" (accepts any)
 	assert.True(t, strings.Contains(CapAdapterSelection, `in="media:"`),
 		`in spec must be "media:", got: %s`, CapAdapterSelection)
@@ -166,8 +166,7 @@ func Test6718_adapter_selection_urn_builder(t *testing.T) {
 		"out spec should contain record tag, got: %s", CapAdapterSelection)
 }
 
-// TEST1275: A cap whose output is adapter-selection can dispatch adapter-selection requests;
-// identity (wildcard output) cannot, because wildcard output cannot satisfy a specific output requirement.
+// TEST1275: A cap whose output is adapter-selection can dispatch adapter-selection requests; identity (wildcard output) cannot, because wildcard output cannot satisfy a specific output requirement.
 func Test1275_adapter_selection_dispatchable_by_specific_provider(t *testing.T) {
 	// Specific provider: same as adapter-selection URN — out matches, can dispatch
 	assert.True(t, strings.Contains(CapAdapterSelection, "adapter-selection"),

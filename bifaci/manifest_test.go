@@ -235,7 +235,7 @@ func (tc *testComponent) Caps() []cap.Cap {
 	return tc.ComponentManifest().AllCaps()
 }
 
-// TEST155: ComponentMetadata interface
+// TEST155: ComponentMetadata trait
 func Test155_component_metadata_interface(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(manifestTestUrn("test;type=component"))
 	require.NoError(t, err)
@@ -372,10 +372,7 @@ func Test1284_cap_group_with_adapter_urns(t *testing.T) {
 	assert.Len(t, deserialized.CapGroups[0].AdapterUrns, 2)
 }
 
-// TEST1872: RegistryURLFromBuildEnv passes a non-empty registry URL through
-// unchanged. This is the function that decides a cartridge/engine's baked
-// PRIMARY registry identity; a published build must report exactly the URL it
-// was compiled with (mirror of Rust test1872).
+// TEST1872: `registry_url_from_build_env` passes a non-empty registry URL through unchanged. This is the function that decides the engine's baked PRIMARY registry (surfaced over SystemService.HealthStatus); a published build must report exactly the URL it was compiled with.
 func Test1872_registry_url_from_build_env_passes_through_nonempty(t *testing.T) {
 	url := "https://cartridges.machinefabric.com/manifest"
 	got := RegistryURLFromBuildEnv(&url)
@@ -386,20 +383,20 @@ func Test1872_registry_url_from_build_env_passes_through_nonempty(t *testing.T) 
 	assert.Same(t, &url, got)
 }
 
-// TEST6739: an unset build-env value (nil) yields nil — a dev build has no baked
+// TEST1873: an unset build-env value (nil) yields nil — a dev build has no baked
 // registry, so the engine reports an empty primary-registry URL and loads only
 // `dev/` cartridges (mirror of Rust test1873).
-func Test6739_registry_url_from_build_env_none_for_dev(t *testing.T) {
+func Test1873_registry_url_from_build_env_none_for_dev(t *testing.T) {
 	assert.Nil(t, RegistryURLFromBuildEnv(nil))
 }
 
-// TEST6741: an exported-but-empty value (a pointer to "") is neither a dev build
+// TEST1874: an exported-but-empty value (a pointer to "") is neither a dev build
 // nor a valid identity and MUST fail hard, so the build can never silently hash
 // the empty string into a fake registry slug. We assert the panic AND its exact
 // message, so a regression that dropped the check (or replaced it with a silent
 // fallback) is caught rather than passing on a bogus empty primary registry
 // (mirror of Rust test1874).
-func Test6741_registry_url_from_build_env_rejects_empty_string(t *testing.T) {
+func Test1874_registry_url_from_build_env_rejects_empty_string(t *testing.T) {
 	empty := ""
 	assert.PanicsWithValue(t,
 		"MFR_CARTRIDGE_REGISTRY_URL must be unset for dev builds or set to a non-empty registry URL for published builds; empty string is invalid",

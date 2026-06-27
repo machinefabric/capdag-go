@@ -54,7 +54,7 @@ func makeTestCapWithUrnAndArgs(t *testing.T, capUrnStr string, args []CapArg) *C
 // Input validation tests (051-052)
 // -------------------------------------------------------------------------
 
-// TEST051: Test input validation succeeds with valid positional argument
+// TEST51: Test input validation succeeds with valid positional argument
 func Test051_input_validation_success(t *testing.T) {
 	u, err := urn.NewCapUrnFromString(valTestUrn("cap;type=test"))
 	require.NoError(t, err)
@@ -79,7 +79,7 @@ func Test051_input_validation_success(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-// TEST052: Test input validation fails with MissingRequiredArgument when required arg missing
+// TEST52: Test input validation fails with MissingRequiredArgument when required arg missing
 func Test052_input_validation_missing_required(t *testing.T) {
 	u, err := urn.NewCapUrnFromString(valTestUrn("cap;type=test"))
 	require.NoError(t, err)
@@ -97,7 +97,7 @@ func Test052_input_validation_missing_required(t *testing.T) {
 	assert.Contains(t, err.Error(), standard.MediaString)
 }
 
-// TEST053: Test input validation fails with InvalidArgumentType when wrong type provided
+// TEST53: Test input validation fails with InvalidArgumentType when wrong type provided
 func Test053_input_validation_wrong_type(t *testing.T) {
 	u, err := urn.NewCapUrnFromString(valTestUrn("cap;type=test"))
 	require.NoError(t, err)

@@ -59,11 +59,7 @@ func containsString(haystack []string, needle string) bool {
 	return false
 }
 
-// TEST1879: SyncRoster updates the LIVE host inventory in place — the engine
-// sees an added registered-dir cartridge via a fresh RelayNotify without
-// reconnecting, and a subsequent empty sync removes it. This is the macOS-XPC
-// syncDiscoveryOutcomes parity path the daemon uses after a registry verdict
-// flips a held cartridge to Listed.
+// TEST1879: SyncRoster updates the LIVE host inventory in place — the engine sees an added registered-dir cartridge via a fresh RelayNotify without reconnecting, and a subsequent empty sync removes it. This is the macOS-XPC `syncDiscoveryOutcomes` parity path the daemon uses after a registry verdict flips a held cartridge to Listed.
 func Test1879_sync_roster_adds_and_removes_registered_dir_live(t *testing.T) {
 	// A valid registered-dir cartridge (hashable dir + cartridge.json).
 	dir := t.TempDir()

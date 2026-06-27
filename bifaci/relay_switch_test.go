@@ -686,9 +686,7 @@ func Test435_relay_switch_urn_matching(t *testing.T) {
 	}
 }
 
-// TEST437: find_master_for_cap with preferred_cap routes to generic handler.
-// Generic provider (in=media:) CAN dispatch specific request (in="media:ext=pdf").
-// Preference routes to preferred among dispatchable candidates via IsEquivalent (Accepts-based).
+// TEST437: find_master_for_cap with preferred_cap routes to generic handler With is_dispatchable semantics: - Generic provider (in=media:) CAN dispatch specific request (in="media:ext=pdf") because media: (wildcard) accepts any input type - Preference routes to preferred among dispatchable candidates
 func Test437_preferred_cap_routes_to_generic(t *testing.T) {
 	// Master 0: generic thumbnail handler
 	engineRead0, slaveWrite0 := net.Pipe()
@@ -752,8 +750,7 @@ func Test437_preferred_cap_routes_to_generic(t *testing.T) {
 	}
 }
 
-// TEST438: find_master_for_cap with preference falls back to closest-specificity
-// when preferred cap is not in the comparable set.
+// TEST438: find_master_for_cap with preference falls back to closest-specificity when preferred cap is not in the comparable set
 func Test438_preferred_cap_falls_back_when_not_comparable(t *testing.T) {
 	engineRead, slaveWrite := net.Pipe()
 	slaveRead, engineWrite := net.Pipe()
@@ -791,9 +788,7 @@ func Test438_preferred_cap_falls_back_when_not_comparable(t *testing.T) {
 	}
 }
 
-// TEST439: Generic provider CAN dispatch specific request.
-// With is_dispatchable: generic provider (in=media:) can handle specific
-// request (in="media:ext=pdf") because media: accepts any input type.
+// TEST439: Generic provider CAN dispatch specific request (but only matches if no more specific provider exists) With is_dispatchable: generic provider (in=media:) CAN handle specific request (in="media:ext=pdf") because media: accepts any input type. With preference, can route to generic even when more specific exists.
 func Test439_generic_provider_can_dispatch_specific_request(t *testing.T) {
 	engineRead, slaveWrite := net.Pipe()
 	slaveRead, engineWrite := net.Pipe()
@@ -965,7 +960,7 @@ func Test6423_CartridgeAttachmentErrorDecodesProtoSnakeCaseStrings(t *testing.T)
 // keyed by index. Accumulating zombie slots on each reconnect was
 // the bug class these tests guard against.
 
-func Test6276_ReattachByIDPreservesSlotIndex(t *testing.T) {
+func Test133_ReattachByIDPreservesSlotIndex(t *testing.T) {
 	engineRead, slaveWrite := net.Pipe()
 	slaveRead, engineWrite := net.Pipe()
 
@@ -1051,8 +1046,8 @@ func Test6276_ReattachByIDPreservesSlotIndex(t *testing.T) {
 	}
 }
 
-// TEST6278: Add master with duplicate healthy i d errors
-func Test6278_AddMasterWithDuplicateHealthyIDErrors(t *testing.T) {
+// TEST134: Add master with duplicate healthy i d errors
+func Test134_AddMasterWithDuplicateHealthyIDErrors(t *testing.T) {
 	engineRead, slaveWrite := net.Pipe()
 	slaveRead, engineWrite := net.Pipe()
 
@@ -1100,8 +1095,8 @@ func Test6278_AddMasterWithDuplicateHealthyIDErrors(t *testing.T) {
 	}
 }
 
-// TEST6252: New relay switch rejects duplicate i ds
-func Test6252_NewRelaySwitchRejectsDuplicateIDs(t *testing.T) {
+// TEST6745: RelaySwitch::new rejects duplicate ids in its cardinality list.
+func Test6745_RelaySwitchNewRejectsDuplicateIDs(t *testing.T) {
 	a, _ := net.Pipe()
 	aOther, _ := net.Pipe()
 	b, _ := net.Pipe()

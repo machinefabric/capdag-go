@@ -16,8 +16,7 @@ func makeTestCapForGraph(inSpec, outSpec, op, title string) *cap.Cap {
 	return cap.NewCapWithArgs(capUrn, title, "test", nil)
 }
 
-// TEST772: Tests FindPathsToExactTarget() finds multi-step paths
-// Verifies that paths through intermediate nodes are found correctly
+// TEST772: Tests find_paths_to_exact_target() finds multi-step paths Verifies that paths through intermediate nodes are found correctly
 func Test772_find_paths_finds_multi_step_paths(t *testing.T) {
 	graph := NewLiveCapFab()
 
@@ -40,8 +39,7 @@ func Test772_find_paths_finds_multi_step_paths(t *testing.T) {
 	assert.Equal(t, "B to C", paths[0].Steps[1].Title())
 }
 
-// TEST773: Tests FindPathsToExactTarget() returns empty when no path exists
-// Verifies that pathfinding returns no paths when target is unreachable
+// TEST773: Tests find_paths_to_exact_target() returns empty when no path exists Verifies that pathfinding returns no paths when target is unreachable
 func Test773_find_paths_returns_empty_when_no_path(t *testing.T) {
 	graph := NewLiveCapFab()
 
@@ -58,8 +56,7 @@ func Test773_find_paths_returns_empty_when_no_path(t *testing.T) {
 	assert.Empty(t, paths, "Should find no paths when target is unreachable")
 }
 
-// TEST774: Tests GetReachableTargets() returns all reachable targets
-// Verifies that reachable targets include direct cap targets
+// TEST774: Tests get_reachable_targets() returns all reachable targets Verifies that reachable targets include direct cap targets and cardinality variants (list versions via Collect)
 func Test774_get_reachable_targets_finds_all_targets(t *testing.T) {
 	graph := NewLiveCapFab()
 
@@ -92,7 +89,7 @@ func Test774_get_reachable_targets_finds_all_targets(t *testing.T) {
 	assert.True(t, reaches(mediaD), "D should be reachable")
 }
 
-// TEST777: Tests type checking prevents using PDF-specific cap with PNG input
+// TEST777: Tests type checking prevents using PDF-specific cap with PNG input Verifies that media type compatibility is enforced during pathfinding
 func Test777_type_mismatch_pdf_cap_does_not_match_png_input(t *testing.T) {
 	graph := NewLiveCapFab()
 	pdfToText := makeTestCapForGraph("media:ext=pdf", "media:enc=utf-8", "pdf2text", "PDF to Text")
@@ -107,7 +104,7 @@ func Test777_type_mismatch_pdf_cap_does_not_match_png_input(t *testing.T) {
 	assert.Empty(t, paths, "Should NOT find path from PNG to text via PDF cap")
 }
 
-// TEST778: Tests type checking prevents using PNG-specific cap with PDF input
+// TEST778: Tests type checking prevents using PNG-specific cap with PDF input Verifies that media type compatibility is enforced during pathfinding
 func Test778_type_mismatch_png_cap_does_not_match_pdf_input(t *testing.T) {
 	graph := NewLiveCapFab()
 	pngToThumb := makeTestCapForGraph("media:ext=png;image", "media:thumbnail", "png2thumb", "PNG to Thumbnail")
@@ -122,7 +119,7 @@ func Test778_type_mismatch_png_cap_does_not_match_pdf_input(t *testing.T) {
 	assert.Empty(t, paths, "Should NOT find path from PDF to thumbnail via PNG cap")
 }
 
-// TEST779: Tests get_reachable_targets() only returns targets reachable via type-compatible caps
+// TEST779: Tests get_reachable_targets() only returns targets reachable via type-compatible caps Verifies that PNG and PDF inputs reach different cap targets (not each other's)
 func Test779_get_reachable_targets_respects_type_matching(t *testing.T) {
 	graph := NewLiveCapFab()
 	pdfToText := makeTestCapForGraph("media:ext=pdf", "media:enc=utf-8", "pdf2text", "PDF to Text")
@@ -159,7 +156,7 @@ func Test779_get_reachable_targets_respects_type_matching(t *testing.T) {
 	assert.False(t, reaches(pdfTargets, mediaThumbnail), "PDF should NOT reach thumbnail")
 }
 
-// TEST781: Tests find_paths_to_exact_target() enforces type compatibility across multi-step chains
+// TEST781: Tests find_paths_to_exact_target() enforces type compatibility across multi-step chains Verifies that paths are only found when all intermediate types are compatible
 func Test781_find_paths_respects_type_chain(t *testing.T) {
 	graph := NewLiveCapFab()
 	resizePng := makeTestCapForGraph("media:ext=png;image", "media:resized-png", "resize", "Resize PNG")
@@ -186,7 +183,7 @@ func Test781_find_paths_respects_type_chain(t *testing.T) {
 	assert.Empty(t, pdfPaths, "Should find NO paths from PDF to thumbnail (type mismatch)")
 }
 
-// TEST787: Tests find_paths_to_exact_target() sorts paths by length, preferring shorter ones
+// TEST787: Tests find_paths_to_exact_target() sorts paths by length, preferring shorter ones Verifies that among multiple paths, the shortest is ranked first
 func Test787_find_paths_sorting_prefers_shorter(t *testing.T) {
 	graph := NewLiveCapFab()
 	direct := makeTestCapForGraph("media:format-a", "media:format-c", "direct", "Direct")
@@ -286,8 +283,7 @@ func Test1111_foreach_for_user_provided_list_source(t *testing.T) {
 	assert.True(t, foreachStep.MediaDef.IsEquivalent(source), "ForEach MediaDef should be equivalent to source")
 }
 
-// TEST1112: Collect is not synthesized during path finding.
-// Reaching a list target type requires the cap itself to output a list type.
+// TEST1112: Collect is not synthesized during path finding. Reaching a list target type requires the cap itself to output a list type.
 func Test1112_no_collect_in_path_finding(t *testing.T) {
 	graph := NewLiveCapFab()
 
@@ -310,8 +306,7 @@ func Test1112_no_collect_in_path_finding(t *testing.T) {
 	assert.Empty(t, paths, "Should NOT find path to list type without a cap that produces it")
 }
 
-// TEST1113: Multi-cap path without Collect — Collect is not synthesized.
-// PDF→disbind→page→summarize→summary. CapStepCount=2.
+// TEST1113: Multi-cap path without Collect — Collect is not synthesized
 func Test1113_multi_cap_path_no_collect(t *testing.T) {
 	graph := NewLiveCapFab()
 
@@ -334,8 +329,7 @@ func Test1113_multi_cap_path_no_collect(t *testing.T) {
 	assert.Equal(t, 2, paths[0].CapStepCount, "Should have 2 cap steps")
 }
 
-// TEST1114: Graph stores only Cap edges after SyncFromCaps.
-// All stored edges must have IsCap() == true.
+// TEST1114: Graph stores only Cap edges after sync
 func Test1114_graph_stores_only_cap_edges(t *testing.T) {
 	graph := NewLiveCapFab()
 
@@ -353,8 +347,7 @@ func Test1114_graph_stores_only_cap_edges(t *testing.T) {
 	}
 }
 
-// TEST1115: ForEach is synthesized when is_sequence=true AND caps can consume items.
-// getOutgoingEdges(source, true) → ForEach edge present, next_is_seq=false.
+// TEST1115: ForEach is synthesized when is_sequence=true AND caps can consume items
 func Test1115_dynamic_foreach_with_is_sequence(t *testing.T) {
 	graph := NewLiveCapFab()
 
@@ -387,8 +380,7 @@ func Test1115_dynamic_foreach_with_is_sequence(t *testing.T) {
 	assert.True(t, fe.ToSpec.IsEquivalent(source), "ForEach ToSpec should be the same URN")
 }
 
-// TEST1116: Collect is never synthesized during path finding.
-// getOutgoingEdges for both scalar and sequence returns no Collect edges.
+// TEST1116: Collect is never synthesized during path finding
 func Test1116_collect_never_synthesized(t *testing.T) {
 	graph := NewLiveCapFab()
 
@@ -407,8 +399,7 @@ func Test1116_collect_never_synthesized(t *testing.T) {
 	}
 }
 
-// TEST1117: ForEach is NOT synthesized when is_sequence=false.
-// Even with caps that could consume, ForEach requires is_sequence=true.
+// TEST1117: ForEach is NOT synthesized when is_sequence=false
 func Test1117_no_foreach_when_not_sequence(t *testing.T) {
 	graph := NewLiveCapFab()
 
@@ -429,7 +420,7 @@ func Test1117_no_foreach_when_not_sequence(t *testing.T) {
 	}
 }
 
-// TEST1118: ForEach not synthesized without cap consumers even with is_sequence=true.
+// TEST1118: ForEach not synthesized without cap consumers even with is_sequence=true
 func Test1118_no_foreach_without_cap_consumers(t *testing.T) {
 	graph := NewLiveCapFab() // empty graph — no caps
 
@@ -442,8 +433,7 @@ func Test1118_no_foreach_without_cap_consumers(t *testing.T) {
 	}
 }
 
-// TEST1289: BFS reachable targets includes the source itself when round-trip paths exist.
-// A→B and B→A means A is reachable from A (via A→B→A).
+// TEST1289: BFS reachable targets includes the source itself when round-trip paths exist. A→B and B→A means A is reachable from A (via A→B→A).
 func Test1289_bfs_reachable_includes_source_roundtrip(t *testing.T) {
 	graph := NewLiveCapFab()
 
@@ -514,7 +504,7 @@ func Test1290_iddfs_finds_roundtrip_paths(t *testing.T) {
 	assert.Equal(t, 2, shortest.TotalSteps, "Shortest round-trip should be 2 steps (coerce + coerce back)")
 }
 
-// TEST1291: IDDFS round-trip paths are also found with is_sequence=true.
+// TEST1291: IDDFS round-trip paths are also found with is_sequence=true. The ForEach/Collect edges must not block round-trip discovery.
 func Test1291_iddfs_roundtrip_with_sequence(t *testing.T) {
 	graph := NewLiveCapFab()
 
@@ -543,8 +533,7 @@ func Test1291_iddfs_roundtrip_with_sequence(t *testing.T) {
 	assert.NotEmpty(t, paths, "IDDFS must find round-trip paths even with is_sequence=true. Got 0 paths.")
 }
 
-// TEST1292: BFS and IDDFS agree that round-trip targets exist.
-// If BFS says target X is reachable from source X, IDDFS must find at least one path.
+// TEST1292: BFS and IDDFS agree that round-trip targets exist. If BFS says target X is reachable from source X, IDDFS must find at least one path.
 func Test1292_bfs_iddfs_roundtrip_consistency(t *testing.T) {
 	graph := NewLiveCapFab()
 
@@ -585,8 +574,7 @@ func Test1292_bfs_iddfs_roundtrip_consistency(t *testing.T) {
 	assert.Equal(t, 3, shortest.TotalSteps)
 }
 
-// TEST1293: IDDFS round-trip does not produce paths with 0 cap steps.
-// No round-trip should exist when there's no return edge.
+// TEST1293: IDDFS round-trip does not produce paths with 0 cap steps. Identity-only round trips (no real transformation) must be excluded.
 func Test1293_roundtrip_requires_cap_steps(t *testing.T) {
 	graph := NewLiveCapFab()
 
@@ -760,7 +748,7 @@ func Test1153_deterministic_ordering(t *testing.T) {
 	}
 }
 
-// TEST1154: SyncFromCaps replaces the existing graph contents with the new cap set.
+// TEST1154: Syncing from caps replaces the existing graph contents with the new cap set.
 func Test1154_sync_from_caps(t *testing.T) {
 	graph := NewLiveCapFab()
 

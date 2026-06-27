@@ -14,8 +14,7 @@ import (
 // method, across every capdag implementation. See capdag/src/fabric/alias.rs,
 // capdag/src/fabric/registry.rs, and capdag/src/machine/parser.rs.
 
-// Test1880: alias name normalization lowercases and accepts the allowed char
-// class; rejects colon, whitespace, and out-of-class chars.
+// TEST1880: alias name normalization lowercases and accepts the allowed character class; rejects colon, whitespace, and out-of-class chars with the right error. A broken validator would let a URN-shaped or whitespace name through, or mangle a valid name.
 func Test1880_AliasNameNormalizationRules(t *testing.T) {
 	got, err := media.NormalizeAliasName("JSONDoc")
 	require.NoError(t, err)
@@ -31,7 +30,7 @@ func Test1880_AliasNameNormalizationRules(t *testing.T) {
 	}
 }
 
-// Test1881: URN-vs-alias detection keys purely on the presence of ':'.
+// TEST1881: URN-vs-alias detection keys purely on the presence of ':'. The whole design rests on this discriminator being exact.
 func Test1881_TokenURNvsAliasDetection(t *testing.T) {
 	assert.True(t, media.TokenIsURN(`cap:in="media:ext=pdf";extract;out="media:enc=utf-8"`))
 	assert.True(t, media.TokenIsURN("media:fmt=json;record"))
@@ -40,8 +39,7 @@ func Test1881_TokenURNvsAliasDetection(t *testing.T) {
 	assert.False(t, media.IsAliasToken("media:enc=utf-8"))
 }
 
-// Test1882: alias target classification distinguishes cap from media by
-// prefix and rejects a non-URN target.
+// TEST1882: alias target classification distinguishes cap from media by prefix and rejects a non-URN target. The typed-boundary enforcement in the registry depends on this.
 func Test1882_ClassifyAliasTargetByPrefix(t *testing.T) {
 	k, ok := media.ClassifyAliasTarget("media:fmt=json;record")
 	require.True(t, ok)
@@ -72,7 +70,7 @@ func Test1887_ManifestSerdeRoundTripsAliases(t *testing.T) {
 	assert.Equal(t, float64(1), aliases["jsondoc"])
 }
 
-// Test1888: resolve alias returns the alias target untyped; case-insensitive; malformed name rejected.
+// TEST1888: resolve_alias returns the alias target untyped. Seeding a media alias and resolving it yields the media URN; a malformed alias name is rejected before any lookup.
 func Test1888_ResolveAliasReturnsTarget(t *testing.T) {
 	reg := cap.NewFabricRegistryForTest()
 	reg.InsertCachedAliasForTest(media.StoredAlias{Name: "jsondoc", Target: "media:fmt=json;record", Version: 1})
@@ -102,8 +100,7 @@ func Test1889_ResolveAliasTypedEnforcesKind(t *testing.T) {
 	assert.Error(t, err, "a media alias demanded as a cap must fail hard")
 }
 
-// Test1890: GetCap accepts a cap alias and returns the aliased cap; a media
-// alias passed to GetCap fails hard (typed boundary).
+// TEST1890: get_cap accepts a cap alias and returns the aliased cap; a media alias passed to get_cap fails hard (typed boundary). This proves alias substitution AND type enforcement at the registry's cap surface.
 func Test1890_GetCapViaAliasAndTypeMismatch(t *testing.T) {
 	reg := cap.NewFabricRegistryForTest()
 	c := buildCap(`cap:extract;in="media:ext=pdf";out="media:enc=utf-8"`, "extract", []string{"media:ext=pdf"}, "media:enc=utf-8")
@@ -120,8 +117,7 @@ func Test1890_GetCapViaAliasAndTypeMismatch(t *testing.T) {
 	assert.Error(t, err, "a media alias at GetCap must fail hard")
 }
 
-// Test1891: GetMediaDef accepts a media alias and returns the aliased spec; a
-// cap alias passed to GetMediaDef fails hard.
+// TEST1891: get_media_def accepts a media alias and returns the aliased spec; a cap alias passed to get_media_def fails hard.
 func Test1891_GetMediaDefViaAliasAndTypeMismatch(t *testing.T) {
 	reg, err := media.NewFabricRegistryForTest()
 	require.NoError(t, err)
@@ -141,7 +137,7 @@ func Test1891_GetMediaDefViaAliasAndTypeMismatch(t *testing.T) {
 	assert.Error(t, err, "a cap alias at GetMediaDef must fail hard")
 }
 
-// Test1892: an unknown alias name is a hard not-found, never a silent empty.
+// TEST1892: an unknown alias name is a hard not-found, never a silent empty; unknown and malformed names are treated the same. This is the "expose issues, no fallback" contract.
 func Test1892_UnknownAliasIsNotFound(t *testing.T) {
 	reg := cap.NewFabricRegistryForTest()
 	_, err := reg.GetAlias("nosuchalias")
@@ -202,8 +198,7 @@ func Test1885_CapPositionAliasToMediaIsError(t *testing.T) {
 	assert.Equal(t, ErrAliasNotACap, perr.Syntax.Kind)
 }
 
-// Test1886: a cap-position name that is neither a local header nor a
-// registered alias raises the undefined-alias error.
+// TEST1886: a cap-position name that is neither a local header nor a registered alias still raises UndefinedAlias. The alias mechanism must not mask a genuinely undefined name.
 func Test1886_UnregisteredCapNameIsUndefinedAlias(t *testing.T) {
 	reg, _ := extractWithAliasRegistry()
 	_, perr := ParseMachine("[doc -> nosuchalias -> out]", reg)

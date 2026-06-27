@@ -1524,7 +1524,7 @@ func Test500_chunk_count_cbor_roundtrip(t *testing.T) {
 	assert.Equal(t, "s1", *decoded.StreamId)
 }
 
-// TEST501: Frame creation initializes optional fields to nil
+// TEST501: Frame::new initializes new fields to None
 func Test501_frame_new_initializes_optional_fields_none(t *testing.T) {
 	frame := NewReq(NewMessageIdRandom(), "cap:test", nil, "")
 
@@ -1542,7 +1542,7 @@ func Test6602_codec_key_constants(t *testing.T) {
 	assert.Equal(t, 16, keyChecksum)
 }
 
-// TEST503: compute_checksum handles empty data correctly (FNV-1a offset basis)
+// TEST503: compute_checksum handles empty data correctly
 func Test503_compute_checksum_empty_data(t *testing.T) {
 	hash := ComputeChecksum([]byte{})
 	assert.Equal(t, uint64(0xcbf29ce484222325), hash, "empty data should produce FNV offset basis")
@@ -1585,7 +1585,7 @@ func Test506_compute_checksum_different_data_different_hash(t *testing.T) {
 	assert.NotEqual(t, hash1, hash2, "different data must produce different hashes")
 }
 
-// TEST507: ReorderBuffer isolates flows by XID — same RID different XIDs are independent
+// TEST507: ReorderBuffer isolates flows by XID (routing_id) - same RID different XIDs
 func Test507_reorder_buffer_xid_isolation(t *testing.T) {
 	rb := NewReorderBuffer(64)
 	rid := NewMessageIdRandom()
@@ -1632,7 +1632,7 @@ func Test508_reorder_buffer_duplicate_buffered_seq(t *testing.T) {
 	)
 }
 
-// TEST509: ReorderBuffer handles large seq gaps without DOS — overflow fails
+// TEST509: ReorderBuffer handles large seq gaps without DOS
 func Test509_reorder_buffer_large_gap_rejected(t *testing.T) {
 	rb := NewReorderBuffer(64)
 	rid := NewMessageIdRandom()
@@ -1753,7 +1753,7 @@ func Test513_reorder_buffer_mixed_types_same_flow(t *testing.T) {
 	assert.Equal(t, FrameTypeLog, ready[2].FrameType)
 }
 
-// TEST514: ReorderBuffer XID cleanup doesn't affect different XID flows
+// TEST514: ReorderBuffer with XID cleanup doesn't affect different XID
 func Test514_reorder_buffer_xid_cleanup_isolation(t *testing.T) {
 	rb := NewReorderBuffer(64)
 	rid := NewMessageIdRandom()
@@ -1813,8 +1813,8 @@ func Test516_reorder_buffer_stale_error_details(t *testing.T) {
 	)
 }
 
-// TEST6603: FlowKey with empty XID differs from non-empty XID (mirrors Rust None vs Some)
-func Test6603_flow_key_none_vs_some_xid(t *testing.T) {
+// TEST517: FlowKey with None XID differs from Some(xid)
+func Test517_flow_key_none_vs_some_xid(t *testing.T) {
 	rid := NewMessageIdRandom()
 	xid := NewMessageIdRandom()
 
@@ -1918,13 +1918,13 @@ func Test522_relay_state_cbor_roundtrip(t *testing.T) {
 	assert.False(t, decoded.Id.IsUuid(), "RelayState must use uint ID, not UUID")
 }
 
-// TEST523: IsFlowFrame returns false for RelayNotify
+// TEST523: is_flow_frame returns false for RelayNotify
 func Test523_relay_notify_not_flow_frame(t *testing.T) {
 	frame := NewRelayNotify([]byte("test"), DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer)
 	assert.False(t, frame.IsFlowFrame(), "RelayNotify must not be a flow frame")
 }
 
-// TEST524: IsFlowFrame returns false for RelayState
+// TEST524: is_flow_frame returns false for RelayState
 func Test524_relay_state_not_flow_frame(t *testing.T) {
 	frame := NewRelayState([]byte("test"))
 	assert.False(t, frame.IsFlowFrame(), "RelayState must not be a flow frame")
@@ -1961,8 +1961,8 @@ func Test527_relay_notify_large_manifest(t *testing.T) {
 	assert.Equal(t, []byte(largeManifest), decoded.RelayNotifyManifest())
 }
 
-// TEST6604: RelayNotify and RelayState use uint 0 as sentinel ID (not UUID)
-func Test6604_relay_frames_use_uint_zero_id(t *testing.T) {
+// TEST528: RelayNotify and RelayState use MessageId::Uint(0)
+func Test528_relay_frames_use_uint_zero_id(t *testing.T) {
 	notify := NewRelayNotify([]byte("test"), DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer)
 	state := NewRelayState([]byte("test"))
 

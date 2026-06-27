@@ -38,10 +38,7 @@ func testRegistry(t *testing.T) *FabricRegistry {
 	return registry
 }
 
-// TEST088: Resolving a media URN seeded into the registry returns
-// the seeded spec verbatim. A regression in the registry-resolution
-// path would surface as a missing or empty result here, since there
-// is no local-override fallback to mask it. Mirrors Rust test088.
+// TEST88: Resolving a media URN seeded into the registry returns the seeded spec verbatim. A regression in the registry-resolution path would surface as a `None`-shaped result here, since there is no local-override fallback to mask it.
 func Test088_resolve_seeded_spec(t *testing.T) {
 	registry := testRegistry(t)
 	registry.AddSpec(MediaDef{
@@ -55,10 +52,7 @@ func Test088_resolve_seeded_spec(t *testing.T) {
 	assert.Empty(t, resolved.ProfileURI, "abstract value-type spec carries no profile_uri")
 }
 
-// TEST089: A seeded record-shaped media def carries its schema and
-// profile_uri intact through resolution. Catches a regression that
-// dropped optional fields when copying into ResolvedMediaDef.
-// Mirrors Rust test089.
+// TEST89: A seeded record-shaped media def carries its schema and profile_uri intact through resolution. Catches a regression that dropped optional fields when copying into ResolvedMediaDef.
 func Test089_resolve_seeded_record_spec(t *testing.T) {
 	registry := testRegistry(t)
 	schema := map[string]any{
@@ -88,8 +82,8 @@ func Test089_resolve_seeded_record_spec(t *testing.T) {
 // reason; this deletion keeps the Go mirror in parity with the
 // Rust reference and the Python mirror.
 
-// TEST6284: Test resolving unknown media URN fails with UnresolvableMediaUrn error
-func Test6284_resolve_unresolvable_fails_hard(t *testing.T) {
+// TEST93: Test resolving unknown media URN fails with UnresolvableMediaUrn error
+func Test93_resolve_unresolvable_fails_hard(t *testing.T) {
 	registry := testRegistry(t)
 	// URN not in local media_defs and not in registry - FAIL HARD
 	_, err := ResolveMediaUrn("media:completely-unknown-urn-not-in-registry", registry)
@@ -105,7 +99,7 @@ func Test6284_resolve_unresolvable_fails_hard(t *testing.T) {
 // MediaDef serialization tests
 // -------------------------------------------------------------------------
 
-// TEST095: Test MediaDef serializes with required fields and skips None fields
+// TEST95: Test MediaDef serializes with required fields and skips None fields
 func Test095_media_def_def_serialize(t *testing.T) {
 	def := MediaDef{
 		Urn:         "media:test;json",
@@ -131,7 +125,7 @@ func Test095_media_def_def_serialize(t *testing.T) {
 	// Description is empty string - may or may not be omitted depending on tag
 }
 
-// TEST096: Test deserializing MediaDef from JSON object
+// TEST96: Test deserializing MediaDef from JSON object
 func Test096_media_def_def_deserialize(t *testing.T) {
 	jsonStr := `{"urn":"media:test;json","media_type":"application/json","title":"Test"}`
 	var def MediaDef
@@ -147,7 +141,7 @@ func Test096_media_def_def_deserialize(t *testing.T) {
 // Duplicate URN validation tests
 // -------------------------------------------------------------------------
 
-// TEST097: Test duplicate URN validation catches duplicates
+// TEST97: Test duplicate URN validation catches duplicates
 func Test097_validate_no_duplicate_urns_catches_duplicates(t *testing.T) {
 	mediaDefs := []MediaDef{
 		NewMediaDefWithTitle("media:dup;json", "application/json", "", "First"),
@@ -159,7 +153,7 @@ func Test097_validate_no_duplicate_urns_catches_duplicates(t *testing.T) {
 	assert.Contains(t, err.Error(), "duplicate")
 }
 
-// TEST098: Test duplicate URN validation passes for unique URNs
+// TEST98: Test duplicate URN validation passes for unique URNs
 func Test098_validate_no_duplicate_urns_passes_for_unique(t *testing.T) {
 	mediaDefs := []MediaDef{
 		NewMediaDefWithTitle("media:first;json", "application/json", "", "First"),
@@ -173,10 +167,10 @@ func Test098_validate_no_duplicate_urns_passes_for_unique(t *testing.T) {
 // ResolvedMediaDef tests
 // -------------------------------------------------------------------------
 
-// TEST6296: A media def with no enc= tag is not text-representable. The old
+// TEST99: A media def with no enc= tag is not text-representable. The old
 // is_binary/is_text axis is gone; text is identified by the presence of an
 // encoding (HasEncoding), so "binary" is simply the absence of one.
-func Test6296_resolved_is_binary(t *testing.T) {
+func Test99_resolved_is_binary(t *testing.T) {
 	resolved := &ResolvedMediaDef{
 		SpecID:      "media:",
 		MediaType:   "application/octet-stream",
@@ -265,8 +259,8 @@ func Test103_resolved_is_json(t *testing.T) {
 	assert.True(t, resolved.IsRecord())
 }
 
-// TEST6297: Test ResolvedMediaDef is_text returns true when enc tag is present
-func Test6297_resolved_is_text(t *testing.T) {
+// TEST104: Test ResolvedMediaDef is_text returns true when enc tag is present
+func Test104_resolved_is_text(t *testing.T) {
 	resolved := &ResolvedMediaDef{
 		SpecID:      "media:enc=utf-8",
 		MediaType:   "text/plain",
@@ -508,7 +502,7 @@ func Test608_media_urns_for_extension_populated(t *testing.T) {
 	assert.Equal(t, urns, urnsUpper)
 }
 
-// TEST609: get_extension_mappings returns all registered extension->URN pairs
+// TEST609: get_extension_mappings returns all registered extension→URN pairs.
 func Test609_get_extension_mappings(t *testing.T) {
 	registry, err := NewFabricRegistryForTest()
 	require.NoError(t, err)
@@ -555,8 +549,8 @@ func Test610_get_cached_spec(t *testing.T) {
 	assert.Equal(t, "Test Spec", retrieved.Title)
 }
 
-// TEST614: Verify registry creation succeeds and cache directory exists
-func Test614_registry_creation(t *testing.T) {
+// TEST618: Verify profile schema registry creation succeeds with temp cache
+func Test618_registry_creation(t *testing.T) {
 	registry, err := NewFabricRegistryForTest()
 	require.NoError(t, err)
 	require.NotNil(t, registry)
@@ -595,9 +589,9 @@ func Test617_normalize_media_urn(t *testing.T) {
 	assert.Equal(t, urn1, urn2)
 }
 
-// TEST6539: Documentation propagates from MediaDef through ResolveMediaUrn
+// TEST288: Documentation propagates from MediaDef through ResolveMediaUrn
 // into ResolvedMediaDef. Verifies description and documentation remain distinct.
-func Test6539_media_documentation_propagates_through_resolve(t *testing.T) {
+func Test288_media_documentation_propagates_through_resolve(t *testing.T) {
 	registry := testRegistry(t)
 	body := "## Markdown body\n\nWith `code` and a [link](https://example.com)."
 	docUrn := "media:doc-test-1131;enc=utf-8"
@@ -620,8 +614,7 @@ func Test6539_media_documentation_propagates_through_resolve(t *testing.T) {
 	assert.Equal(t, "short desc", resolved.Description)
 }
 
-// TEST0289: MediaDef serializes documentation only when present and
-// round-trips losslessly. When nil, the field must be omitted entirely.
+// TEST289: MediaDef serializes documentation only when present and round-trips losslessly. Mirrors TEST1127/1128 for the cap side.
 func Test0289_media_def_def_documentation_round_trip(t *testing.T) {
 	body := "Body with newline\nand backslash \\"
 	withDoc := MediaDef{

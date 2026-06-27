@@ -29,7 +29,7 @@ func testUrnWithIO(inSpec, outSpec, tags string) string {
 	return `cap:in="` + inSpec + `";out="` + outSpec + `";` + tags
 }
 
-// TEST001: Test that cap URN is created with tags parsed correctly and direction specs accessible
+// TEST1: Test that cap URN is created with tags parsed correctly and direction specs accessible
 func Test001_cap_urn_creation(t *testing.T) {
 	capUrn, err := NewCapUrnFromString(testUrn("transform;format=json;type=data_processing"))
 
@@ -51,7 +51,7 @@ func Test001_cap_urn_creation(t *testing.T) {
 	assert.Equal(t, standard.MediaObject, capUrn.OutSpec())
 }
 
-// TEST002: Test that missing 'in' or 'out' defaults to media: wildcard
+// TEST2: Test that missing 'in' or 'out' defaults to media: wildcard
 func Test002_direction_specs_default_to_wildcard(t *testing.T) {
 	// Missing 'in' defaults to wildcard "media:"
 	cap1, err := NewCapUrnFromString(`cap:out="media:object";test`)
@@ -70,7 +70,7 @@ func Test002_direction_specs_default_to_wildcard(t *testing.T) {
 	assert.Equal(t, "media:object", cap3.OutSpec())
 }
 
-// TEST003: Test that direction specs must match exactly, different in/out types don't match, wildcard matches any
+// TEST3: Test that direction specs must match exactly, different in/out types don't match, wildcard matches any
 func Test003_direction_matching(t *testing.T) {
 	cap1, err := NewCapUrnFromString(`cap:in="media:string";out="media:object";test`)
 	require.NoError(t, err)
@@ -92,7 +92,7 @@ func Test003_direction_matching(t *testing.T) {
 	assert.True(t, cap5.Accepts(cap1))
 }
 
-// TEST004: Test that unquoted keys and values are normalized to lowercase
+// TEST4: Test that unquoted keys and values are normalized to lowercase
 func Test004_unquoted_values_lowercased(t *testing.T) {
 	// Marker `Generate` (value-less) and keyed tags `EXT=PDF`, `Target=Thumbnail`.
 	// Unquoted keys AND values are lowercased; quoted values would keep case.
@@ -116,7 +116,7 @@ func Test004_unquoted_values_lowercased(t *testing.T) {
 	assert.Equal(t, "pdf", extUpper)
 }
 
-// TEST005: Test that quoted values preserve case while unquoted are lowercased
+// TEST5: Test that quoted values preserve case while unquoted are lowercased
 func Test005_quoted_values_preserve_case(t *testing.T) {
 	cap, err := NewCapUrnFromString(testUrn(`key="Value With Spaces"`))
 	require.NoError(t, err)
@@ -142,7 +142,7 @@ func Test005_quoted_values_preserve_case(t *testing.T) {
 	assert.False(t, unquoted.Equals(quoted))
 }
 
-// TEST006: Test that quoted values can contain special characters (semicolons, equals, spaces)
+// TEST6: Test that quoted values can contain special characters (semicolons, equals, spaces)
 func Test006_quoted_value_special_chars(t *testing.T) {
 	cap, err := NewCapUrnFromString(testUrn(`key="value;with;semicolons"`))
 	require.NoError(t, err)
@@ -163,7 +163,7 @@ func Test006_quoted_value_special_chars(t *testing.T) {
 	assert.Equal(t, "hello world", value3)
 }
 
-// TEST007: Test that escape sequences in quoted values (\" and \\) are parsed correctly
+// TEST7: Test that escape sequences in quoted values (\" and \\) are parsed correctly
 func Test007_quoted_value_escape_sequences(t *testing.T) {
 	cap, err := NewCapUrnFromString(testUrn(`key="value\"quoted\""`))
 	require.NoError(t, err)
@@ -184,7 +184,7 @@ func Test007_quoted_value_escape_sequences(t *testing.T) {
 	assert.Equal(t, `say "hello\world"`, value3)
 }
 
-// TEST008: Test that mixed quoted and unquoted values in same URN parse correctly
+// TEST8: Test that mixed quoted and unquoted values in same URN parse correctly
 func Test008_mixed_quoted_unquoted(t *testing.T) {
 	cap, err := NewCapUrnFromString(testUrn(`a="Quoted";b=simple`))
 	require.NoError(t, err)
@@ -198,7 +198,7 @@ func Test008_mixed_quoted_unquoted(t *testing.T) {
 	assert.Equal(t, "simple", b)
 }
 
-// TEST009: Test that unterminated quote produces UnterminatedQuote error
+// TEST9: Test that unterminated quote produces UnterminatedQuote error
 func Test009_unterminated_quote_error(t *testing.T) {
 	cap, err := NewCapUrnFromString(testUrn(`key="unterminated`))
 	assert.Nil(t, cap)
@@ -208,7 +208,7 @@ func Test009_unterminated_quote_error(t *testing.T) {
 	assert.Equal(t, ErrorUnterminatedQuote, capError.Code)
 }
 
-// TEST010: Test that invalid escape sequences (like \n, \x) produce InvalidEscapeSequence error
+// TEST10: Test that invalid escape sequences (like \n, \x) produce InvalidEscapeSequence error
 func Test010_invalid_escape_sequence_error(t *testing.T) {
 	cap, err := NewCapUrnFromString(testUrn(`key="bad\n"`))
 	assert.Nil(t, cap)
@@ -225,7 +225,7 @@ func Test010_invalid_escape_sequence_error(t *testing.T) {
 	assert.Equal(t, ErrorInvalidEscapeSequence, capError2.Code)
 }
 
-// TEST011: Test that serialization uses smart quoting (no quotes for simple lowercase, quotes for special chars/uppercase)
+// TEST11: Test that serialization uses smart quoting (no quotes for simple lowercase, quotes for special chars/uppercase)
 func Test011_serialization_smart_quoting(t *testing.T) {
 	// Simple lowercase value — no quoting needed; media URNs without semicolons unquoted
 	cap, err := NewCapUrnBuilder().
@@ -256,7 +256,7 @@ func Test011_serialization_smart_quoting(t *testing.T) {
 	assert.Equal(t, `cap:in=media:void;key="HasUpper";out=media:record`, cap4.ToString())
 }
 
-// TEST012: Test that simple cap URN round-trips (parse -> serialize -> parse equals original)
+// TEST12: Test that simple cap URN round-trips (parse -> serialize -> parse equals original)
 func Test012_round_trip_simple(t *testing.T) {
 	original := testUrn("generate;ext=pdf")
 	cap, err := NewCapUrnFromString(original)
@@ -267,7 +267,7 @@ func Test012_round_trip_simple(t *testing.T) {
 	assert.True(t, cap.Equals(reparsed))
 }
 
-// TEST013: Test that quoted values round-trip preserving case and spaces
+// TEST13: Test that quoted values round-trip preserving case and spaces
 func Test013_round_trip_quoted(t *testing.T) {
 	original := testUrn(`key="Value With Spaces"`)
 	cap, err := NewCapUrnFromString(original)
@@ -281,7 +281,7 @@ func Test013_round_trip_quoted(t *testing.T) {
 	assert.Equal(t, "Value With Spaces", value)
 }
 
-// TEST014: Test that escape sequences round-trip correctly
+// TEST14: Test that escape sequences round-trip correctly
 func Test014_round_trip_escapes(t *testing.T) {
 	original := testUrn(`key="value\"with\\escapes"`)
 	cap, err := NewCapUrnFromString(original)
@@ -295,7 +295,7 @@ func Test014_round_trip_escapes(t *testing.T) {
 	assert.True(t, cap.Equals(reparsed))
 }
 
-// TEST015: Test that cap: prefix is required and case-insensitive
+// TEST15: Test that cap: prefix is required and case-insensitive
 func Test015_cap_prefix_required(t *testing.T) {
 	capUrn, err := NewCapUrnFromString(`in="media:void";out="media:object";generate`)
 	assert.Nil(t, capUrn)
@@ -312,7 +312,7 @@ func Test015_cap_prefix_required(t *testing.T) {
 	assert.True(t, capUrn.HasMarkerTag("generate"))
 }
 
-// TEST016: Test that trailing semicolon is equivalent (same hash, same string, matches)
+// TEST16: Test that trailing semicolon is equivalent (same hash, same string, matches)
 func Test016_trailing_semicolon_equivalence(t *testing.T) {
 	cap1, err := NewCapUrnFromString(testUrn("generate;ext=pdf"))
 	require.NoError(t, err)
@@ -326,16 +326,7 @@ func Test016_trailing_semicolon_equivalence(t *testing.T) {
 	assert.True(t, cap2.Accepts(cap1))
 }
 
-// TEST939: The canonical form drops `in=media:` and `out=media:`
-// segments. Every spelling of "the same cap with wildcard in/out"
-// collapses to one byte-identical canonical string. This is the
-// contract that makes registry lookups work: the cap-publisher hashes
-// `<canonical-urn>` to compute the cache key, and every language port
-// (Rust, Go, Python, JS, ObjC) must agree on the canonical form for
-// cross-language lookups to land on the same key. A regression that
-// emitted the wildcard segments would silently move the published cap
-// to a different SHA-256 bucket, 404'ing every reader that hashes the
-// canonical form.
+// TEST939: The canonical form drops `in=media:` and `out=media:` segments. Every spelling of "the same cap with wildcard in/out" collapses to one byte-identical canonical string. This is the contract that makes registry lookups work: the cap-publisher hashes `<canonical-urn>` to compute the cache key, and every language port (Rust, Go, Python, JS, ObjC) must agree on the canonical form for cross-language lookups to land on the same key. A regression that emitted the wildcard segments would silently move the published cap to a different SHA-256 bucket, 404'ing every reader that hashes the canonical form.
 func Test939_cap_urn_canonical_form_drops_wildcard_in_out(t *testing.T) {
 	canonical := "cap:decimate-sequence"
 	variants := []string{
@@ -357,7 +348,7 @@ func Test939_cap_urn_canonical_form_drops_wildcard_in_out(t *testing.T) {
 	assert.Equal(t, "cap:effect=none", identity.ToString())
 }
 
-// TEST017: Test tag matching: exact match, subset match, wildcard match, value mismatch
+// TEST17: Test tag matching: exact match, subset match, wildcard match, value mismatch
 func Test017_tag_matching(t *testing.T) {
 	cap, err := NewCapUrnFromString(testUrn("generate;ext=pdf;target=thumbnail"))
 	require.NoError(t, err)
@@ -387,7 +378,7 @@ func Test017_tag_matching(t *testing.T) {
 	assert.False(t, request4.Accepts(cap))
 }
 
-// TEST018: Test that quoted values with different case do NOT match (case-sensitive)
+// TEST18: Test that quoted values with different case do NOT match (case-sensitive)
 func Test018_matching_case_sensitive_values(t *testing.T) {
 	cap1, err := NewCapUrnFromString(testUrn(`key="Value"`))
 	require.NoError(t, err)
@@ -401,7 +392,7 @@ func Test018_matching_case_sensitive_values(t *testing.T) {
 	assert.True(t, cap1.Accepts(cap3))
 }
 
-// TEST019: Missing tag in instance causes rejection — pattern's tags are constraints
+// TEST19: Missing tag in instance causes rejection — pattern's tags are constraints
 func Test019_missing_tag_handling(t *testing.T) {
 	cap, err := NewCapUrnFromString(testUrn("generate"))
 	require.NoError(t, err)
@@ -430,16 +421,7 @@ func Test019_missing_tag_handling(t *testing.T) {
 	assert.True(t, cap3.Accepts(request3))
 }
 
-// TEST020: Specificity is the sum of per-tag truth-table scores
-// across in/out/y. Marker tags (bare segments like `generate`) are
-// must-have-any (score 2), exact `key=value` tags score 3,
-// missing/`?` score 0, `!` scores 1.
-//
-// testUrn() builds "cap:in=media:void;out=media:record;<tags>" so
-// the directional baseline is:
-//   in:  media:void   -> {void=*}    -> 2
-//   out: media:record -> {record=*}  -> 2
-// Total directional baseline: 4.
+// TEST20: Specificity is the sum of per-tag truth-table scores across in/out/y. Marker tags (bare segments like `generate`) are must-have-any (score 2), exact `key=value` tags score 3, missing/`?` score 0, `!` scores 1. test_urn() builds "cap:in=media:void;out=media:record;<tags>" so the directional baseline is: in:  media:void  -> {void=*}     -> 2 out: media:record -> {record=*}  -> 2 Total directional baseline: 4.
 func Test020_specificity(t *testing.T) {
 	cap1, err := NewCapUrnFromString(testUrn("type=general"))
 	require.NoError(t, err)
@@ -468,7 +450,7 @@ func Test020_specificity(t *testing.T) {
 	assert.Equal(t, 10000*2+100*0+2, cap4.Specificity())
 }
 
-// TEST021: Test builder creates cap URN with correct tags and direction specs
+// TEST21: Test builder creates cap URN with correct tags and direction specs
 func Test021_builder(t *testing.T) {
 	cap, err := NewCapUrnBuilder().
 		InSpec(standard.MediaVoid).
@@ -485,7 +467,7 @@ func Test021_builder(t *testing.T) {
 	assert.Equal(t, standard.MediaObject, cap.OutSpec())
 }
 
-// TEST022: Test builder requires both in_spec and out_spec
+// TEST22: Test builder requires both in_spec and out_spec
 func Test022_builder_requires_direction(t *testing.T) {
 	_, err := NewCapUrnBuilder().
 		OutSpec(standard.MediaObject).
@@ -506,7 +488,7 @@ func Test022_builder_requires_direction(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-// TEST023: Test builder lowercases keys but preserves value case
+// TEST23: Test builder lowercases keys but preserves value case
 func Test023_builder_preserves_case(t *testing.T) {
 	cap, err := NewCapUrnBuilder().
 		InSpec(standard.MediaVoid).
@@ -520,7 +502,7 @@ func Test023_builder_preserves_case(t *testing.T) {
 	assert.Equal(t, "ValueWithCase", value)
 }
 
-// TEST024: Directional accepts — pattern's tags are constraints, instance must satisfy
+// TEST24: Directional accepts — pattern's tags are constraints, instance must satisfy
 func Test024_directional_accepts(t *testing.T) {
 	cap1, err := NewCapUrnFromString(testUrn("generate;ext=pdf"))
 	require.NoError(t, err)
@@ -550,7 +532,7 @@ func Test024_directional_accepts(t *testing.T) {
 	assert.False(t, cap5.Accepts(cap1))
 }
 
-// TEST025: Test find_best_match returns most specific matching cap
+// TEST25: Test find_best_match returns most specific matching cap
 func Test025_best_match(t *testing.T) {
 	matcher := &CapMatcher{}
 
@@ -579,7 +561,7 @@ func Test025_best_match(t *testing.T) {
 	assert.Equal(t, "pdf", ext)
 }
 
-// TEST026: Test merge combines tags from both caps, subset keeps only specified tags
+// TEST26: Test merge combines tags from both caps, subset keeps only specified tags
 func Test026_merge_and_subset(t *testing.T) {
 	cap1, err := NewCapUrnFromString(testUrn("generate"))
 	require.NoError(t, err)
@@ -611,7 +593,7 @@ func Test026_merge_and_subset(t *testing.T) {
 	assert.Equal(t, standard.MediaObject, subset.OutSpec())
 }
 
-// TEST027: Test with_wildcard_tag sets tag to wildcard and normalizes in/out to media:
+// TEST27: Test with_wildcard_tag sets tag to wildcard, including in/out
 func Test027_wildcard_tag(t *testing.T) {
 	cap, err := NewCapUrnFromString(testUrn("ext=pdf"))
 	require.NoError(t, err)
@@ -645,7 +627,7 @@ func Test6202_empty_cap_urn_defaults_to_wildcard(t *testing.T) {
 	assert.Equal(t, ErrorIllegalDeclaration, capError.Code)
 }
 
-// TEST029: Test minimal valid cap URN has just in and out, empty tags
+// TEST29: Test minimal valid cap URN has just in and out, empty tags
 func Test029_minimal_cap_urn(t *testing.T) {
 	cap, err := NewCapUrnFromString(`cap:in="media:void";out="media:object"`)
 	require.NoError(t, err)
@@ -654,7 +636,7 @@ func Test029_minimal_cap_urn(t *testing.T) {
 	assert.Equal(t, 0, len(cap.tags))
 }
 
-// TEST030: Test extended characters (forward slashes, colons) in tag values
+// TEST30: Test extended characters (forward slashes, colons) in tag values
 func Test030_extended_character_support(t *testing.T) {
 	cap, err := NewCapUrnFromString(testUrn("url=https://example_org/api;path=/some/file"))
 	assert.NoError(t, err)
@@ -669,7 +651,7 @@ func Test030_extended_character_support(t *testing.T) {
 	assert.Equal(t, "/some/file", pathVal)
 }
 
-// TEST031: Test wildcard rejected in keys but accepted in values
+// TEST31: Test wildcard rejected in keys but accepted in values
 func Test031_wildcard_restrictions(t *testing.T) {
 	invalidKey, err := NewCapUrnFromString(testUrn("*=value"))
 	assert.Error(t, err)
@@ -687,7 +669,7 @@ func Test031_wildcard_restrictions(t *testing.T) {
 	assert.Equal(t, "*", value)
 }
 
-// TEST032: Test duplicate keys are rejected with DuplicateKey error
+// TEST32: Test duplicate keys are rejected with DuplicateKey error
 func Test032_duplicate_key_rejection(t *testing.T) {
 	duplicate, err := NewCapUrnFromString(testUrn("key=value1;key=value2"))
 	assert.Error(t, err)
@@ -697,7 +679,7 @@ func Test032_duplicate_key_rejection(t *testing.T) {
 	assert.Equal(t, ErrorDuplicateKey, capError.Code)
 }
 
-// TEST033: Test pure numeric keys rejected, mixed alphanumeric allowed, numeric values allowed
+// TEST33: Test pure numeric keys rejected, mixed alphanumeric allowed, numeric values allowed
 func Test033_numeric_key_restriction(t *testing.T) {
 	numericKey, err := NewCapUrnFromString(testUrn("123=value"))
 	assert.Error(t, err)
@@ -723,7 +705,7 @@ func Test033_numeric_key_restriction(t *testing.T) {
 	assert.Equal(t, "123", value)
 }
 
-// TEST034: Test empty values are rejected
+// TEST34: Test empty values are rejected
 func Test034_empty_value_error(t *testing.T) {
 	cap, err := NewCapUrnFromString(testUrn("key="))
 	assert.Nil(t, cap)
@@ -734,7 +716,7 @@ func Test034_empty_value_error(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// TEST035: Test has_tag is case-sensitive for values, case-insensitive for keys, works for in/out
+// TEST35: Test has_tag is case-sensitive for values, case-insensitive for keys, works for in/out
 func Test035_has_tag_case_sensitive(t *testing.T) {
 	cap, err := NewCapUrnFromString(testUrn(`key="Value"`))
 	require.NoError(t, err)
@@ -748,7 +730,7 @@ func Test035_has_tag_case_sensitive(t *testing.T) {
 	assert.True(t, cap.HasTag("out", standard.MediaObject))
 }
 
-// TEST036: Test with_tag preserves value case
+// TEST36: Test with_tag preserves value case
 func Test036_with_tag_preserves_value(t *testing.T) {
 	cap := NewCapUrn(standard.MediaVoid, standard.MediaObject, map[string]string{})
 	modified := cap.WithTag("key", "ValueWithCase")
@@ -758,7 +740,7 @@ func Test036_with_tag_preserves_value(t *testing.T) {
 	assert.Equal(t, "ValueWithCase", value)
 }
 
-// TEST037: Test with_tag rejects empty value
+// TEST37: Test with_tag rejects empty value
 func Test037_with_tag_rejects_empty_value(t *testing.T) {
 	cap := NewCapUrn(standard.MediaVoid, standard.MediaObject, map[string]string{})
 	modified, err := cap.WithTagValidated("key", "")
@@ -766,7 +748,7 @@ func Test037_with_tag_rejects_empty_value(t *testing.T) {
 	assert.Nil(t, modified)
 }
 
-// TEST038: Test semantic equivalence of unquoted and quoted simple lowercase values
+// TEST38: Test semantic equivalence of unquoted and quoted simple lowercase values
 func Test038_semantic_equivalence(t *testing.T) {
 	unquoted, err := NewCapUrnFromString(testUrn("key=simple"))
 	require.NoError(t, err)
@@ -775,7 +757,7 @@ func Test038_semantic_equivalence(t *testing.T) {
 	assert.True(t, unquoted.Equals(quoted))
 }
 
-// TEST039: Test get_tag returns direction specs (in/out) with case-insensitive lookup
+// TEST39: Test get_tag returns direction specs (in/out) with case-insensitive lookup
 func Test039_get_tag_returns_direction_specs(t *testing.T) {
 	cap, err := NewCapUrnFromString(`cap:in="media:string";out="media:integer";test`)
 	require.NoError(t, err)
@@ -799,7 +781,7 @@ func Test039_get_tag_returns_direction_specs(t *testing.T) {
 	assert.Equal(t, "media:integer", outVal2)
 }
 
-// TEST040: Matching semantics - exact match succeeds
+// TEST40: Matching semantics - exact match succeeds
 func Test040_matching_semantics_exact_match(t *testing.T) {
 	cap, err := NewCapUrnFromString(testUrn("generate;ext=pdf"))
 	require.NoError(t, err)
@@ -810,7 +792,7 @@ func Test040_matching_semantics_exact_match(t *testing.T) {
 	assert.True(t, cap.Accepts(request), "Test 1: Exact match should succeed")
 }
 
-// TEST041: Matching semantics - cap missing tag matches (implicit wildcard)
+// TEST41: Matching semantics - cap missing tag matches (implicit wildcard)
 func Test041_matching_semantics_cap_missing_tag(t *testing.T) {
 	cap, err := NewCapUrnFromString(testUrn("generate"))
 	require.NoError(t, err)
@@ -827,7 +809,7 @@ func Test041_matching_semantics_cap_missing_tag(t *testing.T) {
 	assert.True(t, cap2.Accepts(request), "Cap with ext=* also accepts request with ext=pdf")
 }
 
-// TEST042: Pattern rejects instance missing required tags
+// TEST42: Pattern rejects instance missing required tags
 func Test042_matching_semantics_cap_has_extra_tag(t *testing.T) {
 	cap, err := NewCapUrnFromString(testUrn("generate;ext=pdf;version=2"))
 	require.NoError(t, err)
@@ -844,7 +826,7 @@ func Test042_matching_semantics_cap_has_extra_tag(t *testing.T) {
 	assert.True(t, cap.Accepts(request2), "Request with all required tags is accepted")
 }
 
-// TEST043: Matching semantics - request wildcard matches specific cap value
+// TEST43: Matching semantics - request wildcard matches specific cap value
 func Test043_matching_semantics_request_has_wildcard(t *testing.T) {
 	cap, err := NewCapUrnFromString(testUrn("generate;ext=pdf"))
 	require.NoError(t, err)
@@ -855,7 +837,7 @@ func Test043_matching_semantics_request_has_wildcard(t *testing.T) {
 	assert.True(t, cap.Accepts(request), "Test 4: Request wildcard should match")
 }
 
-// TEST044: Matching semantics - cap wildcard matches specific request value
+// TEST44: Matching semantics - cap wildcard matches specific request value
 func Test044_matching_semantics_cap_has_wildcard(t *testing.T) {
 	cap, err := NewCapUrnFromString(testUrn("generate;ext=*"))
 	require.NoError(t, err)
@@ -866,7 +848,7 @@ func Test044_matching_semantics_cap_has_wildcard(t *testing.T) {
 	assert.True(t, cap.Accepts(request), "Test 5: Cap wildcard should match")
 }
 
-// TEST045: Matching semantics - value mismatch does not match
+// TEST45: Matching semantics - value mismatch does not match
 func Test045_matching_semantics_value_mismatch(t *testing.T) {
 	cap, err := NewCapUrnFromString(testUrn("generate;ext=pdf"))
 	require.NoError(t, err)
@@ -877,7 +859,7 @@ func Test045_matching_semantics_value_mismatch(t *testing.T) {
 	assert.False(t, cap.Accepts(request), "Test 6: Value mismatch should not match")
 }
 
-// TEST046: Matching semantics - fallback pattern (cap missing tag = implicit wildcard)
+// TEST46: Matching semantics - fallback pattern (cap missing tag = implicit wildcard)
 func Test046_matching_semantics_fallback_pattern(t *testing.T) {
 	cap, err := NewCapUrnFromString(`cap:in="media:binary";generate-thumbnail;out="media:binary"`)
 	require.NoError(t, err)
@@ -893,7 +875,7 @@ func Test046_matching_semantics_fallback_pattern(t *testing.T) {
 	assert.True(t, capWithWildcard.Accepts(request), "Cap with ext=* also accepts request with ext=wav")
 }
 
-// TEST047: Matching semantics - thumbnail fallback with void input
+// TEST47: Matching semantics - thumbnail fallback with void input
 func Test047_matching_semantics_thumbnail_void_input(t *testing.T) {
 	outBin := "media:binary"
 	cap, err := NewCapUrnFromString(fmt.Sprintf(`cap:in="%s";generate-thumbnail;out="%s"`, standard.MediaVoid, outBin))
@@ -910,7 +892,7 @@ func Test047_matching_semantics_thumbnail_void_input(t *testing.T) {
 	assert.True(t, capWithWildcard.Accepts(request), "Cap with ext=* also accepts request with ext=wav")
 }
 
-// TEST048: Matching semantics - wildcard direction matches anything
+// TEST48: Matching semantics - wildcard direction matches anything
 func Test048_matching_semantics_wildcard_direction_matches_anything(t *testing.T) {
 	cap, err := NewCapUrnFromString("cap:generate")
 	require.NoError(t, err)
@@ -925,7 +907,7 @@ func Test048_matching_semantics_wildcard_direction_matches_anything(t *testing.T
 	assert.False(t, cap.Accepts(request2), "Operation tags must still match")
 }
 
-// TEST049: Non-overlapping tags — neither direction accepts
+// TEST49: Non-overlapping tags — neither direction accepts
 func Test049_matching_semantics_cross_dimension_independence(t *testing.T) {
 	cap, err := NewCapUrnFromString(testUrn("generate"))
 	require.NoError(t, err)
@@ -942,7 +924,7 @@ func Test049_matching_semantics_cross_dimension_independence(t *testing.T) {
 	assert.True(t, cap2.Accepts(request2), "Test 9b: Same tags should match")
 }
 
-// TEST050: Matching semantics - direction mismatch prevents matching
+// TEST50: Matching semantics - direction mismatch prevents matching
 func Test050_matching_semantics_direction_mismatch(t *testing.T) {
 	cap, err := NewCapUrnFromString(`cap:in="media:string";generate;out="` + standard.MediaObject + `"`)
 	require.NoError(t, err)
@@ -1010,10 +992,7 @@ func Test890_direction_semantic_matching(t *testing.T) {
 		"Cap producing generic image must NOT satisfy request requiring image;png;thumbnail")
 }
 
-// TEST891: Semantic direction specificity — more constraints in
-// either axis means a higher score under the truth-table-driven sum.
-// media: (top, no tags) scores 0; each marker tag scores 2; each
-// exact tag scores 3.
+// TEST891: Semantic direction specificity — more constraints in either axis means a higher score under the truth-table-driven sum. media: (top, no tags) scores 0; each marker tag scores 2; each exact tag scores 3.
 func Test891_direction_semantic_specificity(t *testing.T) {
 	genericCap, err := NewCapUrnFromString(
 		`cap:in="media:";generate-thumbnail;out="media:ext=png;image;thumbnail"`,
@@ -1052,7 +1031,7 @@ func Test891_direction_semantic_specificity(t *testing.T) {
 		"CapMatcher must prefer the more specific pdf provider")
 }
 
-// TEST559: without_tag removes tag, ignores in/out, case-insensitive for keys
+// TEST559: without_tag removes tag, rejects structural keys, case-insensitive for keys
 func Test559_without_tag(t *testing.T) {
 	cap, err := NewCapUrnFromString(
 		`cap:in="media:void";test;ext=pdf;out="media:void"`,
@@ -1170,7 +1149,7 @@ func Test565_tags_to_string(t *testing.T) {
 	assert.Contains(t, tagsStr, "test")
 }
 
-// TEST566: with_tag rejects reserved structural keys
+// TEST566: with_tag rejects structural keys
 func Test566_with_tag_ignores_in_out(t *testing.T) {
 	cap, err := NewCapUrnFromString(
 		`cap:in="media:void";test;out="media:void"`,
@@ -1539,7 +1518,7 @@ func Test6611_wildcard_003_out_only_defaults_in_to_media(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TEST642: cap:in;out normalizes to illegal bare top
+// TEST642: cap:in;out becomes the same illegal bare top form
 func Test642_wildcard_004_in_out_no_values_become_media(t *testing.T) {
 	cap, err := NewCapUrnFromString("cap:in;out")
 	assert.Nil(t, cap)
@@ -1598,12 +1577,12 @@ func Test650_wildcard_012_preserve_other_tags(t *testing.T) {
 // surface, not a per-port detail.
 // -------------------------------------------------------------------
 
-// TEST6728: Identity classifier — only explicit effect=none qualifies.
+// TEST1800: Identity classifier — only explicit effect=none qualifies.
 // `cap:effect=none` is the fully generic identity on every axis; adding any
 // tag (even one that doesn't constrain in/out) demotes the cap to
 // Transform because the operation/metadata axis is no longer fully
 // generic.
-func Test6728_kind_identity_only_for_bare_cap(t *testing.T) {
+func Test1800_kind_identity_only_for_bare_cap(t *testing.T) {
 	identity, err := NewCapUrnFromString("cap:effect=none")
 	require.NoError(t, err)
 	kind, err := identity.Kind()
@@ -1632,9 +1611,7 @@ func Test6728_kind_identity_only_for_bare_cap(t *testing.T) {
 		"cap:passthrough specifies the operation axis — not Identity")
 }
 
-// TEST1801: Source classifier — in=media:void, out non-void. The y
-// dimension may carry any tags; void on the input alone is what
-// matters.
+// TEST1801: Source classifier — in=media:void, out non-void. The y dimension may carry any tags; void on the input alone is what matters.
 func Test1801_kind_source_when_input_is_void(t *testing.T) {
 	warm, err := NewCapUrnFromString(`cap:in=media:void;out="media:model-artifact";warm`)
 	require.NoError(t, err)
@@ -1679,9 +1656,7 @@ func Test1803_kind_effect_when_both_sides_void(t *testing.T) {
 	assert.Equal(t, CapKindEffect, k)
 }
 
-// TEST1804: Transform classifier — at least one side non-void, and
-// the cap is not the bare identity. The default kind for ordinary
-// data-processing caps.
+// TEST1804: Transform classifier — at least one side non-void, and the cap is not the bare identity. The default kind for ordinary data-processing caps.
 func Test1804_kind_transform_for_normal_data_processors(t *testing.T) {
 	extract, err := NewCapUrnFromString(`cap:extract;in="media:ext=pdf";out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
@@ -1696,10 +1671,7 @@ func Test1804_kind_transform_for_normal_data_processors(t *testing.T) {
 	assert.Equal(t, CapKindTransform, k)
 }
 
-// TEST1805: Kind is invariant under canonicalization. The same
-// morphism written in many surface forms must classify the same way
-// once parsed. Pins the rule that kind is a property of the cap as
-// a structured object, not of any particular spelling.
+// TEST1805: Kind is invariant under canonicalization. The same morphism written in many surface forms must classify the same way once parsed. This pins the rule that kind is a property of the cap as a structured object, not of any particular spelling.
 func Test1805_kind_invariant_under_canonical_spellings(t *testing.T) {
 	cases := []struct {
 		a, b     string
@@ -1793,8 +1765,7 @@ func Test1823_specificity_exact_value_is_four(t *testing.T) {
 		"target=metadata (exact value) must score 4")
 }
 
-// TEST1824: All six forms compose additively on a single cap.
-// y combining 0+1+2+3+4+5 must sum to 15.
+// TEST1824: All six forms compose additively on a single cap. This pins the truth-table sum across the y axis as a whole.
 func Test1824_specificity_combined_y_axis(t *testing.T) {
 	cap, err := NewCapUrnFromString(
 		"cap:!constrained;?target;extract;stage!=alpha;target2=metadata;ver?=draft")
@@ -1823,10 +1794,7 @@ func Test1830_canonicalize_no_constraint(t *testing.T) {
 	}
 }
 
-// TEST1831: ?x=v and x?=v both canonicalize to x?=v. The third
-// hypothetical form `x=?v` is NOT recognized as a qualifier — a
-// value starting with `?` is just an exact value beginning with
-// a `?` character.
+// TEST1831: ?x=v and x?=v both canonicalize to x?=v. The third hypothetical form `x=?v` is NOT recognized as a qualifier — a value starting with `?` is just an exact value beginning with a `?` character.
 func Test1831_canonicalize_absent_or_not_value(t *testing.T) {
 	canonical := "cap:x?=foo"
 	for _, input := range []string{"cap:?x=foo", "cap:x?=foo"} {
@@ -1857,10 +1825,7 @@ func Test1832_canonicalize_must_have_any(t *testing.T) {
 	}
 }
 
-// TEST1833: !x=v and x!=v both canonicalize to x!=v. The third
-// hypothetical form `x=!v` is NOT recognized as a qualifier — a
-// value starting with `!` is just an exact value beginning with
-// a `!` character.
+// TEST1833: !x=v and x!=v both canonicalize to x!=v. The third hypothetical form `x=!v` is NOT recognized as a qualifier — a value starting with `!` is just an exact value beginning with a `!` character.
 func Test1833_canonicalize_present_not_value(t *testing.T) {
 	canonical := "cap:x!=foo"
 	for _, input := range []string{"cap:!x=foo", "cap:x!=foo"} {
@@ -1880,7 +1845,7 @@ func Test1833_canonicalize_present_not_value(t *testing.T) {
 	assert.Equal(t, "!foo", val)
 }
 
-// TEST1834: x=v stays as x=v.
+// TEST1834: x=v stays as x=v (the lone exact-value form).
 func Test1834_canonicalize_exact_value(t *testing.T) {
 	cap, err := NewCapUrnFromString("cap:x=foo")
 	require.NoError(t, err)
@@ -1898,8 +1863,7 @@ func Test1835_canonicalize_must_not_have(t *testing.T) {
 	}
 }
 
-// TEST1842: Full 6×6 truth table — every cell must match the matrix
-// in 04-PREDICATES.md §2.5.
+// TEST1842: Full 6×6 truth table — every cell must match the matrix in 04-PREDICATES.md §2.5. Treats prefix `cap:` as the host for a single-key URN (key `x`), pairing every instance form with every pattern form.
 func Test1842_truth_table_full_cross_product(t *testing.T) {
 	forms := []string{"", "?x", "x?=v", "x", "x!=v", "x=v", "!x"}
 	expected := [7][7]bool{
@@ -1934,8 +1898,8 @@ func Test1842_truth_table_full_cross_product(t *testing.T) {
 	}
 }
 
-// TEST1843: Invalid qualifier combinations must be rejected.
-func Test1843_reject_invalid_combinations(t *testing.T) {
+// TEST6734: Invalid qualifier combinations must be rejected.
+func Test6734_reject_invalid_combinations(t *testing.T) {
 	invalid := []string{
 		"cap:?x?=v",
 		"cap:!x!=v",
@@ -1956,8 +1920,8 @@ func Test1843_reject_invalid_combinations(t *testing.T) {
 	}
 }
 
-// TEST1844: out-axis difference dominates combined in+y differences.
-func Test1844_axis_weighting_out_dominates(t *testing.T) {
+// TEST6735: out-axis difference dominates combined in+y differences.
+func Test6735_axis_weighting_out_dominates(t *testing.T) {
 	bigOut, err := NewCapUrnFromString(`cap:in=media:;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
 	bigInAndY, err := NewCapUrnFromString(
@@ -1967,7 +1931,7 @@ func Test1844_axis_weighting_out_dominates(t *testing.T) {
 		"out-axis difference must dominate combined in+y differences")
 }
 
-// TEST1845: With equal out, in-axis dominates over y-axis.
+// TEST1845: With equal out-axis, in-axis dominates over y-axis.
 func Test1845_axis_weighting_in_dominates_y(t *testing.T) {
 	bigIn, err := NewCapUrnFromString("cap:in=\"media:ext=pdf\";out=media:record")
 	require.NoError(t, err)
@@ -1978,8 +1942,8 @@ func Test1845_axis_weighting_in_dominates_y(t *testing.T) {
 		"in-axis difference must dominate y-axis")
 }
 
-// TEST1846: Decoded layout — 10000*out + 100*in + y.
-func Test1846_axis_weighting_decoded_layout(t *testing.T) {
+// TEST6736: Decoded layout — 10000*out + 100*in + y.
+func Test6736_axis_weighting_decoded_layout(t *testing.T) {
 	cap, err := NewCapUrnFromString(
 		`cap:in="media:a;b";out="media:a;b;c;d";extract`)
 	require.NoError(t, err)

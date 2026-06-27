@@ -1207,7 +1207,7 @@ func Test6597_write_chunked_chunk_index_ordering(t *testing.T) {
 	}
 }
 
-// TEST472: Handshake negotiates max_reorder_buffer as minimum of both sides.
+// TEST472: Handshake negotiates max_reorder_buffer (minimum of both sides)
 func Test472_handshake_negotiates_reorder_buffer(t *testing.T) {
 	// Build a HELLO frame with max_reorder_buffer=32 (cartridge side)
 	cartridgeHello := NewHello(DefaultMaxFrame, DefaultMaxChunk, 32)

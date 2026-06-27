@@ -552,9 +552,9 @@ func Test1127_cap_documentation_round_trip_with_markdown_body(t *testing.T) {
 	assert.Equal(t, body, *restored.GetDocumentation(), "documentation body must not be mutated during round-trip")
 }
 
-// TEST6686: When Documentation is nil, the serializer must omit the field entirely.
+// TEST1128: When Documentation is nil, the serializer must omit the field entirely.
 // There must be no "documentation":null — only absence.
-func Test6686_cap_documentation_omitted_when_none(t *testing.T) {
+func Test1128_cap_documentation_omitted_when_none(t *testing.T) {
 	u, err := urn.NewCapUrnFromString(defTestUrn("undocumented"))
 	require.NoError(t, err)
 	c := NewCap(u, "Undocumented Cap", "undocumented")
@@ -570,9 +570,9 @@ func Test6686_cap_documentation_omitted_when_none(t *testing.T) {
 	assert.Nil(t, restored.GetDocumentation())
 }
 
-// TEST6687: A capfab-shaped JSON document with a documentation field
+// TEST1129: A capfab-shaped JSON document with a documentation field
 // must deserialize into a Cap with the body intact.
-func Test6687_cap_documentation_parses_from_capfab_json(t *testing.T) {
+func Test1129_cap_documentation_parses_from_capfab_json(t *testing.T) {
 	raw := `{
 		"urn": "cap:in=\"media:enc=utf-8\";docparse;out=\"media:enc=utf-8\"",
 		"title": "Doc Parse",
@@ -588,8 +588,8 @@ func Test6687_cap_documentation_parses_from_capfab_json(t *testing.T) {
 	assert.Equal(t, "short", *c.CapDescription)
 }
 
-// TEST6688: Documentation set/clear lifecycle must not cross-contaminate cap_description.
-func Test6688_cap_documentation_set_and_clear_lifecycle(t *testing.T) {
+// TEST1130: Documentation set/clear lifecycle must not cross-contaminate cap_description.
+func Test1130_cap_documentation_set_and_clear_lifecycle(t *testing.T) {
 	u, err := urn.NewCapUrnFromString(defTestUrn("lifecycle"))
 	require.NoError(t, err)
 	short := "short"

@@ -162,16 +162,14 @@ func Test6647_analyze_path_arguments_user_input_arg_appears_in_slots(t *testing.
 		"plan requiring user input must have CanExecuteWithoutInput=false")
 }
 
-// TEST765: Tests ValidationToJSON() returns nil for empty validation constraints
-// Verifies that default MediaValidation with no constraints produces nil JSON
+// TEST765: Tests validation_to_json() returns None for empty validation constraints Verifies that default MediaValidation with no constraints produces JSON None
 func Test765_validation_to_json_empty(t *testing.T) {
 	validation := &media.MediaValidation{}
 	result := ValidationToJSON(validation)
 	assert.Nil(t, result, "Empty validation should return nil")
 }
 
-// TEST766: Tests ValidationToJSON() converts MediaValidation with constraints to JSON
-// Verifies that min/max validation rules are correctly serialized as JSON fields
+// TEST766: Tests validation_to_json() converts MediaValidation with constraints to JSON Verifies that min/max validation rules are correctly serialized as JSON fields
 func Test766_validation_to_json_with_constraints(t *testing.T) {
 	min := 50.0
 	max := 2000.0
@@ -183,17 +181,15 @@ func Test766_validation_to_json_with_constraints(t *testing.T) {
 	assert.Contains(t, s, "2000")
 }
 
-// TEST886: Tests optional non-IO arguments with default values are marked as HasDefault
-// Verifies that arguments with defaults return HasDefault regardless of step position
+// TEST886: Tests optional non-IO arguments with default values are marked as HasDefault Verifies that optional arguments with defaults behave the same as required ones with defaults
 func Test886_optional_non_io_arg_with_default_has_default(t *testing.T) {
 	defaultVal := 300
 	resolution := determineResolutionWithIOCheck(standard.MediaInteger, "media:ext=pdf", "media:ext=png;image", 0, defaultVal)
 	assert.Equal(t, ResolutionHasDefault, resolution)
 }
 
-// TEST6671: Tests duplicate detection passes for caps with unique URN combinations
-// Verifies that checkForDuplicateCaps() correctly accepts caps with different op/in/out combinations
-func Test6671_no_duplicates_with_unique_caps(t *testing.T) {
+// TEST880: Tests duplicate detection passes for caps with unique URN combinations Verifies that check_for_duplicate_caps() correctly accepts caps with different op/in/out combinations
+func Test880_no_duplicates_with_unique_caps(t *testing.T) {
 	c1, err := makeTestCap("extract_metadata", "media:ext=pdf", "media:file-metadata;record;enc=utf-8", "Extract Metadata")
 	require.NoError(t, err)
 	c2, err := makeTestCap("extract_outline", "media:ext=pdf", "media:document-outline;record;enc=utf-8", "Extract Outline")
@@ -206,8 +202,7 @@ func Test6671_no_duplicates_with_unique_caps(t *testing.T) {
 	assert.Equal(t, 3, count, "Should have 3 edges")
 }
 
-// TEST991: Tests duplicate detection identifies caps with identical URNs
-// Verifies that checkForDuplicateCaps() returns an error when multiple caps share the same cap_urn
+// TEST991: Tests duplicate detection identifies caps with identical URNs Verifies that check_for_duplicate_caps() returns an error when multiple caps share the same cap_urn
 func Test991_detects_duplicate_cap_urns(t *testing.T) {
 	c1, err := makeTestCap("disbind", "media:ext=pdf", "media:disbound-pages;list;enc=utf-8", "Disbind PDF")
 	require.NoError(t, err)
@@ -221,8 +216,7 @@ func Test991_detects_duplicate_cap_urns(t *testing.T) {
 	assert.Contains(t, err.Error(), "media:ext=pdf")
 }
 
-// TEST992: Tests caps with different operations but same input/output types are not duplicates
-// Verifies that only the complete URN (including op) is used for duplicate detection
+// TEST992: Tests caps with different operations but same input/output types are not duplicates Verifies that only the complete URN (including op) is used for duplicate detection
 func Test992_different_ops_same_types_not_duplicates(t *testing.T) {
 	c1, err := makeTestCap("disbind", "media:ext=pdf", "media:disbound-pages;list;enc=utf-8", "Disbind")
 	require.NoError(t, err)
@@ -234,8 +228,7 @@ func Test992_different_ops_same_types_not_duplicates(t *testing.T) {
 	assert.Equal(t, 2, count, "Should have 2 edges")
 }
 
-// TEST993: Tests caps with same operation but different input types are not duplicates
-// Verifies that input type differences distinguish caps with the same operation name
+// TEST993: Tests caps with same operation but different input types are not duplicates Verifies that input type differences distinguish caps with the same operation name
 func Test993_same_op_different_input_types_not_duplicates(t *testing.T) {
 	c1, err := makeTestCap("extract_metadata", "media:ext=pdf", "media:file-metadata;record;enc=utf-8", "Extract PDF Metadata")
 	require.NoError(t, err)
@@ -247,15 +240,13 @@ func Test993_same_op_different_input_types_not_duplicates(t *testing.T) {
 	assert.Equal(t, 2, count, "Should have 2 edges")
 }
 
-// TEST994: Tests first cap's input argument is automatically resolved from input file
-// Verifies that determineResolutionWithIOCheck() returns FromInputFile for the first cap in a chain
+// TEST994: Tests first cap's input argument is automatically resolved from input file Verifies that determine_resolution_with_io_check() returns FromInputFile for the first cap in a chain
 func Test994_input_arg_first_cap_auto_resolved_from_input(t *testing.T) {
 	resolution := determineResolutionWithIOCheck("media:ext=pdf", "media:ext=pdf", "media:ext=png;image", 0, nil)
 	assert.Equal(t, ResolutionFromInputFile, resolution)
 }
 
-// TEST995: Tests subsequent caps' input arguments are automatically resolved from previous output
-// Verifies that determineResolutionWithIOCheck() returns FromPreviousOutput for caps after the first
+// TEST995: Tests subsequent caps' input arguments are automatically resolved from previous output Verifies that determine_resolution_with_io_check() returns FromPreviousOutput for caps after the first
 func Test995_input_arg_subsequent_cap_auto_resolved_from_previous(t *testing.T) {
 	resolution := determineResolutionWithIOCheck("media:ext=pdf", "media:ext=pdf", "media:ext=png;image", 1, nil)
 	assert.Equal(t, ResolutionFromPreviousOutput, resolution)
@@ -264,51 +255,44 @@ func Test995_input_arg_subsequent_cap_auto_resolved_from_previous(t *testing.T) 
 	assert.Equal(t, ResolutionFromPreviousOutput, resolution)
 }
 
-// TEST996: Tests output arguments are automatically resolved from previous cap's output
-// Verifies that arguments matching the output spec are always resolved as FromPreviousOutput
+// TEST996: Tests output arguments are automatically resolved from previous cap's output Verifies that arguments matching the output spec are always resolved as FromPreviousOutput
 func Test996_output_arg_auto_resolved(t *testing.T) {
 	resolution := determineResolutionWithIOCheck("media:ext=png;image", "media:ext=pdf", "media:ext=png;image", 0, nil)
 	assert.Equal(t, ResolutionFromPreviousOutput, resolution)
 }
 
-// TEST997: Tests MEDIA_FILE_PATH argument type resolves to input file for first cap
-// Verifies that generic file-path arguments are bound to input file in the first cap
+// TEST997: Tests MEDIA_FILE_PATH argument type resolves to input file for first cap Verifies that generic file-path arguments are bound to input file in the first cap
 func Test997_file_path_type_fallback_first_cap(t *testing.T) {
 	resolution := determineResolutionWithIOCheck(standard.MediaFilePath, "media:ext=pdf", "media:ext=png;image", 0, nil)
 	assert.Equal(t, ResolutionFromInputFile, resolution)
 }
 
-// TEST998: Tests MEDIA_FILE_PATH argument type resolves to previous output for subsequent caps
-// Verifies that generic file-path arguments are bound to previous cap's output after the first cap
+// TEST998: Tests MEDIA_FILE_PATH argument type resolves to previous output for subsequent caps Verifies that generic file-path arguments are bound to previous cap's output after the first cap
 func Test998_file_path_type_fallback_subsequent_cap(t *testing.T) {
 	resolution := determineResolutionWithIOCheck(standard.MediaFilePath, "media:ext=pdf", "media:ext=png;image", 1, nil)
 	assert.Equal(t, ResolutionFromPreviousOutput, resolution)
 }
 
-// TEST1009: Tests required non-IO arguments with default values are marked as HasDefault
-// Verifies that arguments like integers with defaults don't require user input
+// TEST1009: Tests required non-IO arguments with default values are marked as HasDefault Verifies that arguments like integers with defaults don't require user input
 func Test1009_non_io_arg_with_default_has_default(t *testing.T) {
 	defaultVal := 200
 	resolution := determineResolutionWithIOCheck(standard.MediaInteger, "media:ext=pdf", "media:ext=png;image", 0, defaultVal)
 	assert.Equal(t, ResolutionHasDefault, resolution)
 }
 
-// TEST1012: Tests required non-IO arguments without defaults require user input
-// Verifies that arguments like strings without defaults are marked as RequiresUserInput
+// TEST1012: Tests required non-IO arguments without defaults require user input Verifies that arguments like strings without defaults are marked as RequiresUserInput
 func Test1012_non_io_arg_without_default_requires_user_input(t *testing.T) {
 	resolution := determineResolutionWithIOCheck("media:string", "media:ext=pdf", "media:ext=png;image", 0, nil)
 	assert.Equal(t, ResolutionRequiresUserInput, resolution)
 }
 
-// TEST1015: Tests optional non-IO arguments without defaults still require user input
-// Verifies that optional arguments without defaults must be explicitly provided or skipped
+// TEST1015: Tests optional non-IO arguments without defaults still require user input Verifies that optional arguments without defaults must be explicitly provided or skipped
 func Test1015_optional_non_io_arg_without_default_requires_user_input(t *testing.T) {
 	resolution := determineResolutionWithIOCheck("media:boolean", "media:ext=pdf", "media:ext=png;image", 0, nil)
 	assert.Equal(t, ResolutionRequiresUserInput, resolution)
 }
 
-// TEST1019: Tests ValidationToJSON() returns nil for nil input
-// Verifies that missing validation metadata is converted to nil
+// TEST1019: Tests validation_to_json() returns None for None input Verifies that missing validation metadata is converted to JSON None
 func Test1019_validation_to_json_nil(t *testing.T) {
 	result := ValidationToJSON(nil)
 	assert.Nil(t, result, "nil validation should return nil")
@@ -331,9 +315,9 @@ func Test1100_cap_urn_normalizes_media_urn_tag_order(t *testing.T) {
 		"out specs with different tag ordering should normalize identically")
 }
 
-// TEST6684: Tests that IsDispatchable has correct directionality
+// TEST1103: Tests that IsDispatchable has correct directionality
 // A specific provider is dispatchable for a general request; the reverse is false.
-func Test6684_is_dispatchable_uses_correct_directionality(t *testing.T) {
+func Test1103_is_dispatchable_uses_correct_directionality(t *testing.T) {
 	generalRequest, err := urn.NewCapUrnFromString("cap:in=\"media:ext=pdf\";extract;out=media:text")
 	require.NoError(t, err)
 
@@ -346,9 +330,8 @@ func Test6684_is_dispatchable_uses_correct_directionality(t *testing.T) {
 		"General request should NOT be dispatchable for specific provider (missing version tag)")
 }
 
-// TEST6685: Tests that IsDispatchable rejects when provider is missing a required cap tag
-// Provider without required=yes cannot handle a request that demands required=yes.
-func Test6685_is_dispatchable_rejects_non_dispatchable(t *testing.T) {
+// TEST1104: Tests that is_dispatchable rejects when provider cannot dispatch request
+func Test1104_is_dispatchable_rejects_non_dispatchable(t *testing.T) {
 	request, err := urn.NewCapUrnFromString("cap:in=\"media:ext=pdf\";extract;out=media:text;required=yes")
 	require.NoError(t, err)
 

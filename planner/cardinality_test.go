@@ -7,48 +7,41 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TEST688: Tests IsMultiple method correctly identifies multi-value cardinalities
-// Verifies Single returns false while Sequence and AtLeastOne return true
+// TEST688: Tests is_multiple method correctly identifies multi-value cardinalities Verifies Single returns false while Sequence and AtLeastOne return true
 func Test688_is_multiple(t *testing.T) {
 	assert.False(t, CardinalitySingle.IsMultiple())
 	assert.True(t, CardinalitySequence.IsMultiple())
 	assert.True(t, CardinalityAtLeastOne.IsMultiple())
 }
 
-// TEST689: Tests AcceptsSingle method identifies cardinalities that accept single values
-// Verifies Single and AtLeastOne accept singles while Sequence does not
+// TEST689: Tests accepts_single method identifies cardinalities that accept single values Verifies Single and AtLeastOne accept singles while Sequence does not
 func Test689_accepts_single(t *testing.T) {
 	assert.True(t, CardinalitySingle.AcceptsSingle())
 	assert.False(t, CardinalitySequence.AcceptsSingle())
 	assert.True(t, CardinalityAtLeastOne.AcceptsSingle())
 }
 
-// TEST690: Tests cardinality compatibility for single-to-single data flow
-// Verifies Direct compatibility when both input and output are Single
+// TEST690: Tests cardinality compatibility for single-to-single data flow Verifies Direct compatibility when both input and output are Single
 func Test690_compatibility_single_to_single(t *testing.T) {
 	assert.Equal(t, CardinalityDirect, CardinalitySingle.IsCompatibleWith(CardinalitySingle))
 }
 
-// TEST691: Tests cardinality compatibility when wrapping single value into array
-// Verifies WrapInArray compatibility when Sequence expects Single input
+// TEST691: Tests cardinality compatibility when wrapping single value into array Verifies WrapInArray compatibility when Sequence expects Single input
 func Test691_compatibility_single_to_vector(t *testing.T) {
 	assert.Equal(t, CardinalityWrapInArray, CardinalitySequence.IsCompatibleWith(CardinalitySingle))
 }
 
-// TEST692: Tests cardinality compatibility when unwrapping array to singles
-// Verifies RequiresFanOut compatibility when Single expects Sequence input
+// TEST692: Tests cardinality compatibility when unwrapping array to singles Verifies RequiresFanOut compatibility when Single expects Sequence input
 func Test692_compatibility_vector_to_single(t *testing.T) {
 	assert.Equal(t, CardinalityRequiresFanOut, CardinalitySingle.IsCompatibleWith(CardinalitySequence))
 }
 
-// TEST693: Tests cardinality compatibility for sequence-to-sequence data flow
-// Verifies Direct compatibility when both input and output are Sequence
+// TEST693: Tests cardinality compatibility for sequence-to-sequence data flow Verifies Direct compatibility when both input and output are Sequence
 func Test693_compatibility_vector_to_vector(t *testing.T) {
 	assert.Equal(t, CardinalityDirect, CardinalitySequence.IsCompatibleWith(CardinalitySequence))
 }
 
-// TEST697: Tests CapShapeInfo correctly identifies one-to-one pattern
-// Verifies Single input and Single output result in OneToOne pattern
+// TEST697: Tests CapShapeInfo correctly identifies one-to-one pattern Verifies Single input and Single output result in OneToOne pattern
 func Test697_cap_shape_info_one_to_one(t *testing.T) {
 	info := CapShapeInfoFromSpecs("cap:test", "media:ext=pdf", "media:ext=png;image")
 	assert.Equal(t, CardinalitySingle, info.Input.Cardinality)
@@ -56,9 +49,7 @@ func Test697_cap_shape_info_one_to_one(t *testing.T) {
 	assert.Equal(t, PatternOneToOne, info.CardinalityPatternOf())
 }
 
-// TEST698: CapShapeInfo cardinality is always Single when derived from URN
-// Cardinality comes from context (IsSequence), not from URN tags.
-// The list tag is a semantic type property, not a cardinality indicator.
+// TEST698: CapShapeInfo cardinality is always Single when derived from URN Cardinality comes from context (is_sequence), not from URN tags. The list tag is a semantic type property, not a cardinality indicator.
 func Test698_cap_shape_info_cardinality_always_single_from_urn(t *testing.T) {
 	info := CapShapeInfoFromSpecs("cap:pdf-to-pages", "media:ext=pdf", "media:ext=png;list")
 	assert.Equal(t, CardinalitySingle, info.Input.Cardinality)
@@ -66,7 +57,7 @@ func Test698_cap_shape_info_cardinality_always_single_from_urn(t *testing.T) {
 	assert.Equal(t, PatternOneToOne, info.CardinalityPatternOf())
 }
 
-// TEST699: CapShapeInfo cardinality from URN is always Single; ManyToOne requires IsSequence context
+// TEST699: CapShapeInfo cardinality from URN is always Single; ManyToOne requires is_sequence
 func Test699_cap_shape_info_list_urn_still_single_cardinality(t *testing.T) {
 	// URN parsing always yields Single — the "list" tag is a structure marker, not cardinality
 	fromUrn := CapShapeInfoFromSpecs("cap:merge-pdfs", "media:ext=pdf;list", "media:ext=pdf")
@@ -85,8 +76,7 @@ func Test699_cap_shape_info_list_urn_still_single_cardinality(t *testing.T) {
 	assert.Equal(t, PatternManyToOne, withSeq.CardinalityPatternOf())
 }
 
-// TEST709: Tests CardinalityPattern correctly identifies patterns that produce vectors
-// Verifies OneToMany and ManyToMany return true, others return false
+// TEST709: Tests CardinalityPattern correctly identifies patterns that produce vectors Verifies OneToMany and ManyToMany return true, others return false
 func Test709_pattern_produces_vector(t *testing.T) {
 	assert.False(t, PatternOneToOne.ProducesVector())
 	assert.True(t, PatternOneToMany.ProducesVector())
@@ -94,8 +84,7 @@ func Test709_pattern_produces_vector(t *testing.T) {
 	assert.True(t, PatternManyToMany.ProducesVector())
 }
 
-// TEST710: Tests CardinalityPattern correctly identifies patterns that require vectors
-// Verifies ManyToOne and ManyToMany return true, others return false
+// TEST710: Tests CardinalityPattern correctly identifies patterns that require vectors Verifies ManyToOne and ManyToMany return true, others return false
 func Test710_pattern_requires_vector(t *testing.T) {
 	assert.False(t, PatternOneToOne.RequiresVector())
 	assert.False(t, PatternOneToMany.RequiresVector())
@@ -103,7 +92,7 @@ func Test710_pattern_requires_vector(t *testing.T) {
 	assert.True(t, PatternManyToMany.RequiresVector())
 }
 
-// TEST711: Tests shape chain analysis for simple linear one-to-one capability chains
+// TEST711: Tests shape chain analysis for simple linear one-to-one capability chains Verifies chains with no fan-out are valid and require no transformation
 func Test711_strand_shape_analysis_simple_linear(t *testing.T) {
 	infos := []CapShapeInfo{
 		CapShapeInfoFromSpecs("cap:pdf-to-png", "media:ext=pdf", "media:ext=png;image"),
@@ -115,8 +104,7 @@ func Test711_strand_shape_analysis_simple_linear(t *testing.T) {
 	assert.False(t, analysis.RequiresTransformation())
 }
 
-// TEST712: Tests shape chain analysis detects fan-out points in capability chains
-// Fan-out requires Sequence cardinality on the cap's output (from is_sequence=true wire context)
+// TEST712: Tests shape chain analysis detects fan-out points in capability chains Fan-out requires is_sequence=true on the cap's output, not a "list" URN tag
 func Test712_strand_shape_analysis_with_fan_out(t *testing.T) {
 	// Simulate pdf-to-pages with Sequence output (is_sequence=true)
 	pdfToPages := CapShapeInfo{
@@ -134,7 +122,7 @@ func Test712_strand_shape_analysis_with_fan_out(t *testing.T) {
 	assert.True(t, analysis.RequiresTransformation())
 }
 
-// TEST713: Tests shape chain analysis handles empty capability chains correctly
+// TEST713: Tests shape chain analysis handles empty capability chains correctly Verifies empty chains are valid and require no transformation
 func Test713_strand_shape_analysis_empty(t *testing.T) {
 	analysis := AnalyzeShapeChain(nil)
 	assert.True(t, analysis.IsValid)
@@ -156,8 +144,7 @@ func Test6632_pattern_string(t *testing.T) {
 	assert.Equal(t, "many_to_many", PatternManyToMany.String())
 }
 
-// TEST720: Tests InputStructure correctly identifies opaque media URNs
-// Verifies that URNs without record marker are parsed as Opaque
+// TEST720: Tests InputStructure correctly identifies opaque media URNs Verifies that URNs without record marker are parsed as Opaque
 func Test720_from_media_urn_opaque(t *testing.T) {
 	assert.Equal(t, StructureOpaque, StructureFromMediaUrn("media:ext=pdf"))
 	assert.Equal(t, StructureOpaque, StructureFromMediaUrn("media:enc=utf-8"))
@@ -166,8 +153,7 @@ func Test720_from_media_urn_opaque(t *testing.T) {
 	assert.Equal(t, StructureOpaque, StructureFromMediaUrn("media:file-path;list"))
 }
 
-// TEST721: Tests InputStructure correctly identifies record media URNs
-// Verifies that URNs with record marker tag are parsed as Record
+// TEST721: Tests InputStructure correctly identifies record media URNs Verifies that URNs with record marker tag are parsed as Record
 func Test721_from_media_urn_record(t *testing.T) {
 	assert.Equal(t, StructureRecord, StructureFromMediaUrn("media:fmt=json;record"))
 	assert.Equal(t, StructureRecord, StructureFromMediaUrn("media:record;enc=utf-8"))
@@ -235,7 +221,7 @@ func Test730_media_shape_from_urn_all_combinations(t *testing.T) {
 	assert.Equal(t, StructureRecord, shape.Structure)
 }
 
-// TEST731: Tests MediaShape compatibility for matching shapes (Direct)
+// TEST731: Tests MediaShape compatibility for matching shapes
 func Test731_media_shape_compatible_direct(t *testing.T) {
 	scalarOpaque := ScalarOpaque()
 	scalarRecord := ScalarRecord()
@@ -291,7 +277,7 @@ func Test740_cap_shape_info_from_specs(t *testing.T) {
 	assert.Equal(t, StructureRecord, info.Output.Structure)
 }
 
-// TEST741: Tests CapShapeInfo pattern detection — OneToMany requires Sequence output cardinality
+// TEST741: Tests CapShapeInfo pattern detection — OneToMany requires output is_sequence=true
 func Test741_cap_shape_info_pattern(t *testing.T) {
 	// Simulate one-to-many (output is_sequence=true on wire)
 	oneToMany := CapShapeInfo{
@@ -326,8 +312,7 @@ func Test751_strand_shape_structure_mismatch(t *testing.T) {
 	assert.Contains(t, analysis.Error, "Shape mismatch")
 }
 
-// TEST752: Tests shape chain analysis with fan-out (matching structures)
-// Fan-out requires Sequence output cardinality (from is_sequence=true wire context)
+// TEST752: Tests shape chain analysis with fan-out (matching structures) Fan-out requires output is_sequence=true on the disbind cap
 func Test752_strand_shape_with_fanout(t *testing.T) {
 	disbind := CapShapeInfo{
 		Input:  MediaShapeFromUrn("media:ext=pdf"),

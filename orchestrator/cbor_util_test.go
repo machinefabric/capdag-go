@@ -163,7 +163,7 @@ func Test962_assemble_invalid_item(t *testing.T) {
 	assert.Equal(t, CborErrDeserialize, cborErr.Kind)
 }
 
-// TEST963: split preserves CBOR byte strings (binary data)
+// TEST963: split preserves CBOR byte strings (binary data — the common case in bifaci)
 func Test963_split_binary_items(t *testing.T) {
 	pdfBytes := []byte{0x25, 0x50, 0x44, 0x46} // %PDF
 	pngBytes := []byte{0x89, 0x50, 0x4E, 0x47} // .PNG
@@ -349,7 +349,7 @@ func Test974_sequence_is_not_array(t *testing.T) {
 		"expected DeserializeError or NotAnArray, got kind=%d", cborErr.Kind)
 }
 
-// TEST975: split_cbor_sequence works on data that is also a valid single CBOR value
+// TEST975: split_cbor_sequence works on data that is also a valid CBOR array (single top-level value)
 func Test975_single_value_sequence(t *testing.T) {
 	single := cborEncodeVal([]byte("solo"))
 	items, err := SplitCborSequence(single)

@@ -359,7 +359,7 @@ func Test259_extract_effective_payload_non_cbor(t *testing.T) {
 	}
 }
 
-// TEST260: Test extract_effective_payload with empty content_type returns raw payload unchanged
+// TEST260: Test extract_effective_payload with None content_type returns raw payload unchanged
 func Test260_extract_effective_payload_no_content_type(t *testing.T) {
 	capDef := createTestCap(`cap:in="media:void";test;out="media:void"`, "Test", "test", nil)
 	payload := []byte("raw data")
@@ -1019,11 +1019,11 @@ func Test338_FilePathViaCliFlag(t *testing.T) {
 	}
 }
 
-// TEST6584: file-path arg with is_sequence=true expands a glob to N files
+// TEST339: file-path arg with is_sequence=true expands a glob to N files
 // and the runtime delivers them as a CBOR Array of Bytes — one array item
 // per matched file. List-ness comes from the arg declaration, not from any
 // `;list` URN tag. Mirrors Rust test339_file_path_array_glob_expansion.
-func Test6584_FilePathArrayGlobExpansion(t *testing.T) {
+func Test339_FilePathArrayGlobExpansion(t *testing.T) {
 	tempDir := filepath.Join(t.TempDir(), "test339")
 	if err := os.MkdirAll(tempDir, 0755); err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -1284,10 +1284,10 @@ func Test343_NonFilePathArgsUnaffected(t *testing.T) {
 	}
 }
 
-// TEST344: A scalar file-path arg receiving a nonexistent path fails hard
+// TEST6586: A scalar file-path arg receiving a nonexistent path fails hard
 // with a clear error that names the path. The runtime refuses to silently
 // swallow user mistakes like typos or wrong directories.
-func Test344_FilePathArrayInvalidJSONFails(t *testing.T) {
+func Test6586_FilePathArrayInvalidJSONFails(t *testing.T) {
 	capDef := createTestCap(
 		`cap:in="media:";batch;out="media:void"`,
 		"Test",
@@ -1328,9 +1328,8 @@ func Test344_FilePathArrayInvalidJSONFails(t *testing.T) {
 	}
 }
 
-// TEST345: file-path arg with literal nonexistent path fails hard.
-// Mirrors Rust test345_file_path_array_one_file_missing_fails_hard.
-func Test345_FilePathArrayOneFileMissingFailsHard(t *testing.T) {
+// TEST6587: file-path-array with literal nonexistent path fails hard
+func Test6587_FilePathArrayOneFileMissingFailsHard(t *testing.T) {
 	tempDir := t.TempDir()
 	missingPath := filepath.Join(tempDir, "test345_missing.txt")
 
@@ -1637,10 +1636,10 @@ func Test350_FullCLIModeWithFilePathIntegration(t *testing.T) {
 	}
 }
 
-// TEST351: file-path arg in CBOR mode with empty Array returns empty.
+// TEST6588: file-path arg in CBOR mode with empty Array returns empty.
 // CBOR Array (not JSON-encoded) is the multi-input wire form for sequence
 // args. Mirrors Rust test351_file_path_array_empty_array.
-func Test351_FilePathArrayEmptyArray(t *testing.T) {
+func Test6588_FilePathArrayEmptyArray(t *testing.T) {
 	batchArg := cap.CapArg{
 		MediaUrn:   "media:file-path;enc=utf-8",
 		Required:   false,
@@ -1804,8 +1803,7 @@ func Test353_CBORPayloadFormatConsistency(t *testing.T) {
 	}
 }
 
-// TEST354: Glob pattern with no matches fails hard (NO FALLBACK).
-// Mirrors Rust test354_glob_pattern_no_matches_empty_array.
+// TEST354: Glob pattern with no matches fails hard (NO FALLBACK)
 func Test354_GlobPatternNoMatchesEmptyArray(t *testing.T) {
 	tempDir := t.TempDir()
 
@@ -1849,9 +1847,9 @@ func Test354_GlobPatternNoMatchesEmptyArray(t *testing.T) {
 	}
 }
 
-// TEST6590: Glob pattern skips directories.
+// TEST355: Glob pattern skips directories.
 // Mirrors Rust test355_glob_pattern_skips_directories.
-func Test6590_GlobPatternSkipsDirectories(t *testing.T) {
+func Test355_GlobPatternSkipsDirectories(t *testing.T) {
 	tempDir := filepath.Join(t.TempDir(), "test355")
 	if err := os.MkdirAll(tempDir, 0755); err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -2108,8 +2106,7 @@ func Test358_BinaryFileNonUTF8(t *testing.T) {
 	}
 }
 
-// TEST359: Invalid glob pattern fails with clear error.
-// Mirrors Rust test359_invalid_glob_pattern_fails.
+// TEST359: Invalid glob pattern fails with clear error
 func Test359_InvalidGlobPatternFails(t *testing.T) {
 	batchArg := cap.CapArg{
 		MediaUrn:   "media:file-path;enc=utf-8",
@@ -2955,7 +2952,7 @@ func Test678_find_stream_equivalent_urn(t *testing.T) {
 	}
 }
 
-// TEST679: find_stream with base URN vs full URN fails — is_equivalent is strict This is the root cause of the cartridge_client.rs bug. Sender sent "media:llm-generation-request" but receiver looked for "media:llm-generation-request;fmt=json;record".
+// TEST679: find_stream with base URN vs full URN fails — is_equivalent is strict This is the root cause of the cartridge_client.rs bug. Sender sent "media:llm-generation-request" but receiver looked for "media:fmt=json;llm-generation-request;record".
 func Test679_find_stream_base_vs_full_fails(t *testing.T) {
 	streams := streamsToSlice([]testStream{
 		{"media:txt;enc=utf-8", []byte("hello")},
@@ -3216,7 +3213,7 @@ func Test1282_adapter_selection_auto_registered(t *testing.T) {
 	}
 }
 
-// TEST1283: Custom adapter selection handler overrides the default
+// TEST1283: Custom adapter selection Op overrides the default
 func Test1283_adapter_selection_custom_override(t *testing.T) {
 	identity := createTestCap(standard.CapIdentity, "Identity", "identity", nil)
 	manifest := createTestManifest("TestCartridge", "1.0.0", "Test", []*cap.Cap{identity})

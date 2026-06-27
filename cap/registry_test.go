@@ -22,8 +22,8 @@ func regTestUrn(tags string) string {
 	return `cap:in="media:void";out="media:object";` + tags
 }
 
-// TEST135: Test registry creation with temporary cache directory succeeds
-func Test135_registry_creation(t *testing.T) {
+// TEST614: Verify registry creation succeeds and cache directory exists
+func Test614_registry_creation(t *testing.T) {
 	registry, err := NewFabricRegistry()
 	require.NoError(t, err)
 	assert.NotNil(t, registry)
@@ -131,8 +131,7 @@ func buildRegistryURL(capUrn string) string {
 	return fmt.Sprintf("%s/caps/%x", DefaultRegistryBaseURL, digest)
 }
 
-// TEST6388: Per-cap URL is /caps/<sha256-hex> — no URN-grammar
-// characters in the path, no percent-encoding gymnastics.
+// TEST6388: Per-cap URL is /caps/<sha256-hex> — no URN-grammar characters in the path, no percent-encoding gymnastics.
 func Test6388_per_cap_url_uses_sha256(t *testing.T) {
 	registryURL := buildRegistryURL(`cap:in="media:string";test;out="media:object"`)
 
@@ -153,8 +152,7 @@ func Test6391_same_cap_different_spellings_same_url(t *testing.T) {
 	assert.Equal(t, urlA, urlB, "Equivalent URNs must hash to the same registry key")
 }
 
-// TEST141: URL has the right shape — protocol, host, /caps/ prefix,
-// 64 hex chars, no extension.
+// TEST141: URL has the right shape — protocol, host, /caps/ prefix, 64 hex chars, no extension.
 func Test141_per_cap_url_shape(t *testing.T) {
 	registryURL := buildRegistryURL(`cap:in=media:listing-id;use-grinder;out=media:task;id`)
 
@@ -166,8 +164,7 @@ func Test141_per_cap_url_shape(t *testing.T) {
 	assert.Len(t, hashPart, 64, "SHA-256 hex digest is 64 characters")
 }
 
-// TEST142: Different tag orders normalise to the same URL — the
-// canonicaliser strips the variation before hashing.
+// TEST142: Different tag orders normalise to the same URL — the canonicaliser strips the variation before hashing.
 func Test142_normalize_handles_different_tag_orders(t *testing.T) {
 	urn1 := `cap:test;in="media:string";out="media:object"`
 	urn2 := `cap:in="media:string";out="media:object";test`
@@ -178,8 +175,7 @@ func Test142_normalize_handles_different_tag_orders(t *testing.T) {
 	assert.Equal(t, url1, url2, "Different tag orders should produce the same URL")
 }
 
-// TEST143: Default config points at https://fabric.capdag.com/ unless
-// overridden by CDG_FABRIC_REGISTRY_URL.
+// TEST143: Default config points at https://fabric.capdag.com/ unless overridden by CDG_FABRIC_REGISTRY_URL.
 func Test143_default_config(t *testing.T) {
 	config := DefaultRegistryConfig()
 	registryURL := os.Getenv("CDG_FABRIC_REGISTRY_URL")

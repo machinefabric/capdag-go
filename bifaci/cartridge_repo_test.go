@@ -59,7 +59,7 @@ func makeTestRegistryChannels(
 }
 
 // TEST320-335: CartridgeRepoServer and CartridgeRepoClient tests
-func Test6550_cartridge_info_construction(t *testing.T) {
+func Test320_cartridge_info_construction(t *testing.T) {
 	cartridge := CartridgeInfo{
 		Id:                "testcartridge",
 		Name:              "Test Cartridge",
@@ -88,7 +88,7 @@ func Test6550_cartridge_info_construction(t *testing.T) {
 	}
 }
 
-// TEST321: CartridgeInfo.is_signed() returns true when signature is present
+// TEST321: CartridgeInfo.is_signed() returns true when signature (team_id + signed_at) is present, false when either is empty.
 func Test321_cartridge_info_is_signed(t *testing.T) {
 	cartridge := CartridgeInfo{
 		Id:       "testcartridge",
@@ -115,7 +115,7 @@ func Test321_cartridge_info_is_signed(t *testing.T) {
 	}
 }
 
-// TEST322: CartridgeInfo.build_for_platform() returns the build matching the current platform
+// TEST322: CartridgeInfo.build_for_platform() returns the build that matches the requested platform string and None otherwise.
 func Test322_cartridge_info_build_for_platform(t *testing.T) {
 	cartridge := CartridgeInfo{
 		Id:      "testcartridge",
@@ -199,8 +199,8 @@ func Test323_cartridge_repo_server_validate_registry(t *testing.T) {
 	}
 }
 
-// TEST6556: CartridgeRepoServer transforms v3 registry JSON into flat cartridge array
-func Test6556_cartridge_repo_server_transform_to_array(t *testing.T) {
+// TEST324: CartridgeRepoServer transforms a v4.0 entry into a flat CartridgeInfo, preserving cap_groups verbatim.
+func Test324_cartridge_repo_server_transform_to_array(t *testing.T) {
 	versions := makeTestVersions("darwin-arm64")
 	entry := CartridgeRegistryEntry{
 		Name:          "Test Cartridge",
@@ -248,8 +248,8 @@ func Test6556_cartridge_repo_server_transform_to_array(t *testing.T) {
 	}
 }
 
-// TEST6559: CartridgeRepoServer.get_cartridges() returns all parsed cartridges
-func Test6559_cartridge_repo_server_get_cartridges(t *testing.T) {
+// TEST325: CartridgeRepoServer.get_cartridges() returns all parsed cartridges
+func Test325_cartridge_repo_server_get_cartridges(t *testing.T) {
 	entry := CartridgeRegistryEntry{
 		Name:          "Test Cartridge",
 		Description:   "A test cartridge",
@@ -278,8 +278,8 @@ func Test6559_cartridge_repo_server_get_cartridges(t *testing.T) {
 	}
 }
 
-// TEST6560: CartridgeRepoServer.get_cartridge() returns cartridge matching the given ID
-func Test6560_cartridge_repo_server_get_cartridge_by_id(t *testing.T) {
+// TEST326: CartridgeRepoServer.get_cartridge() returns cartridge matching the given ID
+func Test326_cartridge_repo_server_get_cartridge_by_id(t *testing.T) {
 	entry := CartridgeRegistryEntry{
 		Name:          "Test Cartridge",
 		Description:   "A test cartridge",
@@ -329,8 +329,8 @@ func Test6560_cartridge_repo_server_get_cartridge_by_id(t *testing.T) {
 	}
 }
 
-// TEST6562: CartridgeRepoServer.search_cartridges() filters by text query against name and description
-func Test6562_cartridge_repo_server_search_cartridges(t *testing.T) {
+// TEST327: CartridgeRepoServer.search_cartridges() filters by text query against name and description
+func Test327_cartridge_repo_server_search_cartridges(t *testing.T) {
 	entry := CartridgeRegistryEntry{
 		Name:          "PDF Cartridge",
 		Description:   "Process PDF documents",
@@ -368,8 +368,8 @@ func Test6562_cartridge_repo_server_search_cartridges(t *testing.T) {
 	}
 }
 
-// TEST6565: CartridgeRepoServer.get_by_category() filters cartridges by category tag
-func Test6565_cartridge_repo_server_get_by_category(t *testing.T) {
+// TEST328: CartridgeRepoServer.get_by_category() filters cartridges by category tag
+func Test328_cartridge_repo_server_get_by_category(t *testing.T) {
 	entry := CartridgeRegistryEntry{
 		Name:          "Doc Cartridge",
 		Description:   "Process documents",
@@ -407,8 +407,8 @@ func Test6565_cartridge_repo_server_get_by_category(t *testing.T) {
 	}
 }
 
-// TEST6567: CartridgeRepoServer.get_suggestions_for_cap() finds cartridges providing a given cap URN
-func Test6567_cartridge_repo_server_get_by_cap(t *testing.T) {
+// TEST329: CartridgeRepoServer.get_suggestions_for_cap() finds cartridges providing a given cap URN
+func Test329_cartridge_repo_server_get_by_cap(t *testing.T) {
 	capUrn := `cap:in="media:ext=pdf";disbind;out="media:disbound-page;list;enc=utf-8"`
 	entry := CartridgeRegistryEntry{
 		Name:          "PDF Cartridge",
@@ -466,10 +466,10 @@ func Test6567_cartridge_repo_server_get_by_cap(t *testing.T) {
 	}
 }
 
-// TEST6570: CartridgeRepoClient updates its local cache, keyed by
+// TEST330: CartridgeRepoClient updates its local cache, keyed by
 // (channel, id) so the same id can independently coexist in both
 // channels.
-func Test6570_cartridge_repo_client_update_cache(t *testing.T) {
+func Test330_cartridge_repo_client_update_cache(t *testing.T) {
 	repo := NewCartridgeRepo(3600)
 
 	registry := &CartridgeRegistryResponse{
@@ -504,9 +504,9 @@ func Test6570_cartridge_repo_client_update_cache(t *testing.T) {
 	}
 }
 
-// TEST6572: CartridgeRepoClient.GetSuggestionsForCap() returns cartridge
+// TEST331: CartridgeRepoClient.GetSuggestionsForCap() returns cartridge
 // suggestions and propagates the source channel onto each suggestion.
-func Test6572_cartridge_repo_client_get_suggestions(t *testing.T) {
+func Test331_cartridge_repo_client_get_suggestions(t *testing.T) {
 	repo := NewCartridgeRepo(3600)
 
 	capUrn := `cap:in="media:ext=pdf";disbind;out="media:disbound-page;list;enc=utf-8"`
@@ -562,8 +562,8 @@ func Test6572_cartridge_repo_client_get_suggestions(t *testing.T) {
 	}
 }
 
-// TEST6574: CartridgeRepoClient.GetCartridge() retrieves by (channel, id).
-func Test6574_cartridge_repo_client_get_cartridge(t *testing.T) {
+// TEST332: CartridgeRepoClient.GetCartridge() retrieves by (channel, id).
+func Test332_cartridge_repo_client_get_cartridge(t *testing.T) {
 	repo := NewCartridgeRepo(3600)
 
 	registry := &CartridgeRegistryResponse{
@@ -597,8 +597,8 @@ func Test6574_cartridge_repo_client_get_cartridge(t *testing.T) {
 	}
 }
 
-// TEST6576: CartridgeRepoClient.get_all_caps() returns aggregate cap URNs from all cached cartridges
-func Test6576_cartridge_repo_client_get_all_caps(t *testing.T) {
+// TEST333: CartridgeRepoClient.get_all_caps() returns aggregate cap URNs from all cached cartridges
+func Test333_cartridge_repo_client_get_all_caps(t *testing.T) {
 	repo := NewCartridgeRepo(3600)
 
 	cap1 := `cap:in="media:ext=pdf";disbind;out="media:disbound-page;list;enc=utf-8"`
@@ -662,8 +662,8 @@ func Test6576_cartridge_repo_client_get_all_caps(t *testing.T) {
 	}
 }
 
-// TEST6579: CartridgeRepoClient.needs_sync() returns true when cache TTL has expired
-func Test6579_cartridge_repo_client_needs_sync(t *testing.T) {
+// TEST334: CartridgeRepoClient.needs_sync() returns true when cache TTL has expired
+func Test334_cartridge_repo_client_needs_sync(t *testing.T) {
 	repo := NewCartridgeRepo(3600)
 	urls := []string{"https://example.com/cartridges"}
 
@@ -681,8 +681,8 @@ func Test6579_cartridge_repo_client_needs_sync(t *testing.T) {
 	}
 }
 
-// TEST6581: Server creates registry response and client consumes it end-to-end
-func Test6581_cartridge_repo_server_client_integration(t *testing.T) {
+// TEST335: Server creates registry response and client consumes it end-to-end
+func Test335_cartridge_repo_server_client_integration(t *testing.T) {
 	capUrn := `cap:in="media:test";test;out="media:result"`
 	entry := CartridgeRegistryEntry{
 		Name:          "Test Cartridge",
@@ -746,7 +746,7 @@ func Test6581_cartridge_repo_server_client_integration(t *testing.T) {
 	}
 }
 
-// TEST630: Verify CartridgeRepo creation starts with empty cartridge list
+// TEST630: CartridgeRepo creation starts with empty cartridge list.
 func Test630_cartridge_repo_creation(t *testing.T) {
 	repo := NewCartridgeRepo(3600)
 	if len(repo.GetAllCartridges()) != 0 {
@@ -754,7 +754,7 @@ func Test630_cartridge_repo_creation(t *testing.T) {
 	}
 }
 
-// TEST631: Verify needs_sync returns true with empty cache and non-empty URLs
+// TEST631: needs_sync returns true with empty cache and non-empty URLs.
 func Test631_needs_sync_empty_cache(t *testing.T) {
 	repo := NewCartridgeRepo(3600)
 	urls := []string{"https://example.com/cartridges"}
@@ -763,9 +763,7 @@ func Test631_needs_sync_empty_cache(t *testing.T) {
 	}
 }
 
-// TEST319: A registry response with a malformed cap URN inside cap_groups
-// must propagate as ParseError when indexed into the cache, not silently
-// disappear.
+// TEST319: A registry response with a malformed cap URN inside cap_groups must propagate as ParseError when indexed into the cache, not silently disappear.
 func Test319_update_cache_rejects_malformed_cap_urn(t *testing.T) {
 	repo := NewCartridgeRepo(3600)
 	registry := &CartridgeRegistryResponse{

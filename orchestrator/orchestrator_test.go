@@ -151,9 +151,8 @@ func Test1161_simple_linear_chain_conversion(t *testing.T) {
 	}
 }
 
-// TEST6648: PlanToResolvedGraph rejects plans containing ForEach nodes
-// Verifies that plans requiring decomposition (ForEach) are rejected before conversion
-func Test6648_rejects_foreach(t *testing.T) {
+// TEST770: plan_to_resolved_graph rejects plans containing ForEach nodes
+func Test770_rejects_foreach(t *testing.T) {
 	registry := buildTestRegistry(t, []string{
 		"cap:in=media:pdf;disbind;out=media:pdf-page",
 		"cap:in=media:pdf-page;process;out=media:text",
@@ -203,10 +202,7 @@ func Test953_linear_plan_still_works(t *testing.T) {
 	}
 }
 
-// TEST954: Standalone Collect nodes are handled as pass-through
-// Plan: input → cap_0 → Collect → cap_1 → output
-// The standalone Collect is transparent — the resolved edge from Collect to cap_1
-// should be rewritten to go from cap_0 to cap_1 directly.
+// TEST954: Standalone Collect nodes are handled as pass-through Plan: input → cap_0 → Collect → cap_1 → output The standalone Collect is transparent — the resolved edge from Collect to cap_1 should be rewritten to go from cap_0 to cap_1 directly.
 func Test954_standalone_collect_passthrough(t *testing.T) {
 	registry := buildTestRegistry(t, []string{
 		`cap:in="media:ext=pdf";extract;out="media:text;enc=utf-8"`,
@@ -314,10 +310,10 @@ func Test1257_parse_two_step_chain(t *testing.T) {
 	}
 }
 
-// TEST6715: Parsing fails when a declared cap is absent from the registry.
+// TEST1261: Parsing fails when a declared cap is absent from the registry.
 // In Go the machine parser resolves caps before the orchestrator layer checks,
 // so the error may be ErrMachineSyntaxParseFailed or ErrCapNotFound.
-func Test6715_cap_not_found_in_registry(t *testing.T) {
+func Test1261_cap_not_found_in_registry(t *testing.T) {
 	registry := buildParserTestRegistry(t, []string{})
 
 	notation := `[ex cap:in="media:unknown";test;out="media:unknown"][A -> ex -> B]`

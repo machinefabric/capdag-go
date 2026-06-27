@@ -285,8 +285,8 @@ func Test1109_SlotKeyUsesNodeIDNotCapUrn(t *testing.T) {
 	}
 }
 
-// TEST6659: ArgumentBinding RequiresInput distinguishes Slots from Literals
-func Test6659_ArgumentBindingRequiresInput(t *testing.T) {
+// TEST792: Tests ArgumentBinding requires_input distinguishes Slots from Literals Verifies Slot returns true (needs user input) while Literal returns false
+func Test792_ArgumentBindingRequiresInput(t *testing.T) {
 	slot := NewSlotBinding("width", nil)
 	if !slot.RequiresInput() {
 		t.Fatal("Slot binding must require input")
@@ -327,8 +327,8 @@ func Test6660_ArgumentBindingSerializationPreviousOutput(t *testing.T) {
 	}
 }
 
-// TEST6661: ArgumentBindings AddFilePath adds InputFilePath binding
-func Test6661_ArgumentBindingsAddFilePath(t *testing.T) {
+// TEST794: Tests ArgumentBindings add_file_path adds InputFilePath binding Verifies add_file_path() creates binding map entry with InputFilePath variant
+func Test794_ArgumentBindingsAddFilePath(t *testing.T) {
 	bindings := NewArgumentBindings()
 	bindings.AddFilePath("input")
 	b, ok := bindings.Bindings["input"]
@@ -340,8 +340,8 @@ func Test6661_ArgumentBindingsAddFilePath(t *testing.T) {
 	}
 }
 
-// TEST6662: ArgumentBindings identifies unresolved Slot bindings
-func Test6662_ArgumentBindingsUnresolvedSlots(t *testing.T) {
+// TEST795: ArgumentBindings identifies unresolved Slot bindings
+func Test795_ArgumentBindingsUnresolvedSlots(t *testing.T) {
 	bindings := NewArgumentBindings()
 	bindings.Add("width", NewSlotBinding("width", nil))
 	bindings.Add("height", NewLiteralBinding(json.RawMessage(`100`)))
@@ -355,8 +355,8 @@ func Test6662_ArgumentBindingsUnresolvedSlots(t *testing.T) {
 	}
 }
 
-// TEST6663: resolve_binding resolves InputFilePath to current file path
-func Test6663_ResolveInputFilePath(t *testing.T) {
+// TEST796: Tests resolve_binding resolves InputFilePath to current file path Verifies InputFilePath binding resolves to file path bytes with InputFile source
+func Test796_ResolveInputFilePath(t *testing.T) {
 	ctx := emptyContext(func(c *ArgumentResolutionContext) {
 		c.InputFiles = []*CapInputFile{
 			{FilePath: "/path/to/file.pdf", MediaUrn: "media:ext=pdf"},
@@ -378,8 +378,8 @@ func Test6663_ResolveInputFilePath(t *testing.T) {
 	}
 }
 
-// TEST6664: resolve_binding resolves Literal to JSON-encoded bytes
-func Test6664_ResolveLiteral(t *testing.T) {
+// TEST797: Tests resolve_binding resolves Literal to JSON-encoded bytes Verifies Literal binding serializes value to bytes with Literal source
+func Test797_ResolveLiteral(t *testing.T) {
 	ctx := emptyContext()
 	binding := NewLiteralBinding(json.RawMessage(`42`))
 	result, err := ResolveBinding(binding, ctx, "cap:test", "step_0", nil, true)
@@ -397,8 +397,8 @@ func Test6664_ResolveLiteral(t *testing.T) {
 	}
 }
 
-// TEST6665: resolve_binding extracts value from previous node output
-func Test6665_ResolvePreviousOutput(t *testing.T) {
+// TEST798: Tests resolve_binding extracts value from previous node output Verifies PreviousOutput binding fetches field from earlier execution results
+func Test798_ResolvePreviousOutput(t *testing.T) {
 	field := "result_path"
 	ctx := emptyContext(func(c *ArgumentResolutionContext) {
 		c.PreviousOutputs = map[string]json.RawMessage{
@@ -497,9 +497,8 @@ func Test6670_StrandInputInvalidSingle(t *testing.T) {
 	}
 }
 
-// TEST6679: NewCapInputFile creates a CapInputFile with correct path and media URN.
-// Metadata and source fields must be nil.
-func Test6679_cap_input_file_new(t *testing.T) {
+// TEST957: Tests CapInputFile constructor creates file with correct path and media URN Verifies new() initializes file_path, media_urn and leaves metadata/source_id as None
+func Test957_cap_input_file_new(t *testing.T) {
 	file := NewCapInputFile("/path/to/file.pdf", "media:ext=pdf")
 	if file.FilePath != "/path/to/file.pdf" {
 		t.Errorf("FilePath = %q, want /path/to/file.pdf", file.FilePath)
@@ -515,8 +514,8 @@ func Test6679_cap_input_file_new(t *testing.T) {
 	}
 }
 
-// TEST6680: CapInputFileFromListing sets source_id and source_type to Listing.
-func Test6680_cap_input_file_from_listing(t *testing.T) {
+// TEST958: Tests CapInputFile from_listing sets source metadata correctly Verifies from_listing() populates source_id and source_type as Listing
+func Test958_cap_input_file_from_listing(t *testing.T) {
 	file := CapInputFileFromListing("listing-123", "/path/to/file.pdf", "media:ext=pdf")
 	if file.SourceID == nil || *file.SourceID != "listing-123" {
 		t.Errorf("SourceID = %v, want listing-123", file.SourceID)
@@ -526,8 +525,8 @@ func Test6680_cap_input_file_from_listing(t *testing.T) {
 	}
 }
 
-// TEST6681: CapInputFile.Filename() extracts the basename from a full path.
-func Test6681_cap_input_file_filename(t *testing.T) {
+// TEST959: CapInputFile.Filename() extracts the basename from a full path.
+func Test959_cap_input_file_filename(t *testing.T) {
 	file := NewCapInputFile("/path/to/document.pdf", "media:ext=pdf")
 	name := file.Filename()
 	if name == nil {
@@ -538,8 +537,8 @@ func Test6681_cap_input_file_filename(t *testing.T) {
 	}
 }
 
-// TEST6682: NewLiteralStringBinding creates a Literal binding wrapping a JSON string.
-func Test6682_argument_binding_literal_string(t *testing.T) {
+// TEST960: NewLiteralStringBinding creates a Literal binding wrapping a JSON string.
+func Test960_argument_binding_literal_string(t *testing.T) {
 	binding := NewLiteralStringBinding("test")
 	if binding.Kind != BindingLiteral {
 		t.Fatalf("expected BindingLiteral, got %v", binding.Kind)

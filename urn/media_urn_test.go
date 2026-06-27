@@ -35,7 +35,7 @@ func Test6351_ParseWithProfile(t *testing.T) {
 	assert.True(t, urn.HasTag("enc"))
 }
 
-// TEST060: Test wrong prefix fails with InvalidPrefix error showing expected and actual prefix
+// TEST60: Test wrong prefix fails with InvalidPrefix error showing expected and actual prefix
 func Test060_wrong_prefix_fails(t *testing.T) {
 	_, err := NewMediaUrnFromString("cap:string")
 	require.Error(t, err)
@@ -52,7 +52,7 @@ func Test060_wrong_prefix_fails(t *testing.T) {
 // tests (e.g. the enc-based text checks below). No replacement assertion is
 // meaningful here.
 
-// TEST062: Test is_record returns true when record marker tag is present indicating key-value structure
+// TEST62: Test is_record returns true when record marker tag is present indicating key-value structure
 func Test062_is_record(t *testing.T) {
 	// is_record returns true if record marker tag is present (key-value structure)
 	recordUrn, err := NewMediaUrnFromString(standard.MediaObject)
@@ -81,7 +81,7 @@ func Test062_is_record(t *testing.T) {
 	assert.False(t, listUrn2.IsRecord()) // list, no record marker
 }
 
-// TEST063: Test is_scalar returns true when list marker tag is absent (scalar is default)
+// TEST63: Test is_scalar returns true when list marker tag is absent (scalar is default)
 func Test063_is_scalar(t *testing.T) {
 	stringUrn, err := NewMediaUrnFromString(standard.MediaString)
 	require.NoError(t, err)
@@ -102,7 +102,7 @@ func Test063_is_scalar(t *testing.T) {
 	assert.False(t, listUrn.IsScalar())
 }
 
-// TEST064: Test is_list returns true when list marker tag is present indicating ordered collection
+// TEST64: Test is_list returns true when list marker tag is present indicating ordered collection
 func Test064_is_list(t *testing.T) {
 	strList, err := NewMediaUrnFromString(standard.MediaStringList)
 	require.NoError(t, err)
@@ -117,7 +117,7 @@ func Test064_is_list(t *testing.T) {
 	assert.False(t, scalar.IsList())
 }
 
-// TEST065: Test is_opaque returns true when record marker is absent (opaque is default)
+// TEST65: Test is_opaque returns true when record marker is absent (opaque is default)
 func Test065_is_opaque(t *testing.T) {
 	stringUrn, err := NewMediaUrnFromString(standard.MediaString)
 	require.NoError(t, err)
@@ -148,7 +148,7 @@ func Test065_is_opaque(t *testing.T) {
 	assert.False(t, objListUrn.IsOpaque())
 }
 
-// TEST066: Test is_json returns true only when json marker tag is present for JSON representation
+// TEST66: Test is_json returns true only when json marker tag is present for JSON representation
 func Test066_is_json(t *testing.T) {
 	jsonUrn, err := NewMediaUrnFromString(standard.MediaJSON)
 	require.NoError(t, err)
@@ -163,10 +163,7 @@ func Test066_is_json(t *testing.T) {
 	assert.False(t, nonJson.IsJson())
 }
 
-// TEST067: Text-representability is now carried by the orthogonal `enc=` tag
-// (the old `textable` marker and IsTextable() are gone). A media is "text" iff
-// it declares an encoding. enc is orthogonal to format/numeric, so only media
-// that actually carry enc= are text.
+// TEST67: Text-representability is now carried by the orthogonal `enc=` tag (the old `textable` marker and is_text() are gone). A media is "text" iff it declares an encoding. enc is orthogonal to format/numeric, so only media that actually carry enc= are text.
 func Test067_is_text(t *testing.T) {
 	// Has enc= → text-representable
 	stringUrn, err := NewMediaUrnFromString(standard.MediaString) // media:enc=utf-8
@@ -191,7 +188,7 @@ func Test067_is_text(t *testing.T) {
 	assert.False(t, binary.HasTag("enc"))
 }
 
-// TEST068: Test is_void returns true when void flag or type=void tag is present
+// TEST68: Test is_void returns true when void flag or type=void tag is present
 func Test068_is_void(t *testing.T) {
 	voidUrn, err := NewMediaUrnFromString("media:void")
 	require.NoError(t, err)
@@ -219,7 +216,7 @@ func Test6359_WithSubtypeConstructor(t *testing.T) {
 	assert.Equal(t, "json", subtype)
 }
 
-// TEST071: Test to_string roundtrip ensures serialization and deserialization preserve URN structure
+// TEST71: Test to_string roundtrip ensures serialization and deserialization preserve URN structure
 func Test071_to_string_roundtrip(t *testing.T) {
 	original := "media:enc=utf-8;string"
 	urn1, err := NewMediaUrnFromString(original)
@@ -232,7 +229,7 @@ func Test071_to_string_roundtrip(t *testing.T) {
 	assert.True(t, urn1.Equals(urn2))
 }
 
-// TEST072: Test all media URN constants parse successfully as valid media URNs
+// TEST72: Test all media URN constants parse successfully as valid media URNs
 func Test072_constants_parse(t *testing.T) {
 	constants := []string{
 		standard.MediaVoid,
@@ -272,7 +269,7 @@ func Test072_constants_parse(t *testing.T) {
 	}
 }
 
-// TEST073: Test extension helper functions create media URNs with ext tag and correct format
+// TEST73: Test extension helper functions create media URNs with ext tag and correct format
 func Test073_extension_helpers(t *testing.T) {
 	pdfUrn, err := NewMediaUrnFromString("media:ext=pdf")
 	require.NoError(t, err)
@@ -281,7 +278,7 @@ func Test073_extension_helpers(t *testing.T) {
 	assert.Equal(t, "pdf", ext)
 }
 
-// TEST074: Test media URN conforms_to using tagged URN semantics with specific and generic requirements
+// TEST74: Test media URN conforms_to using tagged URN semantics with specific and generic requirements
 func Test074_media_urn_matching(t *testing.T) {
 	specific, err := NewMediaUrnFromString("media:enc=utf-8;string")
 	require.NoError(t, err)
@@ -302,7 +299,7 @@ func Test074_media_urn_matching(t *testing.T) {
 	assert.False(t, generic.ConformsTo(specific))
 }
 
-// TEST075: Test accepts with implicit wildcards where handlers with fewer tags can handle more requests
+// TEST75: Test accepts with implicit wildcards where handlers with fewer tags can handle more requests
 func Test075_matching(t *testing.T) {
 	handler, err := NewMediaUrnFromString("media:string")
 	require.NoError(t, err)
@@ -314,7 +311,7 @@ func Test075_matching(t *testing.T) {
 	assert.True(t, handler.Accepts(request))
 }
 
-// TEST076: Test specificity increases with more tags for ranking conformance
+// TEST76: Test specificity increases with more tags for ranking conformance
 func Test076_specificity(t *testing.T) {
 	simple, err := NewMediaUrnFromString("media:string")
 	require.NoError(t, err)
@@ -326,7 +323,7 @@ func Test076_specificity(t *testing.T) {
 	assert.True(t, detailed.Specificity() > simple.Specificity())
 }
 
-// TEST077: Test serde roundtrip serializes to JSON string and deserializes back correctly
+// TEST77: Test serde roundtrip serializes to JSON string and deserializes back correctly
 func Test077_serde_roundtrip(t *testing.T) {
 	original, err := NewMediaUrnFromString("media:enc=utf-8;string")
 	require.NoError(t, err)
@@ -343,7 +340,7 @@ func Test077_serde_roundtrip(t *testing.T) {
 	assert.True(t, original.Equals(&restored))
 }
 
-// TEST078: conforms_to behavior between MEDIA_OBJECT and MEDIA_STRING
+// TEST78: conforms_to behavior between MEDIA_OBJECT and MEDIA_STRING
 func Test078_object_does_not_conform_to_string(t *testing.T) {
 	strUrn, err := NewMediaUrnFromString(standard.MediaString)
 	require.NoError(t, err)
@@ -523,9 +520,7 @@ func Test550_is_bool(t *testing.T) {
 	assert.False(t, binaryUrn.IsBool())
 }
 
-// TEST551: IsFilePath returns true for the single file-path media URN,
-// false for everything else. There is no "array" variant — cardinality is
-// carried by is_sequence on the wire, not by URN tags.
+// TEST551: is_file_path returns true for the single file-path media URN, false for everything else. There is no "array" variant — cardinality is carried by is_sequence on the wire, not by URN tags.
 func Test551_is_file_path(t *testing.T) {
 	fpUrn, err := NewMediaUrnFromString(standard.MediaFilePath)
 	require.NoError(t, err)
@@ -725,12 +720,7 @@ func Test557_audio_media_urn_for_ext(t *testing.T) {
 
 // TEST629: Profile constants verified in media/spec_test.go (urn cannot import media due to cycle)
 
-// TEST1810: media:void is atomic — refinements are parse errors.
-//
-// Mirrored across every language port (Rust, Go, Python, Swift/ObjC,
-// JS) under the SAME number. Any divergence is a wire-level
-// inconsistency — the unit type's atomicity is part of the protocol's
-// deepest layer, not a per-port detail.
+// TEST1810: media:void is atomic — refinements are parse errors. Mirrored across every language port (Rust, Go, Python, Swift/ObjC, JS) under the SAME number. Any divergence is a wire-level inconsistency — the unit type's atomicity is part of the protocol's deepest layer, not a per-port detail. The bare `media:void` parses successfully; any combination with another tag (marker or key=value) MUST fail with VoidNotAtomic. This forecloses a fake taxonomy of unit values; reasons or labels for *why* void is used belong on the cap URN's non-directional tags or in cap args.
 func Test1810_media_void_is_atomic(t *testing.T) {
 	bare, err := NewMediaUrnFromString("media:void")
 	require.NoError(t, err, "bare `media:void` must parse — it is the unit type")

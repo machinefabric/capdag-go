@@ -65,11 +65,11 @@ func createTestRegistry(t *testing.T) *ProfileSchemaRegistry {
 	return registry
 }
 
-// TEST611: InsertSchema seeds the cache so subsequent validation hits a real
+// TEST6605: InsertSchema seeds the cache so subsequent validation hits a real
 // compiled schema rather than the skip-on-unknown path. A registry that
 // silently dropped inserts would let validation calls return nil even for
 // inputs that violate the schema.
-func Test611_insert_schema_populates_cache(t *testing.T) {
+func Test6605_insert_schema_populates_cache(t *testing.T) {
 	registry := createEmptyTestRegistry(t)
 	assert.False(t, registry.SchemaExists(ProfileStr))
 
@@ -81,7 +81,7 @@ func Test611_insert_schema_populates_cache(t *testing.T) {
 		"Number must not validate against the string schema")
 }
 
-// TEST612: ClearCache empties all in-memory schemas
+// TEST612: clear_cache empties the in-memory cache for seeded schemas.
 func Test612_clear_cache(t *testing.T) {
 	registry := createTestRegistry(t)
 	assert.True(t, len(registry.GetCachedProfiles()) > 0)
@@ -89,7 +89,7 @@ func Test612_clear_cache(t *testing.T) {
 	assert.Equal(t, 0, len(registry.GetCachedProfiles()))
 }
 
-// TEST613: ValidateCached validates against seeded schemas
+// TEST613: validate_cached validates against cached standard schemas
 func Test613_validate_cached(t *testing.T) {
 	registry := createTestRegistry(t)
 
@@ -132,8 +132,7 @@ func Test6606_registry_creation(t *testing.T) {
 	assert.NotNil(t, reopened.ValidateCached(ProfileStr, 7))
 }
 
-// TEST619: A freshly constructed registry has no cached schemas. The well-known
-// profile URLs are not bundled into the library; callers must seed them.
+// TEST619: A freshly constructed registry has an empty cache. The well-known profile schemas are no longer bundled in the binary; callers must either fetch them on demand or seed via insert_schema.
 func Test619_fresh_registry_cache_is_empty(t *testing.T) {
 	registry := createEmptyTestRegistry(t)
 	assert.Equal(t, 0, len(registry.GetCachedProfiles()),
@@ -189,15 +188,13 @@ func Test625_string_array_validation(t *testing.T) {
 	assert.NotNil(t, registry.Validate(ProfileStrArray, "hello"))
 }
 
-// TEST626: Verify unknown profile URL skips validation and returns nil
+// TEST626: Verify unknown profile URL skips validation and returns Ok
 func Test626_unknown_profile_skips_validation(t *testing.T) {
 	registry := createEmptyTestRegistry(t)
 	assert.Nil(t, registry.Validate("https://example.com/unknown", "anything"))
 }
 
-// TEST627: InsertSchema rejects malformed JSON Schemas instead of caching them.
-// Silent acceptance of an invalid schema would hide the configuration error
-// until the first validation call against it.
+// TEST627: insert_schema rejects malformed JSON Schemas instead of caching them. A registry that silently accepted invalid schemas would hide compilation problems until the first validation call.
 func Test627_insert_schema_rejects_invalid_schema(t *testing.T) {
 	registry := createEmptyTestRegistry(t)
 	bad := []byte(`{"$schema":"https://json-schema.org/draft/2020-12/schema","type":99}`)

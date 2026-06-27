@@ -61,7 +61,7 @@ func registryCartridgeJSON(url, channel string, fmv uint32) string {
 		strconv.FormatUint(uint64(fmv), 10) + `}`
 }
 
-// TEST0090: Absent scan root yields empty roster
+// TEST90: Absent scan root yields empty roster
 func Test0090_absent_scan_root_yields_empty_roster(t *testing.T) {
 	root := t.TempDir()
 	out, err := DiscoverCartridges(filepath.Join(root, "does-not-exist"), nightlyDevIdentity())
@@ -69,7 +69,7 @@ func Test0090_absent_scan_root_yields_empty_roster(t *testing.T) {
 	assert.Empty(t, out, "no install tree must be an empty roster, not an error")
 }
 
-// TEST0091: Missing cartridge json is manifest invalid
+// TEST91: Missing cartridge json is manifest invalid
 func Test0091_missing_cartridge_json_is_manifest_invalid(t *testing.T) {
 	root := t.TempDir()
 	installFixture(t, root, "dev", "nightly", "cart", "1.0.0", nil, "cart")
@@ -78,7 +78,7 @@ func Test0091_missing_cartridge_json_is_manifest_invalid(t *testing.T) {
 	expectIncompatible(t, out, CartridgeAttachmentErrorKindManifestInvalid)
 }
 
-// TEST0092: Channel mismatch is bad installation
+// TEST92: Channel mismatch is bad installation
 func Test0092_channel_mismatch_is_bad_installation(t *testing.T) {
 	root := t.TempDir()
 	// Declares release but lives under nightly/ — host is nightly.
@@ -89,7 +89,7 @@ func Test0092_channel_mismatch_is_bad_installation(t *testing.T) {
 	expectIncompatible(t, out, CartridgeAttachmentErrorKindBadInstallation)
 }
 
-// TEST0094: Fabric manifest mismatch is flagged
+// TEST94: Fabric manifest mismatch is flagged
 func Test0094_fabric_manifest_mismatch_is_flagged(t *testing.T) {
 	root := t.TempDir()
 	json := devCartridgeJSON("nightly", 999)
@@ -99,7 +99,7 @@ func Test0094_fabric_manifest_mismatch_is_flagged(t *testing.T) {
 	expectIncompatible(t, out, CartridgeAttachmentErrorKindFabricManifestVersionMismatch)
 }
 
-// TEST0120: Registry url under dev slug is rejected
+// TEST120: Registry url under dev slug is rejected
 func Test0120_registry_url_under_dev_slug_is_rejected(t *testing.T) {
 	root := t.TempDir()
 	// A non-null registry_url placed under the reserved dev slug violates the
@@ -112,13 +112,7 @@ func Test0120_registry_url_under_dev_slug_is_rejected(t *testing.T) {
 	expectIncompatible(t, out, CartridgeAttachmentErrorKindBadInstallation)
 }
 
-// TEST1875: scan-all — a registry slug folder AND the dev slot present on disk
-// are BOTH scanned, regardless of the host's own baked registry. The dev
-// cartridge (null registry under dev/) and the registry cartridge (its url
-// hashing to its slug folder) each reach their probe. Both fixtures lack a real
-// bifaci binary, so both end at HandshakeFailed — proving discovery REACHED them
-// (was not filtered out by a registry pin). A registry-pin rejection would
-// instead surface BadInstallation and never probe.
+// TEST1875: scan-all — a registry slug folder AND the dev slot present on disk are BOTH scanned, regardless of the host's own baked registry. The dev cartridge (null registry under dev/) and the registry cartridge (its url hashing to its slug folder) each reach their probe. Both fixtures lack a real bifaci binary, so both end at HandshakeFailed — proving discovery REACHED them (was not filtered out by a registry pin), which is the behavior under test. A registry-pin rejection would instead surface BadInstallation and never probe.
 func Test1875_scan_all_reaches_both_dev_and_registry_slugs(t *testing.T) {
 	root := t.TempDir()
 	url := "https://cartridges.example.com/manifest"
@@ -146,9 +140,7 @@ func Test1875_scan_all_reaches_both_dev_and_registry_slugs(t *testing.T) {
 	}
 }
 
-// TEST1876: only the host's channel subtree is scanned. A cartridge under a
-// slug's release/ folder is invisible to a nightly host even though the slug
-// folder is present (its nightly/ subtree is absent).
+// TEST1876: only the host's channel subtree is scanned. A cartridge under a slug's `release/` folder is invisible to a nightly host even though the slug folder is present (its `nightly/` subtree is absent).
 func Test1876_other_channel_subtree_is_skipped(t *testing.T) {
 	root := t.TempDir()
 	url := "https://cartridges.example.com/manifest"
@@ -161,9 +153,7 @@ func Test1876_other_channel_subtree_is_skipped(t *testing.T) {
 	assert.Empty(t, out, "a release-only slug must be invisible to a nightly host, got: %+v", out)
 }
 
-// TEST1877: a registry cartridge hand-copied under the WRONG registry slug
-// folder fails the three-place rule (BadInstallation) — scan-all does not mean
-// "accept anywhere", placement must still be self-consistent.
+// TEST1877: a registry cartridge hand-copied under the WRONG registry slug folder fails the three-place rule (BadInstallation) — scan-all does not mean "accept anywhere", placement must still be self-consistent.
 func Test1877_registry_cartridge_under_wrong_slug_is_bad_install(t *testing.T) {
 	root := t.TempDir()
 	url := "https://cartridges.example.com/manifest"
@@ -176,12 +166,7 @@ func Test1877_registry_cartridge_under_wrong_slug_is_bad_install(t *testing.T) {
 	expectIncompatible(t, out, CartridgeAttachmentErrorKindBadInstallation)
 }
 
-// TEST1878: a cartridge marked `installed_from: bundle` with no baked hash in
-// BundledProviderHashes (the slice is empty under a plain build) is rejected as
-// BadInstallation — the bundled-integrity gate fires before the probe. Proves
-// the verify is wired into discovery. Non-macOS only: on macOS the baked-hash
-// path is intentionally absent (OS code-signature is the guard), so a bundled
-// provider is accepted there and would instead end at the probe.
+// TEST1878: a cartridge marked `installed_from: bundle` with no baked hash in BUNDLED_PROVIDER_HASHES (the const is empty under plain `cargo test`) is rejected as BadInstallation — the bundled-integrity gate fires before the probe. Proves the verify is wired into discovery; a real bundle build bakes the hash so the matching directory passes. Non-macOS only: on macOS the baked-hash path is intentionally absent (OS code-signature is the guard), so a bundled provider is accepted there and would instead end at the probe.
 func Test1878_bundled_provider_without_baked_hash_is_rejected(t *testing.T) {
 	if runtime.GOOS == "darwin" {
 		t.Skip("macOS bundled-provider integrity is the OS code-signature; baked-hash gate is intentionally absent")

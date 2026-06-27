@@ -66,8 +66,8 @@ func Test413_register_cartridge_adds_cap_table(t *testing.T) {
 	assert.False(t, host.cartridges[0].running, "registered cartridge must not be running")
 }
 
-// TEST414: capabilities() returns empty JSON initially (no running cartridges)
-func Test414_capabilities_empty_initially(t *testing.T) {
+// TEST6594: capabilities() returns empty JSON initially (no running cartridges)
+func Test6594_capabilities_empty_initially(t *testing.T) {
 	// Case 1: No cartridges at all
 	host := NewCartridgeHost()
 	assert.Nil(t, host.Capabilities(), "no cartridges → nil capabilities")
