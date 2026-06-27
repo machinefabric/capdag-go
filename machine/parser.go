@@ -58,28 +58,45 @@ type rawWiring struct {
 
 // ParseMachine parses machine notation into a Machine.
 //
+// Thin wrapper over ParseMachineWithNodeNames for callers that do not need the
+// per-strand node-name maps.
+func ParseMachine(input string, registry *cap.FabricRegistry) (*Machine, *MachineParseError) {
+	m, _, err := ParseMachineWithNodeNames(input, registry)
+	return m, err
+}
+
+// ParseMachineWithNodeNames parses machine notation into a Machine and also
+// returns, per strand (in strand order), the user node-name → NodeId map the
+// parser built while interning nodes.
+//
+// The resolver discards user node names — it works purely on NodeIds — but the
+// orchestrator needs to key its ResolvedGraph on the user's original node
+// names. This entry point preserves that mapping so callers can translate a
+// strand's NodeIds back to the names written in the notation. Mirrors Rust's
+// parse_machine_with_node_names.
+//
 // Two-phase: PEG grammar parsing → resolver. Either phase may fail; the
 // combined error type is MachineParseError. The cap registry is required by
 // the resolver to look up each cap's args list and run source-to-arg matching.
 //
 // Uses a PEG parser with a grammar equivalent to machine.pest.
 // Fails hard — no fallbacks, no guessing, no recovery.
-func ParseMachine(input string, registry *cap.FabricRegistry) (*Machine, *MachineParseError) {
+func ParseMachineWithNodeNames(input string, registry *cap.FabricRegistry) (*Machine, []map[string]NodeId, *MachineParseError) {
 	input = strings.TrimSpace(input)
 	if input == "" {
-		return nil, syntaxParseError(emptyError())
+		return nil, nil, syntaxParseError(emptyError())
 	}
 
 	// Phase 1: Parse with PEG grammar.
 	parser, err := peg.NewParser(goPegGrammar)
 	if err != nil {
-		return nil, syntaxParseError(parseError(fmt.Sprintf("grammar compilation failed: %s", err)))
+		return nil, nil, syntaxParseError(parseError(fmt.Sprintf("grammar compilation failed: %s", err)))
 	}
 
 	parser.EnableAst()
 	ast, err := parser.ParseAndGetAst(input, nil)
 	if err != nil {
-		return nil, syntaxParseError(parseError(err.Error()))
+		return nil, nil, syntaxParseError(parseError(err.Error()))
 	}
 
 	// Phase 2: Walk the AST collecting headers and wirings.
@@ -105,14 +122,14 @@ func ParseMachine(input string, registry *cap.FabricRegistry) (*Machine, *Machin
 		switch contentNode.Name {
 		case "header":
 			if len(contentNode.Nodes) < 2 {
-				return nil, syntaxParseError(parseError(fmt.Sprintf("header at statement %d missing components", stmtIdx)))
+				return nil, nil, syntaxParseError(parseError(fmt.Sprintf("header at statement %d missing components", stmtIdx)))
 			}
 			alias := contentNode.Nodes[0].Token
 			capUrnStr := contentNode.Nodes[1].Token
 
 			capUrnParsed, err := urn.NewCapUrnFromString(capUrnStr)
 			if err != nil {
-				return nil, syntaxParseError(invalidCapUrnError(alias, err.Error()))
+				return nil, nil, syntaxParseError(invalidCapUrnError(alias, err.Error()))
 			}
 
 			headers = append(headers, parsedHeader{
@@ -123,7 +140,7 @@ func ParseMachine(input string, registry *cap.FabricRegistry) (*Machine, *Machin
 
 		case "wiring":
 			if len(contentNode.Nodes) < 5 {
-				return nil, syntaxParseError(parseError(fmt.Sprintf("wiring at statement %d missing components", stmtIdx)))
+				return nil, nil, syntaxParseError(parseError(fmt.Sprintf("wiring at statement %d missing components", stmtIdx)))
 			}
 
 			sourceNode := contentNode.Nodes[0]
@@ -157,16 +174,16 @@ func ParseMachine(input string, registry *cap.FabricRegistry) (*Machine, *Machin
 
 	for _, h := range headers {
 		if existing, ok := aliasMap[h.alias]; ok {
-			return nil, syntaxParseError(duplicateAliasError(h.alias, existing.position))
+			return nil, nil, syntaxParseError(duplicateAliasError(h.alias, existing.position))
 		}
 		aliasMap[h.alias] = aliasEntry{capUrn: h.capUrn, position: h.position}
 	}
 
 	if len(wirings) == 0 && len(headers) > 0 {
-		return nil, syntaxParseError(noEdgesError())
+		return nil, nil, syntaxParseError(noEdgesError())
 	}
 	if len(wirings) == 0 {
-		return nil, syntaxParseError(emptyError())
+		return nil, nil, syntaxParseError(emptyError())
 	}
 
 	// Phase 3b: cap-alias resolution against the fabric registry.
@@ -195,7 +212,7 @@ func ParseMachine(input string, registry *cap.FabricRegistry) (*Machine, *Machin
 		}
 		resolvedCapUrn, perr := urn.NewCapUrnFromString(target)
 		if perr != nil {
-			return nil, syntaxParseError(aliasNotACapError(w.capAlias, target))
+			return nil, nil, syntaxParseError(aliasNotACapError(w.capAlias, target))
 		}
 		syntheticPos := len(headers) + len(wirings) + len(aliasMap)
 		aliasMap[w.capAlias] = aliasEntry{capUrn: resolvedCapUrn, position: syntheticPos}
@@ -214,35 +231,35 @@ func ParseMachine(input string, registry *cap.FabricRegistry) (*Machine, *Machin
 	for _, w := range wirings {
 		entry, ok := aliasMap[w.capAlias]
 		if !ok {
-			return nil, syntaxParseError(undefinedAliasError(w.capAlias))
+			return nil, nil, syntaxParseError(undefinedAliasError(w.capAlias))
 		}
 		capUrnVal := entry.capUrn
 
 		// Check node-alias collisions.
 		for _, src := range w.sources {
 			if _, ok := aliasMap[src]; ok {
-				return nil, syntaxParseError(nodeAliasCollisionError(src, src))
+				return nil, nil, syntaxParseError(nodeAliasCollisionError(src, src))
 			}
 		}
 		if _, ok := aliasMap[w.target]; ok {
-			return nil, syntaxParseError(nodeAliasCollisionError(w.target, w.target))
+			return nil, nil, syntaxParseError(nodeAliasCollisionError(w.target, w.target))
 		}
 
 		// Derive media URNs from cap's in=/out= specs.
 		capInMedia, err := capUrnVal.InMediaUrn()
 		if err != nil {
-			return nil, syntaxParseError(invalidMediaUrnError(w.capAlias, fmt.Sprintf("in= spec: %s", err)))
+			return nil, nil, syntaxParseError(invalidMediaUrnError(w.capAlias, fmt.Sprintf("in= spec: %s", err)))
 		}
 
 		capOutMedia, err := capUrnVal.OutMediaUrn()
 		if err != nil {
-			return nil, syntaxParseError(invalidMediaUrnError(w.capAlias, fmt.Sprintf("out= spec: %s", err)))
+			return nil, nil, syntaxParseError(invalidMediaUrnError(w.capAlias, fmt.Sprintf("out= spec: %s", err)))
 		}
 
 		// Primary source: bind to cap.in=
 		if len(w.sources) > 0 {
 			if syntaxErr := assignOrCheckNode(w.sources[0], capInMedia, nodeMedia, w.position); syntaxErr != nil {
-				return nil, syntaxParseError(syntaxErr)
+				return nil, nil, syntaxParseError(syntaxErr)
 			}
 			// Secondaries: bind to wildcard if unbound.
 			for _, src := range w.sources[1:] {
@@ -254,7 +271,7 @@ func ParseMachine(input string, registry *cap.FabricRegistry) (*Machine, *Machin
 
 		// Target: bind to cap.out=
 		if syntaxErr := assignOrCheckNode(w.target, capOutMedia, nodeMedia, w.position); syntaxErr != nil {
-			return nil, syntaxParseError(syntaxErr)
+			return nil, nil, syntaxParseError(syntaxErr)
 		}
 	}
 
@@ -315,6 +332,7 @@ func ParseMachine(input string, registry *cap.FabricRegistry) (*Machine, *Machin
 	// Two distinct user node names that happen to share a media URN stay
 	// distinct NodeIds — that's the parser's identity contract.
 	strands := make([]*MachineStrand, 0, len(groupOrder))
+	strandNodeNames := make([]map[string]NodeId, 0, len(groupOrder))
 	for strandIndex, gi := range groupOrder {
 		memberIndices := groups[gi.root]
 		// Sort member indices to walk wirings in textual order.
@@ -362,12 +380,13 @@ func ParseMachine(input string, registry *cap.FabricRegistry) (*Machine, *Machin
 
 		strand, absErr := resolvePreInterned(nodes, wiringSet, registry, strandIndex)
 		if absErr != nil {
-			return nil, abstractionParseError(absErr)
+			return nil, nil, abstractionParseError(absErr)
 		}
 		strands = append(strands, strand)
+		strandNodeNames = append(strandNodeNames, nameToId)
 	}
 
-	return fromResolvedStrands(strands), nil
+	return fromResolvedStrands(strands), strandNodeNames, nil
 }
 
 // parseSourceNode extracts source aliases from a source AST node.

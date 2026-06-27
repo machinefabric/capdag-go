@@ -2,42 +2,12 @@ package orchestrator
 
 import (
 	"fmt"
-	"strings"
-
-	peg "github.com/yhirose/go-peg"
 
 	"github.com/machinefabric/capdag-go/cap"
 	"github.com/machinefabric/capdag-go/machine"
 	"github.com/machinefabric/capdag-go/planner"
 	"github.com/machinefabric/capdag-go/urn"
 )
-
-// orchestratorPegGrammar is the same grammar used by the machine parser.
-// Duplicated here because the machine parser doesn't export it.
-const orchestratorPegGrammar = `
-  program     <- stmt* !.
-  stmt        <- '[' inner ']'
-  inner       <- wiring / header
-  header      <- alias cap_urn
-  wiring      <- source arrow loop_cap arrow alias
-  source      <- group / alias_ref
-  group       <- '(' alias_ref (',' alias_ref)+ ')'
-  loop_cap    <- loop_keyword alias_ref / alias_ref
-  loop_keyword <- 'LOOP'
-  arrow       <- < '-'+ '>' >
-  alias       <- < [a-zA-Z_] [-a-zA-Z0-9_]* >
-  alias_ref   <- < [a-zA-Z_] [-a-zA-Z0-9_]* >
-  cap_urn     <- < 'cap:' cap_urn_body* >
-  cap_urn_body <- quoted_value / !'\]' .
-  quoted_value <- '"' ('\\"' / '\\\\' / !'"' .)* '"'
-  %whitespace <- [ \t\r\n]*
-`
-
-// wiringInfo holds the node names from a single wiring statement.
-type wiringInfo struct {
-	sourceNames []string
-	targetName  string
-}
 
 // mediaUrnsCompatible checks if two media URNs are on the same specialization chain.
 func mediaUrnsCompatible(a, b *urn.MediaUrn) (bool, error) {
@@ -69,38 +39,35 @@ func checkStructureCompatibility(source, target *urn.MediaUrn, nodeName string) 
 // compatibility (record vs opaque) are validated at each node.
 // Caps must be pre-loaded into the registry cache before calling this function.
 func ParseMachineToCapDag(machineStr string, registry *cap.FabricRegistry) (*ResolvedGraph, error) {
-	// Step 1: Parse machine notation into a Machine (strand-based).
-	m, parseErr := machine.ParseMachine(machineStr, registry)
+	// Phase 1: Parse + resolve. The resolver does the syntactic parse, the
+	// source-to-cap-arg matching (Hungarian minimum-cost bipartite matching by
+	// media-URN conformance), cycle detection, and canonical edge ordering. It
+	// also rejects unknown caps. The orchestrator's contributions are: the user
+	// node-name keying, the per-binding ResolvedEdge shape the executor
+	// consumes, and the structure-compatibility check (record vs opaque).
+	m, strandNodeNames, parseErr := machine.ParseMachineWithNodeNames(machineStr, registry)
 	if parseErr != nil {
 		return nil, machineNotationParseFailedError(parseErr.Error())
 	}
 
-	// Step 2: Extract node names from the machine notation.
-	wirings, err := extractWiringInfo(machineStr)
-	if err != nil {
-		return nil, err
-	}
-
-	// Compute total edge count across all strands.
-	totalEdges := 0
-	for _, strand := range m.Strands() {
-		totalEdges += len(strand.Edges())
-	}
-
-	// Validate that wiring count matches edge count.
-	if len(wirings) != totalEdges {
+	if len(strandNodeNames) != len(m.Strands()) {
 		return nil, machineNotationParseFailedError(fmt.Sprintf(
-			"internal error: %d wirings but %d edges — machine parser edge ordering invariant violated",
-			len(wirings), totalEdges))
+			"internal error: %d strand node-name maps but %d strands",
+			len(strandNodeNames), len(m.Strands())))
 	}
 
-	// Step 3: For each edge (across all strands in order), resolve cap via registry
-	// and build ResolvedEdge entries.
+	// Phase 2: For each strand, build a reverse NodeId → user node name map so
+	// we can produce ResolvedEdges keyed on names. Then walk the strand's edges
+	// and emit one ResolvedEdge per binding (cap arg). The source URN of each
+	// binding is taken from the strand's interned node URN (the resolver already
+	// assigned each source NodeId to the correct cap arg by conformance), never
+	// re-derived positionally.
 	nodeMedia := make(map[string]*urn.MediaUrn)
 	var resolvedEdges []*ResolvedEdge
 
-	wiringIdx := 0
-	for _, strand := range m.Strands() {
+	for strandIdx, strand := range m.Strands() {
+		idToName := invertNodeNames(strandNodeNames[strandIdx])
+
 		for _, edge := range strand.Edges() {
 			capUrnStr := edge.CapUrn.String()
 			capDef, ok := registry.GetCachedCap(capUrnStr)
@@ -108,90 +75,70 @@ func ParseMachineToCapDag(machineStr string, registry *cap.FabricRegistry) (*Res
 				return nil, capNotFoundError(capUrnStr)
 			}
 
-			capInMedia, err := edge.CapUrn.InMediaUrn()
-			if err != nil {
-				return nil, mediaUrnParseError(err.Error())
-			}
-
+			// The cap's declared output URN is the data-type URN that flows out
+			// of this cap on the wire; the target node carries it.
 			capOutMedia, err := edge.CapUrn.OutMediaUrn()
 			if err != nil {
 				return nil, mediaUrnParseError(err.Error())
 			}
 
-			wiring := wirings[wiringIdx]
-			wiringIdx++
+			targetName, err := lookupNodeName(idToName, edge.Target)
+			if err != nil {
+				return nil, err
+			}
 
-			// Build resolved edges — one per source (fan-in produces multiple edges)
-			for i, srcName := range wiring.sourceNames {
-				var edgeInMedia *urn.MediaUrn
-				if i == 0 {
-					// Primary source: use cap's in= spec
-					edgeInMedia = capInMedia
-				} else {
-					// Secondary source (fan-in): resolve from existing assignment
-					// or from the cap's args list
-					existing, hasExisting := nodeMedia[srcName]
-					isWildcard := hasExisting && existing.String() == "media:"
-					if hasExisting && !isWildcard {
-						edgeInMedia = existing
-					} else {
-						// Resolve from cap.args — secondary sources map to args
-						// beyond the primary in= spec (arg index i-1 for source i)
-						argIdx := i - 1
-						args := capDef.GetArgs()
-						if argIdx < len(args) {
-							argMedia, err := urn.NewMediaUrnFromString(args[argIdx].MediaUrn)
-							if err == nil {
-								edgeInMedia = argMedia
-							}
-						}
-						if edgeInMedia == nil {
-							return nil, machineNotationParseFailedError(fmt.Sprintf(
-								"fan-in secondary source '%s' (index %d) has no media type and cap '%s' has no matching arg at index %d",
-								srcName, i, capUrnStr, argIdx))
-						}
-					}
+			// The cap's in= spec is the stream label for input data on the wire.
+			capInMedia, err := edge.CapUrn.InMediaUrn()
+			if err != nil {
+				return nil, mediaUrnParseError(err.Error())
+			}
+
+			for _, binding := range edge.Assignment {
+				sourceName, err := lookupNodeName(idToName, binding.Source)
+				if err != nil {
+					return nil, err
 				}
+				sourceNodeUrn := strand.NodeUrn(binding.Source)
 
-				// Validate source node media compatibility
-				if existing, ok := nodeMedia[srcName]; ok {
-					compatible, _ := mediaUrnsCompatible(existing, edgeInMedia)
+				// Source node media compatibility check.
+				if existing, ok := nodeMedia[sourceName]; ok {
+					compatible, _ := mediaUrnsCompatible(existing, sourceNodeUrn)
 					if !compatible {
-						return nil, nodeMediaConflictError(srcName, existing.String(), edgeInMedia.String())
+						return nil, nodeMediaConflictError(sourceName, existing.String(), sourceNodeUrn.String())
 					}
-					if err := checkStructureCompatibility(existing, edgeInMedia, srcName); err != nil {
+					if err := checkStructureCompatibility(existing, sourceNodeUrn, sourceName); err != nil {
 						return nil, err
 					}
 				} else {
-					nodeMedia[srcName] = edgeInMedia
+					nodeMedia[sourceName] = sourceNodeUrn
 				}
 
-				// Validate target node media compatibility
-				if existing, ok := nodeMedia[wiring.targetName]; ok {
+				// Target node media compatibility check.
+				if existing, ok := nodeMedia[targetName]; ok {
 					compatible, _ := mediaUrnsCompatible(existing, capOutMedia)
 					if !compatible {
-						return nil, nodeMediaConflictError(wiring.targetName, existing.String(), capOutMedia.String())
+						return nil, nodeMediaConflictError(targetName, existing.String(), capOutMedia.String())
 					}
-					if err := checkStructureCompatibility(capOutMedia, existing, wiring.targetName); err != nil {
+					if err := checkStructureCompatibility(capOutMedia, existing, targetName); err != nil {
 						return nil, err
 					}
 				} else {
-					nodeMedia[wiring.targetName] = capOutMedia
+					nodeMedia[targetName] = capOutMedia
 				}
 
 				resolvedEdges = append(resolvedEdges, &ResolvedEdge{
-					From:     srcName,
-					To:       wiring.targetName,
+					From:     sourceName,
+					To:       targetName,
 					CapUrn:   capUrnStr,
 					Cap:      capDef,
-					InMedia:  edgeInMedia.String(),
+					InMedia:  capInMedia.String(),
 					OutMedia: capOutMedia.String(),
 				})
 			}
 		}
 	}
 
-	// Step 4: DAG validation (cycle detection via topological sort)
+	// Phase 3: DAG validation (cycle detection via topological sort)
 	nodeMediaStrings := make(map[string]string)
 	for k, v := range nodeMedia {
 		nodeMediaStrings[k] = v.String()
@@ -207,85 +154,26 @@ func ParseMachineToCapDag(machineStr string, registry *cap.FabricRegistry) (*Res
 	}, nil
 }
 
-// extractWiringInfo extracts wiring node names from machine notation via the PEG parser.
-//
-// The Machine model discards alias/node names. This function extracts
-// them from wiring statements in order.
-func extractWiringInfo(machineStr string) ([]wiringInfo, error) {
-	parser, err := peg.NewParser(orchestratorPegGrammar)
-	if err != nil {
-		return nil, machineNotationParseFailedError(fmt.Sprintf("grammar compilation failed: %s", err))
+// invertNodeNames inverts a per-strand user node-name → NodeId map into a
+// NodeId → name map. The forward map is built by the machine parser when
+// allocating NodeIds; the inverse lets the orchestrator label each binding with
+// its user-written node name. Mirrors Rust's invert_node_names.
+func invertNodeNames(nameToId map[string]machine.NodeId) map[machine.NodeId]string {
+	out := make(map[machine.NodeId]string, len(nameToId))
+	for name, id := range nameToId {
+		out[id] = name
 	}
-	parser.EnableAst()
-
-	ast, err := parser.ParseAndGetAst(strings.TrimSpace(machineStr), nil)
-	if err != nil {
-		return nil, machineNotationParseFailedError(err.Error())
-	}
-
-	var wirings []wiringInfo
-
-	// Walk program → stmt → inner → wiring
-	for _, stmtNode := range ast.Nodes {
-		if stmtNode.Name != "stmt" {
-			continue
-		}
-		// stmt → inner
-		if len(stmtNode.Nodes) == 0 {
-			continue
-		}
-		innerNode := stmtNode.Nodes[0]
-		if len(innerNode.Nodes) == 0 {
-			continue
-		}
-		contentNode := innerNode.Nodes[0]
-
-		if contentNode.Name != "wiring" {
-			continue // Skip headers
-		}
-
-		// wiring = source arrow loop_cap arrow alias
-		if len(contentNode.Nodes) < 5 {
-			continue
-		}
-
-		// Parse source (single alias or group)
-		sourceNode := contentNode.Nodes[0]
-		sourceNames := extractSourceNames(sourceNode)
-
-		// Target alias is the last child (index 4)
-		targetName := contentNode.Nodes[4].Token
-
-		wirings = append(wirings, wiringInfo{
-			sourceNames: sourceNames,
-			targetName:  targetName,
-		})
-	}
-
-	return wirings, nil
+	return out
 }
 
-// extractSourceNames extracts source node names from a source AST node.
-func extractSourceNames(node *peg.Ast) []string {
-	if len(node.Nodes) == 0 {
-		// Single alias_ref
-		return []string{node.Token}
+// lookupNodeName resolves a NodeId to its user-written node name, failing hard
+// if the parser left a NodeId without a name (an internal invariant violation).
+// Mirrors Rust's lookup_node_name.
+func lookupNodeName(idToName map[machine.NodeId]string, id machine.NodeId) (string, error) {
+	name, ok := idToName[id]
+	if !ok {
+		return "", machineNotationParseFailedError(fmt.Sprintf(
+			"internal error: NodeId %d has no user-written node name", id))
 	}
-
-	inner := node.Nodes[0]
-	if inner.Name == "group" {
-		var names []string
-		for _, child := range inner.Nodes {
-			if child.Name == "alias_ref" || child.Name == "alias" {
-				names = append(names, child.Token)
-			}
-		}
-		return names
-	}
-
-	// alias_ref
-	if inner.Token != "" {
-		return []string{inner.Token}
-	}
-	return []string{node.Token}
+	return name, nil
 }
