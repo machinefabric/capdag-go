@@ -1,6 +1,8 @@
 package bifaci
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -565,6 +567,39 @@ func (h *CartridgeHost) registerCartridgeDirLocked(spec RegisteredDirSpec) {
 	}
 }
 
+// installedCartridgeRecordFromManifest builds the install identity for a
+// cartridge attached over raw streams (no on-disk anchor: the
+// dev/host-embedded/interop path).
+//
+// Advertisement is identity-gated — a cartridge with no installedIdentity is
+// silently dropped from every RelayNotify (see buildInstalledCartridgeIdentities),
+// so an attached cartridge MUST carry a resolvable identity or the host
+// advertises an empty inventory and the engine can never route to it. An
+// attached cartridge has already completed HELLO + identity verification by the
+// time this is called, so it is operational by construction; its identity is
+// sourced from the manifest it sent during HELLO (the same
+// (registry_url, channel, id, version) tuple a registered install carries), with
+// the sha256 taken over the manifest bytes (the only stable artefact available
+// without a file on disk). Mirrors the reference
+// installed_cartridge_record_from_manifest. Returns nil if the manifest does not
+// parse (the caller still attaches; the record is honestly absent).
+func installedCartridgeRecordFromManifest(manifest []byte) *InstalledCartridgeRecord {
+	var parsed CapManifest
+	if err := json.Unmarshal(manifest, &parsed); err != nil {
+		return nil
+	}
+	digest := sha256.Sum256(manifest)
+	return &InstalledCartridgeRecord{
+		RegistryURL: parsed.RegistryURL,
+		Id:          parsed.Name,
+		Channel:     parsed.Channel,
+		Version:     parsed.Version,
+		Sha256:      hex.EncodeToString(digest[:]),
+		// Attached ⇒ HELLO + identity verification already succeeded.
+		Lifecycle: CartridgeLifecycleOperational,
+	}
+}
+
 // AttachCartridge attaches a pre-connected cartridge (already running).
 // Performs HELLO handshake immediately and returns the cartridge index.
 func (h *CartridgeHost) AttachCartridge(cartridgeRead io.Reader, cartridgeWrite io.Writer) (int, error) {
@@ -605,6 +640,11 @@ func (h *CartridgeHost) AttachCartridge(cartridgeRead io.Reader, cartridgeWrite 
 		caps:      caps,
 		capGroups: capGroups,
 		running:   true,
+		// Derive the install identity from the HELLO manifest. Advertisement
+		// is identity-gated, so without this the attached cartridge is
+		// silently excluded from every RelayNotify and the engine can never
+		// route to it (the dev/interop relay path).
+		installedIdentity: installedCartridgeRecordFromManifest(manifest),
 	}
 	h.cartridges = append(h.cartridges, cartridge)
 
