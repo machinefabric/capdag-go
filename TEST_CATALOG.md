@@ -1,4 +1,4 @@
-# CapDag-Go Test Catalog
+# Go Test Catalog
 
 **Total Tests:** 943
 
@@ -12,7 +12,7 @@
 
 All numbered test numbers are unique.
 
-This catalog lists all tests in the CapDag-Go codebase.
+This catalog lists all tests in the Go codebase.
 
 | Test # | Function Name | Description | File |
 |--------|---------------|-------------|------|
@@ -961,7 +961,7 @@ This catalog lists all tests in the CapDag-Go codebase.
 | test6186 | `Test6186_RegistryGetCap` | TEST136 (deleted): exercised the private `cacheKey` method on the unified FabricRegistry. The on-disk cache filename scheme is an implementation detail of the persistence layer; equivalent observable behavior — that two equivalent URNs land in the same cache slot — is covered by Test140 (`same_cap_different_spellings_same_url`). Rust and Python dropped this; this deletion keeps the Go mirror in parity. | cap/registry_test.go:40 |
 ---
 
-*Generated from CapDag-Go source tree*
+*Generated from Go source tree*
 *Total tests: 943*
 *Total numbered tests: 943*
 *Total unnumbered tests: 0*
