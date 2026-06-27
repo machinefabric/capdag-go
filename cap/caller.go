@@ -60,6 +60,23 @@ func NewStdinSourceFromFileReference(trackedFileID, originalPath string, securit
 	}
 }
 
+// String returns a debug representation of the StdinSource that names the
+// active variant and its relevant fields (mirrors the Rust enum Debug output).
+func (s *StdinSource) String() string {
+	if s == nil {
+		return "StdinSource(nil)"
+	}
+	switch s.Kind {
+	case StdinSourceKindFileReference:
+		return fmt.Sprintf(
+			"FileReference{TrackedFileID: %q, OriginalPath: %q, SecurityBookmark: %d bytes, MediaUrn: %q}",
+			s.TrackedFileID, s.OriginalPath, len(s.SecurityBookmark), s.MediaUrn,
+		)
+	default:
+		return fmt.Sprintf("Data(%d bytes)", len(s.Data))
+	}
+}
+
 // IsData returns true if this is a data source
 func (s *StdinSource) IsData() bool {
 	return s != nil && s.Kind == StdinSourceKindData

@@ -3240,3 +3240,133 @@ func Test1283_adapter_selection_custom_override(t *testing.T) {
 		t.Fatal("Custom adapter selection handler must be findable after override")
 	}
 }
+
+// extractStreamsFromFrames simulates the cartridge-side stream extraction
+// (like collect_streams does): walk frames, CBOR-decode each CHUNK payload
+// into raw bytes, and aggregate per stream. Returns FindStream-shaped slice.
+func extractStreamsFromFrames(t *testing.T, frames []Frame) []struct {
+	MediaUrn string
+	Data     []byte
+} {
+	t.Helper()
+	type stream struct {
+		media string
+		data  []byte
+	}
+	var streams []stream
+	active := make(map[string]int)
+
+	for i := range frames {
+		f := &frames[i]
+		switch f.FrameType {
+		case FrameTypeStreamStart:
+			sid := ""
+			if f.StreamId != nil {
+				sid = *f.StreamId
+			}
+			media := ""
+			if f.MediaUrn != nil {
+				media = *f.MediaUrn
+			}
+			idx := len(streams)
+			streams = append(streams, stream{media: media})
+			active[sid] = idx
+		case FrameTypeChunk:
+			sid := ""
+			if f.StreamId != nil {
+				sid = *f.StreamId
+			}
+			if idx, ok := active[sid]; ok && f.Payload != nil {
+				decoded, err := DecodeChunkPayload(f.Payload)
+				if err != nil {
+					t.Fatalf("CHUNK payload must be valid CBOR: %v", err)
+				}
+				streams[idx].data = append(streams[idx].data, decoded...)
+			}
+		}
+	}
+
+	result := make([]struct {
+		MediaUrn string
+		Data     []byte
+	}, len(streams))
+	for i, s := range streams {
+		result[i].MediaUrn = s.media
+		result[i].Data = s.data
+	}
+	return result
+}
+
+// TEST675: build_request_frames with full media URN preserves it in STREAM_START frame
+func Test675_build_request_frames_preserves_media_urn_in_stream_start(t *testing.T) {
+	fullUrn := "media:fmt=json;llm-generation-request;record"
+	arg := cap.NewCapArgumentValue(fullUrn, []byte("{\"prompt\":\"test\"}"))
+	rid := NewMessageIdRandom()
+	frames := BuildRequestFrames(rid, "cap:test", []cap.CapArgumentValue{arg}, 32768)
+
+	// Find the STREAM_START frame
+	var streamStart *Frame
+	for i := range frames {
+		if frames[i].FrameType == FrameTypeStreamStart {
+			streamStart = &frames[i]
+			break
+		}
+	}
+	if streamStart == nil {
+		t.Fatal("Must have STREAM_START frame")
+	}
+
+	if streamStart.MediaUrn == nil || *streamStart.MediaUrn != fullUrn {
+		t.Fatalf("STREAM_START must carry the exact media URN from CapArgumentValue, got %v", streamStart.MediaUrn)
+	}
+}
+
+// TEST676: Full round-trip: build_request_frames → extract streams → find_stream succeeds
+func Test676_build_request_frames_round_trip_find_stream_succeeds(t *testing.T) {
+	fullUrn := "media:fmt=json;llm-generation-request;record"
+	payload := []byte("{\"prompt\":\"hello\",\"model_spec\":\"test\"}")
+	arg := cap.NewCapArgumentValue(fullUrn, payload)
+	rid := NewMessageIdRandom()
+	frames := BuildRequestFrames(rid, "cap:test", []cap.CapArgumentValue{arg}, 32768)
+
+	streams := extractStreamsFromFrames(t, frames)
+
+	// Now find_stream should succeed with the full URN
+	found, err := FindStream(streams, fullUrn)
+	if err != nil {
+		t.Fatalf("FindStream error: %v", err)
+	}
+	if found == nil {
+		t.Fatal("find_stream must find the stream by full media URN")
+	}
+	if !bytes.Equal(found, payload) {
+		t.Fatalf("Round-tripped bytes must match original: got %q want %q", found, payload)
+	}
+}
+
+// TEST677: build_request_frames with BASE URN → find_stream with FULL URN FAILS
+// This documents the root cause of the cartridge_client.rs bug:
+// sender used "media:llm-generation-request" (base), receiver looked for
+// "media:fmt=json;llm-generation-request;record" (full). is_equivalent requires
+// exact tag set match, so base != full.
+func Test677_base_urn_does_not_match_full_urn_in_find_stream(t *testing.T) {
+	// Sender uses BASE URN (the bug)
+	baseUrn := "media:llm-generation-request"
+	fullUrn := "media:fmt=json;llm-generation-request;record"
+	arg := cap.NewCapArgumentValue(baseUrn, []byte("{}"))
+	rid := NewMessageIdRandom()
+	frames := BuildRequestFrames(rid, "cap:test", []cap.CapArgumentValue{arg}, 32768)
+
+	streams := extractStreamsFromFrames(t, frames)
+
+	// STREAM_START carries the base URN
+	if streams[0].MediaUrn != baseUrn {
+		t.Fatalf("expected base URN %q, got %q", baseUrn, streams[0].MediaUrn)
+	}
+
+	// find_stream with FULL URN must FAIL — base URN is not equivalent to full URN
+	found, _ := FindStream(streams, fullUrn)
+	if found != nil {
+		t.Fatalf("Base URN %q must NOT match full URN %q — is_equivalent requires exact tag set", baseUrn, fullUrn)
+	}
+}

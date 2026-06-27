@@ -1,6 +1,8 @@
 package bifaci
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/machinefabric/capdag-go/urn"
@@ -792,5 +794,665 @@ func Test319_update_cache_rejects_malformed_cap_urn(t *testing.T) {
 	repoErr, ok := err.(*CartridgeRepoError)
 	if !ok || repoErr.Kind != "ParseError" {
 		t.Errorf("Expected ParseError, got %T %v", err, err)
+	}
+}
+
+// buildIdentityCapGroup builds a single-group cap-group slice with just
+// the identity cap — the common fixture shape across channel-isolation
+// and walk-order tests.
+func buildIdentityCapGroup() []RegistryCapGroup {
+	return []RegistryCapGroup{
+		{
+			Name: "g",
+			Caps: []RegistryCap{
+				{Urn: "cap:effect=none", Title: "Identity", Command: "identity"},
+			},
+		},
+	}
+}
+
+// buildRegistryEntryNamed builds a CartridgeRegistryEntry with the given
+// display name, a single version with a darwin-arm64 build, and the
+// supplied cap groups.
+func buildRegistryEntryNamed(name, version, pkgName string, groups []RegistryCapGroup) CartridgeRegistryEntry {
+	return CartridgeRegistryEntry{
+		Name:          name,
+		Description:   "Test Cartridge",
+		Author:        "Test Author",
+		TeamId:        "TEAM123",
+		LatestVersion: version,
+		CapGroups:     groups,
+		Versions: map[string]CartridgeVersionData{
+			version: {
+				ReleaseDate: "2026-02-07",
+				Builds: []CartridgeBuild{
+					{
+						Platform: "darwin-arm64",
+						Package: CartridgeDistributionInfo{
+							Name:   pkgName,
+							Sha256: "abc123",
+							Size:   1000,
+							Url:    "https://cartridges.machinefabric.com/" + pkgName,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+// TEST300: A cartridge with the same id can independently exist in both channels. Each lookup must return the channel-specific entry.
+func Test300_get_cartridge_by_id_channel_isolation(t *testing.T) {
+	releaseEntry := buildRegistryEntryNamed("Foo (release)", "1.0.0", "foo-1.0.0.pkg", buildIdentityCapGroup())
+	nightlyEntry := buildRegistryEntryNamed("Foo (nightly)", "2.0.0", "foo-2.0.0.pkg", buildIdentityCapGroup())
+
+	registry := makeTestRegistryChannels(
+		map[string]CartridgeRegistryEntry{"foocartridge": releaseEntry},
+		map[string]CartridgeRegistryEntry{"foocartridge": nightlyEntry},
+	)
+	server, err := NewCartridgeRepoServer(registry)
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+
+	r, err := server.GetCartridgeById(CartridgeChannelRelease, "foocartridge")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if r == nil {
+		t.Fatal("Expected release entry to be found")
+	}
+	if r.Name != "Foo (release)" {
+		t.Errorf("Expected name 'Foo (release)', got '%s'", r.Name)
+	}
+	if r.Version != "1.0.0" {
+		t.Errorf("Expected version '1.0.0', got '%s'", r.Version)
+	}
+	if r.Channel != CartridgeChannelRelease {
+		t.Errorf("Expected channel 'release', got '%s'", r.Channel)
+	}
+
+	n, err := server.GetCartridgeById(CartridgeChannelNightly, "foocartridge")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if n == nil {
+		t.Fatal("Expected nightly entry to be found")
+	}
+	if n.Name != "Foo (nightly)" {
+		t.Errorf("Expected name 'Foo (nightly)', got '%s'", n.Name)
+	}
+	if n.Version != "2.0.0" {
+		t.Errorf("Expected version '2.0.0', got '%s'", n.Version)
+	}
+	if n.Channel != CartridgeChannelNightly {
+		t.Errorf("Expected channel 'nightly', got '%s'", n.Channel)
+	}
+}
+
+// TEST301: Walking both channels produces release entries first.
+func Test301_transform_walks_both_channels_release_first(t *testing.T) {
+	releaseEntry := buildRegistryEntryNamed("R", "1.0.0", "r-1.0.0.pkg", buildIdentityCapGroup())
+	nightlyEntry := buildRegistryEntryNamed("N", "1.0.0", "n-1.0.0.pkg", buildIdentityCapGroup())
+
+	registry := makeTestRegistryChannels(
+		map[string]CartridgeRegistryEntry{"foo": releaseEntry},
+		map[string]CartridgeRegistryEntry{"bar": nightlyEntry},
+	)
+	server, err := NewCartridgeRepoServer(registry)
+	if err != nil {
+		t.Fatalf("Failed to create server: %v", err)
+	}
+
+	cartridges, err := server.TransformToCartridgeArray()
+	if err != nil {
+		t.Fatalf("Failed to transform: %v", err)
+	}
+	if len(cartridges) != 2 {
+		t.Fatalf("Expected 2 cartridges, got %d", len(cartridges))
+	}
+	channels := []CartridgeChannel{cartridges[0].Channel, cartridges[1].Channel}
+	if channels[0] != CartridgeChannelRelease || channels[1] != CartridgeChannelNightly {
+		t.Errorf("release entries must come before nightly entries; got %v", channels)
+	}
+}
+
+// TEST632: A registry cap with only the three required fields parses.
+func Test632_deserialize_minimal_registry_cap(t *testing.T) {
+	jsonStr := `{"urn": "cap:effect=none", "title": "Identity", "command": "identity"}`
+	var cap RegistryCap
+	if err := json.Unmarshal([]byte(jsonStr), &cap); err != nil {
+		t.Fatalf("Failed to parse: %v", err)
+	}
+	if cap.Urn != "cap:effect=none" {
+		t.Errorf("Expected urn 'cap:effect=none', got '%s'", cap.Urn)
+	}
+	if cap.Title != "Identity" {
+		t.Errorf("Expected title 'Identity', got '%s'", cap.Title)
+	}
+	if cap.Command != "identity" {
+		t.Errorf("Expected command 'identity', got '%s'", cap.Command)
+	}
+	if cap.CapDescription != nil {
+		t.Error("Expected cap_description to be nil")
+	}
+	if cap.Args != nil {
+		t.Error("Expected args to be nil")
+	}
+	if cap.Output != nil {
+		t.Error("Expected output to be nil")
+	}
+}
+
+// TEST633: A registry cap with cap_description, args, output all parses.
+func Test633_deserialize_rich_registry_cap(t *testing.T) {
+	jsonStr := `{
+		"urn": "cap:in=\"media:ext=pdf\";disbind;out=\"media:enc=utf-8;page\"",
+		"title": "Disbind PDF",
+		"command": "disbind",
+		"cap_description": "Extract each PDF page as plain page text.",
+		"args": [
+			{
+				"media_urn": "media:enc=utf-8;file-path",
+				"required": true,
+				"is_sequence": false,
+				"sources": [{"stdin": "media:ext=pdf"}, {"position": 0}],
+				"arg_description": "Path to the PDF file to process"
+			}
+		],
+		"output": {
+			"media_urn": "media:enc=utf-8;page",
+			"is_sequence": true,
+			"output_description": "One page text per PDF page"
+		}
+	}`
+	var cap RegistryCap
+	if err := json.Unmarshal([]byte(jsonStr), &cap); err != nil {
+		t.Fatalf("Failed to parse: %v", err)
+	}
+	if cap.Command != "disbind" {
+		t.Errorf("Expected command 'disbind', got '%s'", cap.Command)
+	}
+	if cap.CapDescription == nil || *cap.CapDescription != "Extract each PDF page as plain page text." {
+		t.Errorf("Expected cap_description, got %v", cap.CapDescription)
+	}
+	if len(cap.Args) != 1 {
+		t.Fatalf("Expected 1 arg, got %d", len(cap.Args))
+	}
+	if cap.Args[0].MediaUrn != "media:enc=utf-8;file-path" {
+		t.Errorf("Expected media_urn 'media:enc=utf-8;file-path', got '%s'", cap.Args[0].MediaUrn)
+	}
+	if len(cap.Args[0].Sources) != 2 {
+		t.Fatalf("Expected 2 sources, got %d", len(cap.Args[0].Sources))
+	}
+	if cap.Args[0].Sources[0].Stdin == nil || *cap.Args[0].Sources[0].Stdin != "media:ext=pdf" {
+		t.Errorf("Expected source[0].stdin 'media:ext=pdf', got %v", cap.Args[0].Sources[0].Stdin)
+	}
+	if cap.Args[0].Sources[1].Position == nil || *cap.Args[0].Sources[1].Position != 0 {
+		t.Errorf("Expected source[1].position 0, got %v", cap.Args[0].Sources[1].Position)
+	}
+	if cap.Output == nil {
+		t.Fatal("Expected output to be present")
+	}
+	if cap.Output.MediaUrn != "media:enc=utf-8;page" {
+		t.Errorf("Expected output media_urn 'media:enc=utf-8;page', got '%s'", cap.Output.MediaUrn)
+	}
+	if !cap.Output.IsSequence {
+		t.Error("Expected output.is_sequence to be true")
+	}
+}
+
+// TEST634: A registry cap_group parses with caps + adapter_urns.
+func Test634_deserialize_cap_group(t *testing.T) {
+	jsonStr := `{
+		"name": "pdf-formats",
+		"caps": [
+			{"urn": "cap:effect=none", "title": "Identity", "command": "identity"}
+		],
+		"adapter_urns": ["media:ext=pdf"]
+	}`
+	var group RegistryCapGroup
+	if err := json.Unmarshal([]byte(jsonStr), &group); err != nil {
+		t.Fatalf("Failed to parse: %v", err)
+	}
+	if group.Name != "pdf-formats" {
+		t.Errorf("Expected name 'pdf-formats', got '%s'", group.Name)
+	}
+	if len(group.Caps) != 1 {
+		t.Fatalf("Expected 1 cap, got %d", len(group.Caps))
+	}
+	if len(group.AdapterUrns) != 1 || group.AdapterUrns[0] != "media:ext=pdf" {
+		t.Errorf("Expected adapter_urns ['media:ext=pdf'], got %v", group.AdapterUrns)
+	}
+}
+
+// TEST635: CartridgeInfo deserializes the wire shape exactly as returned by /api/cartridges (camelCase top-level + snake_case cap_groups). Null camelCase string fields fall back to empty.
+func Test635_deserialize_cartridge_info_wire_shape(t *testing.T) {
+	jsonStr := `{
+		"id": "pdfcartridge",
+		"name": "pdfcartridge",
+		"version": "0.179.441",
+		"description": "PDF page renderer",
+		"author": "https://github.com/machinefabric",
+		"pageUrl": "https://github.com/machinefabric/pdfcartridge",
+		"teamId": "P336JK947M",
+		"signedAt": "2026-04-25T14:53:55Z",
+		"minAppVersion": "1.0.0",
+		"cap_groups": [
+			{
+				"name": "pdf-formats",
+				"caps": [
+					{"urn": "cap:effect=none", "title": "Identity", "command": "identity"},
+					{"urn": "cap:in=\"media:ext=pdf\";disbind;out=\"media:enc=utf-8;page\"", "title": "Disbind PDF Into Page Text", "command": "disbind"}
+				],
+				"adapter_urns": ["media:ext=pdf"]
+			}
+		],
+		"categories": [],
+		"tags": [],
+		"versions": {},
+		"availableVersions": [],
+		"channel": "release",
+		"registryUrl": "https://test.example/manifest"
+	}`
+	var cartridge CartridgeInfo
+	if err := json.Unmarshal([]byte(jsonStr), &cartridge); err != nil {
+		t.Fatalf("Failed to parse: %v", err)
+	}
+	if cartridge.Id != "pdfcartridge" {
+		t.Errorf("Expected id 'pdfcartridge', got '%s'", cartridge.Id)
+	}
+	if cartridge.TeamId != "P336JK947M" {
+		t.Errorf("Expected team_id 'P336JK947M', got '%s'", cartridge.TeamId)
+	}
+	if len(cartridge.CapGroups) != 1 {
+		t.Fatalf("Expected 1 cap group, got %d", len(cartridge.CapGroups))
+	}
+	if len(cartridge.CapGroups[0].Caps) != 2 {
+		t.Fatalf("Expected 2 caps, got %d", len(cartridge.CapGroups[0].Caps))
+	}
+	if len(cartridge.IterCaps()) != 2 {
+		t.Errorf("Expected IterCaps to count 2, got %d", len(cartridge.IterCaps()))
+	}
+	if cartridge.Channel != CartridgeChannelRelease {
+		t.Errorf("Expected channel 'release', got '%s'", cartridge.Channel)
+	}
+	if cartridge.RegistryUrl != "https://test.example/manifest" {
+		t.Errorf("Expected registry_url 'https://test.example/manifest', got '%s'", cartridge.RegistryUrl)
+	}
+}
+
+// TEST636: CartridgeInfo with null version/description/author still deserializes (the null_as_empty_string deserializer is the only tolerated coercion — every other malformed input is a hard error).
+func Test636_deserialize_cartridge_info_with_null_strings(t *testing.T) {
+	jsonStr := `{
+		"id": "mlxcartridge",
+		"name": "MLX Cartridge",
+		"version": null,
+		"description": null,
+		"author": null,
+		"cap_groups": [],
+		"versions": {},
+		"channel": "nightly",
+		"registryUrl": "https://test.example/manifest"
+	}`
+	var cartridge CartridgeInfo
+	if err := json.Unmarshal([]byte(jsonStr), &cartridge); err != nil {
+		t.Fatalf("Failed to parse: %v", err)
+	}
+	if cartridge.Version != "" {
+		t.Errorf("Expected version '', got '%s'", cartridge.Version)
+	}
+	if cartridge.Description != "" {
+		t.Errorf("Expected description '', got '%s'", cartridge.Description)
+	}
+	if cartridge.Author != "" {
+		t.Errorf("Expected author '', got '%s'", cartridge.Author)
+	}
+	if len(cartridge.CapGroups) != 0 {
+		t.Errorf("Expected empty cap_groups, got %d", len(cartridge.CapGroups))
+	}
+}
+
+// TEST637: A full /api/cartridges-shaped response with two cartridges and nested cap_groups round-trips through the response wrapper.
+func Test637_deserialize_full_registry_response(t *testing.T) {
+	jsonStr := `{
+		"cartridges": [
+			{
+				"id": "pdfcartridge",
+				"name": "pdfcartridge",
+				"version": "0.179.441",
+				"description": "PDF",
+				"author": "https://github.com/machinefabric",
+				"pageUrl": "",
+				"teamId": "P336JK947M",
+				"signedAt": "2026-04-25T14:53:55Z",
+				"minAppVersion": "1.0.0",
+				"cap_groups": [
+					{
+						"name": "pdf-formats",
+						"caps": [
+							{"urn": "cap:effect=none", "title": "Identity", "command": "identity"}
+						],
+						"adapter_urns": ["media:ext=pdf"]
+					}
+				],
+				"categories": [],
+				"tags": [],
+				"versions": {},
+				"availableVersions": [],
+				"channel": "release",
+				"registryUrl": "https://test.example/manifest"
+			},
+			{
+				"id": "imagecartridge",
+				"name": "imagecartridge",
+				"version": "0.1.6",
+				"description": "image",
+				"author": "",
+				"teamId": "P336JK947M",
+				"signedAt": "2026-04-25T21:53:45Z",
+				"minAppVersion": "1.0.0",
+				"cap_groups": [
+					{
+						"name": "image-formats",
+						"caps": [
+							{"urn": "cap:in=\"media:convert-image;image;jpeg;png\";out=\"media:image\"", "title": "Convert JPEG to PNG", "command": "convert-image"}
+						],
+						"adapter_urns": ["media:ext=bmp;image", "media:ext=jpeg;image", "media:ext=png;image", "media:ext=tiff;image", "media:ext=webp;image", "media:ext=gif;image"]
+					}
+				],
+				"categories": [],
+				"tags": [],
+				"versions": {},
+				"availableVersions": [],
+				"channel": "nightly",
+				"registryUrl": "https://test.example/manifest"
+			}
+		],
+		"total": 2,
+		"page": 1,
+		"limit": 20,
+		"totalPages": 1
+	}`
+	var response CartridgeRegistryResponse
+	if err := json.Unmarshal([]byte(jsonStr), &response); err != nil {
+		t.Fatalf("Failed to parse: %v", err)
+	}
+	if len(response.Cartridges) != 2 {
+		t.Fatalf("Expected 2 cartridges, got %d", len(response.Cartridges))
+	}
+	var img *CartridgeInfo
+	for i := range response.Cartridges {
+		if response.Cartridges[i].Id == "imagecartridge" {
+			img = &response.Cartridges[i]
+			break
+		}
+	}
+	if img == nil {
+		t.Fatal("Expected to find imagecartridge")
+	}
+	if len(img.CapGroups) != 1 {
+		t.Fatalf("Expected 1 cap group, got %d", len(img.CapGroups))
+	}
+	if len(img.CapGroups[0].AdapterUrns) != 6 {
+		t.Errorf("Expected 6 adapter_urns, got %d", len(img.CapGroups[0].AdapterUrns))
+	}
+}
+
+// TEST1847: A build from a registry manifest published BEFORE `packages[]` existed carries only the legacy singular `package` (no `format`). It must still deserialize (a missing `packages` must not fail the whole parse) and `primary_package()` must fall back to that legacy package, so a registry not yet republished with the dual-write keeps installing. When `packages[]` is present it is preferred over the legacy field.
+func Test1847_cartridge_build_legacy_package_fallback(t *testing.T) {
+	legacyJSON := `{
+		"platform": "linux-x86_64",
+		"package": {
+			"name": "imagecartridge-1.0.0.pkg",
+			"url": "https://cartridges.machinefabric.com/imagecartridge-1.0.0.pkg",
+			"sha256": "abc123",
+			"size": 1000
+		}
+	}`
+	var legacy CartridgeBuild
+	if err := json.Unmarshal([]byte(legacyJSON), &legacy); err != nil {
+		t.Fatalf("Failed to parse legacy: %v", err)
+	}
+	if len(legacy.Packages) != 0 {
+		t.Errorf("Expected empty packages, got %d", len(legacy.Packages))
+	}
+	primary := legacy.PrimaryPackage()
+	if primary == nil {
+		t.Fatal("legacy package must be read as a fallback")
+	}
+	if primary.Name != "imagecartridge-1.0.0.pkg" {
+		t.Errorf("Expected name 'imagecartridge-1.0.0.pkg', got '%s'", primary.Name)
+	}
+	if primary.Format != "" {
+		t.Errorf("Expected empty format for legacy object, got '%s'", primary.Format)
+	}
+	if !strings.HasSuffix(primary.Url, "imagecartridge-1.0.0.pkg") {
+		t.Errorf("Expected url to end with 'imagecartridge-1.0.0.pkg', got '%s'", primary.Url)
+	}
+
+	modernJSON := `{
+		"platform": "linux-x86_64",
+		"package": {
+			"name": "legacy.pkg", "url": "https://x/legacy.pkg",
+			"sha256": "dead", "size": 1
+		},
+		"packages": [
+			{"name": "c.rpm", "url": "https://x/c.rpm", "sha256": "a", "size": 2, "format": "rpm"},
+			{"name": "c.deb", "url": "https://x/c.deb", "sha256": "b", "size": 3, "format": "deb"}
+		]
+	}`
+	var modern CartridgeBuild
+	if err := json.Unmarshal([]byte(modernJSON), &modern); err != nil {
+		t.Fatalf("Failed to parse modern: %v", err)
+	}
+	// linux prefers deb over rpm; the legacy `package` is ignored.
+	mp := modern.PrimaryPackage()
+	if mp == nil {
+		t.Fatal("Expected a primary package from packages[]")
+	}
+	if mp.Name != "c.deb" {
+		t.Errorf("Expected 'c.deb' (linux prefers deb), got '%s'", mp.Name)
+	}
+}
+
+// buildForPlatformWithFormat builds a CartridgeBuild carrying a single
+// native-format package, so a resolution test can assert exactly which
+// package URL the host gets. Mirrors Rust build_for_platform_with_format.
+func buildForPlatformWithFormat(platform, format, pkgName string) CartridgeBuild {
+	return CartridgeBuild{
+		Platform: platform,
+		Packages: []CartridgeDistributionInfo{
+			{
+				Name:   pkgName,
+				Sha256: "deadbeef",
+				Size:   4242,
+				Url:    "https://cartridges.machinefabric.com/" + pkgName,
+				Format: format,
+			},
+		},
+	}
+}
+
+// platformBuild is a (platform, format, pkgName) triple for cartridgeWithVersions.
+type platformBuild struct {
+	platform string
+	format   string
+	pkgName  string
+}
+
+// versionSpec is a (version, builds) pair for cartridgeWithVersions, newest-first.
+type versionSpec struct {
+	version string
+	builds  []platformBuild
+}
+
+// cartridgeWithVersions constructs a cartridge whose versions/platform-builds
+// are fully specified by the caller. `versions` is given newest-first;
+// `Version` (the "latest" field) is set to the first entry. Mirrors Rust
+// cartridge_with_versions.
+func cartridgeWithVersions(id string, versions []versionSpec) CartridgeInfo {
+	versionMap := make(map[string]CartridgeVersionData)
+	available := make([]string, 0, len(versions))
+	for _, vs := range versions {
+		available = append(available, vs.version)
+		builds := make([]CartridgeBuild, 0, len(vs.builds))
+		for _, b := range vs.builds {
+			builds = append(builds, buildForPlatformWithFormat(b.platform, b.format, b.pkgName))
+		}
+		versionMap[vs.version] = CartridgeVersionData{
+			ReleaseDate: "2026-02-07",
+			Builds:      builds,
+		}
+	}
+	latest := ""
+	if len(versions) > 0 {
+		latest = versions[0].version
+	}
+	return CartridgeInfo{
+		Id:                id,
+		Name:              id,
+		Version:           latest,
+		TeamId:            "TEAM123",
+		SignedAt:          "2026-02-07T00:00:00Z",
+		CapGroups:         []RegistryCapGroup{},
+		Versions:          versionMap,
+		AvailableVersions: available,
+		Channel:           CartridgeChannelRelease,
+		RegistryUrl:       "https://example.com/cartridges",
+	}
+}
+
+// TEST1849: latest version has a host build → Compatible, resolving to the latest version and that platform's native-format package.
+func Test1849_resolve_for_host_compatible_latest(t *testing.T) {
+	cartridge := cartridgeWithVersions("c", []versionSpec{
+		{version: "1.2.0", builds: []platformBuild{
+			{"darwin-arm64", "pkg", "c-1.2.0.pkg"},
+			{"linux-x86_64", "deb", "c-1.2.0.deb"},
+		}},
+		{version: "1.1.0", builds: []platformBuild{
+			{"darwin-arm64", "pkg", "c-1.1.0.pkg"},
+		}},
+	})
+
+	r := cartridge.ResolveForHost("linux-x86_64")
+	if r.Status != CompatStatusCompatible {
+		t.Errorf("Expected Compatible, got %v", r.Status)
+	}
+	if r.ResolvedVersion != "1.2.0" {
+		t.Errorf("Expected resolved version '1.2.0', got '%s'", r.ResolvedVersion)
+	}
+	if r.ResolvedPackage == nil || r.ResolvedPackage.Name != "c-1.2.0.deb" {
+		t.Errorf("Expected package 'c-1.2.0.deb', got %v", r.ResolvedPackage)
+	}
+	if r.ResolvedPackage.Format != "deb" {
+		t.Errorf("Expected format 'deb', got '%s'", r.ResolvedPackage.Format)
+	}
+	if r.Reason != "" {
+		t.Errorf("Compatible carries no reason, got '%s'", r.Reason)
+	}
+	if r.HostPlatform != "linux-x86_64" {
+		t.Errorf("Expected host platform 'linux-x86_64', got '%s'", r.HostPlatform)
+	}
+}
+
+// TEST1850: the latest version lacks a host build but an older version has one → CompatibleOutdated, resolving to the older version with a reason naming both the latest and the resolved version.
+func Test1850_resolve_for_host_compatible_outdated(t *testing.T) {
+	cartridge := cartridgeWithVersions("c", []versionSpec{
+		// Latest 1.3.0 ships only macOS.
+		{version: "1.3.0", builds: []platformBuild{{"darwin-arm64", "pkg", "c-1.3.0.pkg"}}},
+		// 1.2.0 still shipped Linux.
+		{version: "1.2.0", builds: []platformBuild{
+			{"darwin-arm64", "pkg", "c-1.2.0.pkg"},
+			{"linux-x86_64", "deb", "c-1.2.0.deb"},
+		}},
+		{version: "1.1.0", builds: []platformBuild{{"linux-x86_64", "deb", "c-1.1.0.deb"}}},
+	})
+
+	r := cartridge.ResolveForHost("linux-x86_64")
+	if r.Status != CompatStatusCompatibleOutdated {
+		t.Errorf("Expected CompatibleOutdated, got %v", r.Status)
+	}
+	// Newest-with-host-build is 1.2.0, NOT the oldest 1.1.0 that also has it.
+	if r.ResolvedVersion != "1.2.0" {
+		t.Errorf("Expected resolved version '1.2.0', got '%s'", r.ResolvedVersion)
+	}
+	if r.ResolvedPackage == nil || r.ResolvedPackage.Name != "c-1.2.0.deb" {
+		t.Errorf("Expected package 'c-1.2.0.deb', got %v", r.ResolvedPackage)
+	}
+	if r.Reason == "" {
+		t.Fatal("outdated carries a reason")
+	}
+	if !strings.Contains(r.Reason, "1.3.0") {
+		t.Errorf("reason must name the latest: %s", r.Reason)
+	}
+	if !strings.Contains(r.Reason, "1.2.0") {
+		t.Errorf("reason must name the resolved: %s", r.Reason)
+	}
+}
+
+// TEST1851: no version ships a host build → Incompatible, no resolved version/package, reason states the host platform.
+func Test1851_resolve_for_host_incompatible(t *testing.T) {
+	cartridge := cartridgeWithVersions("c", []versionSpec{
+		{version: "1.2.0", builds: []platformBuild{{"darwin-arm64", "pkg", "c-1.2.0.pkg"}}},
+		{version: "1.1.0", builds: []platformBuild{{"darwin-arm64", "pkg", "c-1.1.0.pkg"}}},
+	})
+
+	r := cartridge.ResolveForHost("windows-x86_64")
+	if r.Status != CompatStatusIncompatible {
+		t.Errorf("Expected Incompatible, got %v", r.Status)
+	}
+	if r.ResolvedVersion != "" {
+		t.Errorf("Expected no resolved version, got '%s'", r.ResolvedVersion)
+	}
+	if r.ResolvedPackage != nil {
+		t.Errorf("Expected no resolved package, got %v", r.ResolvedPackage)
+	}
+	if !strings.Contains(r.Reason, "windows-x86_64") {
+		t.Errorf("reason must name the host platform: %s", r.Reason)
+	}
+}
+
+// TEST1852: a host build whose packages[] is empty AND has no legacy `package` ships no installer; resolution must SKIP it (not resolve to an un-downloadable version) and fall through to an older usable version.
+func Test1852_resolve_for_host_skips_build_with_no_installer(t *testing.T) {
+	cartridge := cartridgeWithVersions("c", []versionSpec{
+		// Latest has a linux build entry but we strip its installer below.
+		{version: "2.0.0", builds: []platformBuild{{"linux-x86_64", "deb", "c-2.0.0.deb"}}},
+		{version: "1.0.0", builds: []platformBuild{{"linux-x86_64", "deb", "c-1.0.0.deb"}}},
+	})
+	// Make 2.0.0's linux build ship nothing installable.
+	v2 := cartridge.Versions["2.0.0"]
+	v2.Builds[0].Packages = nil
+	v2.Builds[0].Package = CartridgeDistributionInfo{}
+	cartridge.Versions["2.0.0"] = v2
+
+	r := cartridge.ResolveForHost("linux-x86_64")
+	// 2.0.0 is skipped (no installer); newest USABLE host build is 1.0.0.
+	if r.Status != CompatStatusCompatibleOutdated {
+		t.Errorf("Expected CompatibleOutdated, got %v", r.Status)
+	}
+	if r.ResolvedVersion != "1.0.0" {
+		t.Errorf("Expected resolved version '1.0.0', got '%s'", r.ResolvedVersion)
+	}
+	if r.ResolvedPackage == nil || r.ResolvedPackage.Name != "c-1.0.0.deb" {
+		t.Errorf("Expected package 'c-1.0.0.deb', got %v", r.ResolvedPackage)
+	}
+}
+
+// TEST1853: host_platform() returns a normalized {os}-{arch} string with arch aarch64 mapped to arm64 — the exact form the registry uses.
+func Test1853_host_platform_normalized_form(t *testing.T) {
+	p := HostPlatform()
+	idx := strings.Index(p, "-")
+	if idx < 0 {
+		t.Fatalf("host_platform must be os-arch, got %s", p)
+	}
+	os := p[:idx]
+	arch := p[idx+1:]
+	if os == "" {
+		t.Errorf("os segment must be present: %s", os)
+	}
+	// The registry never uses the raw "aarch64"; it must be normalized.
+	if arch == "aarch64" {
+		t.Errorf("arch must be normalized to arm64, got '%s'", arch)
 	}
 }

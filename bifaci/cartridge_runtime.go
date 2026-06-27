@@ -251,6 +251,14 @@ func NewCartridgeRuntime(manifestJSON []byte) (*CartridgeRuntime, error) {
 		runtime.manifest = &manifest
 	}
 
+	// Auto-register standard handlers (identity, discard, adapter-selection),
+	// mirroring Rust's CartridgeRuntime::new which calls register_standard_caps
+	// unconditionally on construction. A cartridge author can override any of
+	// them later by calling Register with the same cap URN.
+	runtime.autoRegisterIdentity()
+	runtime.autoRegisterDiscard()
+	runtime.autoRegisterAdapterSelection()
+
 	return runtime, nil
 }
 
@@ -292,6 +300,9 @@ func NewCartridgeRuntimeWithManifest(manifest *CapManifest) (*CartridgeRuntime, 
 
 	// Auto-register identity handler if not already registered
 	runtime.autoRegisterIdentity()
+
+	// Auto-register discard handler if not already registered
+	runtime.autoRegisterDiscard()
 
 	// Auto-register adapter selection handler if not already registered
 	runtime.autoRegisterAdapterSelection()
@@ -358,6 +369,30 @@ func (pr *CartridgeRuntime) autoRegisterIdentity() {
 					return output.EmitCbor(chunks)
 				}
 			}
+		}
+	}
+}
+
+// autoRegisterDiscard registers a default discard handler if none exists.
+// The discard cap (cap:in=media:;out=media:void) is the terminal morphism:
+// it drains all input and produces nothing. Mirrors Rust's DiscardOp, which
+// CartridgeRuntime auto-registers at CAP_DISCARD on construction.
+func (pr *CartridgeRuntime) autoRegisterDiscard() {
+	pr.mu.Lock()
+	defer pr.mu.Unlock()
+
+	if _, exists := pr.handlers[standard.CapDiscard]; !exists {
+		pr.handlers[standard.CapDiscard] = func(input <-chan Frame, output StreamEmitter, peer PeerInvoker) error {
+			// Drain all input frames, verifying chunk integrity as we go.
+			for frame := range input {
+				if frame.FrameType == FrameTypeChunk {
+					if err := VerifyChunkChecksum(&frame); err != nil {
+						return fmt.Errorf("Discard chunk error: %w", err)
+					}
+				}
+			}
+			// Terminal morphism — produce nothing.
+			return nil
 		}
 	}
 }

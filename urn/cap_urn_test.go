@@ -1951,3 +1951,121 @@ func Test6736_axis_weighting_decoded_layout(t *testing.T) {
 	// 10000*8 + 100*4 + 2 = 80402
 	assert.Equal(t, 10000*8+100*4+2, cap.Specificity())
 }
+
+// assertIllegalDeclaration asserts that parsing capStr fails with an
+// IllegalDeclaration error (the bare/default top-to-top form is illegal).
+func assertIllegalDeclaration(t *testing.T, capStr string) {
+	t.Helper()
+	result, err := NewCapUrnFromString(capStr)
+	assert.Nil(t, result, "%q must not parse", capStr)
+	require.Error(t, err, "%q must be illegal", capStr)
+	capError, ok := err.(*CapUrnError)
+	require.True(t, ok, "%q error must be *CapUrnError, got %T", capStr, err)
+	assert.Equal(t, ErrorIllegalDeclaration, capError.Code, "%q must be IllegalDeclaration", capStr)
+}
+
+// TEST28: Test empty cap URN is illegal after effect transition
+func Test28_empty_cap_urn_is_illegal(t *testing.T) {
+	assertIllegalDeclaration(t, "cap:")
+	assertIllegalDeclaration(t, "cap:;")
+}
+
+// TEST639: bare/default top-to-top declared form is illegal
+func Test639_wildcard_001_empty_cap_is_illegal(t *testing.T) {
+	assertIllegalDeclaration(t, "cap:")
+}
+
+// TEST640: cap:in defaults to the same illegal bare top form
+func Test640_wildcard_002_in_only_is_illegal(t *testing.T) {
+	assertIllegalDeclaration(t, "cap:in")
+}
+
+// TEST641: cap:out defaults to the same illegal bare top form
+func Test641_wildcard_003_out_only_is_illegal(t *testing.T) {
+	assertIllegalDeclaration(t, "cap:out")
+}
+
+// TEST643: cap:in=*;out=* is the same illegal bare top form
+func Test643_wildcard_005_explicit_asterisk_is_illegal(t *testing.T) {
+	assertIllegalDeclaration(t, "cap:in=*;out=*")
+}
+
+// TEST644: cap:in=media:;out=* is the same illegal bare top form
+func Test644_wildcard_006_specific_in_wildcard_out_is_illegal(t *testing.T) {
+	assertIllegalDeclaration(t, "cap:in=media:;out=*")
+}
+
+// TEST648: Wildcard in/out match specific caps
+func Test648_wildcard_010_wildcard_accepts_specific(t *testing.T) {
+	wildcard, err := NewCapUrnFromString("cap:raw")
+	require.NoError(t, err)
+	specific, err := NewCapUrnFromString("cap:out=media:text;raw")
+	require.NoError(t, err)
+
+	assert.True(t, wildcard.Accepts(specific), "Wildcard should accept specific cap")
+	assert.True(t, specific.ConformsTo(wildcard), "Specific should conform to wildcard")
+}
+
+// TEST649: Specificity - wildcard has 0, specific has tag count
+func Test649_wildcard_011_specificity_scoring(t *testing.T) {
+	wildcard, err := NewCapUrnFromString("cap:raw")
+	require.NoError(t, err)
+	specific, err := NewCapUrnFromString("cap:out=media:text;raw")
+	require.NoError(t, err)
+
+	assert.Equal(t, 2, wildcard.Specificity(), "Marker-only wildcard cap should have y-axis specificity only")
+	assert.Greater(t, specific.Specificity(), 0, "Specific cap should have non-zero specificity")
+}
+
+// TEST653: invalid effect=none declarations fail at construction
+func Test653_effect_none_illegal_declaration_rejected(t *testing.T) {
+	assertIllegalDeclaration(t, `cap:in="media:ext=pdf";out="media:enc=utf-8";effect=none`)
+}
+
+// TEST0125: effect=none preserves runtime media identity
+func Test0125_effect_none_preserves_runtime_media(t *testing.T) {
+	decimate, err := NewCapUrnFromString("cap:decimate-sequence;effect=none")
+	require.NoError(t, err)
+	png, err := NewMediaUrnFromString("media:ext=png;image")
+	require.NoError(t, err)
+	pdf, err := NewMediaUrnFromString("media:ext=pdf")
+	require.NoError(t, err)
+
+	outPng, err := decimate.InferRuntimeOutputMedia(png)
+	require.NoError(t, err)
+	assert.Equal(t, png.String(), outPng.String())
+
+	outPdf, err := decimate.InferRuntimeOutputMedia(pdf)
+	require.NoError(t, err)
+	assert.Equal(t, pdf.String(), outPdf.String())
+}
+
+// TEST0126: default effect=declared uses the declared output
+func Test0126_effect_declared_uses_declared_output(t *testing.T) {
+	resize, err := NewCapUrnFromString("cap:in=media:image;out=media:image;resize")
+	require.NoError(t, err)
+	png, err := NewMediaUrnFromString("media:ext=png;image;width=4000")
+	require.NoError(t, err)
+
+	out, err := resize.InferRuntimeOutputMedia(png)
+	require.NoError(t, err)
+	assert.Equal(t, "media:image", out.String())
+}
+
+// TEST0127: invalid effect=none declarations fail hard
+func Test0127_invalid_effect_none_fails_hard(t *testing.T) {
+	assertIllegalDeclaration(t, `cap:in="media:ext=pdf";out="media:enc=utf-8";effect=none`)
+}
+
+// TEST0128: omitted effect means declared; unconstrained effect must be explicit
+func Test0128_effect_dispatch_requires_explicit_wildcard(t *testing.T) {
+	noneProvider, err := NewCapUrnFromString("cap:effect=none")
+	require.NoError(t, err)
+	declaredRequest, err := NewCapUrnFromString("cap:raw")
+	require.NoError(t, err)
+	anyRequest, err := NewCapUrnFromString("cap:?effect")
+	require.NoError(t, err)
+
+	assert.False(t, noneProvider.IsDispatchable(declaredRequest))
+	assert.True(t, noneProvider.IsDispatchable(anyRequest))
+}

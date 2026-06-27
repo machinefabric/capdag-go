@@ -259,6 +259,66 @@ type CartridgeInfo struct {
 	// must not synthesize this field — it comes from the registry's
 	// `channels` partitioning.
 	Channel CartridgeChannel `json:"channel"`
+	// RegistryUrl is the registry URL this entry was fetched from.
+	// Stamped onto each entry by the fetch path based on the URL the
+	// manifest was served from. Verbatim string — never trimmed,
+	// normalized, or re-derived from the manifest body. Identity
+	// comparison is byte equality.
+	RegistryUrl string `json:"registryUrl"`
+}
+
+// UnmarshalJSON deserializes a CartridgeInfo from the wire shape. The
+// camelCase string fields version/description/author/team_id/signed_at/
+// min_app_version/page_url tolerate an explicit JSON null by coercing it
+// to the empty string — this is the only tolerated coercion (mirrors
+// Rust's null_as_empty_string deserializer); every other malformed input
+// is a hard error.
+func (c *CartridgeInfo) UnmarshalJSON(data []byte) error {
+	type rawInfo struct {
+		Id                string                          `json:"id"`
+		Name              string                          `json:"name"`
+		Version           *string                         `json:"version"`
+		Description       *string                         `json:"description"`
+		Author            *string                         `json:"author"`
+		TeamId            *string                         `json:"teamId"`
+		SignedAt          *string                         `json:"signedAt"`
+		MinAppVersion     *string                         `json:"minAppVersion"`
+		PageUrl           *string                         `json:"pageUrl"`
+		Categories        []string                        `json:"categories"`
+		Tags              []string                        `json:"tags"`
+		CapGroups         []RegistryCapGroup              `json:"cap_groups"`
+		Versions          map[string]CartridgeVersionData `json:"versions"`
+		AvailableVersions []string                        `json:"availableVersions"`
+		Channel           CartridgeChannel                `json:"channel"`
+		RegistryUrl       string                          `json:"registryUrl"`
+	}
+	var raw rawInfo
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	deref := func(p *string) string {
+		if p == nil {
+			return ""
+		}
+		return *p
+	}
+	c.Id = raw.Id
+	c.Name = raw.Name
+	c.Version = deref(raw.Version)
+	c.Description = deref(raw.Description)
+	c.Author = deref(raw.Author)
+	c.TeamId = deref(raw.TeamId)
+	c.SignedAt = deref(raw.SignedAt)
+	c.MinAppVersion = deref(raw.MinAppVersion)
+	c.PageUrl = deref(raw.PageUrl)
+	c.Categories = raw.Categories
+	c.Tags = raw.Tags
+	c.CapGroups = raw.CapGroups
+	c.Versions = raw.Versions
+	c.AvailableVersions = raw.AvailableVersions
+	c.Channel = raw.Channel
+	c.RegistryUrl = raw.RegistryUrl
+	return nil
 }
 
 // IterCaps yields every cap across every cap group in declaration order.
