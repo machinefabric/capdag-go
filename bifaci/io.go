@@ -120,11 +120,18 @@ func (fw *FrameWriter) WriteResponseWithChunking(requestId MessageId, streamId s
 		return err
 	}
 
-	// Send CHUNKs if payload is large
+	// Send CHUNKs if payload is large.
+	//
+	// Every CHUNK is emitted with seq=0. Sequence numbers are NOT a
+	// per-chunk ordinal — they are assigned later by the SeqAssigner at
+	// the output/multiplexing stage, where they order frames ACROSS
+	// interleaved flows. Ordering WITHIN this stream is carried by
+	// chunk_index (0, 1, 2, …). Baking an incrementing seq here would
+	// double-assign and corrupt the reorder buffer's sequencing once the
+	// frames pass through the SeqAssigner. Mirrors Rust write_chunked.
 	chunkIndex := uint64(0)
 	if len(payload) > 0 {
 		offset := 0
-		seq := uint64(0)
 
 		for offset < len(payload) {
 			remaining := len(payload) - offset
@@ -132,13 +139,12 @@ func (fw *FrameWriter) WriteResponseWithChunking(requestId MessageId, streamId s
 			chunkData := payload[offset : offset+chunkSize]
 
 			checksum := ComputeChecksum(chunkData)
-			frame := NewChunk(requestId, streamId, seq, chunkData, chunkIndex, checksum)
+			frame := NewChunk(requestId, streamId, 0, chunkData, chunkIndex, checksum)
 			if err := fw.WriteFrame(frame); err != nil {
 				return err
 			}
 
 			offset += chunkSize
-			seq++
 			chunkIndex++
 		}
 	}
