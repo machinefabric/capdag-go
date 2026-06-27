@@ -1112,10 +1112,14 @@ func Test486_attach_cartridge_identity_verification_fails(t *testing.T) {
 		reader.SetLimits(limits)
 		writer.SetLimits(limits)
 
-		// Read identity REQ, respond with ERR (broken identity handler).
-		req, err := reader.ReadFrame()
-		require.NoError(t, err)
-		assert.Equal(t, FrameTypeReq, req.FrameType)
+		// Drain the COMPLETE identity request (REQ + STREAM_START + CHUNK(s) +
+		// STREAM_END + END) before replying, exactly as a real cartridge's
+		// reader loop does — a peer must consume the whole request stream
+		// before dispatching, and the verifier writes all of it before reading
+		// the response. Replying mid-request would deadlock the synchronous
+		// transport (and is not how any real cartridge behaves). Then respond
+		// with ERR to model a broken identity handler.
+		req, _ := drainIdentityRequest(t, reader)
 		require.NoError(t, writer.WriteFrame(NewErr(req.Id, "BROKEN", "identity handler is broken")))
 		cartridgeRead.Close()
 		cartridgeWrite.Close()

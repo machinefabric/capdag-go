@@ -1249,16 +1249,12 @@ func Test488_relay_switch_identity_verification_fails(t *testing.T) {
 			return
 		}
 
-		// Read identity REQ, respond with ERR.
-		req, err := reader.ReadFrame()
-		if err != nil || req == nil {
-			t.Errorf("expected identity REQ: %v", err)
-			return
-		}
-		if req.FrameType != FrameTypeReq {
-			t.Errorf("expected identity REQ, got %d", req.FrameType)
-			return
-		}
+		// Drain the COMPLETE identity request (REQ + STREAM_START + CHUNK(s) +
+		// STREAM_END + END) before replying, exactly as a real master's reader
+		// loop does — the verifier writes the whole request before reading the
+		// response, so replying mid-request would deadlock the synchronous
+		// transport. Then respond with ERR to model a broken identity handler.
+		req, _ := drainIdentityRequest(t, reader)
 		errFrame := NewErr(req.Id, "BROKEN", "identity verification broken")
 		_ = writer.WriteFrame(errFrame)
 	}()
