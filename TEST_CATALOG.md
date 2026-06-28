@@ -1,8 +1,8 @@
 # Go Test Catalog
 
-**Total Tests:** 1145
+**Total Tests:** 1149
 
-**Numbered Tests:** 1145
+**Numbered Tests:** 1149
 
 **Unnumbered Tests:** 0
 
@@ -118,7 +118,7 @@ This catalog lists all tests in the Go codebase.
 | test118 | `Test118_dev_manifest_registry_url_is_explicit_null` | TEST118: A dev manifest (built without `MFR_CARTRIDGE_REGISTRY_URL`) carries `registry_url: null` and serializes the field explicitly. The null-vs-absent distinction matters because the parser refuses to accept absent (test117) — so an old SDK can't accidentally pass for a dev build. | bifaci/manifest_test.go:457 |
 | test119 | `Test119_cartridge_response_concatenated_and_final_payload_diverge_for_multi_chunk` | TEST119: CartridgeResponse::Streaming concatenated() and final_payload() diverge for multi-chunk responses: concatenated returns all chunk data joined; final_payload returns only the last chunk. A consumer that confuses the two will silently drop all but the last chunk of a multi-chunk response. | bifaci/host_test.go:10 |
 | test0120 | `Test0120_registry_url_under_dev_slug_is_rejected` | TEST120: Registry url under dev slug is rejected | bifaci/cartridge_discovery_test.go:103 |
-| test0123 | `Test0123_CapExists` | TEST0123: Cap exists | cap/registry_test.go:115 |
+| test0123 | `Test0123_CapExists` | TEST0123: Cap exists | cap/registry_test.go:116 |
 | test0124 | `Test0124_ParseHeadersWithNoWiringsReturnsNoEdgesError` | Test0124_ParseHeadersWithNoWiringsReturnsNoEdgesError verifies the ErrNoEdges case. | machine/machine_test.go:485 |
 | test0125 | `Test0125_effect_none_preserves_runtime_media` | TEST125: effect=none preserves runtime media identity | urn/cap_urn_test.go:2047 |
 | test0126 | `Test0126_effect_declared_uses_declared_output` | TEST126: default effect=declared uses the declared output | urn/cap_urn_test.go:2065 |
@@ -130,16 +130,16 @@ This catalog lists all tests in the Go codebase.
 | test134 | `Test134_AddMasterWithDuplicateHealthyIDErrors` | TEST134: Add master with duplicate healthy i d errors | bifaci/relay_switch_test.go:1125 |
 | test0136 | `Test0136_all_masters_ready_false_when_expected_count_unset` | TEST136: All masters ready false when expected count unset | bifaci/relay_switch_test.go:1360 |
 | test0137 | `Test0137_all_masters_ready_false_when_partially_connected` | TEST137: All masters ready false when partially connected | bifaci/relay_switch_test.go:1374 |
-| test138 | `Test138_parse_registry_json_with_stdin` | TEST138: Test parsing registry JSON with stdin args verifies stdin media URN extraction | cap/registry_test.go:97 |
+| test138 | `Test138_parse_registry_json_with_stdin` | TEST138: Test parsing registry JSON with stdin args verifies stdin media URN extraction | cap/registry_test.go:98 |
 | test0139 | `Test0139_all_masters_ready_true_when_masters_connected_but_capless` | TEST139: All masters ready true when masters connected but capless | bifaci/relay_switch_test.go:1387 |
 | test0140 | `Test0140_all_masters_ready_does_not_overshoot` | TEST140: All masters ready does not overshoot | bifaci/relay_switch_test.go:1403 |
-| test141 | `Test141_per_cap_url_shape` | TEST141: URL has the right shape — protocol, host, /caps/ prefix, 64 hex chars, no extension. | cap/registry_test.go:158 |
-| test142 | `Test142_normalize_handles_different_tag_orders` | TEST142: Different tag orders normalise to the same URL — the canonicaliser strips the variation before hashing. | cap/registry_test.go:170 |
-| test143 | `Test143_default_config` | TEST143: Default config points at https://fabric.capdag.com/ unless overridden by CDG_FABRIC_REGISTRY_URL. | cap/registry_test.go:181 |
-| test144 | `Test144_custom_registry_url` | TEST144: Test custom registry URL updates both registry and schema base URLs | cap/registry_test.go:194 |
-| test145 | `Test145_custom_registry_and_schema_url` | TEST145: Test custom registry and schema URLs set independently | cap/registry_test.go:202 |
-| test146 | `Test146_schema_url_not_overwritten_when_explicit` | TEST146: Test schema URL not overwritten when set explicitly before registry URL | cap/registry_test.go:211 |
-| test147 | `Test147_registry_for_test_with_config` | TEST147: Test registry for test with custom config creates registry with specified URLs | cap/registry_test.go:221 |
+| test141 | `Test141_per_cap_url_shape` | TEST141: URL has the right shape — protocol, host, /caps/ prefix, 64 hex chars, no extension. | cap/registry_test.go:159 |
+| test142 | `Test142_normalize_handles_different_tag_orders` | TEST142: Different tag orders normalise to the same URL — the canonicaliser strips the variation before hashing. | cap/registry_test.go:171 |
+| test143 | `Test143_default_config` | TEST143: Default config points at https://fabric.capdag.com/ unless overridden by CDG_FABRIC_REGISTRY_URL. | cap/registry_test.go:182 |
+| test144 | `Test144_custom_registry_url` | TEST144: Test custom registry URL updates both registry and schema base URLs | cap/registry_test.go:195 |
+| test145 | `Test145_custom_registry_and_schema_url` | TEST145: Test custom registry and schema URLs set independently | cap/registry_test.go:203 |
+| test146 | `Test146_schema_url_not_overwritten_when_explicit` | TEST146: Test schema URL not overwritten when set explicitly before registry URL | cap/registry_test.go:212 |
+| test147 | `Test147_registry_for_test_with_config` | TEST147: Test registry for test with custom config creates registry with specified URLs | cap/registry_test.go:222 |
 | test148 | `Test148_cap_manifest_creation` | TEST148: Manifest creation with cap groups | bifaci/manifest_test.go:23 |
 | test149 | `Test149_cap_manifest_with_author` | TEST149: Author field | bifaci/manifest_test.go:45 |
 | test150 | `Test150_cap_manifest_json_serialization` | TEST150: JSON roundtrip | bifaci/manifest_test.go:85 |
@@ -534,7 +534,7 @@ This catalog lists all tests in the Go codebase.
 | test610 | `Test610_get_cached_spec` | TEST610: get_cached_spec returns None for unknown and Some for known | media/spec_test.go:589 |
 | test612 | `Test612_clear_cache` | TEST612: clear_cache empties the in-memory cache for seeded schemas. | media/profile_test.go:85 |
 | test613 | `Test613_validate_cached` | TEST613: validate_cached validates against cached standard schemas | media/profile_test.go:93 |
-| test614 | `Test614_registry_creation` | TEST614: Verify registry creation succeeds and cache directory exists | cap/registry_test.go:28 |
+| test614 | `Test614_registry_creation` | TEST614: Verify registry creation succeeds and cache directory exists | cap/registry_test.go:29 |
 | test616 | `Test616_stored_media_def_to_def` | TEST616: Verify StoredMediaDef converts to MediaDef preserving all fields | media/spec_test.go:619 |
 | test617 | `Test617_normalize_media_urn` | TEST617: Verify normalize_media_urn produces consistent non-empty results | media/spec_test.go:638 |
 | test618 | `Test618_registry_creation` | TEST618: Verify profile schema registry creation succeeds with temp cache. A freshly constructed registry over a temp cache dir is operational: the cache directory exists on disk and the registry is usable. Inserting then reopening a registry on the same directory must load the persisted schema — this genuinely exercises the disk-cache round-trip (Rust new_with_cache_dir + load_all_cached_schemas), not just the in-memory map. | media/profile_test.go:114 |
@@ -767,7 +767,7 @@ This catalog lists all tests in the Go codebase.
 | test902 | `Test902_compute_checksum_empty` | TEST902: Verify FNV-1a checksum handles empty data | bifaci/frame_test.go:1993 |
 | test903 | `Test903_chunk_with_chunk_index_and_checksum` | TEST903: Verify CHUNK frame can store chunk_index and checksum fields | bifaci/frame_test.go:1999 |
 | test904 | `Test904_stream_end_with_chunk_count` | TEST904: Verify STREAM_END frame can store chunk_count field | bifaci/frame_test.go:2024 |
-| test908 | `Test908_cached_caps_accessible_when_offline` | TEST908: cached caps remain accessible while offline. | cap/registry_test.go:229 |
+| test908 | `Test908_cached_caps_accessible_when_offline` | TEST908: cached caps remain accessible while offline. | cap/registry_test.go:230 |
 | test910 | `Test910_map_progress_monotonic` | TEST910: map_progress output is monotonic for monotonically increasing input | orchestrator/progress_test.go:29 |
 | test911 | `Test911_map_progress_bounded` | TEST911: map_progress output is bounded within [base, base+weight] | orchestrator/progress_test.go:42 |
 | test912 | `Test912_progress_mapper_reports_through_parent` | TEST912: ProgressMapper correctly maps through a CapProgressFn | orchestrator/progress_test.go:56 |
@@ -948,6 +948,7 @@ This catalog lists all tests in the Go codebase.
 | test1189 | `Test1189_StrandEquivalenceWithDifferentNodeAllocationOrders` | TEST1189: Strand resolution keeps canonical anchor ordering stable across equivalent inputs. | machine/machine_test.go:642 |
 | test1190 | `Test1190_resolve_strand_inverse_format_converters_no_cycle` | TEST1190: resolveStrand with inverse format converters produces 3 distinct nodes, no cycle. | machine/machine_test.go:1037 |
 | test1191 | `Test1191_resolve_strand_disbind_pdf_with_file_path_slot_identity` | TEST1191: Disbinding a PDF with a file-path slot preserves the expected identity of the slot binding. | machine/machine_test.go:1070 |
+| test1196 | `Test1196_AliasedSerializationUsesAliasAndRoundTrips` | TEST1196: ToMachineNotationAliased renders a cap by its registered display alias (shortest, then alphabetical), referencing it DIRECTLY in the wiring with NO header, while a cap with no alias keeps its synthetic edge_N header + raw URN; the result round-trips back to the same machine (the parser resolves the alias from the warm cache). Mirrors Rust serializer::test1196. | machine/alias_test.go:216 |
 | test1221 | `Test1221_RefineWithMatchingAdapter` | TEST1221: Matching value adapters refine the base media URN when the value fits. | input_resolver/value_adapter_test.go:46 |
 | test1222 | `Test1222_RefineNoMatchingAdapter` | TEST1222: Base URNs without a registered adapter are returned unchanged. | input_resolver/value_adapter_test.go:59 |
 | test1223 | `Test1223_RefineAdapterReturnsNone` | TEST1223: Adapters that decline to refine leave the original media URN intact. | input_resolver/value_adapter_test.go:70 |
@@ -1035,25 +1036,28 @@ This catalog lists all tests in the Go codebase.
 | test1877 | `Test1877_registry_cartridge_under_wrong_slug_is_bad_install` | TEST1877: a registry cartridge hand-copied under the WRONG registry slug folder fails the three-place rule (BadInstallation) — scan-all does not mean "accept anywhere", placement must still be self-consistent. | bifaci/cartridge_discovery_test.go:157 |
 | test1878 | `Test1878_bundled_provider_without_baked_hash_is_rejected` | TEST1878: a cartridge marked `installed_from: bundle` with no baked hash in BUNDLED_PROVIDER_HASHES (the const is empty under plain `cargo test`) is rejected as BadInstallation — the bundled-integrity gate fires before the probe. Proves the verify is wired into discovery; a real bundle build bakes the hash so the matching directory passes. Non-macOS only: on macOS the baked-hash path is intentionally absent (OS code-signature is the guard), so a bundled provider is accepted there and would instead end at the probe. | bifaci/cartridge_discovery_test.go:170 |
 | test1879 | `Test1879_sync_roster_adds_and_removes_registered_dir_live` | TEST1879: SyncRoster updates the LIVE host inventory in place — the engine sees an added registered-dir cartridge via a fresh RelayNotify without reconnecting, and a subsequent empty sync removes it. This is the macOS-XPC `syncDiscoveryOutcomes` parity path the daemon uses after a registry verdict flips a held cartridge to Listed. | bifaci/host_roster_test.go:63 |
-| test1880 | `Test1880_AliasNameNormalizationRules` | TEST1880: alias name normalization lowercases and accepts the allowed character class; rejects colon, whitespace, and out-of-class chars with the right error. A broken validator would let a URN-shaped or whitespace name through, or mangle a valid name. | machine/alias_test.go:18 |
-| test1881 | `Test1881_TokenURNvsAliasDetection` | TEST1881: URN-vs-alias detection keys purely on the presence of ':'. The whole design rests on this discriminator being exact. | machine/alias_test.go:34 |
-| test1882 | `Test1882_ClassifyAliasTargetByPrefix` | TEST1882: alias target classification distinguishes cap from media by prefix and rejects a non-URN target. The typed-boundary enforcement in the registry depends on this. | machine/alias_test.go:43 |
-| test1883 | `Test1883_CapPositionAliasResolvesToCap` | Test1883: a cap-position name with no local header resolves as a cap alias. | machine/alias_test.go:166 |
-| test1884 | `Test1884_LocalHeaderShadowsCapAlias` | Test1884: a local header alias shadows a fabric alias of the same name. | machine/alias_test.go:177 |
-| test1885 | `Test1885_CapPositionAliasToMediaIsError` | Test1885: a cap-position alias that resolves to a MEDIA URN is a hard error. | machine/alias_test.go:190 |
-| test1886 | `Test1886_UnregisteredCapNameIsUndefinedAlias` | TEST1886: a cap-position name that is neither a local header nor a registered alias still raises UndefinedAlias. The alias mechanism must not mask a genuinely undefined name. | machine/alias_test.go:202 |
-| test1887 | `Test1887_ManifestSerdeRoundTripsAliases` | Test1887: the Manifest type round-trips an `aliases` map. | machine/alias_test.go:57 |
-| test1888 | `Test1888_ResolveAliasReturnsTarget` | TEST1888: resolve_alias returns the alias target untyped. Seeding a media alias and resolving it yields the media URN; a malformed alias name is rejected before any lookup. | machine/alias_test.go:74 |
-| test1889 | `Test1889_ResolveAliasTypedEnforcesKind` | Test1889: resolve alias typed enforces the expected kind. | machine/alias_test.go:91 |
-| test1890 | `Test1890_GetCapViaAliasAndTypeMismatch` | TEST1890: get_cap accepts a cap alias and returns the aliased cap; a media alias passed to get_cap fails hard (typed boundary). This proves alias substitution AND type enforcement at the registry's cap surface. | machine/alias_test.go:104 |
-| test1891 | `Test1891_GetMediaDefViaAliasAndTypeMismatch` | TEST1891: get_media_def accepts a media alias and returns the aliased spec; a cap alias passed to get_media_def fails hard. | machine/alias_test.go:121 |
-| test1892 | `Test1892_UnknownAliasIsNotFound` | TEST1892: an unknown alias name is a hard not-found, never a silent empty; unknown and malformed names are treated the same. This is the "expose issues, no fallback" contract. | machine/alias_test.go:141 |
-| test1893 | `Test1893_CacheRootIsNamespacedPerRegistryOrigin` | TEST1893: The fabric registry's on-disk cache root is namespaced per registry origin. A cache populated from one origin must never be reused to satisfy a lookup against another — prod and staging serve different bytes for the same URN/version, so an origin-blind cache silently resolves against the wrong snapshot. This pins three properties: distinct origins → distinct roots; same origin → identical root (deterministic, so caching actually hits); and the slug is the same slug_for scheme the cartridge registry layout uses, living under the shared "capdag" cache directory. | cap/registry_test.go:250 |
+| test1880 | `Test1880_AliasNameNormalizationRules` | TEST1880: alias name normalization lowercases and accepts the allowed character class; rejects colon, whitespace, and out-of-class chars with the right error. A broken validator would let a URN-shaped or whitespace name through, or mangle a valid name. | machine/alias_test.go:19 |
+| test1881 | `Test1881_TokenURNvsAliasDetection` | TEST1881: URN-vs-alias detection keys purely on the presence of ':'. The whole design rests on this discriminator being exact. | machine/alias_test.go:35 |
+| test1882 | `Test1882_ClassifyAliasTargetByPrefix` | TEST1882: alias target classification distinguishes cap from media by prefix and rejects a non-URN target. The typed-boundary enforcement in the registry depends on this. | machine/alias_test.go:44 |
+| test1883 | `Test1883_CapPositionAliasResolvesToCap` | Test1883: a cap-position name with no local header resolves as a cap alias. | machine/alias_test.go:167 |
+| test1884 | `Test1884_LocalHeaderShadowsCapAlias` | Test1884: a local header alias shadows a fabric alias of the same name. | machine/alias_test.go:178 |
+| test1885 | `Test1885_CapPositionAliasToMediaIsError` | Test1885: a cap-position alias that resolves to a MEDIA URN is a hard error. | machine/alias_test.go:191 |
+| test1886 | `Test1886_UnregisteredCapNameIsUndefinedAlias` | TEST1886: a cap-position name that is neither a local header nor a registered alias still raises UndefinedAlias. The alias mechanism must not mask a genuinely undefined name. | machine/alias_test.go:203 |
+| test1887 | `Test1887_ManifestSerdeRoundTripsAliases` | Test1887: the Manifest type round-trips an `aliases` map. | machine/alias_test.go:58 |
+| test1888 | `Test1888_ResolveAliasReturnsTarget` | TEST1888: resolve_alias returns the alias target untyped. Seeding a media alias and resolving it yields the media URN; a malformed alias name is rejected before any lookup. | machine/alias_test.go:75 |
+| test1889 | `Test1889_ResolveAliasTypedEnforcesKind` | Test1889: resolve alias typed enforces the expected kind. | machine/alias_test.go:92 |
+| test1890 | `Test1890_GetCapViaAliasAndTypeMismatch` | TEST1890: get_cap accepts a cap alias and returns the aliased cap; a media alias passed to get_cap fails hard (typed boundary). This proves alias substitution AND type enforcement at the registry's cap surface. | machine/alias_test.go:105 |
+| test1891 | `Test1891_GetMediaDefViaAliasAndTypeMismatch` | TEST1891: get_media_def accepts a media alias and returns the aliased spec; a cap alias passed to get_media_def fails hard. | machine/alias_test.go:122 |
+| test1892 | `Test1892_UnknownAliasIsNotFound` | TEST1892: an unknown alias name is a hard not-found, never a silent empty; unknown and malformed names are treated the same. This is the "expose issues, no fallback" contract. | machine/alias_test.go:142 |
+| test1893 | `Test1893_CacheRootIsNamespacedPerRegistryOrigin` | TEST1893: The fabric registry's on-disk cache root is namespaced per registry origin. A cache populated from one origin must never be reused to satisfy a lookup against another — prod and staging serve different bytes for the same URN/version, so an origin-blind cache silently resolves against the wrong snapshot. This pins three properties: distinct origins → distinct roots; same origin → identical root (deterministic, so caching actually hits); and the slug is the same slug_for scheme the cartridge registry layout uses, living under the shared "capdag" cache directory. | cap/registry_test.go:251 |
+| test1894 | `Test1894_SelectDisplayAliasOrdering` | TEST1894: selectDisplayAlias picks the SHORTEST name, ties broken alphabetically. This is the deterministic ordering every aliased-display surface relies on; a regression here silently changes which alias the whole UI renders. Mirrors Rust registry::test1894. | cap/registry_test.go:317 |
+| test1895 | `Test1895_DisplayAliasForURN` | TEST1895: DisplayAliasForURN reverse-resolves a URN to its display alias. Proves: (1) the shortest-then-alphabetical winner among multiple aliases on the same target, (2) a NON-canonical query URN (different tag order) still resolves because the query is canonicalised before matching, (3) a URN with no alias returns not-found, (4) a non-URN string returns not-found. Mirrors Rust registry::test1895. | cap/registry_test.go:344 |
+| test1896 | `Test1896_CachedCapAliasesFiltersToCapTargets` | TEST1896: CachedCapAliases returns only CAP-targeted aliases as (name, target) pairs — media aliases are excluded. Drives the notation editor's registered- alias completions. Mirrors Rust registry::test1896. | cap/registry_test.go:388 |
 | test6182 | `Test6182_InputValidator_WithSchemaValidation` | TEST6182: Input validator  with schema validation | cap/schema_validation_test.go:296 |
 | test6183 | `Test6183_OutputValidator_WithSchemaValidation` | TEST6183: Output validator  with schema validation | cap/schema_validation_test.go:356 |
 | test6184 | `Test6184_CapValidationCoordinator_EndToEnd` | TEST6184: Cap validation coordinator  end to end | cap/schema_validation_test.go:415 |
 | test6185 | `Test6185_FileSchemaResolver_ErrorHandling` | TEST6185: File schema resolver  error handling | cap/schema_validation_test.go:530 |
-| test6186 | `Test6186_RegistryGetCap` | TEST136 (deleted): exercised the private `cacheKey` method on the unified FabricRegistry. The on-disk cache filename scheme is an implementation detail of the persistence layer; equivalent observable behavior — that two equivalent URNs land in the same cache slot — is covered by Test140 (`same_cap_different_spellings_same_url`). Rust and Python dropped this; this deletion keeps the Go mirror in parity. | cap/registry_test.go:42 |
+| test6186 | `Test6186_RegistryGetCap` | TEST136 (deleted): exercised the private `cacheKey` method on the unified FabricRegistry. The on-disk cache filename scheme is an implementation detail of the persistence layer; equivalent observable behavior — that two equivalent URNs land in the same cache slot — is covered by Test140 (`same_cap_different_spellings_same_url`). Rust and Python dropped this; this deletion keeps the Go mirror in parity. | cap/registry_test.go:43 |
 | test6202 | `Test6202_empty_cap_urn_defaults_to_wildcard` | TEST6202: Bare top cap is illegal; identity must be explicit effect=none | urn/cap_urn_test.go:635 |
 | test6207 | `Test6207_ConcatenatedVsFinalPayloadDivergence` | Mirror-specific coverage: Test that concatenated() returns full payload while final_payload() returns only last chunk | bifaci/integration_test.go:1692 |
 | test6210 | `Test6210_ResponseWrapperFromText` | TEST6210: Response wrapper from text | cap/response_test.go:42 |
@@ -1078,8 +1082,8 @@ This catalog lists all tests in the Go codebase.
 | test6314 | `Test6314_ComplexNestedSchemaValidation` | TEST6314: Complex nested schema validation | cap/schema_validation_test.go:542 |
 | test6317 | `Test6317_MediaUrnResolutionWithRegistry` | TEST6317: Media urn resolution with registry | cap/schema_validation_test.go:621 |
 | test6320 | `Test6320_CustomMediaUrnResolution` | TEST6320: Custom media urn resolution | cap/schema_validation_test.go:656 |
-| test6325 | `Test6325_RegistryValidation` | TEST6325: Registry validation | cap/registry_test.go:56 |
-| test6329 | `Test6329_CacheOperations` | TEST6329: Cache operations | cap/registry_test.go:71 |
+| test6325 | `Test6325_RegistryValidation` | TEST6325: Registry validation | cap/registry_test.go:57 |
+| test6329 | `Test6329_CacheOperations` | TEST6329: Cache operations | cap/registry_test.go:72 |
 | test6330 | `Test6330_ChunkingDataIntegrity3x` | Mirror-specific coverage: Test auto-chunking preserves data integrity across chunk boundaries for 3x max_chunk payload | bifaci/integration_test.go:1716 |
 | test6339 | `Test6339_CapUrn_JSONSerialization` | JSON serialization test (not numbered in Rust) | urn/cap_urn_test.go:1442 |
 | test6343 | `Test6343_ParseSimple` | Mirror-specific coverage: Test parsing simple media URN verifies correct structure with no version, subtype, or profile | urn/media_urn_test.go:14 |
@@ -1092,10 +1096,10 @@ This catalog lists all tests in the Go codebase.
 | test6371 | `Test6371_CapManifestCompatibility` | TEST6371: Cap manifest compatibility | bifaci/manifest_test.go:285 |
 | test6374 | `Test6374_CartridgeAttachmentErrorKindMatchesProtoSnakeCase` | Test6374_CartridgeAttachmentErrorKindMatchesProtoSnakeCase pins every variant's string value against its proto snake_case name. New variants must be added here AND in the Rust / Swift / proto sides. | bifaci/relay_switch_test.go:929 |
 | test6379 | `Test6379_CartridgeAttachmentErrorJSONRoundTrips` | Test6379_CartridgeAttachmentErrorJSONRoundTrips verifies a CartridgeAttachmentError marshals to JSON and unmarshals back without changing the kind for every variant. RelayNotify wire payload is JSON; a single-variant regression breaks the entire per-master parse. | bifaci/relay_switch_test.go:957 |
-| test6382 | `Test6382_parse_registry_json` | TEST6382: Test parsing registry JSON without stdin args verifies cap structure | cap/registry_test.go:81 |
-| test6388 | `Test6388_per_cap_url_uses_sha256` | TEST6388: Per-cap URL is /caps/<sha256-hex> — no URN-grammar characters in the path, no percent-encoding gymnastics. | cap/registry_test.go:137 |
-| test6391 | `Test6391_same_cap_different_spellings_same_url` | TEST6391: Equivalent URNs (different tag order, etc.) hash to the same key. This is the property that makes cross-language lookups land at the same registry object regardless of which capdag implementation issued the request. | cap/registry_test.go:151 |
-| test6396 | `Test6396_MalformedCapUrnFailsHard` | TEST6396: A malformed cap URN must FAIL HARD, not be passed through raw (the old silent fallback) and surface later as a misleading "not in manifest" / cache-miss. The `out` value below contains an unquoted `=`, which the cap grammar rejects. Against the old `if err == nil { normalized = ... }` fallback, normalizeCapUrn returned the raw string and GetCap then reported a not-found/manifest error; this test asserts the truthful parse error and that no path panics on a bad URN. | cap/registry_test.go:283 |
+| test6382 | `Test6382_parse_registry_json` | TEST6382: Test parsing registry JSON without stdin args verifies cap structure | cap/registry_test.go:82 |
+| test6388 | `Test6388_per_cap_url_uses_sha256` | TEST6388: Per-cap URL is /caps/<sha256-hex> — no URN-grammar characters in the path, no percent-encoding gymnastics. | cap/registry_test.go:138 |
+| test6391 | `Test6391_same_cap_different_spellings_same_url` | TEST6391: Equivalent URNs (different tag order, etc.) hash to the same key. This is the property that makes cross-language lookups land at the same registry object regardless of which capdag implementation issued the request. | cap/registry_test.go:152 |
+| test6396 | `Test6396_MalformedCapUrnFailsHard` | TEST6396: A malformed cap URN must FAIL HARD, not be passed through raw (the old silent fallback) and surface later as a misleading "not in manifest" / cache-miss. The `out` value below contains an unquoted `=`, which the cap grammar rejects. Against the old `if err == nil { normalized = ... }` fallback, normalizeCapUrn returned the raw string and GetCap then reported a not-found/manifest error; this test asserts the truthful parse error and that no path panics on a bad URN. | cap/registry_test.go:284 |
 | test6423 | `Test6423_CartridgeAttachmentErrorDecodesProtoSnakeCaseStrings` | Test6423_CartridgeAttachmentErrorDecodesProtoSnakeCaseStrings is the engine→Go-host (or Swift→Go-host) decode path: incoming JSON uses the snake_case wire format, and the Go side must resolve each string into the matching variant. CartridgeAttachmentErrorKind is just `type ... string`, so this test is also a check that the JSON unmarshaller doesn't normalise/lowercase/etc the bytes behind our backs. | bifaci/relay_switch_test.go:1005 |
 | test6428 | `Test6428_IntegrationVersionlessCapCreation` | Test6428_IntegrationVersionlessCapCreation verifies caps can be created without version fields | bifaci/integration_test.go:47 |
 | test6431 | `Test6431_IntegrationCaseInsensitiveUrns` | Test6431_IntegrationCaseInsensitiveUrns verifies URNs are case-insensitive | bifaci/integration_test.go:75 |
@@ -1260,8 +1264,8 @@ These tests have a numbering disagreement between the function name and the auth
 ---
 
 *Generated from Go source tree*
-*Total tests: 1145*
-*Total numbered tests: 1145*
+*Total tests: 1149*
+*Total numbered tests: 1149*
 *Total unnumbered tests: 0*
 *Total numbered tests missing descriptions: 0*
 *Total numbering mismatches: 89*
