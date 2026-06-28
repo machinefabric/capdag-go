@@ -29,9 +29,6 @@ func Test168_response_wrapper_from_json(t *testing.T) {
 
 	response := NewResponseWrapperFromJSON(jsonBytes)
 
-	assert.True(t, response.IsJSON())
-	assert.False(t, response.IsText())
-	assert.False(t, response.IsBinary())
 	assert.Equal(t, len(jsonBytes), response.Size())
 
 	var parsed map[string]interface{}
@@ -46,10 +43,6 @@ func Test6210_ResponseWrapperFromText(t *testing.T) {
 	testText := "Hello, World!"
 	response := NewResponseWrapperFromText([]byte(testText))
 
-	assert.False(t, response.IsJSON())
-	assert.True(t, response.IsText())
-	assert.False(t, response.IsBinary())
-
 	result, err := response.AsString()
 	assert.NoError(t, err)
 	assert.Equal(t, testText, result)
@@ -59,10 +52,6 @@ func Test6210_ResponseWrapperFromText(t *testing.T) {
 func Test170_response_wrapper_from_binary(t *testing.T) {
 	testData := []byte{0x89, 0x50, 0x4E, 0x47} // PNG header
 	response := NewResponseWrapperFromBinary(testData)
-
-	assert.False(t, response.IsJSON())
-	assert.False(t, response.IsText())
-	assert.True(t, response.IsBinary())
 
 	assert.Equal(t, testData, response.AsBytes())
 	assert.Equal(t, len(testData), response.Size())

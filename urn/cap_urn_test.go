@@ -12,7 +12,7 @@ import (
 
 // All cap URNs now require in and out specs. Use these helpers:
 // Media URNs must be quoted in cap URNs because they contain semicolons
-// Use proper tags for is_binary/is_json/is_text detection
+// Use proper tags for is_json detection (binary/text distinction is gone; text is the enc= dim)
 func testUrn(tags string) string {
 	// Use standard.MediaObject constant for consistent canonical form
 	if tags == "" {

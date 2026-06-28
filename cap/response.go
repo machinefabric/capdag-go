@@ -158,20 +158,14 @@ func (rw *ResponseWrapper) Size() int {
 	return len(rw.rawBytes)
 }
 
-// IsBinary checks if the response is binary
-func (rw *ResponseWrapper) IsBinary() bool {
-	return rw.contentType == ResponseContentTypeBinary
-}
-
 // IsJSON checks if the response is JSON
 func (rw *ResponseWrapper) IsJSON() bool {
 	return rw.contentType == ResponseContentTypeJSON
 }
 
-// IsText checks if the response is text
-func (rw *ResponseWrapper) IsText() bool {
-	return rw.contentType == ResponseContentTypeText
-}
+// IsBinary()/IsText() were deleted from ResponseWrapper to match the capdag
+// reference: everything is bytes, so there is no binary/text distinction.
+// Text-ness of a media is expressed by the orthogonal `enc=` dim, not here.
 
 // ValidateAgainstCap validates response against cap output definition
 func (rw *ResponseWrapper) ValidateAgainstCap(cap *Cap, registry *media.FabricRegistry) error {
