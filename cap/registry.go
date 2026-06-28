@@ -370,6 +370,19 @@ func normalizeCapUrn(urnStr string) (string, error) {
 	return parsed.String(), nil
 }
 
+// normalizeMediaUrn parses a media URN and returns its canonical (tag-sorted)
+// string form. A parse failure is a HARD error — never silently swallowed into
+// the raw string. This never panics.
+//
+// Mirrors Rust fabric::registry::normalize_media_urn.
+func normalizeMediaUrn(urnStr string) (string, error) {
+	parsed, err := urn.NewMediaUrnFromString(urnStr)
+	if err != nil {
+		return "", fmt.Errorf("malformed media URN %q: %w", urnStr, err)
+	}
+	return parsed.String(), nil
+}
+
 // getCacheDir returns the on-disk cache root for a given registry origin.
 //
 // The root is namespaced by a stable slug of the registry base URL, using the
@@ -774,6 +787,100 @@ func (r *FabricRegistry) ResolveAliasCached(name string) (string, bool) {
 		return "", false
 	}
 	return alias.Target, true
+}
+
+// selectDisplayAlias picks the display alias from a set of alias names that all
+// target the same URN: the SHORTEST name, ties broken alphabetically. Returns
+// ("", false) for an empty set.
+//
+// The ordering is total and deterministic: (len, name) lexicographic. So "png"
+// beats "png-image" (shorter), and between equal-length "a16" / "a09" the
+// alphabetical-smaller "a09" wins. Stable across processes for a given alias
+// set, which is what makes aliased UI/notation reproducible.
+//
+// Mirrors Rust fabric::registry::select_display_alias.
+func selectDisplayAlias(names []string) (string, bool) {
+	best := ""
+	found := false
+	for _, name := range names {
+		if !found {
+			best = name
+			found = true
+			continue
+		}
+		if len(name) < len(best) || (len(name) == len(best) && name < best) {
+			best = name
+		}
+	}
+	return best, found
+}
+
+// DisplayAliasForURN is the reverse lookup: the display alias for a cap:/media:
+// URN, or ("", false) if no cached alias points at it. This is the canonical
+// primitive every UI surface and notation generator uses to render an aliased
+// name in place of a raw URN.
+//
+// The query URN is canonicalised through its own parser (cap vs media by
+// prefix) before matching, because alias targets are stored canonically — a
+// non-canonical query (different tag order, redundant whitespace) would
+// otherwise miss. A URN that is neither a cap nor a media URN, or that fails to
+// parse, returns ("", false) (it cannot have an alias).
+//
+// When multiple aliases target the same URN, the winner is the SHORTEST name,
+// ties broken alphabetically (see selectDisplayAlias). This is deterministic
+// and stable across processes for a given alias set.
+//
+// Mirrors Rust fabric::registry::FabricRegistry::display_alias_for_urn.
+func (r *FabricRegistry) DisplayAliasForURN(urnStr string) (string, bool) {
+	// Canonicalise by kind. ClassifyAliasTarget keys off the prefix and is the
+	// same classifier the alias publisher uses for targets, so a query and a
+	// stored target canonicalise identically.
+	kind, ok := media.ClassifyAliasTarget(urnStr)
+	if !ok {
+		return "", false
+	}
+	var canonical string
+	var err error
+	switch kind {
+	case media.AliasTargetCap:
+		canonical, err = normalizeCapUrn(urnStr)
+	case media.AliasTargetMedia:
+		canonical, err = normalizeMediaUrn(urnStr)
+	default:
+		return "", false
+	}
+	if err != nil {
+		return "", false
+	}
+
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+	var names []string
+	for _, alias := range r.cachedAliases {
+		if alias.Target == canonical {
+			names = append(names, alias.Name)
+		}
+	}
+	return selectDisplayAlias(names)
+}
+
+// CachedCapAliases returns all cached aliases whose target is a CAP URN, as
+// (name, cap_urn) pairs. Used by the notation editor to offer registered cap
+// aliases as wiring completions. Order is unspecified (the caller sorts/filters).
+// Synchronous, cache-only — relies on the startup alias prefetch having warmed
+// the cache.
+//
+// Mirrors Rust fabric::registry::FabricRegistry::cached_cap_aliases.
+func (r *FabricRegistry) CachedCapAliases() [][2]string {
+	r.mutex.RLock()
+	defer r.mutex.RUnlock()
+	var out [][2]string
+	for _, alias := range r.cachedAliases {
+		if kind, ok := media.ClassifyAliasTarget(alias.Target); ok && kind == media.AliasTargetCap {
+			out = append(out, [2]string{alias.Name, alias.Target})
+		}
+	}
+	return out
 }
 
 // InsertCachedAliasForTest inserts an alias directly into the in-memory cache

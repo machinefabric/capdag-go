@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/machinefabric/capdag-go/media"
 	"github.com/machinefabric/capdag-go/urn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -307,4 +308,99 @@ func Test6396_MalformedCapUrnFailsHard(t *testing.T) {
 	got, ok := registry.GetCachedCap(malformed)
 	assert.False(t, ok, "GetCachedCap on a malformed URN must report not-found")
 	assert.Nil(t, got, "GetCachedCap on a malformed URN must return nil")
+}
+
+// TEST1894: selectDisplayAlias picks the SHORTEST name, ties broken
+// alphabetically. This is the deterministic ordering every aliased-display
+// surface relies on; a regression here silently changes which alias the whole
+// UI renders. Mirrors Rust registry::test1894.
+func Test1894_SelectDisplayAliasOrdering(t *testing.T) {
+	// Shorter wins over longer regardless of alphabetical order.
+	got, ok := selectDisplayAlias([]string{"png-image", "png", "image-png"})
+	require.True(t, ok)
+	assert.Equal(t, "png", got)
+
+	// Equal length → alphabetical (a09 < a16).
+	got, ok = selectDisplayAlias([]string{"a16", "a09", "a12"})
+	require.True(t, ok)
+	assert.Equal(t, "a09", got)
+
+	// Single candidate returns itself.
+	got, ok = selectDisplayAlias([]string{"solo"})
+	require.True(t, ok)
+	assert.Equal(t, "solo", got)
+
+	// Empty set → not found.
+	_, ok = selectDisplayAlias(nil)
+	assert.False(t, ok)
+}
+
+// TEST1895: DisplayAliasForURN reverse-resolves a URN to its display alias.
+// Proves: (1) the shortest-then-alphabetical winner among multiple aliases on
+// the same target, (2) a NON-canonical query URN (different tag order) still
+// resolves because the query is canonicalised before matching, (3) a URN with
+// no alias returns not-found, (4) a non-URN string returns not-found. Mirrors
+// Rust registry::test1895.
+func Test1895_DisplayAliasForURN(t *testing.T) {
+	registry := NewFabricRegistryForTest()
+	// Two aliases on the same cap target; "i2s" is shorter than "int2str".
+	registry.InsertCachedAliasForTest(media.StoredAlias{
+		Name:    "int2str",
+		Target:  `cap:coerce;in="media:integer;numeric";out="media:enc=utf-8"`,
+		Version: 1,
+	})
+	registry.InsertCachedAliasForTest(media.StoredAlias{
+		Name:    "i2s",
+		Target:  `cap:coerce;in="media:integer;numeric";out="media:enc=utf-8"`,
+		Version: 1,
+	})
+	// A media alias too.
+	registry.InsertCachedAliasForTest(media.StoredAlias{
+		Name:    "json",
+		Target:  "media:fmt=json;record",
+		Version: 1,
+	})
+
+	// Canonical query → shortest alias wins.
+	got, ok := registry.DisplayAliasForURN(`cap:coerce;in="media:integer;numeric";out="media:enc=utf-8"`)
+	require.True(t, ok)
+	assert.Equal(t, "i2s", got)
+
+	// NON-canonical query (media tags reordered): must still resolve via
+	// canonicalisation. media:record;fmt=json canonicalises to
+	// media:fmt=json;record.
+	got, ok = registry.DisplayAliasForURN("media:record;fmt=json")
+	require.True(t, ok)
+	assert.Equal(t, "json", got)
+
+	// A real URN with no alias → not found.
+	_, ok = registry.DisplayAliasForURN("media:enc=utf-8;ext=pdf")
+	assert.False(t, ok)
+
+	// A non-URN (no cap:/media: prefix) → not found, never a panic.
+	_, ok = registry.DisplayAliasForURN("int2str")
+	assert.False(t, ok)
+}
+
+// TEST1896: CachedCapAliases returns only CAP-targeted aliases as (name, target)
+// pairs — media aliases are excluded. Drives the notation editor's registered-
+// alias completions. Mirrors Rust registry::test1896.
+func Test1896_CachedCapAliasesFiltersToCapTargets(t *testing.T) {
+	registry := NewFabricRegistryForTest()
+	capTarget := `cap:coerce;in="media:integer;numeric";out="media:enc=utf-8"`
+	registry.InsertCachedAliasForTest(media.StoredAlias{
+		Name:    "int2str",
+		Target:  capTarget,
+		Version: 1,
+	})
+	registry.InsertCachedAliasForTest(media.StoredAlias{
+		Name:    "json",
+		Target:  "media:fmt=json;record",
+		Version: 1,
+	})
+	capAliases := registry.CachedCapAliases()
+	// Only the cap alias is returned; the media alias is filtered out.
+	require.Len(t, capAliases, 1, "got: %v", capAliases)
+	assert.Equal(t, "int2str", capAliases[0][0])
+	assert.Equal(t, capTarget, capAliases[0][1])
 }

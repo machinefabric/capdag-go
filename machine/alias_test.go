@@ -6,6 +6,7 @@ import (
 
 	"github.com/machinefabric/capdag-go/cap"
 	"github.com/machinefabric/capdag-go/media"
+	"github.com/machinefabric/capdag-go/planner"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -205,4 +206,51 @@ func Test1886_UnregisteredCapNameIsUndefinedAlias(t *testing.T) {
 	require.NotNil(t, perr)
 	require.NotNil(t, perr.Syntax)
 	assert.Equal(t, ErrUndefinedAlias, perr.Syntax.Kind)
+}
+
+// TEST1196: ToMachineNotationAliased renders a cap by its registered display
+// alias (shortest, then alphabetical), referencing it DIRECTLY in the wiring
+// with NO header, while a cap with no alias keeps its synthetic edge_N header +
+// raw URN; the result round-trips back to the same machine (the parser resolves
+// the alias from the warm cache). Mirrors Rust serializer::test1196.
+func Test1196_AliasedSerializationUsesAliasAndRoundTrips(t *testing.T) {
+	extract := extractCapDef()
+	embed := embedCapDef()
+	reg := registryWith([]*cap.Cap{extract, embed})
+
+	// Two aliases on the extract cap; "ex" is shorter than "extract-pdf". The
+	// target is the cap's canonical URN string so the reverse lookup matches.
+	reg.InsertCachedAliasForTest(media.StoredAlias{Name: "extract-pdf", Target: extract.UrnString(), Version: 1})
+	reg.InsertCachedAliasForTest(media.StoredAlias{Name: "ex", Target: extract.UrnString(), Version: 1})
+	// No alias for the embed cap → it must stay a raw URN.
+
+	// Build a pdf -> txt -> vec machine spanning both caps.
+	strand := strandFromSteps(
+		[]*planner.StrandStep{
+			capStep(extract.UrnString(), "extract", "media:ext=pdf", `media:txt;enc=utf-8`),
+			capStep(embed.UrnString(), "embed", `media:txt;enc=utf-8`, `media:vec;record`),
+		},
+		"pdf to vec",
+	)
+	m1, err := FromStrand(strand, reg)
+	require.Nil(t, err)
+
+	aliased := m1.ToMachineNotationAliased(reg, NotationFormatBracketed)
+
+	// The extract cap is aliased: referenced directly in the wiring by its
+	// SHORTER alias `ex`, with NO header, and the URN must not appear.
+	assert.Contains(t, aliased, "-> ex ->",
+		"extract cap must be referenced in the wiring by the shortest alias `ex`, got: %s", aliased)
+	assert.NotContains(t, aliased, "extract",
+		"the aliased extract cap URN must not appear, got: %s", aliased)
+	// The embed cap has no alias → it keeps its synthetic header + URN.
+	assert.Contains(t, aliased, "embed",
+		"the un-aliased embed cap must keep its header URN, got: %s", aliased)
+
+	// Round-trip: parse the aliased notation back. The alias is already in the
+	// warm cache (seeded above), so the sync parser resolves it.
+	m2, perr := ParseMachine(aliased, reg)
+	require.Nil(t, perr, "aliased notation must re-parse")
+	assert.True(t, m1.IsEquivalent(m2),
+		"aliased serialize → parse must preserve strict equivalence")
 }

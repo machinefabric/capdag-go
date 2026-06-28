@@ -418,6 +418,136 @@ func (m *Machine) ToMachineNotationFormatted(format NotationFormat) string {
 	return strings.Join(parts, "\n")
 }
 
+// ToMachineNotationAliased serializes to machine notation rendering each cap by
+// its registered display alias (shortest name, ties alphabetical) when one
+// exists, falling back to the canonical URN otherwise.
+//
+// This is the "store aliased" form: generated and persisted machines use it so
+// the saved notation reads in terms of aliases. An aliased cap is referenced
+// DIRECTLY in the wiring's cap position by its alias name, with NO header (the
+// grammar only permits an alias — a colon-free token — in the wiring cap
+// position, never in a header, so aliasing implies header-less). An un-aliased
+// cap keeps its synthetic edge_N token plus an [edge_N cap:...] header. The
+// parser resolves the aliases back to URNs on load (its async warm-up hydrates
+// the alias cache), so the form round-trips.
+//
+// Mirrors Rust machine::serializer::Machine::to_machine_notation_aliased.
+func (m *Machine) ToMachineNotationAliased(registry *cap.FabricRegistry, format NotationFormat) string {
+	if m.IsEmpty() {
+		return ""
+	}
+
+	var parts []string
+	open, close_ := "", ""
+	if format == NotationFormatBracketed {
+		open, close_ = "[", "]"
+	}
+
+	// Per-strand plans, allocated from global counters shared across all
+	// strands, matching the canonical serializer's counter discipline.
+	type strandPlan struct {
+		nodeNames   []string
+		edgeTokens  []string // cap-position token per edge, in canonical edge order
+		needsHeader []bool   // true for synthetic edge_N tokens, false for aliases
+	}
+	plans := make([]strandPlan, len(m.strands))
+	nextAlias := 0
+	nextNode := 0
+	for i, strand := range m.strands {
+		edgeTokens := make([]string, len(strand.edges))
+		needsHeader := make([]bool, len(strand.edges))
+		for eIdx, edge := range strand.edges {
+			if alias, ok := registry.DisplayAliasForURN(edge.CapUrn.String()); ok {
+				// Cap has a registered alias: use it directly in the wiring (the
+				// parser resolves it as a registry cap alias), no header.
+				edgeTokens[eIdx] = alias
+				needsHeader[eIdx] = false
+			} else {
+				// No alias: synthetic edge token with a header binding it to the
+				// cap URN.
+				edgeTokens[eIdx] = fmt.Sprintf("edge_%d", nextAlias)
+				needsHeader[eIdx] = true
+			}
+			nextAlias++
+		}
+		nodeNames := make([]string, len(strand.nodes))
+		for j := range strand.nodes {
+			nodeNames[j] = fmt.Sprintf("n%d", nextNode)
+			nextNode++
+		}
+		plans[i] = strandPlan{nodeNames: nodeNames, edgeTokens: edgeTokens, needsHeader: needsHeader}
+	}
+
+	// Headers across all strands — only for edges whose cap-position token is a
+	// synthetic edge_N (aliased caps are referenced directly in the wiring and
+	// need no header). Emitted in strand/edge walk order, mirroring Rust.
+	for sIdx, strand := range m.strands {
+		plan := plans[sIdx]
+		for eIdx, edge := range strand.edges {
+			if plan.needsHeader[eIdx] {
+				parts = append(parts, fmt.Sprintf("%s%s %s%s", open, plan.edgeTokens[eIdx], edge.CapUrn, close_))
+			}
+		}
+	}
+
+	// Wirings across all strands, in canonical edge order.
+	for sIdx, strand := range m.strands {
+		plan := plans[sIdx]
+		for eIdx, edge := range strand.edges {
+			token := plan.edgeTokens[eIdx]
+			loopPrefix := ""
+			if edge.IsLoop {
+				loopPrefix = "LOOP "
+			}
+
+			sortedAssignment := make([]EdgeAssignmentBinding, len(edge.Assignment))
+			copy(sortedAssignment, edge.Assignment)
+			sort.Slice(sortedAssignment, func(a, b int) bool {
+				return sortedAssignment[a].Source < sortedAssignment[b].Source
+			})
+
+			sources := make([]string, len(sortedAssignment))
+			for i, b := range sortedAssignment {
+				sources[i] = plan.nodeNames[b.Source]
+			}
+			targetName := plan.nodeNames[edge.Target]
+
+			if len(sources) == 1 {
+				parts = append(parts, fmt.Sprintf("%s%s -> %s%s -> %s%s",
+					open, sources[0], loopPrefix, token, targetName, close_))
+			} else {
+				group := strings.Join(sources, ", ")
+				parts = append(parts, fmt.Sprintf("%s(%s) -> %s%s -> %s%s",
+					open, group, loopPrefix, token, targetName, close_))
+			}
+		}
+	}
+
+	if format == NotationFormatBracketed {
+		return strings.Join(parts, "")
+	}
+	return strings.Join(parts, "\n")
+}
+
+// StrandToMachineNotation knits a planner-produced Strand into a single-strand
+// Machine and serializes it to one-line bracketed machine notation rendering
+// each cap by its registered display alias (the "store aliased" form). This is
+// the notation used for generated/discovered paths and for persistence — saved
+// and surfaced machines read in terms of aliases. The parser resolves the
+// aliases back to URNs on load.
+//
+// Alias-independent canonical identity, when needed, comes from
+// Machine.ToMachineNotation() on the knitted machine — not this.
+//
+// Mirrors Rust planner::live_cap_fab::Strand::to_machine_notation.
+func StrandToMachineNotation(strand *planner.Strand, registry *cap.FabricRegistry) (string, *MachineAbstractionError) {
+	m, err := FromStrand(strand, registry)
+	if err != nil {
+		return "", err
+	}
+	return m.ToMachineNotationAliased(registry, NotationFormatBracketed), nil
+}
+
 // jsonEscape escapes only `\` and `"` in a string.
 // MediaUrn and CapUrn produce ASCII-safe canonical text, so only
 // these two metacharacters need escaping for valid JSON output.
@@ -440,6 +570,22 @@ func jsonEscape(s string) string {
 //
 // Format: {"strands":[{"nodes":[...],"edges":[...],"input_anchor_nodes":[...],"output_anchor_nodes":[...]},...]}
 func (m *Machine) ToRenderPayloadJSON() string {
+	return m.renderPayloadJSON(nil)
+}
+
+// ToRenderPayloadJSONAliased builds the render payload labelling each edge by
+// the cap's display alias when one is registered (shortest, then alphabetical),
+// falling back to the synthetic edge_N for an un-aliased cap. The render payload
+// is a display surface, so it uses the aliased token, mirroring Rust's
+// to_render_payload_json (which always takes the registry).
+func (m *Machine) ToRenderPayloadJSONAliased(registry *cap.FabricRegistry) string {
+	return m.renderPayloadJSON(registry)
+}
+
+// renderPayloadJSON is the shared body. When registry is non-nil, edge alias
+// labels are the cap's display alias (falling back to edge_N); when nil, every
+// edge label is the synthetic edge_N.
+func (m *Machine) renderPayloadJSON(registry *cap.FabricRegistry) string {
 	if m.IsEmpty() {
 		return `{"strands":[]}`
 	}
@@ -460,7 +606,14 @@ func (m *Machine) ToRenderPayloadJSON() string {
 			nextNode++
 		}
 		edgeAliases := make([]string, len(strand.edges))
-		for j := range strand.edges {
+		for j, edge := range strand.edges {
+			if registry != nil {
+				if alias, ok := registry.DisplayAliasForURN(edge.CapUrn.String()); ok {
+					edgeAliases[j] = alias
+					nextAlias++
+					continue
+				}
+			}
 			edgeAliases[j] = fmt.Sprintf("edge_%d", nextAlias)
 			nextAlias++
 		}
