@@ -161,8 +161,8 @@ This catalog lists all tests in the Go codebase.
 | test166 | `Test166_schema_validator_skip_validation_without_schema` | TEST166: Test validation skipped when resolved media def has no schema | cap/schema_validation_test.go:689 |
 | test167 | `Test167_schema_validator_unresolvable_media_urn_fails_hard` | TEST167: Test validation fails hard when media URN cannot be resolved from any source | cap/schema_validation_test.go:714 |
 | test168 | `Test168_response_wrapper_from_json` | TEST168: Test ResponseWrapper from JSON deserializes to correct structured type | cap/response_test.go:22 |
-| test169 | `Test169_response_wrapper_as_int` | TEST169: Test ResponseWrapper converts to primitive types integer, float, boolean, string | cap/response_test.go:76 |
-| test170 | `Test170_response_wrapper_from_binary` | TEST170: Test ResponseWrapper from binary stores and retrieves raw bytes correctly | cap/response_test.go:59 |
+| test169 | `Test169_response_wrapper_as_int` | TEST169: Test ResponseWrapper converts to primitive types integer, float, boolean, string | cap/response_test.go:65 |
+| test170 | `Test170_response_wrapper_from_binary` | TEST170: Test ResponseWrapper from binary stores and retrieves raw bytes correctly | cap/response_test.go:52 |
 | test171 | `Test171_frame_type_roundtrip` | TEST171: Test all FrameType discriminants roundtrip through u8 conversion preserving identity | bifaci/frame_test.go:13 |
 | test172 | `Test172_frame_type_valid_range` | TEST172: Test FrameType::from_u8 returns None for values outside the valid discriminant range | bifaci/frame_test.go:38 |
 | test173 | `Test173_frame_type_wire_protocol_values` | TEST173: Test FrameType discriminant values match the wire protocol specification exactly | bifaci/frame_test.go:71 |
@@ -521,11 +521,11 @@ This catalog lists all tests in the Go codebase.
 | test596 | `Test596_with_full_definition_constructor` | TEST596: with_full_definition constructor stores all fields | cap/definition_test.go:363 |
 | test597 | `Test597_cap_arg_with_full_definition` | TEST597: CapArg::with_full_definition stores all fields including optional ones | cap/definition_test.go:393 |
 | test598 | `Test598_cap_output_lifecycle` | TEST598: CapOutput lifecycle — set_output, set/clear metadata | cap/definition_test.go:419 |
-| test599 | `Test599_is_empty` | TEST599: is_empty returns true for empty response, false for non-empty | cap/response_test.go:286 |
-| test600 | `Test600_size` | TEST600: size returns exact byte count for all content types | cap/response_test.go:301 |
-| test601 | `Test601_get_content_type` | TEST601: get_content_type returns correct MIME type for each variant | cap/response_test.go:316 |
-| test602 | `Test602_as_type_binary_error` | TEST602: as_type on binary response returns error (cannot deserialize binary) | cap/response_test.go:328 |
-| test603 | `Test603_as_bool_edge_cases` | TEST603: as_bool handles all accepted truthy/falsy variants and rejects garbage | cap/response_test.go:337 |
+| test599 | `Test599_is_empty` | TEST599: is_empty returns true for empty response, false for non-empty | cap/response_test.go:275 |
+| test600 | `Test600_size` | TEST600: size returns exact byte count for all content types | cap/response_test.go:290 |
+| test601 | `Test601_get_content_type` | TEST601: get_content_type returns correct MIME type for each variant | cap/response_test.go:305 |
+| test602 | `Test602_as_type_binary_error` | TEST602: as_type on binary response returns error (cannot deserialize binary) | cap/response_test.go:317 |
+| test603 | `Test603_as_bool_edge_cases` | TEST603: as_bool handles all accepted truthy/falsy variants and rejects garbage | cap/response_test.go:326 |
 | test605 | `Test605_all_coercion_paths_build_valid_urns` | TEST605: all_coercion_paths each entry builds a valid parseable CapUrn | standard/caps_test.go:81 |
 | test606 | `Test606_coercion_urn_specs` | TEST606: coercion_urn in/out specs match the type's media URN constant | standard/caps_test.go:98 |
 | test607 | `Test607_media_urns_for_extension_unknown` | TEST607: media_urns_for_extension returns error for unknown extension | media/spec_test.go:521 |
@@ -1056,13 +1056,13 @@ This catalog lists all tests in the Go codebase.
 | test6186 | `Test6186_RegistryGetCap` | TEST136 (deleted): exercised the private `cacheKey` method on the unified FabricRegistry. The on-disk cache filename scheme is an implementation detail of the persistence layer; equivalent observable behavior — that two equivalent URNs land in the same cache slot — is covered by Test140 (`same_cap_different_spellings_same_url`). Rust and Python dropped this; this deletion keeps the Go mirror in parity. | cap/registry_test.go:42 |
 | test6202 | `Test6202_empty_cap_urn_defaults_to_wildcard` | TEST6202: Bare top cap is illegal; identity must be explicit effect=none | urn/cap_urn_test.go:635 |
 | test6207 | `Test6207_ConcatenatedVsFinalPayloadDivergence` | Mirror-specific coverage: Test that concatenated() returns full payload while final_payload() returns only last chunk | bifaci/integration_test.go:1692 |
-| test6210 | `Test6210_ResponseWrapperFromText` | TEST6210: Response wrapper from text | cap/response_test.go:45 |
-| test6214 | `Test6214_ResponseWrapperAsFloat` | TEST6214: Response wrapper as float | cap/response_test.go:96 |
-| test6218 | `Test6218_ResponseWrapperAsBool` | TEST6218: Response wrapper as bool | cap/response_test.go:111 |
-| test6222 | `Test6222_ResponseWrapperIsEmpty` | TEST6222: Response wrapper is empty | cap/response_test.go:142 |
-| test6226 | `Test6226_ResponseWrapperGetContentType` | TEST6226: Response wrapper get content type | cap/response_test.go:153 |
-| test6230 | `Test6230_ResponseWrapperMatchesOutputType` | TEST6230: Response wrapper matches output type | cap/response_test.go:165 |
-| test6234 | `Test6234_ResponseWrapperValidateAgainstCap` | TEST6234: Response wrapper validate against cap | cap/response_test.go:251 |
+| test6210 | `Test6210_ResponseWrapperFromText` | TEST6210: Response wrapper from text | cap/response_test.go:42 |
+| test6214 | `Test6214_ResponseWrapperAsFloat` | TEST6214: Response wrapper as float | cap/response_test.go:85 |
+| test6218 | `Test6218_ResponseWrapperAsBool` | TEST6218: Response wrapper as bool | cap/response_test.go:100 |
+| test6222 | `Test6222_ResponseWrapperIsEmpty` | TEST6222: Response wrapper is empty | cap/response_test.go:131 |
+| test6226 | `Test6226_ResponseWrapperGetContentType` | TEST6226: Response wrapper get content type | cap/response_test.go:142 |
+| test6230 | `Test6230_ResponseWrapperMatchesOutputType` | TEST6230: Response wrapper matches output type | cap/response_test.go:154 |
+| test6234 | `Test6234_ResponseWrapperValidateAgainstCap` | TEST6234: Response wrapper validate against cap | cap/response_test.go:240 |
 | test6238 | `Test6238_CapRequestHandling` | Additional existing tests below (not part of TEST108-116 sequence) | cap/definition_test.go:450 |
 | test6245 | `Test6245_CapDescription` | TEST6245: Cap description | cap/definition_test.go:467 |
 | test6248 | `Test6248_CapWithMediaDefs` | TEST6248: Cap with media defs | cap/definition_test.go:480 |
