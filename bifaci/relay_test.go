@@ -4,6 +4,7 @@ import (
 	"net"
 	"sync"
 	"testing"
+	"time"
 )
 
 // relayPipe creates a pair of connected streams using net.Pipe().
@@ -723,4 +724,68 @@ func Test412_bidirectional_concurrent_flow(t *testing.T) {
 	}()
 
 	wg.Wait()
+}
+
+// TEST414: RelaySlave forwards host-originated RelayNotify (local→socket),
+// dropping only RelayState. The CartridgeHost publishes capability updates
+// (the installed-cartridge inventory the engine routes by) as RelayNotify
+// frames through the slave's local→socket path. Regression lock for the
+// drift where Task 2 silently dropped RelayNotify alongside RelayState,
+// stranding the host's inventory so the engine never learned the cartridge
+// existed. Mirrors the reference RelaySlave Task 2 (capdag/src/bifaci/relay.rs).
+func Test414_relay_slave_forwards_host_relay_notify(t *testing.T) {
+	slaveSock, routerSock := relayPipe()
+	slaveLocal, hostLocal := relayPipe()
+
+	slave := NewRelaySlave(slaveLocal, slaveLocal)
+	limits := DefaultLimits()
+	initial := []byte(`{"installed_cartridges":[]}`)
+
+	go func() {
+		_ = slave.Run(slaveSock, slaveSock, &RelayNotifyParams{Manifest: initial, Limits: limits})
+	}()
+
+	router := NewFrameReader(routerSock)
+
+	// Frame 1: the initial RelayNotify the slave emits on start.
+	f1, err := router.ReadFrame()
+	if err != nil {
+		t.Fatalf("read initial RelayNotify: %v", err)
+	}
+	if f1.FrameType != FrameTypeRelayNotify {
+		t.Fatalf("frame 1: expected RELAY_NOTIFY, got %v", f1.FrameType)
+	}
+
+	// Host writes a RelayState (must be DROPPED), then a populated
+	// RelayNotify (must be FORWARDED). If the slave forwards both, the next
+	// router frame is the RelayState; if it (wrongly) drops the RelayNotify
+	// too, the read blocks/EOFs. Only the correct behavior — drop RelayState,
+	// forward RelayNotify — makes frame 2 the populated RelayNotify.
+	hostWriter := NewFrameWriter(hostLocal)
+	go func() {
+		_ = hostWriter.WriteFrame(NewRelayState([]byte(`{"memory":1}`)))
+		_ = hostWriter.WriteFrame(NewRelayNotify(
+			[]byte(`{"installed_cartridges":[{"id":"CartA"}]}`),
+			DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer,
+		))
+	}()
+
+	// Bound the read so a regression (slave drops the RelayNotify) fails
+	// fast with a deadline error instead of hanging the suite.
+	_ = routerSock.SetReadDeadline(time.Now().Add(3 * time.Second))
+	f2, err := router.ReadFrame()
+	if err != nil {
+		t.Fatalf("read forwarded frame (regression if deadline: RelayNotify was dropped): %v", err)
+	}
+	if f2.FrameType != FrameTypeRelayNotify {
+		t.Fatalf("expected forwarded RELAY_NOTIFY (RelayState must be dropped), got %v", f2.FrameType)
+	}
+	if string(f2.RelayNotifyManifest()) != `{"installed_cartridges":[{"id":"CartA"}]}` {
+		t.Fatalf("forwarded manifest mismatch: %s", string(f2.RelayNotifyManifest()))
+	}
+
+	routerSock.Close()
+	hostLocal.Close()
+	slaveSock.Close()
+	slaveLocal.Close()
 }

@@ -1,8 +1,8 @@
-# Go Test Catalog
+# CapDag-Go Test Catalog
 
-**Total Tests:** 1149
+**Total Tests:** 1151
 
-**Numbered Tests:** 1149
+**Numbered Tests:** 1151
 
 **Unnumbered Tests:** 0
 
@@ -12,7 +12,7 @@
 
 All numbered test numbers are unique.
 
-This catalog lists all tests in the Go codebase.
+This catalog lists all tests in the CapDag-Go codebase.
 
 | Test # | Function Name | Description | File |
 |--------|---------------|-------------|------|
@@ -353,16 +353,17 @@ This catalog lists all tests in the Go codebase.
 | test401 | `Test401_relay_notify_factory_and_accessors` | TEST401: Verify relay_notify factory stores manifest and limits, and accessors extract them | bifaci/frame_test.go:759 |
 | test402 | `Test402_relay_state_factory_and_payload` | TEST402: Verify relay_state factory stores resource payload in frame payload field | bifaci/frame_test.go:802 |
 | test403 | `Test403_frame_type_one_past_cancel` | TEST403: Verify from_u8 returns None for values past the last valid frame type | bifaci/frame_test.go:816 |
-| test404 | `Test404_slave_sends_relay_notify_on_connect` | TEST404: Slave sends RelayNotify on connect (initial_notify parameter) | bifaci/relay_test.go:15 |
-| test405 | `Test405_master_reads_relay_notify` | TEST405: Master reads RelayNotify and extracts manifest + limits | bifaci/relay_test.go:70 |
-| test406 | `Test406_slave_stores_relay_state` | TEST406: Slave stores RelayState from master | bifaci/relay_test.go:112 |
-| test407 | `Test407_protocol_frames_pass_through` | TEST407: Protocol frames pass through slave transparently (both directions) | bifaci/relay_test.go:166 |
-| test408 | `Test408_relay_frames_not_forwarded` | TEST408: RelayNotify/RelayState are NOT forwarded through relay | bifaci/relay_test.go:293 |
-| test409 | `Test409_slave_injects_relay_notify_midstream` | TEST409: Slave can inject RelayNotify mid-stream (cap change) | bifaci/relay_test.go:374 |
-| test410 | `Test410_master_receives_updated_relay_notify` | TEST410: Master receives updated RelayNotify (cap change callback via read_frame) | bifaci/relay_test.go:449 |
-| test411 | `Test411_socket_close_detection` | TEST411: Socket close detection (both directions) | bifaci/relay_test.go:543 |
-| test412 | `Test412_bidirectional_concurrent_flow` | TEST412: Bidirectional concurrent frame flow through relay | bifaci/relay_test.go:589 |
+| test404 | `Test404_slave_sends_relay_notify_on_connect` | TEST404: Slave sends RelayNotify on connect (initial_notify parameter) | bifaci/relay_test.go:16 |
+| test405 | `Test405_master_reads_relay_notify` | TEST405: Master reads RelayNotify and extracts manifest + limits | bifaci/relay_test.go:71 |
+| test406 | `Test406_slave_stores_relay_state` | TEST406: Slave stores RelayState from master | bifaci/relay_test.go:113 |
+| test407 | `Test407_protocol_frames_pass_through` | TEST407: Protocol frames pass through slave transparently (both directions) | bifaci/relay_test.go:167 |
+| test408 | `Test408_relay_frames_not_forwarded` | TEST408: RelayNotify/RelayState are NOT forwarded through relay | bifaci/relay_test.go:294 |
+| test409 | `Test409_slave_injects_relay_notify_midstream` | TEST409: Slave can inject RelayNotify mid-stream (cap change) | bifaci/relay_test.go:375 |
+| test410 | `Test410_master_receives_updated_relay_notify` | TEST410: Master receives updated RelayNotify (cap change callback via read_frame) | bifaci/relay_test.go:450 |
+| test411 | `Test411_socket_close_detection` | TEST411: Socket close detection (both directions) | bifaci/relay_test.go:544 |
+| test412 | `Test412_bidirectional_concurrent_flow` | TEST412: Bidirectional concurrent frame flow through relay | bifaci/relay_test.go:590 |
 | test413 | `Test413_register_cartridge_adds_cap_table` | TEST413: Register cartridge adds entries to cap_table | bifaci/host_multi_test.go:161 |
+| test414 | `Test414_relay_slave_forwards_host_relay_notify` | TEST414: RelaySlave forwards host-originated RelayNotify (local→socket), dropping only RelayState. The CartridgeHost publishes capability updates (the installed-cartridge inventory the engine routes by) as RelayNotify frames through the slave's local→socket path. Regression lock for the drift where Task 2 silently dropped RelayNotify alongside RelayState, stranding the host's inventory so the engine never learned the cartridge existed. Mirrors the reference RelaySlave Task 2 (capdag/src/bifaci/relay.rs). | bifaci/relay_test.go:736 |
 | test415 | `Test415_req_triggers_spawn` | TEST415: REQ for known cap triggers spawn attempt (verified by expected spawn error for non-existent binary) | bifaci/host_multi_test.go:190 |
 | test416 | `Test416_attach_cartridge_handshake` | TEST416: Attach cartridge performs HELLO handshake, extracts manifest, updates capabilities | bifaci/host_multi_test.go:236 |
 | test417 | `Test417_route_req_by_cap_urn` | TEST417: Route REQ to correct cartridge by cap_urn (with two attached cartridges) | bifaci/host_multi_test.go:276 |
@@ -410,6 +411,7 @@ This catalog lists all tests in the Go codebase.
 | test459 | `Test459_reorder_buffer_end_frame` | TEST459: Terminal END frame flows through correctly | bifaci/frame_test.go:1317 |
 | test460 | `Test460_reorder_buffer_err_frame` | TEST460: Terminal ERR frame flows through correctly | bifaci/frame_test.go:1975 |
 | test461 | `Test461_write_chunked_seq_zero` | TEST461: write_chunked produces frames with seq=0; SeqAssigner assigns at output stage | bifaci/io_test.go:1263 |
+| test462 | `Test462_attached_cartridge_identity_from_manifest` | TEST462: An attached cartridge (pre-connected over raw streams, no on-disk anchor) gets a resolvable install identity derived from its HELLO manifest — `installedCartridgeRecordFromManifest`. Identity gates advertisement, so a nil record means the cartridge is silently dropped from every RelayNotify and the engine can never route to it. Locks the attached-cartridge identity path (the swift mirror regressed here: its attached cartridges returned nil and never reached the engine). Mirrors the reference installed_cartridge_record_from_manifest. | bifaci/host_test.go:303 |
 | test472 | `Test472_handshake_negotiates_reorder_buffer` | TEST472: Handshake negotiates max_reorder_buffer (minimum of both sides) | bifaci/io_test.go:1213 |
 | test473 | `Test473_cap_discard_parses_as_valid_urn` | TEST473: CAP_DISCARD parses as valid CapUrn with in=media: and out=media:void | standard/caps_test.go:59 |
 | test474 | `Test474_cap_discard_structure` | TEST474: CAP_DISCARD accepts specific-input/void-output caps | standard/caps_test.go:68 |
@@ -1263,9 +1265,9 @@ These tests have a numbering disagreement between the function name and the auth
 
 ---
 
-*Generated from Go source tree*
-*Total tests: 1149*
-*Total numbered tests: 1149*
+*Generated from CapDag-Go source tree*
+*Total tests: 1151*
+*Total numbered tests: 1151*
 *Total unnumbered tests: 0*
 *Total numbered tests missing descriptions: 0*
 *Total numbering mismatches: 89*

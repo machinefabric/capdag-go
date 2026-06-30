@@ -289,3 +289,36 @@ func Test247_response_chunk_clone(t *testing.T) {
 	cloned.Payload[0] = 'X'
 	assert.NotEqual(t, original.Payload[0], cloned.Payload[0])
 }
+
+
+
+// TEST462: An attached cartridge (pre-connected over raw streams, no
+// on-disk anchor) gets a resolvable install identity derived from its
+// HELLO manifest — `installedCartridgeRecordFromManifest`. Identity gates
+// advertisement, so a nil record means the cartridge is silently dropped
+// from every RelayNotify and the engine can never route to it. Locks the
+// attached-cartridge identity path (the swift mirror regressed here: its
+// attached cartridges returned nil and never reached the engine). Mirrors
+// the reference installed_cartridge_record_from_manifest.
+func Test462_attached_cartridge_identity_from_manifest(t *testing.T) {
+	manifest := []byte(`{"name":"TestCart","version":"1.2.3","channel":"nightly",` +
+		`"registry_url":null,"description":"d","cap_groups":[{"name":"g",` +
+		`"caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity"}]}]}`)
+
+	rec := installedCartridgeRecordFromManifest(manifest)
+	if rec == nil {
+		t.Fatal("attached cartridge identity must be derivable from a valid manifest, got nil (cartridge would be dropped from advertisement)")
+	}
+	assert.Equal(t, "TestCart", rec.Id, "id comes from manifest name")
+	assert.Equal(t, "1.2.3", rec.Version)
+	assert.Equal(t, "nightly", rec.Channel)
+	assert.Nil(t, rec.RegistryURL, "dev build → null registry_url")
+	assert.NotEmpty(t, rec.Sha256, "sha256 taken over manifest bytes")
+	// Attached ⇒ HELLO + identity verification already succeeded ⇒ operational.
+	assert.Equal(t, CartridgeLifecycleOperational, rec.Lifecycle)
+
+	// An unparseable manifest yields no record (honestly absent, not a
+	// fabricated id) — the producer must surface the gap, not hide it.
+	assert.Nil(t, installedCartridgeRecordFromManifest([]byte(`{not json`)),
+		"unparseable manifest must yield nil, not a placeholder identity")
+}
