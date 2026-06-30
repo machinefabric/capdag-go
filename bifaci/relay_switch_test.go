@@ -1,12 +1,14 @@
 package bifaci
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/machinefabric/capdag-go/cap"
 	"github.com/machinefabric/capdag-go/standard"
@@ -1088,14 +1090,13 @@ func Test133_ReattachByIDPreservesSlotIndex(t *testing.T) {
 
 	go func() {
 		writer := NewFrameWriter(slaveWrite2)
-		manifest := testManifestWithCaps([]string{testCapIdentity})
-		manifestJSON, _ := json.Marshal(manifest)
-		limits := DefaultLimits()
-		if err := SendNotify(writer, manifestJSON, limits); err != nil {
-			t.Errorf("slave2 SendNotify: %v", err)
+		reader := NewFrameReader(slaveRead2)
+		// AddMaster now runs an end-to-end identity probe whenever the
+		// reattaching host advertises caps (mirrors Rust add_master), so
+		// the slave must answer it before the slot can come back healthy.
+		if !serveRelayHandshake(t, reader, writer, []string{testCapIdentity}) {
 			return
 		}
-		reader := NewFrameReader(slaveRead2)
 		_, _ = reader.ReadFrame()
 	}()
 
@@ -1631,5 +1632,428 @@ func Test666_preferred_cap_routing(t *testing.T) {
 	resp2 := readSwitchResponse(t, sw, rid2)
 	if string(resp2) != "EXTRA" {
 		t.Errorf("With preferred_cap, should route to extra handler (preferred override); got %q", string(resp2))
+	}
+}
+
+// =========================================================================
+// Deferred runtime identity probe / health-filtered routing / cap watch
+// =========================================================================
+
+// deferredIdentityNotify builds a populated RelayNotify manifest carrying
+// capURNs under a single installed cartridge whose id is a FIXED
+// "test-cartridge" (so inventory assertions can find it by id). Mirrors
+// the populated notify in Rust's slave_deferred_identity helper.
+func deferredIdentityNotify(capURNs []string) []byte {
+	groupCaps := make([]map[string]interface{}, 0, len(capURNs))
+	for _, u := range capURNs {
+		groupCaps = append(groupCaps, map[string]interface{}{
+			"urn":     u,
+			"title":   "test",
+			"command": "test",
+			"args":    []interface{}{},
+		})
+	}
+	manifest := map[string]interface{}{
+		"installed_cartridges": []interface{}{
+			map[string]interface{}{
+				"registry_url": nil,
+				"channel":      "release",
+				"id":           "test-cartridge",
+				"version":      "0.0.0",
+				"sha256":       "0000000000000000000000000000000000000000000000000000000000000000",
+				"cap_groups": []interface{}{
+					map[string]interface{}{
+						"name":         "test",
+						"caps":         groupCaps,
+						"adapter_urns": []interface{}{},
+					},
+				},
+			},
+		},
+	}
+	data, _ := json.Marshal(manifest)
+	return data
+}
+
+// serveDeferredIdentity is the Go port of Rust's slave_deferred_identity.
+// It sends an EMPTY initial RelayNotify (so construction skips the
+// synchronous identity probe and the master joins capless+healthy), then
+// a populated RelayNotify carrying capURNs (the empty→non-empty transition
+// the relay must re-verify), then answers the runtime identity probe: if
+// succeed it echoes the probe nonce back verbatim on the probe's flow
+// (probe passes → master flips healthy → caps routable); if !succeed it
+// replies ERR (probe fails → master stays unhealthy, caps held back).
+func serveDeferredIdentity(t *testing.T, reader *FrameReader, writer *FrameWriter, capURNs []string, succeed bool) {
+	t.Helper()
+
+	// 1. Empty initial RelayNotify — construction skips the probe.
+	empty, _ := json.Marshal(map[string]interface{}{"installed_cartridges": []interface{}{}})
+	if err := SendNotify(writer, empty, DefaultLimits()); err != nil {
+		t.Errorf("serveDeferredIdentity: empty SendNotify: %v", err)
+		return
+	}
+
+	// 2. Populated RelayNotify — the empty→non-empty transition.
+	if err := SendNotify(writer, deferredIdentityNotify(capURNs), DefaultLimits()); err != nil {
+		t.Errorf("serveDeferredIdentity: populated SendNotify: %v", err)
+		return
+	}
+
+	// 3. Answer the runtime identity probe.
+	var probeRid *MessageId
+	var probeXid *MessageId
+	var nonce []byte
+	for {
+		f, err := reader.ReadFrame()
+		if err != nil || f == nil {
+			return
+		}
+		switch f.FrameType {
+		case FrameTypeReq:
+			rid := f.Id
+			probeRid = &rid
+			probeXid = f.RoutingId
+			if !succeed {
+				errFrame := NewErr(f.Id, "BROKEN", "test cartridge")
+				errFrame.RoutingId = f.RoutingId
+				_ = writer.WriteFrame(errFrame)
+				return
+			}
+		case FrameTypeChunk:
+			nonce = append(nonce, f.Payload...)
+		case FrameTypeEnd:
+			// Echo the accumulated nonce back verbatim on the probe flow.
+			if probeRid == nil {
+				return
+			}
+			rid := *probeRid
+			streamID := "identity-echo"
+			ss := NewStreamStart(rid, streamID, "media:", nil)
+			ss.RoutingId = probeXid
+			checksum := ComputeChecksum(nonce)
+			chunk := NewChunk(rid, streamID, 0, nonce, 0, checksum)
+			chunk.RoutingId = probeXid
+			se := NewStreamEnd(rid, streamID, 1)
+			se.RoutingId = probeXid
+			end := NewEnd(rid, nil)
+			end.RoutingId = probeXid
+			for _, fr := range []*Frame{ss, chunk, se, end} {
+				if err := writer.WriteFrame(fr); err != nil {
+					return
+				}
+			}
+			return
+		}
+	}
+}
+
+// masterHealthAndError reads a slot's (healthy, lastError-present) under
+// the switch lock so tests don't race the probe-driver goroutine.
+func masterHealthAndError(sw *RelaySwitch, idx int) (bool, bool) {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	if idx < 0 || idx >= len(sw.masters) {
+		return false, false
+	}
+	return sw.masters[idx].healthy, sw.masters[idx].lastError != nil
+}
+
+// TEST0131: When a master initially advertises empty caps (so the
+// constructor skips the identity probe) and later sends a RelayNotify
+// update with non-empty caps, the relay must run an end-to-end identity
+// probe before the new caps become routable. A master that fails the
+// runtime probe must end up unhealthy with lastError populated, and its
+// caps must NOT appear in the cap_table.
+func Test0131_runtime_identity_probe_required_on_empty_to_nonempty_transition(t *testing.T) {
+	engineRead, slaveWrite := createSocketPair(t)
+	slaveRead, engineWrite := createSocketPair(t)
+
+	go func() {
+		reader := NewFrameReader(slaveRead)
+		writer := NewFrameWriter(slaveWrite)
+		serveDeferredIdentity(t, reader, writer, []string{
+			testCapIdentity,
+			`cap:in="media:void";test;out="media:void"`,
+		}, false) // probe fails (ERR)
+	}()
+
+	sw, err := NewRelaySwitch([]SocketPair{
+		{ID: "test-master-0", Read: engineRead, Write: engineWrite},
+	})
+	if err != nil {
+		t.Fatalf("construction must succeed for empty-cap initial notify: %v", err)
+	}
+	sw.StartBackgroundPump()
+
+	// Poll until the runtime probe path marks the master unhealthy with a
+	// recorded lastError.
+	deadline := time.Now().Add(15 * time.Second)
+	unhealthy := false
+	for time.Now().Before(deadline) {
+		if healthy, hasErr := masterHealthAndError(sw, 0); !healthy && hasErr {
+			unhealthy = true
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !unhealthy {
+		t.Fatalf("master must be marked unhealthy after the runtime identity probe fails")
+	}
+
+	// The master's caps must NOT be routable: routing is health-filtered,
+	// so dispatch to the unverified master's cap must fail. Proven via the
+	// dispatch path, not by string-comparing URNs.
+	sw.mu.Lock()
+	idx, ferr := sw.findMasterForCap(`cap:in="media:void";test;out="media:void"`, nil)
+	sw.mu.Unlock()
+	if ferr == nil {
+		t.Fatalf("unverified master's cap must NOT be routable, but findMasterForCap returned master %d", idx)
+	}
+}
+
+// TEST0135: the runtime identity probe SUCCESS path — a master that
+// advertises caps AFTER connecting (empty→non-empty) and then passes the
+// probe must flip healthy and its caps must become routable.
+func Test0135_runtime_identity_probe_success_makes_caps_routable(t *testing.T) {
+	engineRead, slaveWrite := createSocketPair(t)
+	slaveRead, engineWrite := createSocketPair(t)
+
+	go func() {
+		reader := NewFrameReader(slaveRead)
+		writer := NewFrameWriter(slaveWrite)
+		serveDeferredIdentity(t, reader, writer, []string{
+			testCapIdentity,
+			`cap:in="media:void";test;out="media:void"`,
+		}, true) // probe succeeds
+	}()
+
+	sw, err := NewRelaySwitch([]SocketPair{
+		{ID: "test-master-0", Read: engineRead, Write: engineWrite},
+	})
+	if err != nil {
+		t.Fatalf("construction must succeed for empty-cap initial notify: %v", err)
+	}
+	sw.StartBackgroundPump()
+
+	// Poll until the probe driver completes the round-trip: the post-init
+	// advertised cap becomes routable only AFTER the probe passes.
+	deadline := time.Now().Add(15 * time.Second)
+	routable := false
+	for time.Now().Before(deadline) {
+		sw.mu.Lock()
+		idx, ferr := sw.findMasterForCap(`cap:in="media:void";test;out="media:void"`, nil)
+		sw.mu.Unlock()
+		if ferr == nil && idx == 0 {
+			routable = true
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !routable {
+		t.Fatalf("after a successful runtime identity probe the master's post-init advertised cap must become routable")
+	}
+	if healthy, _ := masterHealthAndError(sw, 0); !healthy {
+		t.Fatalf("master must be marked healthy after a successful runtime identity probe")
+	}
+}
+
+// TEST0138: the installed-cartridge INVENTORY is NOT health-filtered. A
+// master held unhealthy by a failed runtime identity probe still has its
+// cartridges visible in the aggregate inventory (so a transient master
+// flap does not make cartridges "disappear" from the engine's view), even
+// though its caps are excluded from ROUTING.
+func Test0138_unhealthy_master_inventory_retained_but_not_routable(t *testing.T) {
+	engineRead, slaveWrite := createSocketPair(t)
+	slaveRead, engineWrite := createSocketPair(t)
+
+	go func() {
+		reader := NewFrameReader(slaveRead)
+		writer := NewFrameWriter(slaveWrite)
+		serveDeferredIdentity(t, reader, writer, []string{
+			testCapIdentity,
+			`cap:in="media:void";test;out="media:void"`,
+		}, false) // probe fails → master stays unhealthy
+	}()
+
+	sw, err := NewRelaySwitch([]SocketPair{
+		{ID: "test-master-0", Read: engineRead, Write: engineWrite},
+	})
+	if err != nil {
+		t.Fatalf("construction must succeed for empty-cap initial notify: %v", err)
+	}
+	sw.StartBackgroundPump()
+
+	deadline := time.Now().Add(15 * time.Second)
+	unhealthy := false
+	for time.Now().Before(deadline) {
+		if healthy, hasErr := masterHealthAndError(sw, 0); !healthy && hasErr {
+			unhealthy = true
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !unhealthy {
+		t.Fatalf("master must be unhealthy after the probe fails")
+	}
+
+	// ROUTING: the unhealthy master's caps are excluded.
+	sw.mu.Lock()
+	_, ferr := sw.findMasterForCap(`cap:in="media:void";test;out="media:void"`, nil)
+	sw.mu.Unlock()
+	if ferr == nil {
+		t.Fatalf("an unhealthy master's caps must NOT be routable")
+	}
+
+	// INVENTORY: the cartridge is STILL visible — inventory is NOT
+	// health-filtered.
+	inventory := sw.InstalledCartridges()
+	found := false
+	for _, c := range inventory {
+		if c.Id == "test-cartridge" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		ids := make([]string, 0, len(inventory))
+		for _, c := range inventory {
+			ids = append(ids, c.Id)
+		}
+		t.Fatalf("an unhealthy master's installed cartridges must remain visible in the inventory aggregate, got: %v", ids)
+	}
+}
+
+// TEST0141: the routable-capability watch (SubscribeCapabilities). A
+// subscriber must receive the CURRENT routable cap set on subscribe even
+// though it was rebuilt during construction — BEFORE any receiver existed
+// (the watch must persist the value, i.e. send_replace semantics). The
+// delivered snapshot must be the health-filtered routable set.
+func Test0141_subscribe_capabilities_delivers_routable_set(t *testing.T) {
+	engineRead, slaveWrite := net.Pipe()
+	slaveRead, engineWrite := net.Pipe()
+
+	go func() {
+		reader := NewFrameReader(slaveRead)
+		writer := NewFrameWriter(slaveWrite)
+		if !serveRelayHandshake(t, reader, writer, []string{
+			testCapIdentity,
+			`cap:in="media:void";test;out="media:void"`,
+		}) {
+			return
+		}
+		for {
+			if _, err := reader.ReadFrame(); err != nil {
+				return
+			}
+		}
+	}()
+
+	// Capabilities are rebuilt inside NewRelaySwitch — before we subscribe.
+	sw, err := NewRelaySwitch([]SocketPair{
+		{ID: "test-master-0", Read: engineRead, Write: engineWrite},
+	})
+	if err != nil {
+		t.Fatalf("NewRelaySwitch: %v", err)
+	}
+
+	rx := sw.SubscribeCapabilities()
+	watched := rx.Borrow()
+
+	// Snapshot-identity check: the watch must mirror the synchronous
+	// getter (same bytes from the same source). This catches the
+	// send-vs-send_replace bug: the snapshot is rebuilt before any
+	// subscriber exists, so the watch must persist it.
+	if !bytes.Equal(watched, sw.Capabilities()) {
+		t.Fatalf("the capability watch must deliver the same routable-set snapshot as Capabilities()\n watch=%s\n  cap=%s", watched, sw.Capabilities())
+	}
+
+	// Prove the snapshot is the live ROUTABLE set via dispatch conformance
+	// (NOT a URN string comparison): a healthy, verified master makes its
+	// advertised cap dispatchable.
+	sw.mu.Lock()
+	idx, ferr := sw.findMasterForCap(`cap:in="media:void";test;out="media:void"`, nil)
+	sw.mu.Unlock()
+	if ferr != nil || idx != 0 {
+		t.Fatalf("the routable set the watch delivers must make the master's advertised cap dispatchable; got master %d (err=%v)", idx, ferr)
+	}
+}
+
+// TEST0142: AddMaster runs an end-to-end identity probe on reattach
+// whenever the host advertises caps (mirrors Rust add_master). When the
+// reattaching host FAILS the probe, the master rejoins as UNHEALTHY — its
+// installed cartridges stay visible in the inventory aggregate while its
+// caps are held out of the routing table — rather than the reattach
+// erroring out.
+func Test0142_add_master_reattach_verifies_identity(t *testing.T) {
+	// Initial healthy master.
+	engineRead, slaveWrite := net.Pipe()
+	slaveRead, engineWrite := net.Pipe()
+	testCap := `cap:in="media:void";test;out="media:void"`
+	go func() {
+		reader := NewFrameReader(slaveRead)
+		writer := NewFrameWriter(slaveWrite)
+		if !serveRelayHandshake(t, reader, writer, []string{testCapIdentity, testCap}) {
+			return
+		}
+		_, _ = reader.ReadFrame()
+	}()
+
+	sw, err := NewRelaySwitch([]SocketPair{
+		{ID: "xpc-service", Read: engineRead, Write: engineWrite},
+	})
+	if err != nil {
+		t.Fatalf("NewRelaySwitch: %v", err)
+	}
+
+	// Kill the slot so reattach takes the in-place branch.
+	sw.mu.Lock()
+	sw.handleMasterDeath(0)
+	sw.mu.Unlock()
+
+	// Reconnect under the SAME id with a slave that advertises caps but
+	// FAILS the identity probe (replies ERR).
+	engineRead2, slaveWrite2 := net.Pipe()
+	slaveRead2, engineWrite2 := net.Pipe()
+	go func() {
+		reader := NewFrameReader(slaveRead2)
+		writer := NewFrameWriter(slaveWrite2)
+		manifest := testManifestWithCaps([]string{testCapIdentity, testCap})
+		manifestJSON, _ := json.Marshal(manifest)
+		if err := SendNotify(writer, manifestJSON, DefaultLimits()); err != nil {
+			t.Errorf("slave2 SendNotify: %v", err)
+			return
+		}
+		// Answer the probe with ERR after draining the full request.
+		req, _ := drainIdentityRequest(t, reader)
+		errFrame := NewErr(req.Id, "BROKEN", "identity verification broken")
+		errFrame.RoutingId = req.RoutingId
+		_ = writer.WriteFrame(errFrame)
+		_, _ = reader.ReadFrame()
+	}()
+
+	idx, err := sw.AddMaster(SocketPair{ID: "xpc-service", Read: engineRead2, Write: engineWrite2})
+	if err != nil {
+		t.Fatalf("AddMaster reattach must NOT error on identity failure — the master rejoins unhealthy: %v", err)
+	}
+	if idx != 0 {
+		t.Fatalf("reattach must return the same slot index 0, got %d", idx)
+	}
+
+	// The reattached master is UNHEALTHY with a recorded lastError.
+	if healthy, hasErr := masterHealthAndError(sw, 0); healthy || !hasErr {
+		t.Fatalf("reattached master must be unhealthy with lastError after a failed identity probe (healthy=%v, hasErr=%v)", healthy, hasErr)
+	}
+
+	// ROUTING: its caps are NOT routable.
+	sw.mu.Lock()
+	_, ferr := sw.findMasterForCap(testCap, nil)
+	sw.mu.Unlock()
+	if ferr == nil {
+		t.Fatalf("an unhealthy reattached master's caps must NOT be routable")
+	}
+
+	// INVENTORY: its cartridges remain visible.
+	if len(sw.InstalledCartridges()) == 0 {
+		t.Fatalf("an unhealthy reattached master's installed cartridges must remain visible in the inventory aggregate")
 	}
 }

@@ -1,13 +1,18 @@
 package bifaci
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"sort"
 	"sync"
+	"sync/atomic"
+	"time"
 
+	cbor2 "github.com/fxamacker/cbor/v2"
+	"github.com/machinefabric/capdag-go/standard"
 	"github.com/machinefabric/capdag-go/urn"
 )
 
@@ -294,6 +299,13 @@ type MasterConnection struct {
 	caps                []string
 	installedCartridges []InstalledCartridgeRecord
 	healthy             bool
+	// lastError carries the most recent attachment / identity-probe
+	// failure reason for this slot (nil when none). Set when a
+	// synchronous or deferred identity probe fails, cleared when a
+	// deferred probe later passes. Surfaced on the inventory view so
+	// the engine can report WHY a master with visible cartridges is
+	// not routable. Mutated only under RelaySwitch.mu.
+	lastError *string
 }
 
 // peerCallChild stores a child peer-call routing key for cancel cascading
@@ -321,6 +333,33 @@ type RelaySwitch struct {
 	// rather than advancing to "ready" prematurely.
 	expectedMasterCount int
 	mu                  sync.Mutex
+	// externalResponseChannels delivers a master's reply frames for a
+	// relay-internal request (currently the deferred runtime identity
+	// probe) to the goroutine that issued it, keyed by the request's
+	// rid string. handleMasterFrame consults this map BEFORE its normal
+	// continuation-frame routing so the probe's echo lands on the
+	// probe's channel rather than being returned to ReadFromMasters.
+	externalResponseChannels map[string]chan *Frame
+	// pendingProbes queues master indices whose advertised cap set
+	// transitioned empty → non-empty in the last RelayNotify update and
+	// therefore need an end-to-end identity probe before their caps may
+	// become routable. handleMasterFrame enqueues; the probe-driver
+	// goroutine (started by StartBackgroundPump) drains and runs the
+	// probe. Buffered + non-blocking enqueue so the frame loop never
+	// stalls while holding sw.mu.
+	pendingProbes chan int
+	// capWatch broadcasts the routable (health-filtered) capabilities
+	// wire bytes. Subscribers receive the current snapshot on subscribe
+	// and a fresh one whenever the routable set changes — the engine
+	// readiness signal that flips when a deferred probe makes a master's
+	// caps routable. send_replace semantics: the value persists even
+	// with zero current receivers.
+	capWatch *capWatch
+	// xidCounter mints unique routing ids (XIDs) for relay-internal
+	// requests such as the deferred identity probe.
+	xidCounter uint64
+	// bgPumpStarted guards StartBackgroundPump idempotency.
+	bgPumpStarted bool
 	// addMasterMu serialises AddMaster across the whole switch.
 	// `masterIdx` is the routing key for capTable / requestRouting;
 	// it must be decided once per slot and stay stable for the slot's
@@ -335,6 +374,66 @@ type RelaySwitch struct {
 type CapTableEntry struct {
 	CapURN    string
 	MasterIdx int
+}
+
+// capWatch is a single-value broadcast channel modelled on tokio's
+// `watch`. It holds the latest routable-capabilities snapshot; any
+// number of receivers observe the current value on subscribe and block
+// for the next change. `store` mirrors `watch::send_replace`: it always
+// records the new value (so it persists even when there are momentarily
+// zero receivers) and wakes every waiter.
+type capWatch struct {
+	mu      sync.Mutex
+	cond    *sync.Cond
+	value   []byte
+	version uint64
+}
+
+func newCapWatch() *capWatch {
+	w := &capWatch{}
+	w.cond = sync.NewCond(&w.mu)
+	return w
+}
+
+func (w *capWatch) store(v []byte) {
+	w.mu.Lock()
+	w.value = append([]byte(nil), v...)
+	w.version++
+	w.cond.Broadcast()
+	w.mu.Unlock()
+}
+
+// CapabilitiesReceiver observes routable-capability snapshots published
+// by a RelaySwitch.
+type CapabilitiesReceiver struct {
+	w        *capWatch
+	lastSeen uint64
+}
+
+func (w *capWatch) subscribe() *CapabilitiesReceiver {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return &CapabilitiesReceiver{w: w, lastSeen: w.version}
+}
+
+// Borrow returns a copy of the current routable-capabilities snapshot
+// without consuming a change notification.
+func (r *CapabilitiesReceiver) Borrow() []byte {
+	r.w.mu.Lock()
+	defer r.w.mu.Unlock()
+	return append([]byte(nil), r.w.value...)
+}
+
+// Changed blocks until the snapshot changes since this receiver last
+// observed it, then returns the new value.
+func (r *CapabilitiesReceiver) Changed() []byte {
+	r.w.mu.Lock()
+	defer r.w.mu.Unlock()
+	for r.w.version == r.lastSeen {
+		r.w.cond.Wait()
+	}
+	r.lastSeen = r.w.version
+	return append([]byte(nil), r.w.value...)
 }
 
 type MasterFrame struct {
@@ -497,13 +596,16 @@ func NewRelaySwitch(sockets []SocketPair) (*RelaySwitch, error) {
 		peerCallParents:              make(map[string][]peerCallChild),
 		aggregateInstalledCartridges: []InstalledCartridgeRecord{},
 		frameRx:                      frameRx,
+		externalResponseChannels:     make(map[string]chan *Frame),
+		pendingProbes:                make(chan int, 256),
+		capWatch:                     newCapWatch(),
 	}
 
 	sw.rebuildCapTable()
-	// rebuildInstalledCartridges MUST run before rebuildCapabilities:
-	// rebuildCapabilities snapshots aggregateInstalledCartridges into
-	// the wire-bytes that consumers read via Capabilities(), so the
-	// aggregate must be current when that snapshot is taken.
+	// rebuildCapabilities (routable, health-filtered) and
+	// rebuildInstalledCartridges (inventory, unfiltered) are independent:
+	// each reads the per-master state directly. Order between them no
+	// longer matters.
 	sw.rebuildInstalledCartridges()
 	sw.rebuildCapabilities()
 	sw.rebuildLimits()
@@ -606,6 +708,29 @@ func (sw *RelaySwitch) AddMaster(sockPair SocketPair) (int, error) {
 		return 0, err
 	}
 
+	caps := payload.CapURNs()
+
+	// End-to-end identity verification — the runtime counterpart of the
+	// synchronous probe NewRelaySwitch runs. Mirrors Rust add_master:
+	// whenever the (re)attaching host advertises at least one cap, prove
+	// its handler chain answers identity end-to-end BEFORE its caps
+	// become routable. The probe must run on the synchronous socket here
+	// (before the reader goroutine is spawned) so its reply frames are
+	// not stolen by the per-master reader.
+	//
+	// On failure the master still joins, but as UNHEALTHY: its
+	// installed_cartridges stay visible to the inventory aggregate while
+	// its caps are held out of the routing table. We do NOT error out —
+	// that would make the whole reattach fail and hide the inventory.
+	var identityFailure *string
+	if len(caps) > 0 {
+		if verr := VerifyIdentity(socketReader, socketWriter); verr != nil {
+			msg := fmt.Sprintf("AddMaster master %d: identity verification failed: %v", masterIdx, verr)
+			identityFailure = &msg
+		}
+	}
+	healthyAtRegister := identityFailure == nil
+
 	// Spawn reader goroutine bound to masterIdx.
 	idx := masterIdx
 	frameRx := sw.frameRx
@@ -646,9 +771,10 @@ func (sw *RelaySwitch) AddMaster(sockPair SocketPair) (int, error) {
 			socketWriter:        socketWriter,
 			manifest:            manifest,
 			limits:              *limits,
-			caps:                payload.CapURNs(),
+			caps:                caps,
 			installedCartridges: payload.InstalledCartridges,
-			healthy:             true,
+			healthy:             healthyAtRegister,
+			lastError:           identityFailure,
 		})
 	} else {
 		slot := sw.masters[masterIdx]
@@ -667,9 +793,10 @@ func (sw *RelaySwitch) AddMaster(sockPair SocketPair) (int, error) {
 		slot.socketWriter = socketWriter
 		slot.manifest = manifest
 		slot.limits = *limits
-		slot.caps = payload.CapURNs()
+		slot.caps = caps
 		slot.installedCartridges = payload.InstalledCartridges
-		slot.healthy = true
+		slot.healthy = healthyAtRegister
+		slot.lastError = identityFailure
 	}
 
 	sw.rebuildCapTable()
@@ -715,6 +842,197 @@ func (sw *RelaySwitch) Limits() Limits {
 	sw.mu.Lock()
 	defer sw.mu.Unlock()
 	return sw.negotiatedLimits
+}
+
+// SubscribeCapabilities subscribes to changes in the *routable* capability
+// set. The returned receiver yields the current capabilities snapshot
+// immediately (Borrow) and a fresh snapshot every time the routable set
+// changes — including when a deferred identity probe completes and a
+// previously-unhealthy master's caps become routable. An engine-facing
+// relay uses this to advertise readiness tied to master health, not to
+// mere inventory presence. Mirrors Rust's `subscribe_capabilities`.
+func (sw *RelaySwitch) SubscribeCapabilities() *CapabilitiesReceiver {
+	return sw.capWatch.subscribe()
+}
+
+// StartBackgroundPump spawns the persistent frame-drain pump and the
+// runtime identity-probe driver. The pump consumes frames from every
+// master through handleMasterFrame (the same dispatch path the
+// per-execution ReadFromMasters callers use); pass-through frames it
+// returns have no owner in the background path and are discarded. The
+// probe driver drains pendingProbes and runs an end-to-end identity probe
+// against each master that transitioned empty → non-empty caps, gating
+// cap-table publication on probe success. Idempotent — a second call is a
+// no-op. Mirrors Rust's start_background_pump + spawn_identity_probe_driver.
+func (sw *RelaySwitch) StartBackgroundPump() {
+	sw.mu.Lock()
+	if sw.bgPumpStarted {
+		sw.mu.Unlock()
+		return
+	}
+	sw.bgPumpStarted = true
+	sw.mu.Unlock()
+
+	go func() {
+		for {
+			// Pass-through frames and pass-through errors have no owner
+			// in the background path; keep draining so RelayNotify
+			// capability updates and probe responses are serviced.
+			if _, err := sw.ReadFromMasters(); err != nil {
+				continue
+			}
+		}
+	}()
+
+	go sw.runProbeDriver()
+}
+
+// runProbeDriver serially drains pendingProbes and probes each named
+// master. On success it flips the master healthy and rebuilds the cap
+// table so its caps become routable; on failure it keeps the master
+// unhealthy and stamps lastError. Mirrors Rust's spawn_identity_probe_driver.
+func (sw *RelaySwitch) runProbeDriver() {
+	for masterIdx := range sw.pendingProbes {
+		err := sw.runIdentityProbeViaRelay(masterIdx)
+
+		sw.mu.Lock()
+		if masterIdx >= 0 && masterIdx < len(sw.masters) {
+			if err == nil {
+				sw.masters[masterIdx].healthy = true
+				sw.masters[masterIdx].lastError = nil
+			} else {
+				sw.masters[masterIdx].healthy = false
+				msg := err.Error()
+				sw.masters[masterIdx].lastError = &msg
+			}
+			// Only the health-filtered surfaces depend on this flip;
+			// inventory (unfiltered) is unchanged. Matches the Rust
+			// driver, which rebuilds cap_table + capabilities only.
+			sw.rebuildCapTable()
+			sw.rebuildCapabilities()
+		}
+		sw.mu.Unlock()
+	}
+}
+
+// runIdentityProbeViaRelay runs an end-to-end CAP_IDENTITY probe against a
+// single master through the relay's normal master writer + reader path.
+// The reply frames route back via handleMasterFrame, which delivers them
+// to the per-probe externalResponseChannels entry registered here. On
+// success returns nil; on failure returns a typed error suitable for
+// MasterConnection.lastError. Mirrors Rust's run_identity_probe_via_relay.
+func (sw *RelaySwitch) runIdentityProbeViaRelay(masterIdx int) error {
+	const probeTimeout = 10 * time.Second
+
+	rid := NewMessageIdRandom()
+	xid := NewMessageIdFromUint(atomic.AddUint64(&sw.xidCounter, 1))
+	key := rid.ToString()
+
+	nonce := identityNonce()
+	cborNonce, err := cbor2.Marshal(nonce)
+	if err != nil {
+		return fmt.Errorf("BUG: failed to CBOR-encode identity nonce: %w", err)
+	}
+	streamID := "identity-verify-runtime"
+
+	// Buffered so handleMasterFrame's send (under sw.mu) never blocks for
+	// the bounded probe response (REQ echo is STREAM_START + CHUNK +
+	// STREAM_END + END, or a single ERR).
+	ch := make(chan *Frame, 64)
+
+	// Register the response channel and send all five probe frames under
+	// sw.mu so the writes don't interleave with other master writers
+	// (the relay serialises every switch→master write through sw.mu).
+	sw.mu.Lock()
+	if masterIdx < 0 || masterIdx >= len(sw.masters) {
+		sw.mu.Unlock()
+		return fmt.Errorf("runtime identity probe: master index %d out of range", masterIdx)
+	}
+	sw.externalResponseChannels[key] = ch
+	writer := sw.masters[masterIdx].socketWriter
+
+	seq := NewSeqAssigner()
+	req := NewReq(rid, standard.CapIdentity, []byte{}, "application/cbor")
+	req.RoutingId = &xid
+	seq.Assign(req)
+	ss := NewStreamStart(rid, streamID, "media:", nil)
+	ss.RoutingId = &xid
+	seq.Assign(ss)
+	checksum := ComputeChecksum(cborNonce)
+	chunk := NewChunk(rid, streamID, 0, cborNonce, 0, checksum)
+	chunk.RoutingId = &xid
+	seq.Assign(chunk)
+	se := NewStreamEnd(rid, streamID, 1)
+	se.RoutingId = &xid
+	seq.Assign(se)
+	end := NewEnd(rid, nil)
+	end.RoutingId = &xid
+	seq.Assign(end)
+
+	var sendErr error
+	for _, fr := range []*Frame{req, ss, chunk, se, end} {
+		if werr := writer.WriteFrame(fr); werr != nil {
+			sendErr = werr
+			break
+		}
+	}
+	sw.mu.Unlock()
+
+	// Always purge the registered channel on exit, whatever the outcome.
+	defer func() {
+		sw.mu.Lock()
+		delete(sw.externalResponseChannels, key)
+		sw.mu.Unlock()
+	}()
+
+	if sendErr != nil {
+		return fmt.Errorf("identity probe send failed: %w", sendErr)
+	}
+
+	timeout := time.After(probeTimeout)
+	var accumulated []byte
+	for {
+		select {
+		case <-timeout:
+			return fmt.Errorf("runtime identity probe timed out after %v", probeTimeout)
+		case fr, ok := <-ch:
+			if !ok {
+				return fmt.Errorf("runtime identity probe channel closed before END")
+			}
+			switch fr.FrameType {
+			case FrameTypeStreamStart, FrameTypeStreamEnd:
+				// no-op
+			case FrameTypeChunk:
+				if fr.Payload != nil {
+					var decoded []byte
+					if derr := cbor2.Unmarshal(fr.Payload, &decoded); derr != nil {
+						return fmt.Errorf("identity probe: failed to decode CBOR chunk: %w", derr)
+					}
+					accumulated = append(accumulated, decoded...)
+				}
+			case FrameTypeEnd:
+				if !bytesEqual(accumulated, nonce) {
+					return fmt.Errorf(
+						"identity probe payload mismatch (expected %d bytes, got %d)",
+						len(nonce), len(accumulated),
+					)
+				}
+				return nil
+			case FrameTypeErr:
+				code := fr.ErrorCode()
+				if code == "" {
+					code = "UNKNOWN"
+				}
+				msg := fr.ErrorMessage()
+				if msg == "" {
+					msg = "no message"
+				}
+				return fmt.Errorf("identity probe failed: [%s] %s", code, msg)
+			default:
+				return fmt.Errorf("identity probe: unexpected frame type %v", fr.FrameType)
+			}
+		}
+	}
 }
 
 // SetExpectedMasterCount declares how many cardinality slots the
@@ -1067,6 +1385,17 @@ func (sw *RelaySwitch) handleMasterFrame(sourceIdx int, frame *Frame) (*Frame, e
 
 	case FrameTypeStreamStart, FrameTypeChunk, FrameTypeStreamEnd,
 		FrameTypeEnd, FrameTypeErr, FrameTypeLog:
+		// Relay-internal request responses (the deferred runtime identity
+		// probe) route to the issuing goroutine's channel rather than back
+		// to ReadFromMasters. Checked BEFORE normal continuation routing.
+		if ch, ok := sw.externalResponseChannels[frame.Id.ToString()]; ok {
+			ch <- frame
+			if frame.FrameType == FrameTypeEnd || frame.FrameType == FrameTypeErr {
+				delete(sw.externalResponseChannels, frame.Id.ToString())
+			}
+			return nil, nil
+		}
+
 		entry, ok := sw.requestRouting[frame.Id.ToString()]
 		if ok && entry.SourceMasterIdx != ENGINE_SOURCE {
 			// Response to peer request
@@ -1107,28 +1436,63 @@ func (sw *RelaySwitch) handleMasterFrame(sourceIdx int, frame *Frame) (*Frame, e
 		if err != nil {
 			return nil, err
 		}
+		newCaps := payload.CapURNs()
 
-		// Update master's caps, installed cartridges, and limits
-		if sourceIdx >= 0 && sourceIdx < len(sw.masters) {
-			sw.masters[sourceIdx].caps = payload.CapURNs()
-			sw.masters[sourceIdx].installedCartridges = payload.InstalledCartridges
-			sw.masters[sourceIdx].manifest = manifest
-			// Extract and update limits from RelayNotify
-			if limits := frame.RelayNotifyLimits(); limits != nil {
-				sw.masters[sourceIdx].limits = *limits
-			}
+		if sourceIdx < 0 || sourceIdx >= len(sw.masters) {
+			// No master at this index — the slot's reader will exit on
+			// its own. Forward the frame to the engine (visibility) and
+			// drop the update, matching Rust.
+			return frame, nil
 		}
 
-		// Rebuild aggregate capability table, installed cartridges, then
-		// the wire-byte snapshot. rebuildCapabilities must run last
-		// because it serializes aggregateInstalledCartridges, which
-		// rebuildInstalledCartridges populated above.
+		// Detect the empty → non-empty cap transition. The initial
+		// RelayNotify (during construction / AddMaster) skipped the
+		// identity probe when caps were empty; if the host now advertises
+		// a real handler chain we must probe it end-to-end before its
+		// caps become routable. The master is held UNHEALTHY (so the
+		// cap_table rebuild below excludes it) until the probe driver
+		// confirms identity. Mirrors Rust's RelayNotify branch.
+		priorCapsEmpty := len(sw.masters[sourceIdx].caps) == 0
+		probeRequired := priorCapsEmpty && len(newCaps) > 0
+
+		// Apply the update. installed_cartridges and limits are
+		// observation-only inventory the engine wants immediately; caps
+		// are written too so update lookups stay consistent, but when a
+		// probe is required we mark the master unhealthy below so the
+		// cap_table rebuild excludes its caps.
+		sw.masters[sourceIdx].caps = newCaps
+		sw.masters[sourceIdx].installedCartridges = payload.InstalledCartridges
+		sw.masters[sourceIdx].manifest = manifest
+		if limits := frame.RelayNotifyLimits(); limits != nil {
+			sw.masters[sourceIdx].limits = *limits
+		}
+		if probeRequired {
+			sw.masters[sourceIdx].healthy = false
+			msg := "runtime identity probe pending — caps held back from routing"
+			sw.masters[sourceIdx].lastError = &msg
+		}
+
+		// Rebuild aggregate cap table, inventory, the wire-byte snapshot,
+		// and limits. cap_table / capabilities are health-filtered so an
+		// unhealthy master's caps don't surface as dispatch targets until
+		// the probe driver flips it healthy; inventory is NOT filtered.
 		sw.rebuildCapTable()
 		sw.rebuildInstalledCartridges()
 		sw.rebuildCapabilities()
+		sw.rebuildLimits()
 
-		// RelayNotify is consumed internally, don't forward to engine
-		return nil, nil
+		if probeRequired {
+			// Hand off to the probe driver without blocking under sw.mu.
+			select {
+			case sw.pendingProbes <- sourceIdx:
+			default:
+				go func(i int) { sw.pendingProbes <- i }(sourceIdx)
+			}
+		}
+
+		// Pass through to the engine for visibility (matches Rust, which
+		// returns Ok(Some(frame))).
+		return frame, nil
 
 	default:
 		return frame, nil
@@ -1172,34 +1536,75 @@ func (sw *RelaySwitch) rebuildCapTable() {
 	}
 }
 
-// rebuildInstalledCartridges rebuilds aggregate installed cartridge identities
+// installedIdentityKey is the full-identity dedup key for an installed
+// cartridge: (registry_url, channel, id, version, sha256). Two installs
+// of the same id+version from different registries (or channels) are
+// distinct cartridges with their own attached process and on-disk tree;
+// collapsing them would make the second one invisible to the engine.
+// registry_url is nullable; a nil URL is distinguished from the empty
+// string so a dev install never collides with a "" registry.
+func installedIdentityKey(ic InstalledCartridgeRecord) string {
+	reg := "\x00nil"
+	if ic.RegistryURL != nil {
+		reg = "\x01" + *ic.RegistryURL
+	}
+	return reg + "\x1f" + ic.Channel + "\x1f" + ic.Id + "\x1f" + ic.Version + "\x1f" + ic.Sha256
+}
+
+// rebuildInstalledCartridges rebuilds the aggregate installed-cartridge
+// INVENTORY view. This is deliberately NOT health-filtered: it is what is
+// physically installed and known to ANY master, regardless of current
+// per-master reachability. Filtering by master health caused the "all
+// cartridges disappeared" symptom on every transient master flap. The
+// reachability story lives in RuntimeStats.Running per cartridge, not in
+// whether the parent master happens to be unhealthy at this tick. Dedup
+// is on the full identity tuple.
 func (sw *RelaySwitch) rebuildInstalledCartridges() {
 	seen := make(map[string]bool)
 	result := []InstalledCartridgeRecord{}
 	for _, master := range sw.masters {
-		if master.healthy {
-			for _, ic := range master.installedCartridges {
-				key := ic.Id + "@" + ic.Version
-				if !seen[key] {
-					seen[key] = true
-					result = append(result, ic)
-				}
+		for _, ic := range master.installedCartridges {
+			key := installedIdentityKey(ic)
+			if !seen[key] {
+				seen[key] = true
+				result = append(result, ic)
 			}
 		}
 	}
 	sw.aggregateInstalledCartridges = result
 }
 
-// rebuildCapabilities rebuilds aggregate capabilities. The wire payload
-// now carries caps inside `installed_cartridges[*].cap_groups`; we
-// republish the union of every healthy master's installed cartridges so
-// the engine sees one combined view.
+// rebuildCapabilities rebuilds the ROUTABLE capabilities wire bytes — the
+// union of every HEALTHY master's installed cartridges (so a cap only
+// surfaces here once its master is identity-verified and routable). This
+// is the engine-readiness signal, distinct from the inventory aggregate
+// (which is deliberately NOT health-filtered). On an actual change it
+// publishes the new snapshot to the capabilities watch via send_replace
+// semantics, so a deferred probe completing — which flips a master
+// healthy and adds its caps here — wakes subscribers without a notify
+// storm from unrelated rebuilds.
 func (sw *RelaySwitch) rebuildCapabilities() {
-	manifest := RelayNotifyCapabilitiesPayload{
-		InstalledCartridges: append([]InstalledCartridgeRecord{}, sw.aggregateInstalledCartridges...),
+	seen := make(map[string]bool)
+	routable := []InstalledCartridgeRecord{}
+	for _, master := range sw.masters {
+		if !master.healthy {
+			continue
+		}
+		for _, ic := range master.installedCartridges {
+			key := installedIdentityKey(ic)
+			if !seen[key] {
+				seen[key] = true
+				routable = append(routable, ic)
+			}
+		}
 	}
+	manifest := RelayNotifyCapabilitiesPayload{InstalledCartridges: routable}
 	data, _ := json.Marshal(manifest)
-	sw.capabilities = data
+
+	if !bytes.Equal(data, sw.capabilities) {
+		sw.capabilities = data
+		sw.capWatch.store(data)
+	}
 }
 
 // rebuildLimits rebuilds negotiated limits
