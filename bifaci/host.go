@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/machinefabric/capdag-go/standard"
 	"github.com/machinefabric/capdag-go/urn"
@@ -850,6 +851,18 @@ func (h *CartridgeHost) Run(relayRead io.Reader, relayWrite io.Writer, resourceF
 	h.rebuildCapabilitiesLocked(out)
 	h.mu.Unlock()
 
+	// Periodic RelayNotify republish. The initial advertisement above (and
+	// the one the RelaySlave injects on connect) is consumed by the relay
+	// switch during its identity-verification handshake, so the engine only
+	// learns the live inventory from a RelayNotify republished *after* the
+	// switch finishes initializing. Republishing on a timer guarantees one
+	// lands post-handshake (and keeps request/heartbeat stats fresh
+	// thereafter). Only fires when a cartridge is running, keeping idle hosts
+	// quiet. Mirrors the reference run loop's stats_interval
+	// (capdag/src/bifaci/host_runtime.rs).
+	statsTicker := time.NewTicker(2 * time.Second)
+	defer statsTicker.Stop()
+
 	for {
 		select {
 		case frame, ok := <-relayCh:
@@ -878,6 +891,20 @@ func (h *CartridgeHost) Run(relayRead io.Reader, relayWrite io.Writer, resourceF
 			if cmd.isSync {
 				h.syncRegisteredRoster(cmd.syncRoster, out)
 			}
+
+		case <-statsTicker.C:
+			h.mu.Lock()
+			anyRunning := false
+			for _, c := range h.cartridges {
+				if c.running {
+					anyRunning = true
+					break
+				}
+			}
+			if anyRunning {
+				h.rebuildCapabilitiesLocked(out)
+			}
+			h.mu.Unlock()
 		}
 	}
 }

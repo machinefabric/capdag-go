@@ -144,10 +144,18 @@ func (rs *RelaySlave) Run(socketRead io.Reader, socketWrite io.Writer, initialNo
 				return
 			}
 
-			if frame.FrameType == FrameTypeRelayNotify || frame.FrameType == FrameTypeRelayState {
-				// Relay frames from local side should not happen — drop
+			// Forward all frames, including RelayNotify — the
+			// CartridgeHost publishes capability updates (the
+			// installed-cartridge inventory the engine needs to route)
+			// as RelayNotify frames through this local→socket path. Only
+			// RelayState is dropped (deprecated/unused). Mirrors the
+			// reference RelaySlave Task 2 (capdag/src/bifaci/relay.rs):
+			// dropping RelayNotify here strands the host's post-attach
+			// inventory and the engine never learns the cartridge exists.
+			if frame.FrameType == FrameTypeRelayState {
+				// Drop RelayState frames (deprecated/unused).
 			} else {
-				// Pass through to socket
+				// Pass through to socket (REQ/response/RelayNotify/...).
 				if err := socketWriter.WriteFrame(frame); err != nil {
 					errCh <- err
 					return
