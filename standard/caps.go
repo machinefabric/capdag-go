@@ -110,6 +110,11 @@ func AllCoercionPaths() [][2]string {
 		{"string", "number"},
 		{"integer", "number"},
 		{"boolean", "number"},
+		// To boolean (strict spellings — see the reference
+		// datacartridge coerce_to_boolean for the accepted set)
+		{"string", "boolean"},
+		{"integer", "boolean"},
+		{"number", "boolean"},
 		// To object (wrap in object)
 		{"string", "object"},
 		{"integer", "object"},
