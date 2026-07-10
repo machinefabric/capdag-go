@@ -44,13 +44,17 @@ func EncodeFrame(frame *Frame) ([]byte, error) {
 	// 1: frame_type
 	m[keyFrameType] = uint8(frame.FrameType)
 
-	// 2: id (bytes[16] for UUID, uint64 for uint variant)
+	// 2: id (bytes[16] for UUID, uint64 for uint variant).
+	// Rust's MessageId is a total enum (always Uuid or Uint); Go's struct can be
+	// left in an uninitialized zero state. Encoding such a frame as id=0 would
+	// fabricate a routing key out of a bug — the encode mirror of the strict
+	// decode contract. Fail hard instead of shipping a synthesized id=0.
 	if frame.Id.IsUuid() {
 		m[keyId] = frame.Id.uuidBytes
 	} else if frame.Id.uintValue != nil {
 		m[keyId] = *frame.Id.uintValue
 	} else {
-		m[keyId] = uint64(0)
+		return nil, errors.New("id (key 2): MessageId is uninitialized (neither UUID nor uint); refusing to encode a fabricated id=0")
 	}
 
 	// 3: seq (for CHUNK frames)
@@ -103,12 +107,17 @@ func EncodeFrame(frame *Frame) ([]byte, error) {
 		m[keyMediaUrn] = *frame.MediaUrn
 	}
 
-	// 13: routing_id (optional - for relay routing)
+	// 13: routing_id (optional - for relay routing). Absent (nil pointer) is a
+	// legitimate "no routing hint". But a *present* routing_id that is an
+	// uninitialized MessageId must not be silently dropped: that would strip the
+	// relay hint and misroute the frame. Fail hard, matching the strict decode.
 	if frame.RoutingId != nil {
 		if frame.RoutingId.IsUuid() {
 			m[keyRoutingId] = frame.RoutingId.uuidBytes
 		} else if frame.RoutingId.uintValue != nil {
 			m[keyRoutingId] = *frame.RoutingId.uintValue
+		} else {
+			return nil, errors.New("routing_id (key 13): present but uninitialized MessageId (neither UUID nor uint); refusing to drop the relay hint")
 		}
 	}
 
@@ -193,7 +202,11 @@ func DecodeFrame(data []byte) (*Frame, error) {
 		return nil, errors.New("frame_type must be uint")
 	}
 
-	// 2: id (required - can be bytes[16] for UUID or uint for uint64)
+	// 2: id (required - can be bytes[16] for UUID or uint for uint64).
+	// A malformed or absent id is a hard decode error, never a fabricated
+	// MessageId{} / uint(0) fallback: a synthesized id would misroute the
+	// frame (silently colliding with, or masquerading as, a different
+	// request/routing key) instead of surfacing the corruption.
 	idVal, ok := m[keyId]
 	if !ok {
 		return nil, errors.New("missing id (key 2)")
@@ -203,14 +216,14 @@ func DecodeFrame(data []byte) (*Frame, error) {
 	case []byte:
 		// UUID variant
 		if len(v) != 16 {
-			return nil, errors.New("UUID id must be 16 bytes")
+			return nil, fmt.Errorf("id (key 2): UUID must be exactly 16 bytes, got %d", len(v))
 		}
 		frame.Id = MessageId{uuidBytes: v}
 	case uint64:
 		// uint variant
 		frame.Id = NewMessageIdFromUint(v)
 	default:
-		return nil, errors.New("id must be bytes[16] or uint")
+		return nil, fmt.Errorf("id (key 2): must be bytes[16] or uint, got %T", v)
 	}
 
 	// 3: seq (optional - for CHUNK frames)
@@ -289,19 +302,28 @@ func DecodeFrame(data []byte) (*Frame, error) {
 		}
 	}
 
-	// 13: routing_id (optional - for relay routing)
+	// 13: routing_id (optional - for relay routing). Presence is optional,
+	// but a *present* routing_id must be a well-formed MessageId: silently
+	// dropping a malformed one (treating it as absent) would strip the relay
+	// hint and misroute the frame (e.g. the relay switch would treat a
+	// routed response as a fresh top-level request). Fail hard instead of
+	// fabricating or discarding.
 	if routingIdVal, ok := m[keyRoutingId]; ok {
 		switch v := routingIdVal.(type) {
 		case []byte:
-			if len(v) == 16 {
-				rid, err := NewMessageIdFromUuid(v)
-				if err == nil {
-					frame.RoutingId = &rid
-				}
+			if len(v) != 16 {
+				return nil, fmt.Errorf("routing_id (key 13): UUID must be exactly 16 bytes, got %d", len(v))
 			}
+			rid, err := NewMessageIdFromUuid(v)
+			if err != nil {
+				return nil, fmt.Errorf("routing_id (key 13): %w", err)
+			}
+			frame.RoutingId = &rid
 		case uint64:
 			rid := NewMessageIdFromUint(v)
 			frame.RoutingId = &rid
+		default:
+			return nil, fmt.Errorf("routing_id (key 13): must be bytes[16] or uint, got %T", v)
 		}
 	}
 

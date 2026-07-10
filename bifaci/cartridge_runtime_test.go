@@ -27,6 +27,11 @@ type mockStreamEmitter struct {
 	emittedData [][]byte
 }
 
+func (m *mockStreamEmitter) StartUnbounded(isSequence bool) error {
+	// No-op for tests — this mock doesn't model wire framing at all.
+	return nil
+}
+
 func (m *mockStreamEmitter) EmitCbor(value interface{}) error {
 	// CBOR-encode the value
 	cborPayload, err := cborlib.Marshal(value)
@@ -4349,10 +4354,12 @@ func drainingHandler(frames <-chan Frame, emitter StreamEmitter, peer PeerInvoke
 // unconditionally rather than needing a flush-before-block corollary.
 
 // TEST7052: Input consumption emits batched CREDIT grants — one grant per
-// half-window of chunks accepted, not one per chunk. In this mirror's
-// buffer-then-dispatch demux (see runCBORModeIO's FrameTypeChunk handling),
-// acceptance IS consumption — grants fire deterministically as chunks arrive,
-// with no dependency on handler scheduling.
+// half-window of chunks accepted, not one per chunk. This mirror's live
+// per-request demux (see runCBORModeIO's FrameTypeChunk handling) grants on
+// wire ACCEPTANCE, not on the handler actually reading the chunk off its live
+// frame channel — acceptance IS consumption for crediting purposes — so
+// grants fire deterministically as chunks arrive, with no dependency on
+// handler scheduling.
 func Test7052_input_grants_are_batched(t *testing.T) {
 	rt, err := NewCartridgeRuntime([]byte(testManifest))
 	if err != nil {
@@ -4426,20 +4433,24 @@ collect:
 // 2 with nothing consumed) is NOT reachable as an end-to-end wire test in
 // this mirror and is deliberately not ported as a false pass.
 //
-// This mirror's buffer-then-dispatch demux treats "accepted a chunk" as
-// "consumed" (see TEST7052's comment above) — every accepted chunk
-// immediately re-grants once its half-window batch threshold is crossed,
-// synchronously, in the same read-process cycle. For any wire-negotiable
-// initial_credit (>= 1 — both this mirror's HandshakeAccept and the Rust
-// reference's hello_initial_credit() treat a non-positive value identically
-// to an absent field and substitute DEFAULT_INITIAL_CREDIT, so 0 is not a
-// negotiable window either language honors) the window is therefore bounded
-// below by initial_credit - batch >= 0 and cannot go negative under any
-// single-stream chunk sequence a real sender can produce over this mirror's
-// synchronous one-frame-at-a-time transport: there is no decoupled "handler
-// hasn't consumed yet" phase to exploit the way the Rust/Swift
-// live-streaming demux's TEST7053 does (it stalls consumption by never
-// calling recv()).
+// This mirror's live per-request demux (see the live-input-model port: frames
+// are forwarded to the handler's channel as they arrive, replacing the
+// former buffer-then-dispatch design) deliberately keeps crediting keyed to
+// wire ACCEPTANCE, not to the handler actually reading a frame off its live
+// channel (see TEST7052's comment above) — every accepted chunk immediately
+// re-grants once its half-window batch threshold is crossed, synchronously,
+// in the same read-process cycle. For any wire-negotiable initial_credit
+// (>= 1 — both this mirror's HandshakeAccept and the Rust reference's
+// hello_initial_credit() treat a non-positive value identically to an absent
+// field and substitute DEFAULT_INITIAL_CREDIT, so 0 is not a negotiable
+// window either language honors) the window is therefore bounded below by
+// initial_credit - batch >= 0 and cannot go negative under any single-stream
+// chunk sequence a real sender can produce over this mirror's synchronous
+// one-frame-at-a-time transport: there is no decoupled "handler hasn't
+// consumed yet" phase to exploit the way the Rust/Swift live-streaming
+// demux's TEST7053 does (it stalls consumption by never calling recv()) —
+// unlike Rust/Swift, this mirror's crediting is intentionally NOT wired to
+// handler consumption, only to live delivery.
 //
 // The credit-violation MECHANISM itself (window decrement, `< 0` check,
 // CREDIT_VIOLATION ERR, counted CreditViolation drop) is still exercised by

@@ -605,6 +605,148 @@ func Test228_decode_missing_id(t *testing.T) {
 	}
 }
 
+// TEST7003: decode_frame rejects a malformed id (wrong byte length) as a hard
+// decode error instead of silently fabricating MessageId{}/uint(0). A
+// fabricated zero id would misroute the frame to the wrong request/flow.
+func Test7003_decode_rejects_malformed_id_wrong_length(t *testing.T) {
+	m := make(map[int]interface{})
+	m[keyVersion] = uint8(ProtocolVersion)
+	m[keyFrameType] = uint8(FrameTypeReq)
+	m[keyId] = []byte{1, 2, 3, 4, 5} // 5 bytes -- not a valid UUID length
+
+	encoded, err := cbor.Marshal(m)
+	if err != nil {
+		t.Fatalf("encode setup failed: %v", err)
+	}
+	decoded, err := DecodeFrame(encoded)
+	if err == nil {
+		t.Fatalf("decode_frame must reject a malformed (wrong-length) id, got frame with id=%v", decoded.Id)
+	}
+	if !strings.Contains(err.Error(), "id") {
+		t.Errorf("error must name the offending field: %v", err)
+	}
+}
+
+// TEST7004: decode_frame rejects a malformed id (wrong CBOR type) as a hard
+// decode error instead of silently fabricating MessageId{}/uint(0).
+func Test7004_decode_rejects_malformed_id_wrong_type(t *testing.T) {
+	m := make(map[int]interface{})
+	m[keyVersion] = uint8(ProtocolVersion)
+	m[keyFrameType] = uint8(FrameTypeReq)
+	m[keyId] = "not-an-id" // text string is neither bytes[16] nor uint
+
+	encoded, err := cbor.Marshal(m)
+	if err != nil {
+		t.Fatalf("encode setup failed: %v", err)
+	}
+	if _, err := DecodeFrame(encoded); err == nil {
+		t.Fatal("decode_frame must reject an id of the wrong CBOR type")
+	}
+}
+
+// TEST7005: decode_frame rejects a malformed routing_id (present but
+// wrong-length bytes, or wrong CBOR type) as a hard decode error rather than
+// silently dropping it and treating it as absent. Silently dropping a
+// corrupted routing_id would strip the relay hint and let the switch treat a
+// routed response as a fresh top-level request -- exactly the misrouting
+// this unit guards against. A well-formed routing_id must still decode.
+func Test7005_decode_rejects_malformed_routing_id(t *testing.T) {
+	base := func() map[int]interface{} {
+		m := make(map[int]interface{})
+		m[keyVersion] = uint8(ProtocolVersion)
+		m[keyFrameType] = uint8(FrameTypeReq)
+		m[keyId] = uint64(1)
+		return m
+	}
+
+	// Wrong byte length.
+	m := base()
+	m[keyRoutingId] = []byte{9, 9, 9}
+	encoded, err := cbor.Marshal(m)
+	if err != nil {
+		t.Fatalf("encode setup failed: %v", err)
+	}
+	if _, err := DecodeFrame(encoded); err == nil {
+		t.Error("decode_frame must reject a wrong-length routing_id, not silently drop it")
+	}
+
+	// Wrong CBOR type.
+	m = base()
+	m[keyRoutingId] = "not-a-routing-id"
+	encoded, err = cbor.Marshal(m)
+	if err != nil {
+		t.Fatalf("encode setup failed: %v", err)
+	}
+	if _, err := DecodeFrame(encoded); err == nil {
+		t.Error("decode_frame must reject a routing_id of the wrong CBOR type, not silently drop it")
+	}
+
+	// Sanity: a well-formed routing_id still decodes fine (not over-strict).
+	m = base()
+	m[keyRoutingId] = uint64(42)
+	encoded, err = cbor.Marshal(m)
+	if err != nil {
+		t.Fatalf("encode setup failed: %v", err)
+	}
+	decoded, err := DecodeFrame(encoded)
+	if err != nil {
+		t.Fatalf("well-formed routing_id must decode: %v", err)
+	}
+	if decoded.RoutingId == nil {
+		t.Fatal("expected routing_id to be set")
+	}
+}
+
+// TEST7006: EncodeFrame refuses to ship a fabricated id=0 for an uninitialized
+// MessageId. Rust's MessageId enum is total (always Uuid or Uint); Go's struct
+// can be left zero-valued. Emitting id=0 for that bug would forge a routing key
+// -- the encode mirror of the strict decode contract (7003/7004). A legitimate
+// MessageId::Uint(0) (used by HELLO/RelayNotify) must still encode fine.
+func Test7006_encode_rejects_uninitialized_id(t *testing.T) {
+	// Uninitialized id: both variants unset. Must fail hard.
+	bad := &Frame{Version: ProtocolVersion, FrameType: FrameTypeReq}
+	if _, err := EncodeFrame(bad); err == nil {
+		t.Fatal("EncodeFrame must reject an uninitialized MessageId, not emit id=0")
+	} else if !strings.Contains(err.Error(), "id") {
+		t.Errorf("error must name the id field: %v", err)
+	}
+
+	// Legitimate MessageId::Uint(0) still round-trips as the integer 0.
+	ok := NewHeartbeat(NewMessageIdFromUint(0))
+	encoded, err := EncodeFrame(ok)
+	if err != nil {
+		t.Fatalf("legitimate Uint(0) id must encode: %v", err)
+	}
+	decoded, err := DecodeFrame(encoded)
+	if err != nil {
+		t.Fatalf("legitimate Uint(0) id must decode: %v", err)
+	}
+	if decoded.Id.ToString() != "0" {
+		t.Errorf("expected id 0, got %s", decoded.Id.ToString())
+	}
+}
+
+// TEST7007: EncodeFrame refuses to silently drop a present-but-uninitialized
+// routing_id. A nil RoutingId pointer legitimately means "no relay hint" and
+// encodes to an absent key; a non-nil pointer to a zero-valued MessageId is a
+// bug that must fail hard rather than strip the relay hint and misroute.
+func Test7007_encode_rejects_uninitialized_routing_id(t *testing.T) {
+	// Absent routing_id encodes cleanly (control).
+	clean := NewHeartbeat(NewMessageIdFromUint(1))
+	if _, err := EncodeFrame(clean); err != nil {
+		t.Fatalf("absent routing_id must encode: %v", err)
+	}
+
+	// Present but uninitialized routing_id must fail hard.
+	bad := NewHeartbeat(NewMessageIdFromUint(1))
+	bad.RoutingId = &MessageId{}
+	if _, err := EncodeFrame(bad); err == nil {
+		t.Fatal("EncodeFrame must reject a present-but-uninitialized routing_id")
+	} else if !strings.Contains(err.Error(), "routing_id") {
+		t.Errorf("error must name the routing_id field: %v", err)
+	}
+}
+
 // TEST229: Test FrameReader/FrameWriter set_limits updates the negotiated limits
 func Test229_frame_reader_writer_set_limits(t *testing.T) {
 	buf := &bytes.Buffer{}

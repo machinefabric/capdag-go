@@ -200,13 +200,25 @@ func AccumulateInput(input <-chan Frame) ([]cap.CapArgumentValue, map[string]int
 			}
 			if idx, ok := active[sid]; ok {
 				if frame.Payload != nil {
-					decoded, err := DecodeChunkPayload(frame.Payload)
-					if err != nil {
+					// CBOR-decode chunk payload to extract raw bytes. Accept ONLY
+					// Bytes/Text (the accumulate contract) and fail hard on any
+					// other CBOR type — never coerce a number/bool to a string.
+					// Mirrors the Rust accumulate_input inline match exactly.
+					var value interface{}
+					if err := cborlib.Unmarshal(frame.Payload, &value); err != nil {
 						return nil, nil, fmt.Errorf(
 							"chunk payload is not valid CBOR (stream=%s, %d bytes): %w",
 							sid, len(frame.Payload), err)
 					}
-					streams[idx].data = append(streams[idx].data, decoded...)
+					switch v := value.(type) {
+					case []byte:
+						streams[idx].data = append(streams[idx].data, v...)
+					case string:
+						streams[idx].data = append(streams[idx].data, []byte(v)...)
+					default:
+						return nil, nil, fmt.Errorf(
+							"unexpected CBOR type in chunk payload: %T", value)
+					}
 				}
 			}
 		case FrameTypeStreamEnd:

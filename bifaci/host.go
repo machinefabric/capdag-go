@@ -16,10 +16,6 @@ import (
 	"github.com/machinefabric/capdag-go/urn"
 )
 
-// CapHandler is a function that handles a peer invoke request.
-// It receives the concatenated payload bytes and returns response bytes.
-type CapHandler func(payload []byte) ([]byte, error)
-
 // ResponseChunk represents a response chunk from a cartridge (matches Rust ResponseChunk)
 type ResponseChunk struct {
 	Payload []byte
@@ -823,14 +819,12 @@ func (h *CartridgeHost) FindCartridgeForCap(capUrn string) (int, bool) {
 }
 
 func (h *CartridgeHost) findCartridgeForCapLocked(capUrn string) (int, bool) {
-	// Exact match first
-	for _, entry := range h.capTable {
-		if entry.capUrn == capUrn {
-			return entry.cartridgeIdx, true
-		}
-	}
-
-	// URN-level matching: use is_dispatchable (provider can handle request)
+	// URN-level matching: use is_dispatchable (provider can handle request).
+	// No exact-string-match short-circuit — provider selection is purely
+	// order-theoretic (specificity distance), mirroring the Rust reference
+	// find_cartridge_for_cap. A conformance-equivalent provider registered
+	// earlier must win over a later identical-string one, which a string
+	// fast-path would wrongly override.
 	requestUrn, err := urn.NewCapUrnFromString(capUrn)
 	if err != nil {
 		return -1, false

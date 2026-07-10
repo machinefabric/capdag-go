@@ -3,6 +3,8 @@ package cap
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/machinefabric/capdag-go/media"
@@ -43,18 +45,29 @@ func NewFileSchemaResolver(basePath string) *FileSchemaResolver {
 	}
 }
 
-// ResolveSchema resolves a schema reference to a JSON schema
+// ResolveSchema resolves a schema reference to a JSON schema by reading the
+// referenced file under basePath and parsing it as JSON. Mirrors the Rust
+// reference FileSchemaResolver::resolve_schema: a missing file or invalid JSON
+// is a hard MediaUrnNotResolved error (never a fabricated/empty schema).
 func (f *FileSchemaResolver) ResolveSchema(schemaRef string) (interface{}, error) {
-	// This is a simple implementation - in production you might want
-	// to support HTTP URLs, caching, etc.
-	schemaPath := f.basePath + "/" + schemaRef
+	schemaPath := filepath.Join(f.basePath, schemaRef)
 
-	// For now, return an error indicating that file resolution is not implemented
-	// In a full implementation, you would read the file and parse the JSON
-	return nil, &SchemaValidationError{
-		Type:    "SchemaRefNotResolved",
-		Details: fmt.Sprintf("Schema reference '%s' could not be resolved from path '%s'", schemaRef, schemaPath),
+	content, err := os.ReadFile(schemaPath)
+	if err != nil {
+		return nil, &SchemaValidationError{
+			Type:    "UnresolvableMediaUrn",
+			Details: fmt.Sprintf("Media URN '%s' could not be resolved: File not found", schemaRef),
+		}
 	}
+
+	var schema interface{}
+	if err := json.Unmarshal(content, &schema); err != nil {
+		return nil, &SchemaValidationError{
+			Type:    "UnresolvableMediaUrn",
+			Details: fmt.Sprintf("Media URN '%s' could not be resolved: Invalid JSON", schemaRef),
+		}
+	}
+	return schema, nil
 }
 
 // SchemaValidator provides JSON Schema Draft-7 validation capabilities

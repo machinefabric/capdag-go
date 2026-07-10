@@ -92,6 +92,18 @@ func CollectArgsByMediaUrn(frames <-chan Frame, mediaUrnPattern string) ([]inter
 			if frame.StreamId == nil || frame.MediaUrn == nil {
 				continue
 			}
+			// Refuse buffering an unbounded stream (protocol v3, L16) — no
+			// length promise means no finite buffer for it. Check as soon as
+			// the pattern match is knowable (media_urn is on STREAM_START),
+			// BEFORE accumulating any of its chunks — a stream that never
+			// STREAM_ENDs would otherwise buffer forever.
+			if frame.IsUnbounded() {
+				if streamUrn, parseErr := taggedurn.NewTaggedUrnFromString(*frame.MediaUrn); parseErr == nil {
+					if comparable, _ := pattern.IsComparable(streamUrn); comparable {
+						return nil, errStreamUnbounded("CollectArgsByMediaUrn")
+					}
+				}
+			}
 			currentStreamID = *frame.StreamId
 			currentMediaUrn = *frame.MediaUrn
 			currentChunks = [][]byte{}
@@ -166,6 +178,11 @@ func CollectFirstArg(frames <-chan Frame) ([]byte, error) {
 		switch frame.FrameType {
 		case FrameTypeStreamStart:
 			if !foundFirst && frame.StreamId != nil {
+				// Refuse buffering an unbounded first stream (protocol v3,
+				// L16) BEFORE accumulating any of its chunks.
+				if frame.IsUnbounded() {
+					return nil, errStreamUnbounded("CollectFirstArg")
+				}
 				firstStreamID = *frame.StreamId
 				foundFirst = true
 				chunks = [][]byte{}
@@ -282,6 +299,11 @@ func CollectAllArgs(frames <-chan Frame) ([]cap.CapArgumentValue, error) {
 		case FrameTypeStreamStart:
 			if frame.StreamId == nil || frame.MediaUrn == nil {
 				continue
+			}
+			// Refuse buffering an unbounded stream (protocol v3, L16) BEFORE
+			// accumulating any of its chunks.
+			if frame.IsUnbounded() {
+				return nil, errStreamUnbounded("CollectAllArgs")
 			}
 			currentStreamID = *frame.StreamId
 			currentMediaUrn = *frame.MediaUrn

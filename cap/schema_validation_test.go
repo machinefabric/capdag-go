@@ -1,6 +1,8 @@
 package cap
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/machinefabric/capdag-go/media"
@@ -526,16 +528,39 @@ func Test6184_CapValidationCoordinator_EndToEnd(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// TEST6185: File schema resolver  error handling
+// TEST6185: File schema resolver reads and parses the referenced file, and
+// fails hard (never returns a fabricated/empty schema) on a missing file or
+// invalid JSON — mirroring the Rust FileSchemaResolver::resolve_schema.
 func Test6185_FileSchemaResolver_ErrorHandling(t *testing.T) {
+	// Missing file → hard error tagged "File not found".
 	resolver := NewFileSchemaResolver("/nonexistent/path")
-
 	_, err := resolver.ResolveSchema("test.schema.json")
-	assert.Error(t, err)
-
+	require.Error(t, err)
 	schemaErr, ok := err.(*SchemaValidationError)
 	require.True(t, ok)
-	assert.Equal(t, "SchemaRefNotResolved", schemaErr.Type)
+	assert.Equal(t, "UnresolvableMediaUrn", schemaErr.Type)
+	assert.Contains(t, schemaErr.Details, "File not found")
+
+	dir := t.TempDir()
+
+	// Invalid JSON → hard error tagged "Invalid JSON".
+	badPath := filepath.Join(dir, "bad.schema.json")
+	require.NoError(t, os.WriteFile(badPath, []byte("{ not json"), 0o644))
+	_, err = NewFileSchemaResolver(dir).ResolveSchema("bad.schema.json")
+	require.Error(t, err)
+	schemaErr, ok = err.(*SchemaValidationError)
+	require.True(t, ok)
+	assert.Equal(t, "UnresolvableMediaUrn", schemaErr.Type)
+	assert.Contains(t, schemaErr.Details, "Invalid JSON")
+
+	// Valid schema file → parsed JSON value returned, not an error.
+	goodPath := filepath.Join(dir, "good.schema.json")
+	require.NoError(t, os.WriteFile(goodPath, []byte(`{"type":"string"}`), 0o644))
+	schema, err := NewFileSchemaResolver(dir).ResolveSchema("good.schema.json")
+	require.NoError(t, err)
+	obj, ok := schema.(map[string]interface{})
+	require.True(t, ok)
+	assert.Equal(t, "string", obj["type"])
 }
 
 // TEST6314: Complex nested schema validation
