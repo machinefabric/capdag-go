@@ -39,6 +39,21 @@ const (
 	ErrAbstractionAmbiguousMachineNotation
 	// ErrAbstractionCyclicMachineStrand — resolved data-flow graph contains a cycle.
 	ErrAbstractionCyclicMachineStrand
+	// ErrAbstractionRuntimeMediaInference — a cap could not be applied to the
+	// runtime input media flowing into it while realizing a strand.
+	ErrAbstractionRuntimeMediaInference
+	// ErrAbstractionCapDoesNotDeclareInput — no argument declares a stdin source
+	// whose URN is the cap's in=.
+	ErrAbstractionCapDoesNotDeclareInput
+	// ErrAbstractionNoStdinBinding — the resolver's source-to-arg assignment has
+	// no binding feeding the cap's stdin argument.
+	ErrAbstractionNoStdinBinding
+	// ErrAbstractionNonProducerSecondaryArg — a non-primary wiring source is not
+	// another cap's output.
+	ErrAbstractionNonProducerSecondaryArg
+	// ErrAbstractionDisconnectedStrand — a strand's edges do not form a
+	// connected data-flow graph.
+	ErrAbstractionDisconnectedStrand
 )
 
 func noCapabilityStepsError() *MachineAbstractionError {
@@ -80,6 +95,88 @@ func cyclicStrandError(strandIndex int) *MachineAbstractionError {
 	return &MachineAbstractionError{
 		Kind:        ErrAbstractionCyclicMachineStrand,
 		Message:     fmt.Sprintf("strand %d: resolved data-flow graph contains a cycle", strandIndex),
+		StrandIndex: &idx,
+	}
+}
+
+// runtimeMediaInferenceError reports that a cap could not be applied to the
+// runtime input media flowing into it while realizing a strand — the declared
+// input/output specs are incompatible with the concrete upstream media.
+// Realization cannot invent a valid data type, so it fails hard rather than
+// guessing.
+func runtimeMediaInferenceError(strandIndex int, capUrn, runtimeInput, reason string) *MachineAbstractionError {
+	idx := strandIndex
+	return &MachineAbstractionError{
+		Kind: ErrAbstractionRuntimeMediaInference,
+		Message: fmt.Sprintf(
+			"strand %d: cap '%s' cannot be applied to runtime input '%s': %s",
+			strandIndex, capUrn, runtimeInput, reason,
+		),
+		StrandIndex: &idx,
+	}
+}
+
+// capDoesNotDeclareInputError reports that a cap does not declare its input: no
+// argument declares a Stdin source whose URN is the cap's in=. The main input
+// is the value piped in on stdin, so the main arg always declares a stdin
+// source carrying in= (its declared slot URN may differ — e.g. a file-path slot
+// whose piped content is in=). A cap without such an arg cannot receive its
+// input to thread the strand's runtime media.
+func capDoesNotDeclareInputError(strandIndex int, capUrn string) *MachineAbstractionError {
+	idx := strandIndex
+	return &MachineAbstractionError{
+		Kind: ErrAbstractionCapDoesNotDeclareInput,
+		Message: fmt.Sprintf(
+			"strand %d: cap '%s' does not declare its input (no argument declares a stdin source whose URN is its in=)",
+			strandIndex, capUrn,
+		),
+		StrandIndex: &idx,
+	}
+}
+
+// noStdinBindingError reports that the resolver's source-to-arg assignment for
+// a cap edge has no binding feeding the cap's stdin argument. The primary
+// (main-input) source is missing — the wiring cannot be realized into a
+// data-flow step.
+func noStdinBindingError(strandIndex int, capUrn, stdinArg string) *MachineAbstractionError {
+	idx := strandIndex
+	return &MachineAbstractionError{
+		Kind: ErrAbstractionNoStdinBinding,
+		Message: fmt.Sprintf(
+			"strand %d: cap '%s' has no wiring source bound to its stdin argument '%s'",
+			strandIndex, capUrn, stdinArg,
+		),
+		StrandIndex: &idx,
+	}
+}
+
+// nonProducerSecondaryArgError reports that a non-primary (convergence) wiring
+// source is NOT another cap's output. Only a cap output may be wired into a
+// non-main argument; a raw input feeding a non-main argument is an argument
+// VALUE (default / setting / config / user input), delivered through the
+// argument value channel, never wired. Exposed hard rather than silently
+// mis-routed.
+func nonProducerSecondaryArgError(strandIndex int, capUrn, argUrn string) *MachineAbstractionError {
+	idx := strandIndex
+	return &MachineAbstractionError{
+		Kind: ErrAbstractionNonProducerSecondaryArg,
+		Message: fmt.Sprintf(
+			"strand %d: cap '%s' arg '%s' is wired from a source that is not a cap output; "+
+				"wire only cap outputs into non-main args, deliver everything else as an argument value",
+			strandIndex, capUrn, argUrn,
+		),
+		StrandIndex: &idx,
+	}
+}
+
+// disconnectedStrandError reports that a strand's edges do not form a
+// data-flow graph whose every source is reachable (an unreachable edge, or a
+// source whose producer never becomes available).
+func disconnectedStrandError(strandIndex int) *MachineAbstractionError {
+	idx := strandIndex
+	return &MachineAbstractionError{
+		Kind:        ErrAbstractionDisconnectedStrand,
+		Message:     fmt.Sprintf("strand %d: edges do not form a connected data-flow graph", strandIndex),
 		StrandIndex: &idx,
 	}
 }

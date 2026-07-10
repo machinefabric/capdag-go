@@ -5,6 +5,8 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/google/uuid"
+
 	"github.com/machinefabric/capdag-go/cap"
 	"github.com/machinefabric/capdag-go/standard"
 	"github.com/machinefabric/capdag-go/urn"
@@ -74,8 +76,68 @@ const (
 	StepTypeCollect
 )
 
+// ArgSourceKind identifies which of the two shapes an ArgSourceRef carries.
+type ArgSourceKind int
+
+const (
+	// ArgSourceStrandInput — fed by the strand's input anchor — the strand's own
+	// input flows into this arg.
+	ArgSourceStrandInput ArgSourceKind = iota
+	// ArgSourceStep — fed by another cap step's output, identified by that
+	// step's stable TokenId.
+	ArgSourceStep
+)
+
+// ArgSourceRef is the producer of one of a cap step's inputs.
+//
+// A Strand is a DAG of steps: an input is fed either by the strand's own input
+// (an input anchor) or by another cap step's output. There are no positional
+// assumptions — every input names its producer explicitly, so fan-out (one
+// producer feeding several caps' main inputs) and convergence (one cap fed by
+// several producers) are both expressible.
+// Matches Rust: pub enum ArgSourceRef { StrandInput, Step { token_id: String } }
+type ArgSourceRef struct {
+	Kind ArgSourceKind
+	// TokenId is the producing step's stable identity. Only meaningful when
+	// Kind == ArgSourceStep.
+	TokenId string
+}
+
+// NewArgSourceStrandInput builds an ArgSourceRef fed by the strand's own input.
+func NewArgSourceStrandInput() ArgSourceRef {
+	return ArgSourceRef{Kind: ArgSourceStrandInput}
+}
+
+// NewArgSourceStep builds an ArgSourceRef fed by another cap step's output.
+func NewArgSourceStep(tokenId string) ArgSourceRef {
+	return ArgSourceRef{Kind: ArgSourceStep, TokenId: tokenId}
+}
+
+// CapInput is one input to a cap step: the cap argument it feeds (by the
+// argument's slot media URN) and the producer of that input.
+//
+// A cap step lists ALL of its data-flow inputs — the primary (stdin/main) input
+// and every convergence input — with no positional ordering assumptions. The
+// PRIMARY input is the one whose ArgUrn is the cap's stdin argument URN; it
+// threads the step's FromSpec runtime media. Arg URNs into one cap are all
+// distinct (RULE1: a cap's args have unique media URNs), so ArgUrn alone
+// identifies the slot.
+// Matches Rust: pub struct CapInput { pub arg_urn: MediaUrn, pub source: ArgSourceRef }
+type CapInput struct {
+	ArgUrn *urn.MediaUrn
+	Source ArgSourceRef
+}
+
 // StrandStep contains information about a single step in a path.
 type StrandStep struct {
+	// TokenId is the stable per-step identity, minted once when the step is
+	// created (the very source of a resolved strand). It is the single key that
+	// ties this element of the realized graph to every live update the run
+	// emits for it — so a repeated cap URN in one strand is never ambiguous.
+	// Alias-free and notation-independent; it travels verbatim through
+	// serialization, the run's persisted resolved strand, the render payload,
+	// and every progress message.
+	TokenId          string
 	StepType         StrandStepType
 	FromSpec         *urn.MediaUrn
 	ToSpec           *urn.MediaUrn
@@ -85,6 +147,25 @@ type StrandStep struct {
 	MediaDef         *urn.MediaUrn
 	InputIsSequence  bool
 	OutputIsSequence bool
+	// Inputs lists ALL of this cap step's data-flow inputs — the primary
+	// (stdin) input plus any convergence inputs — each naming its producer
+	// explicitly. Only meaningful when StepType == StepTypeCap. The primary is
+	// the input whose ArgUrn is the cap's stdin argument URN.
+	Inputs []CapInput
+}
+
+// NewStrandStep creates a step, minting its stable TokenId. This is the
+// canonical way a step is born in production, so every step in a resolved
+// strand carries an id from creation; deserialization preserves the stored id
+// verbatim.
+// Matches Rust: impl StrandStep { pub fn new(...) -> Self }
+func NewStrandStep(stepType StrandStepType, fromSpec, toSpec *urn.MediaUrn) *StrandStep {
+	return &StrandStep{
+		TokenId:  uuid.New().String(),
+		StepType: stepType,
+		FromSpec: fromSpec,
+		ToSpec:   toSpec,
+	}
 }
 
 // Title returns the title for this step.

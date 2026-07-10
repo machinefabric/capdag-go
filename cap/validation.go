@@ -934,7 +934,7 @@ func ValidateCapArgs(cap *Cap) error {
 					return &ValidationError{
 						Type:    "InvalidCapSchema",
 						CapUrn:  capUrn,
-						Message: fmt.Sprintf("RULE11: Cap has in=\"%s\" but no args have stdin sources", cap.Urn.InSpec()),
+						Message: fmt.Sprintf("RULE11: Cap has in='%s' but no args declare a stdin source — the main input is the value piped in on stdin, so at least one arg must accept stdin", cap.Urn.InSpec()),
 					}
 				}
 			}

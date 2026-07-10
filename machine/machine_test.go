@@ -1,6 +1,7 @@
 package machine
 
 import (
+	"sort"
 	"testing"
 
 	"github.com/machinefabric/capdag-go/cap"
@@ -65,38 +66,60 @@ func capUrnVal(s string) *urn.CapUrn {
 // foreachStep builds a StepTypeForEach StrandStep.
 func foreachStep(mediaUrnStr string) *planner.StrandStep {
 	u := mediaUrn(mediaUrnStr)
-	return &planner.StrandStep{
-		StepType:  planner.StepTypeForEach,
-		FromSpec:  u,
-		ToSpec:    u,
-		MediaDef: u,
-	}
+	step := planner.NewStrandStep(planner.StepTypeForEach, u, u)
+	step.MediaDef = u
+	return step
 }
 
 // collectStep builds a StepTypeCollect StrandStep.
 func collectStep(mediaUrnStr string) *planner.StrandStep {
 	u := mediaUrn(mediaUrnStr)
-	return &planner.StrandStep{
-		StepType:  planner.StepTypeCollect,
-		FromSpec:  u,
-		ToSpec:    u,
-		MediaDef: u,
-	}
+	step := planner.NewStrandStep(planner.StepTypeCollect, u, u)
+	step.MediaDef = u
+	return step
 }
 
-// capStep builds a StepTypeCap StrandStep.
+// capStep builds a StepTypeCap StrandStep with a single main input fed by the
+// strand input. Chained fixtures wire the predecessor via chainCapSteps
+// (below). New in the explicit-inputs model (v3): the LOOP keyword is retired
+// and IsLoop is derived from cardinality — see resolvePreInterned.
 func capStep(capUrnStr, title, from, to string) *planner.StrandStep {
-	return &planner.StrandStep{
-		StepType:  planner.StepTypeCap,
-		FromSpec:  mediaUrn(from),
-		ToSpec:    mediaUrn(to),
-		CapUrnVal: capUrnVal(capUrnStr),
-		StepTitle: title,
+	fromUrn := mediaUrn(from)
+	step := planner.NewStrandStep(planner.StepTypeCap, fromUrn, mediaUrn(to))
+	step.CapUrnVal = capUrnVal(capUrnStr)
+	step.StepTitle = title
+	step.Inputs = []planner.CapInput{
+		{ArgUrn: fromUrn, Source: planner.NewArgSourceStrandInput()},
 	}
+	return step
+}
+
+// chainCapSteps wires a sequence of steps into a linear chain: each cap step
+// after the first takes its single main input from the immediately preceding
+// cap step's output (ForEach/Collect steps are passed over — they are
+// cardinality transitions, not producers). Under the explicit-inputs model a
+// chained fixture must name its predecessor rather than rely on position, so
+// fixtures that build linear strands wrap their step slice in this before
+// constructing the Strand. Mirrors Rust test_fixtures::chain_cap_steps.
+func chainCapSteps(steps []*planner.StrandStep) []*planner.StrandStep {
+	var prevCapToken string
+	haveProducer := false
+	for _, step := range steps {
+		token := step.TokenId
+		if step.StepType == planner.StepTypeCap {
+			if haveProducer && len(step.Inputs) > 0 {
+				step.Inputs[0].Source = planner.NewArgSourceStep(prevCapToken)
+			}
+			prevCapToken = token
+			haveProducer = true
+		}
+	}
+	return steps
 }
 
 // strandFromSteps wraps steps into a Strand.
 func strandFromSteps(steps []*planner.StrandStep, description string) *planner.Strand {
+	steps = chainCapSteps(steps)
 	totalSteps := len(steps)
 	capStepCount := 0
 	for _, s := range steps {
@@ -107,12 +130,12 @@ func strandFromSteps(steps []*planner.StrandStep, description string) *planner.S
 	sourceMediaUrn := steps[0].FromSpec
 	targetMediaUrn := steps[len(steps)-1].ToSpec
 	return &planner.Strand{
-		Steps:        steps,
-		SourceMediaUrn:   sourceMediaUrn,
-		TargetMediaUrn:   targetMediaUrn,
-		TotalSteps:   totalSteps,
-		CapStepCount: capStepCount,
-		Description:  description,
+		Steps:          steps,
+		SourceMediaUrn: sourceMediaUrn,
+		TargetMediaUrn: targetMediaUrn,
+		TotalSteps:     totalSteps,
+		CapStepCount:   capStepCount,
+		Description:    description,
 	}
 }
 
@@ -311,39 +334,50 @@ func Test1160_InputOutputAnchors(t *testing.T) {
 // IsLoop / ForEach tests
 // ===================================================================
 
-// TEST1169: Loop markers in notation set the resolved edge loop flag on the following cap step.
-func Test1169_ForEachSetsIsLoop(t *testing.T) {
-	loopCap := buildCap(
-		`cap:in="media:ext=pdf";extract;out="media:txt;enc=utf-8"`,
-		"extract",
-		[]string{"media:ext=pdf"},
-		`media:txt;enc=utf-8`,
+// TEST1169: A sequence-output cap feeding a scalar-input cap makes the resolved
+// edge a per-item map (IsLoop), derived from cardinality — the single rule
+// cap.NeedsForeach, which replaces the retired LOOP keyword. The
+// scalar->sequence producer edge itself does not loop.
+func Test1169_SequenceIntoScalarCapDerivesIsLoop(t *testing.T) {
+	// Producer: scalar text -> SEQUENCE of items.
+	splitter := buildCap(
+		`cap:in="media:enc=utf-8";split;out="media:item;enc=utf-8"`,
+		"split",
+		[]string{"media:enc=utf-8"},
+		`media:item;enc=utf-8`,
 	)
-	registry := registryWith([]*cap.Cap{loopCap})
+	splitter.Output.IsSequence = true
+	// Consumer: scalar item -> scalar text.
+	texter := buildCap(
+		`cap:in="media:item;enc=utf-8";t;out="media:enc=utf-8"`,
+		"t",
+		[]string{"media:item;enc=utf-8"},
+		`media:enc=utf-8`,
+	)
+	registry := registryWith([]*cap.Cap{splitter, texter})
+	notation := `[split cap:in="media:enc=utf-8";split;out="media:item;enc=utf-8"]` +
+		`[t cap:in="media:item;enc=utf-8";t;out="media:enc=utf-8"]` +
+		`[a -> split -> items]` +
+		`[items -> t -> b]`
 
-	steps := []*planner.StrandStep{
-		{
-			StepType:  planner.StepTypeForEach,
-			FromSpec:  mediaUrn("media:ext=pdf"),
-			ToSpec:    mediaUrn("media:ext=pdf"),
-			MediaDef: mediaUrn("media:ext=pdf"),
-		},
-		capStep(
-			`cap:in="media:ext=pdf";extract;out="media:txt;enc=utf-8"`,
-			"extract",
-			"media:ext=pdf",
-			`media:txt;enc=utf-8`,
-		),
+	m, parseErr := ParseMachine(notation, registry)
+	require.Nil(t, parseErr, "must parse")
+	require.Equal(t, 1, m.StrandCount())
+	strand := m.Strands()[0]
+	require.Equal(t, 2, len(strand.Edges()))
+
+	var splitEdge, tEdge *MachineEdge
+	for _, e := range strand.Edges() {
+		if containsStr(e.CapUrn.String(), "split") {
+			splitEdge = e
+		} else {
+			tEdge = e
+		}
 	}
-	strand := strandFromSteps(steps, "loop extract")
-	m, err := FromStrand(strand, registry)
-	if err != nil {
-		t.Fatal(err)
-	}
-	edge := m.Strands()[0].Edges()[0]
-	if !edge.IsLoop {
-		t.Error("expected IsLoop=true on edge following ForEach step")
-	}
+	require.NotNil(t, splitEdge, "split edge must be present")
+	require.NotNil(t, tEdge, "t edge must be present")
+	assert.False(t, splitEdge.IsLoop, "a scalar source feeding the sequence-producing cap must not map")
+	assert.True(t, tEdge.IsLoop, "a sequence feeding a scalar-input cap must map per item (IsLoop)")
 }
 
 // TEST1170: Parsing and then serializing machine notation round-trips to the canonical form.
@@ -364,9 +398,9 @@ func Test1170_CollectIsElided(t *testing.T) {
 			`media:txt;enc=utf-8`,
 		),
 		{
-			StepType:  planner.StepTypeCollect,
-			FromSpec:  mediaUrn(`media:txt;enc=utf-8`),
-			ToSpec:    mediaUrn(`media:txt;enc=utf-8`),
+			StepType: planner.StepTypeCollect,
+			FromSpec: mediaUrn(`media:txt;enc=utf-8`),
+			ToSpec:   mediaUrn(`media:txt;enc=utf-8`),
 			MediaDef: mediaUrn(`media:txt;enc=utf-8`),
 		},
 	}
@@ -971,6 +1005,9 @@ func Test1185_resolve_strand_chained_caps_share_intermediate_node(t *testing.T) 
 }
 
 // TEST1186: Resolving a strand with ForEach marks the following cap edge as a loop.
+// IsLoop is derived from cardinality: disbind produces a SEQUENCE of pages, and
+// make_decision consumes a scalar page, so make_decision's edge maps per item.
+// Collect at the end is elided.
 func Test1186_resolve_strand_foreach_marks_following_cap_as_loop(t *testing.T) {
 	disbind := buildCap(
 		`cap:in="media:ext=pdf";disbind;out="media:page;enc=utf-8"`,
@@ -978,6 +1015,7 @@ func Test1186_resolve_strand_foreach_marks_following_cap_as_loop(t *testing.T) {
 		[]string{"media:ext=pdf"},
 		`media:page;enc=utf-8`,
 	)
+	disbind.Output.IsSequence = true
 	makeDecision := buildCap(
 		`cap:in="media:enc=utf-8";make-decision;out="media:decision;fmt=json;record"`,
 		"make_decision",
@@ -1104,6 +1142,55 @@ func Test1191_resolve_strand_disbind_pdf_with_file_path_slot_identity(t *testing
 		"source node URN must be media:ext=pdf (the data-type URN), got: %s", sourceUrn)
 }
 
+// TEST1138: EdgeAssignmentBinding list is sorted by CapArgMediaUrn for canonical
+// form. A two-source cap whose args are added in reverse-alphabetical order
+// must still produce bindings sorted alphabetically by CapArgMediaUrn,
+// enabling canonical comparison regardless of creation order.
+func Test1138_assignment_bindings_are_sorted_by_cap_arg_media_urn(t *testing.T) {
+	// Cap with two stdin args: enc=utf-8 (later alphabetically) and pdf
+	// (earlier). Args are listed in reverse order so the test fails if
+	// sorting is skipped.
+	mergeCap := buildCap(
+		`cap:in="media:ext=pdf";merge;out="media:txt;enc=utf-8"`,
+		"merge",
+		[]string{"media:enc=utf-8", "media:ext=pdf"},
+		`media:txt;enc=utf-8`,
+	)
+	registry := registryWith([]*cap.Cap{mergeCap})
+
+	// Pre-interned nodes: 0=pdf, 1=enc=utf-8, 2=enc=utf-8;txt (output)
+	nodes := []*urn.MediaUrn{
+		mediaUrn("media:ext=pdf"),
+		mediaUrn("media:enc=utf-8"),
+		mediaUrn(`media:txt;enc=utf-8`),
+	}
+	mergeCapUrn := capUrnVal(`cap:in="media:ext=pdf";merge;out="media:txt;enc=utf-8"`)
+	wirings := []preInternedWiring{
+		{
+			tokenId:       "tok-1",
+			capUrn:        mergeCapUrn,
+			sourceNodeIds: []NodeId{0, 1}, // pdf first, enc=utf-8 second
+			targetNodeId:  2,
+		},
+	}
+
+	strand, err := resolvePreInterned(nodes, wirings, registry, 0)
+	require.Nil(t, err)
+	require.Equal(t, 1, len(strand.Edges()))
+
+	bindings := strand.Edges()[0].Assignment
+	require.Equal(t, 2, len(bindings))
+
+	slotUrns := make([]string, len(bindings))
+	for i, b := range bindings {
+		slotUrns[i] = b.CapArgMediaUrn.String()
+	}
+	sorted := make([]string, len(slotUrns))
+	copy(sorted, slotUrns)
+	sort.Strings(sorted)
+	assert.Equal(t, sorted, slotUrns, "bindings must be sorted by CapArgMediaUrn")
+}
+
 // TEST1176: ToRenderPayloadJSON for a populated machine includes strand with
 // nodes, edges, input_anchor_nodes, and output_anchor_nodes.
 func Test1176_render_payload_json_includes_strand_with_anchors(t *testing.T) {
@@ -1165,16 +1252,16 @@ func Test1308_CyclicStrandFailsHard(t *testing.T) {
 	// node 0 -> cap_a -> node 1  and  node 1 -> cap_b -> node 0 (cycle)
 	wirings := []preInternedWiring{
 		{
+			tokenId:       "tok-2",
 			capUrn:        capUrnVal(urnA),
 			sourceNodeIds: []NodeId{0},
 			targetNodeId:  1,
-			isLoop:        false,
 		},
 		{
+			tokenId:       "tok-3",
 			capUrn:        capUrnVal(urnB),
 			sourceNodeIds: []NodeId{1},
 			targetNodeId:  0,
-			isLoop:        false,
 		},
 	}
 

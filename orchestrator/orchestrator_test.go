@@ -408,24 +408,31 @@ func Test1259_parse_fan_in(t *testing.T) {
 	}
 }
 
-// TEST1260: LOOP wiring parses as a single edge while preserving the loop marker semantics.
-func Test1260_parse_loop_wiring(t *testing.T) {
+// TEST1260: The LOOP keyword is retired from the grammar. A keyword-free wiring
+// parses to a single edge; the old LOOP form no longer parses. ForEach is never
+// authored — it is derived from cardinality in the resolver/realizer.
+func Test1260_loop_keyword_retired(t *testing.T) {
 	registry := buildParserTestRegistry(t, []string{
 		`cap:in="media:disbound-page;enc=utf-8";page-to-text;out="media:enc=utf-8;ext=txt"`,
 	})
 
-	notation := `[p2t cap:in="media:disbound-page;enc=utf-8";page-to-text;out="media:enc=utf-8;ext=txt"]` +
-		`[pages -> LOOP p2t -> texts]`
+	header := `[p2t cap:in="media:disbound-page;enc=utf-8";page-to-text;out="media:enc=utf-8;ext=txt"]`
 
-	graph, err := ParseMachineToCapDag(notation, registry)
+	// Keyword-free wiring parses to one edge.
+	graph, err := ParseMachineToCapDag(header+`[pages -> p2t -> texts]`, registry)
 	if err != nil {
-		t.Fatalf("Parse failed: %v", err)
+		t.Fatalf("keyword-free wiring must parse: %v", err)
 	}
 	if len(graph.Edges) != 1 {
 		t.Fatalf("Expected 1 edge, got %d", len(graph.Edges))
 	}
 	if len(graph.Nodes) != 2 {
 		t.Fatalf("Expected 2 nodes, got %d: %v", len(graph.Nodes), graph.Nodes)
+	}
+
+	// The retired LOOP keyword must not parse as a valid wiring.
+	if _, err := ParseMachineToCapDag(header+`[pages -> LOOP p2t -> texts]`, registry); err == nil {
+		t.Fatal("the retired LOOP keyword must not parse as a valid wiring")
 	}
 }
 

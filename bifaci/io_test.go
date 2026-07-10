@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"sync"
 	"testing"
 
@@ -60,7 +61,7 @@ func Test205_req_frame_roundtrip(t *testing.T) {
 
 // TEST206: Test HELLO frame encode/decode roundtrip preserves max_frame, max_chunk, max_reorder_buffer
 func Test206_hello_frame_roundtrip(t *testing.T) {
-	original := NewHello(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer)
+	original := NewHello(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit)
 
 	encoded, err := EncodeFrame(original)
 	if err != nil {
@@ -165,7 +166,7 @@ func Test210_end_frame_roundtrip(t *testing.T) {
 // TEST211: Test HELLO with manifest encode/decode roundtrip preserves manifest bytes and limits
 func Test211_hello_with_manifest_roundtrip(t *testing.T) {
 	manifest := []byte(`{"name":"test","version":"1.0.0"}`)
-	original := NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, manifest)
+	original := NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit, manifest)
 
 	encoded, err := EncodeFrame(original)
 	if err != nil {
@@ -646,7 +647,7 @@ func Test230_sync_handshake(t *testing.T) {
 	hostWriter := NewFrameWriter(&hostToCartridge)
 
 	// Step 1: Host sends HELLO
-	helloFrame := NewHello(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer)
+	helloFrame := NewHello(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit)
 	if err := hostWriter.WriteFrame(helloFrame); err != nil {
 		t.Fatalf("Failed to write host HELLO: %v", err)
 	}
@@ -661,7 +662,7 @@ func Test230_sync_handshake(t *testing.T) {
 	}
 
 	// Cartridge sends HELLO with manifest
-	responseFrame := NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, manifest)
+	responseFrame := NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit, manifest)
 	if err := cartridgeWriter.WriteFrame(responseFrame); err != nil {
 		t.Fatalf("Failed to write cartridge HELLO: %v", err)
 	}
@@ -734,7 +735,7 @@ func Test231_handshake_rejects_non_hello(t *testing.T) {
 
 	// Host sends HELLO
 	hostWriter := NewFrameWriter(&hostToCartridge)
-	helloFrame := NewHello(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer)
+	helloFrame := NewHello(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit)
 	if err := hostWriter.WriteFrame(helloFrame); err != nil {
 		t.Fatalf("Failed to write HELLO: %v", err)
 	}
@@ -769,7 +770,7 @@ func Test232_handshake_rejects_missing_manifest(t *testing.T) {
 
 	// Cartridge sends HELLO without manifest
 	cartridgeWriter := NewFrameWriter(&cartridgeToHost)
-	noManifestHello := NewHello(1_000_000, 200_000, DefaultMaxReorderBuffer)
+	noManifestHello := NewHello(1_000_000, 200_000, DefaultMaxReorderBuffer, DefaultInitialCredit)
 	if err := cartridgeWriter.WriteFrame(noManifestHello); err != nil {
 		t.Fatalf("Failed to write HELLO: %v", err)
 	}
@@ -891,7 +892,7 @@ func Test848_relay_notify_roundtrip(t *testing.T) {
 	maxFrame := 2_000_000
 	maxChunk := 128_000
 
-	original := NewRelayNotify(manifest, maxFrame, maxChunk, DefaultMaxReorderBuffer)
+	original := NewRelayNotify(manifest, maxFrame, maxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit)
 	encoded, err := EncodeFrame(original)
 	if err != nil {
 		t.Fatalf("Encode failed: %v", err)
@@ -1212,7 +1213,7 @@ func Test6597_write_chunked_chunk_index_ordering(t *testing.T) {
 // TEST472: Handshake negotiates max_reorder_buffer (minimum of both sides)
 func Test472_handshake_negotiates_reorder_buffer(t *testing.T) {
 	// Build a HELLO frame with max_reorder_buffer=32 (cartridge side)
-	cartridgeHello := NewHello(DefaultMaxFrame, DefaultMaxChunk, 32)
+	cartridgeHello := NewHello(DefaultMaxFrame, DefaultMaxChunk, 32, DefaultInitialCredit)
 
 	var cartridgeBuf bytes.Buffer
 	cWriter := NewFrameWriter(&cartridgeBuf)
@@ -1242,7 +1243,7 @@ func Test472_handshake_negotiates_reorder_buffer(t *testing.T) {
 	}
 
 	// Verify host side sends DefaultMaxReorderBuffer
-	hostHello := NewHello(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer)
+	hostHello := NewHello(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit)
 	var hostBuf bytes.Buffer
 	hWriter := NewFrameWriter(&hostBuf)
 	if err := hWriter.WriteFrame(hostHello); err != nil {
@@ -1650,4 +1651,216 @@ func Test483_verify_identity_fails_on_close(t *testing.T) {
 	wg.Wait()
 	hostRead.Close()
 	hostWrite.Close()
+}
+
+// =============================================================================
+// PROTOCOL v3 HANDSHAKE — version enforcement + initial_credit negotiation
+// =============================================================================
+
+// v3TestManifest is the cartridge manifest used by the v3 handshake parity
+// tests below (matches Rust V3_TEST_MANIFEST).
+const v3TestManifest = `{"name":"test","version":"1.0","channel":"release","description":"Test","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity"}]}]}`
+
+// runV3Handshake runs a real host<->cartridge handshake over a bidirectional
+// net.Pipe. The cartridge side proposes cartridgeLimits in its HELLO and
+// negotiates the element-wise minimum itself — the same steps HandshakeAccept
+// performs, but with a configurable proposal instead of the process-wide
+// defaults, so tests can assert against a non-default cartridge window.
+// Returns the host's HandshakeInitiate results and the cartridge side's
+// negotiated Limits/error. (matches Rust run_v3_handshake)
+func runV3Handshake(t *testing.T, cartridgeLimits Limits) (hostManifest []byte, hostLimits Limits, hostErr error, cartLimits Limits, cartErr error) {
+	t.Helper()
+	hostRead, cartridgeWrite := net.Pipe()
+	cartridgeRead, hostWrite := net.Pipe()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		reader := NewFrameReader(cartridgeRead)
+		writer := NewFrameWriter(cartridgeWrite)
+
+		theirFrame, err := reader.ReadFrame()
+		if err != nil {
+			cartErr = err
+			return
+		}
+		theirVersion := helloVersion(theirFrame)
+		if theirVersion != ProtocolVersion {
+			cartErr = fmt.Errorf("protocol version mismatch: ours %d, theirs %d", ProtocolVersion, theirVersion)
+			return
+		}
+
+		hello := NewHelloWithManifest(
+			cartridgeLimits.MaxFrame,
+			cartridgeLimits.MaxChunk,
+			cartridgeLimits.MaxReorderBuffer,
+			cartridgeLimits.InitialCredit,
+			[]byte(v3TestManifest),
+		)
+		if err := writer.WriteFrame(hello); err != nil {
+			cartErr = err
+			return
+		}
+
+		theirMaxFrame := extractIntFromMeta(theirFrame.Meta, "max_frame")
+		if theirMaxFrame == 0 {
+			theirMaxFrame = DefaultMaxFrame
+		}
+		theirMaxChunk := extractIntFromMeta(theirFrame.Meta, "max_chunk")
+		if theirMaxChunk == 0 {
+			theirMaxChunk = DefaultMaxChunk
+		}
+		theirMaxReorderBuffer := extractIntFromMeta(theirFrame.Meta, "max_reorder_buffer")
+		if theirMaxReorderBuffer == 0 {
+			theirMaxReorderBuffer = DefaultMaxReorderBuffer
+		}
+		theirInitialCredit := extractIntFromMeta(theirFrame.Meta, "initial_credit")
+		if theirInitialCredit == 0 {
+			theirInitialCredit = DefaultInitialCredit
+		}
+
+		cartLimits = Limits{
+			MaxFrame:         min(cartridgeLimits.MaxFrame, theirMaxFrame),
+			MaxChunk:         min(cartridgeLimits.MaxChunk, theirMaxChunk),
+			MaxReorderBuffer: min(cartridgeLimits.MaxReorderBuffer, theirMaxReorderBuffer),
+			InitialCredit:    min(cartridgeLimits.InitialCredit, theirInitialCredit),
+		}
+	}()
+
+	reader := NewFrameReader(hostRead)
+	writer := NewFrameWriter(hostWrite)
+	hostManifest, hostLimits, hostErr = HandshakeInitiate(reader, writer)
+
+	wg.Wait()
+	hostRead.Close()
+	hostWrite.Close()
+	cartridgeRead.Close()
+	cartridgeWrite.Close()
+	return
+}
+
+// TEST7000: v3 handshake succeeds and negotiates the element-wise minimum of all four limits including initial_credit
+func Test7000_v3_handshake_negotiates_all_four_limits(t *testing.T) {
+	cartridgeLimits := Limits{
+		MaxFrame:         2_000_000,
+		MaxChunk:         128_000,
+		MaxReorderBuffer: 32,
+		InitialCredit:    16,
+	}
+	hostManifest, hostLimits, hostErr, cartLimits, cartErr := runV3Handshake(t, cartridgeLimits)
+
+	if hostErr != nil {
+		t.Fatalf("v3 handshake must succeed: %v", hostErr)
+	}
+	if hostLimits.MaxFrame != 2_000_000 {
+		t.Errorf("min(3.5MB, 2MB): expected max_frame 2000000, got %d", hostLimits.MaxFrame)
+	}
+	if hostLimits.MaxChunk != 128_000 {
+		t.Errorf("min(256KB, 128KB): expected max_chunk 128000, got %d", hostLimits.MaxChunk)
+	}
+	if hostLimits.MaxReorderBuffer != 32 {
+		t.Errorf("min(64, 32): expected max_reorder_buffer 32, got %d", hostLimits.MaxReorderBuffer)
+	}
+	if hostLimits.InitialCredit != 16 {
+		t.Errorf("min(32, 16): expected initial_credit 16, got %d", hostLimits.InitialCredit)
+	}
+	if len(hostManifest) == 0 {
+		t.Error("manifest must be extracted")
+	}
+
+	if cartErr != nil {
+		t.Fatalf("cartridge side must succeed: %v", cartErr)
+	}
+	if cartLimits.InitialCredit != 16 {
+		t.Errorf("expected cartridge initial_credit 16, got %d", cartLimits.InitialCredit)
+	}
+	if cartLimits.MaxReorderBuffer != 32 {
+		t.Errorf("expected cartridge max_reorder_buffer 32, got %d", cartLimits.MaxReorderBuffer)
+	}
+}
+
+// TEST7001: HELLO carrying protocol version 2 is rejected at handshake with a version-mismatch error
+func Test7001_handshake_rejects_version_2(t *testing.T) {
+	hostRead, cartridgeWrite := net.Pipe()
+	cartridgeRead, hostWrite := net.Pipe()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		reader := NewFrameReader(cartridgeRead)
+		writer := NewFrameWriter(cartridgeWrite)
+
+		// Fake v2 cartridge: replies to the host HELLO with a version=2 HELLO.
+		if _, err := reader.ReadFrame(); err != nil {
+			t.Errorf("cartridge failed to read host HELLO: %v", err)
+			return
+		}
+		hello := NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit, []byte(v3TestManifest))
+		hello.Version = 2
+		hello.Meta["version"] = 2
+		if err := writer.WriteFrame(hello); err != nil {
+			t.Errorf("cartridge failed to write v2 HELLO: %v", err)
+			return
+		}
+	}()
+
+	reader := NewFrameReader(hostRead)
+	writer := NewFrameWriter(hostWrite)
+	_, _, err := HandshakeInitiate(reader, writer)
+
+	wg.Wait()
+	hostRead.Close()
+	hostWrite.Close()
+	cartridgeRead.Close()
+	cartridgeWrite.Close()
+
+	if err == nil {
+		t.Fatal("v2 HELLO must be rejected")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "version") {
+		t.Errorf("error must name the version mismatch: %s", msg)
+	}
+	if !strings.Contains(msg, "2") || !strings.Contains(msg, "3") {
+		t.Errorf("error must state both versions: %s", msg)
+	}
+}
+
+// TEST7002: initial_credit negotiation picks the element-wise minimum of the two proposals
+func Test7002_initial_credit_negotiated_minimum(t *testing.T) {
+	// Cartridge proposes a smaller window than the host default (32) → 8 wins.
+	smaller := DefaultLimits()
+	smaller.InitialCredit = 8
+	_, hostLimits, hostErr, cartLimits, cartErr := runV3Handshake(t, smaller)
+	if hostErr != nil {
+		t.Fatalf("v3 handshake must succeed: %v", hostErr)
+	}
+	if hostLimits.InitialCredit != 8 {
+		t.Errorf("expected host initial_credit 8, got %d", hostLimits.InitialCredit)
+	}
+	if cartErr != nil {
+		t.Fatalf("cartridge side must succeed: %v", cartErr)
+	}
+	if cartLimits.InitialCredit != 8 {
+		t.Errorf("expected cartridge initial_credit 8, got %d", cartLimits.InitialCredit)
+	}
+
+	// Cartridge proposes a larger window (128) → the host default 32 wins.
+	larger := DefaultLimits()
+	larger.InitialCredit = 128
+	_, hostLimits2, hostErr2, cartLimits2, cartErr2 := runV3Handshake(t, larger)
+	if hostErr2 != nil {
+		t.Fatalf("v3 handshake must succeed: %v", hostErr2)
+	}
+	if hostLimits2.InitialCredit != DefaultInitialCredit {
+		t.Errorf("expected host initial_credit %d, got %d", DefaultInitialCredit, hostLimits2.InitialCredit)
+	}
+	if cartErr2 != nil {
+		t.Fatalf("cartridge side must succeed: %v", cartErr2)
+	}
+	if cartLimits2.InitialCredit != DefaultInitialCredit {
+		t.Errorf("expected cartridge initial_credit %d, got %d", DefaultInitialCredit, cartLimits2.InitialCredit)
+	}
 }

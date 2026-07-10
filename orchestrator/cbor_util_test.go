@@ -360,3 +360,59 @@ func Test975_single_value_sequence(t *testing.T) {
 	require.NoError(t, cborlib.Unmarshal(items[0], &decoded))
 	assert.Equal(t, []byte("solo"), decoded)
 }
+
+// TEST976: WrapRawItemsAsCborSequence wraps RAW (non-CBOR) item bytes — e.g. PNG
+// frames — into a valid, self-delimiting CBOR sequence that SplitCborSequence
+// round-trips back to the exact raw items.
+//
+// Regression guard for commit 99df51c4 ("full dag"), which materialised sequence
+// node_data with AssembleCborSequence(items) on the *raw* (unwrapped) items from
+// decode_terminal_output. Raw binary is not itself CBOR, so that path failed with
+// a deserialize error (observed as the video extract-frames chain failure). This
+// test asserts the wrap path succeeds AND that the assemble path genuinely rejects
+// the same raw bytes — so the two functions are not interchangeable and the fix is
+// load-bearing.
+func Test976_wrap_raw_items_roundtrips_and_assemble_rejects_them(t *testing.T) {
+	// Raw items that are NOT valid CBOR on their own: a PNG magic header
+	// (0x89 'P' 'N' 'G' … decodes as CBOR array(9) then chokes) and a raw JSON
+	// record.
+	pngMagic := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x01}
+	jsonRecord := []byte(`{"name":"alpha"}`)
+	rawItems := [][]byte{pngMagic, jsonRecord}
+
+	// AssembleCborSequence must REJECT raw items (this is the bug the regression
+	// introduced — proving the two helpers are distinct).
+	_, err := AssembleCborSequence(rawItems)
+	require.Error(t, err, "AssembleCborSequence must reject raw non-CBOR items")
+	cborErr, ok := err.(*CborUtilError)
+	require.True(t, ok, "expected CborUtilError")
+	assert.Equal(t, CborErrDeserialize, cborErr.Kind)
+
+	// WrapRawItemsAsCborSequence must SUCCEED and produce a valid RFC 8742
+	// sequence of self-delimiting CBOR Bytes values.
+	seq, err := WrapRawItemsAsCborSequence(rawItems)
+	require.NoError(t, err)
+
+	// Split it back the way a downstream cap head (send_one_stream) would, then
+	// unwrap each CBOR Bytes value → must equal the original raw items.
+	split, err := SplitCborSequence(seq)
+	require.NoError(t, err)
+	require.Equal(t, 2, len(split), "must round-trip to 2 items")
+
+	recovered := make([][]byte, 0, len(split))
+	for _, item := range split {
+		var b []byte
+		require.NoError(t, cborlib.Unmarshal(item, &b))
+		recovered = append(recovered, b)
+	}
+	assert.Equal(t, [][]byte{pngMagic, jsonRecord}, recovered,
+		"wrap→split→unwrap must recover the exact raw item bytes")
+}
+
+// TEST1317: empty item list wraps to empty bytes (mirrors the scalar/empty sink
+// case where a chain produced no items).
+func Test1317_wrap_raw_items_empty(t *testing.T) {
+	seq, err := WrapRawItemsAsCborSequence([][]byte{})
+	require.NoError(t, err)
+	assert.Empty(t, seq, "empty item list must wrap to empty bytes")
+}

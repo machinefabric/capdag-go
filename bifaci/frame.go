@@ -8,8 +8,10 @@ import (
 	"github.com/google/uuid"
 )
 
-// Protocol version. Version 2: Result-based emitters, negotiated chunk limits, per-request errors.
-const ProtocolVersion uint8 = 2
+// Protocol version. Version 3: credit-based per-stream flow control, unbounded
+// streams, terminal metadata on END (final progress rides in the terminal frame),
+// counted drops, handshake version enforcement. Version 2 handshakes are rejected.
+const ProtocolVersion uint8 = 3
 
 // Default maximum frame size (3.5 MB) - safe margin below 3.75MB limit
 // Larger payloads automatically use CHUNK frames
@@ -38,6 +40,14 @@ const (
 	FrameTypeRelayNotify FrameType = 10 // Relay capability advertisement (slave → master)
 	FrameTypeRelayState  FrameType = 11 // Relay host system resources + cap demands (master → slave)
 	FrameTypeCancel      FrameType = 12 // Cancel a running request
+	// FrameTypeCredit grants per-stream flow-control credit (protocol v3, L9/L10).
+	// Non-flow (see IsFlowFrame): bypasses seq assignment and the reorder buffer.
+	// NOTE: wire-level CBOR encode/decode support (including HELLO's negotiated
+	// initial_credit and the protocol v3 version bump) is ported by the frame/codec
+	// subsystem task, not here; this credit-subsystem port only needs the
+	// in-memory discriminant, the credit_dir/credit accessors, and the constructor
+	// that the CreditRouter and its parity tests exercise directly on Frame values.
+	FrameTypeCredit FrameType = 13
 )
 
 // String returns the frame type name
@@ -68,8 +78,52 @@ func (ft FrameType) String() string {
 		return "RELAY_STATE"
 	case FrameTypeCancel:
 		return "CANCEL"
+	case FrameTypeCredit:
+		return "CREDIT"
 	default:
 		return fmt.Sprintf("UNKNOWN(%d)", ft)
+	}
+}
+
+// CreditDirection identifies which side's stream a CREDIT frame credits
+// (L11 routing discriminator). Request credits a request-direction stream
+// (arguments flowing toward the handler): the grant travels toward the
+// REQUESTER. Response credits a response-direction stream (results flowing
+// back to the caller): the grant travels toward the HANDLER. Required on
+// every CREDIT frame — (xid, rid) alone cannot disambiguate direction when
+// both sides of a relay hop share the same request/routing id.
+// (matches Rust CreditDirection)
+type CreditDirection uint8
+
+const (
+	CreditDirectionRequest CreditDirection = iota
+	CreditDirectionResponse
+)
+
+// String returns the wire string name ("request"/"response"), matching Rust's
+// CreditDirection::as_str.
+func (d CreditDirection) String() string {
+	switch d {
+	case CreditDirectionRequest:
+		return "request"
+	case CreditDirectionResponse:
+		return "response"
+	default:
+		return "unknown"
+	}
+}
+
+// CreditDirectionFromString parses a CreditDirection from its wire string name.
+// Returns false if the string is not a recognized direction (matches Rust
+// CreditDirection::from_str_name).
+func CreditDirectionFromString(s string) (CreditDirection, bool) {
+	switch s {
+	case "request":
+		return CreditDirectionRequest, true
+	case "response":
+		return CreditDirectionResponse, true
+	default:
+		return 0, false
 	}
 }
 
@@ -175,7 +229,7 @@ func (m MessageId) Equals(other MessageId) bool {
 // Frame represents a CBOR protocol frame
 // This structure MUST match the Rust Frame structure exactly
 type Frame struct {
-	Version     uint8                  // Protocol version (always 2)
+	Version     uint8                  // Protocol version (always ProtocolVersion)
 	FrameType   FrameType              // Frame type discriminator
 	Id          MessageId              // Message ID for correlation (request ID)
 	StreamId    *string                // Stream ID for multiplexed streams (used in STREAM_START, CHUNK, STREAM_END)
@@ -194,6 +248,16 @@ type Frame struct {
 	Checksum    *uint64                // Payload checksum (FNV-1a hash, REQUIRED for CHUNK frames)
 	IsSequence  *bool                  // Whether producer used emit_list_item (true) or write (false)
 	ForceKill   *bool                  // Whether Cancel should force-kill the cartridge process
+	Credit      *uint64                // Flow-control credit grant in CHUNK units (CREDIT frames only, protocol v3)
+	// Unbounded marks a STREAM_START whose stream makes no length promise: its
+	// STREAM_END may omit chunk_count and receivers must consume it
+	// incrementally, never buffering to completion. Present on STREAM_START
+	// frames only (protocol v3, L16). NOTE: wire-level CBOR encode/decode
+	// support for this field (key 20) is ported by the frame/codec subsystem
+	// task, not here; the request-state subsystem only needs the in-memory
+	// flag and the constructors/accessor its parity tests exercise directly
+	// on Frame values.
+	Unbounded *bool
 }
 
 // New creates a new frame with required fields (matches Rust Frame::new)
@@ -294,6 +358,32 @@ func NewStreamEnd(reqId MessageId, streamId string, chunkCount uint64) *Frame {
 	return frame
 }
 
+// NewStreamStartUnbounded creates a STREAM_START frame for an UNBOUNDED
+// stream — one that makes no length promise. Its STREAM_END may omit
+// chunk_count, and receivers must consume it incrementally (never buffer to
+// completion). (matches Rust Frame::stream_start_unbounded)
+func NewStreamStartUnbounded(reqId MessageId, streamId string, mediaUrn string, isSequence *bool) *Frame {
+	frame := NewStreamStart(reqId, streamId, mediaUrn, isSequence)
+	unbounded := true
+	frame.Unbounded = &unbounded
+	return frame
+}
+
+// IsUnbounded reports whether this STREAM_START announces an unbounded
+// stream. Absent flag means bounded. (matches Rust Frame::is_unbounded)
+func (f *Frame) IsUnbounded() bool {
+	return f.Unbounded != nil && *f.Unbounded
+}
+
+// NewStreamEndUnbounded creates a STREAM_END frame for an unbounded stream —
+// no chunk_count promise. Valid only for streams announced with
+// NewStreamStartUnbounded. (matches Rust Frame::stream_end_unbounded)
+func NewStreamEndUnbounded(reqId MessageId, streamId string) *Frame {
+	frame := newFrame(FrameTypeStreamEnd, reqId)
+	frame.StreamId = &streamId
+	return frame
+}
+
 // NewEnd creates an END frame (matches Rust Frame::end)
 func NewEnd(id MessageId, payload []byte) *Frame {
 	frame := newFrame(FrameTypeEnd, id)
@@ -325,6 +415,70 @@ func EndOk(id MessageId, finalPayload []byte) *Frame {
 	frame.Eof = &eof
 	frame.Meta = map[string]interface{}{"exit_code": int64(0)}
 	return frame
+}
+
+// EndOkWith creates an END frame with exit_code=0 (success) carrying terminal
+// metadata. progress is the authoritative final progress value delivered with
+// the terminal frame itself (so it can never race it); message is an optional
+// final status message. A successful END without an explicit progress reads
+// as 1.0 via FinalProgress. (matches Rust Frame::end_ok_with)
+func EndOkWith(id MessageId, finalPayload []byte, progress *float64, message *string) *Frame {
+	frame := EndOk(id, finalPayload)
+	if progress != nil {
+		frame.Meta["progress"] = *progress
+	}
+	if message != nil {
+		frame.Meta["message"] = *message
+	}
+	return frame
+}
+
+// FinalProgress reads the final progress from an END frame's terminal
+// metadata. Returns the explicit progress meta value when present; a
+// successful END (exit_code=0) without an explicit value reads as 1.0.
+// Non-END frames and unsuccessful ENDs without a value return nil.
+// (matches Rust Frame::final_progress)
+func (f *Frame) FinalProgress() *float64 {
+	if f.FrameType != FrameTypeEnd {
+		return nil
+	}
+	if f.Meta != nil {
+		if v, ok := f.Meta["progress"]; ok {
+			switch n := v.(type) {
+			case float64:
+				return &n
+			case float32:
+				p := float64(n)
+				return &p
+			case int64:
+				p := float64(n)
+				return &p
+			case int:
+				p := float64(n)
+				return &p
+			case uint64:
+				p := float64(n)
+				return &p
+			}
+		}
+	}
+	if code := f.ExitCode(); code != nil && *code == 0 {
+		one := 1.0
+		return &one
+	}
+	return nil
+}
+
+// FinalMessage reads the final status message from an END frame's terminal
+// metadata. (matches Rust Frame::final_message)
+func (f *Frame) FinalMessage() *string {
+	if f.FrameType != FrameTypeEnd || f.Meta == nil {
+		return nil
+	}
+	if s, ok := f.Meta["message"].(string); ok {
+		return &s
+	}
+	return nil
 }
 
 // ExitCode returns the exit_code from the Meta map if present.
@@ -359,6 +513,54 @@ func NewCancelFrame(targetRid MessageId, forceKill bool) *Frame {
 	frame := newFrame(FrameTypeCancel, targetRid)
 	frame.ForceKill = &forceKill
 	return frame
+}
+
+// NewCredit creates a CREDIT frame granting per-stream flow-control credit to
+// the sender of a stream (protocol v3).
+//
+// Arguments:
+//   - targetRid: The request whose stream is being credited
+//   - streamId: The stream being credited (nil credits the request's
+//     sole/default stream)
+//   - credits: Number of additional CHUNK frames the sender may emit
+//   - direction: Which side's stream is being credited. Hosts route by
+//     (rid, stream_id); the direction disambiguates which endpoint sent the
+//     grant when both share the same rid across a relay hop.
+//
+// (matches Rust Frame::credit)
+func NewCredit(targetRid MessageId, streamId *string, credits uint64, direction CreditDirection) *Frame {
+	frame := newFrame(FrameTypeCredit, targetRid)
+	frame.StreamId = streamId
+	frame.Credit = &credits
+	frame.Meta = map[string]interface{}{"credit_dir": direction.String()}
+	return frame
+}
+
+// CreditCount reads the credit grant from a CREDIT frame. Returns nil for
+// other frame types. (matches Rust Frame::credit_count)
+func (f *Frame) CreditCount() *uint64 {
+	if f.FrameType != FrameTypeCredit {
+		return nil
+	}
+	return f.Credit
+}
+
+// CreditDirectionValue reads the direction of a CREDIT frame's grant. Returns
+// nil for other frame types or a CREDIT frame without the mandatory direction
+// (a protocol violation elsewhere validated). (matches Rust Frame::credit_direction)
+func (f *Frame) CreditDirectionValue() *CreditDirection {
+	if f.FrameType != FrameTypeCredit || f.Meta == nil {
+		return nil
+	}
+	s, ok := f.Meta["credit_dir"].(string)
+	if !ok {
+		return nil
+	}
+	dir, ok := CreditDirectionFromString(s)
+	if !ok {
+		return nil
+	}
+	return &dir
 }
 
 // NewErr creates an ERR frame (matches Rust Frame::err)
@@ -400,27 +602,33 @@ func NewHeartbeat(id MessageId) *Frame {
 	return newFrame(FrameTypeHeartbeat, id)
 }
 
-// NewHello creates a HELLO frame for handshake (host side - no manifest)
-// Matches Rust Frame::hello
-func NewHello(maxFrame, maxChunk, maxReorderBuffer int) *Frame {
+// NewHello creates a HELLO frame for handshake (host side - no manifest).
+// initialCredit is the proposed initial per-stream credit window (protocol v3);
+// it is negotiated by the peer to the element-wise minimum, same as the other
+// three limits. Matches Rust Frame::hello.
+func NewHello(maxFrame, maxChunk, maxReorderBuffer, initialCredit int) *Frame {
 	frame := newFrame(FrameTypeHello, MessageId{uintValue: new(uint64)})
 	frame.Meta = map[string]interface{}{
 		"max_frame":          maxFrame,
 		"max_chunk":          maxChunk,
 		"max_reorder_buffer": maxReorderBuffer,
+		"initial_credit":     initialCredit,
 		"version":            ProtocolVersion,
 	}
 	return frame
 }
 
-// NewHelloWithManifest creates a HELLO frame with manifest (cartridge side)
-// Matches Rust Frame::hello_with_manifest
-func NewHelloWithManifest(maxFrame, maxChunk, maxReorderBuffer int, manifest []byte) *Frame {
+// NewHelloWithManifest creates a HELLO frame with manifest (cartridge side).
+// initialCredit is the proposed initial per-stream credit window (protocol v3);
+// it is negotiated by the peer to the element-wise minimum, same as the other
+// three limits. Matches Rust Frame::hello_with_manifest.
+func NewHelloWithManifest(maxFrame, maxChunk, maxReorderBuffer, initialCredit int, manifest []byte) *Frame {
 	frame := newFrame(FrameTypeHello, MessageId{uintValue: new(uint64)})
 	frame.Meta = map[string]interface{}{
 		"max_frame":          maxFrame,
 		"max_chunk":          maxChunk,
 		"max_reorder_buffer": maxReorderBuffer,
+		"initial_credit":     initialCredit,
 		"version":            ProtocolVersion,
 		"manifest":           manifest,
 	}
@@ -428,14 +636,16 @@ func NewHelloWithManifest(maxFrame, maxChunk, maxReorderBuffer int, manifest []b
 }
 
 // NewRelayNotify creates a RELAY_NOTIFY frame for capability advertisement (slave → master).
-// Carries aggregate manifest + negotiated limits. (matches Rust Frame::relay_notify)
-func NewRelayNotify(manifest []byte, maxFrame, maxChunk, maxReorderBuffer int) *Frame {
+// Carries aggregate manifest + negotiated limits (including the per-stream
+// initial_credit window, protocol v3). (matches Rust Frame::relay_notify)
+func NewRelayNotify(manifest []byte, maxFrame, maxChunk, maxReorderBuffer, initialCredit int) *Frame {
 	frame := newFrame(FrameTypeRelayNotify, MessageId{uintValue: new(uint64)})
 	frame.Meta = map[string]interface{}{
 		"manifest":           manifest,
 		"max_frame":          maxFrame,
 		"max_chunk":          maxChunk,
 		"max_reorder_buffer": maxReorderBuffer,
+		"initial_credit":     initialCredit,
 	}
 	return frame
 }
@@ -545,7 +755,11 @@ func (f *Frame) RelayNotifyLimits() *Limits {
 	if maxReorderBuffer <= 0 {
 		maxReorderBuffer = DefaultMaxReorderBuffer
 	}
-	return &Limits{MaxFrame: maxFrame, MaxChunk: maxChunk, MaxReorderBuffer: maxReorderBuffer}
+	initialCredit := extractIntFromMeta(f.Meta, "initial_credit")
+	if initialCredit <= 0 {
+		initialCredit = DefaultInitialCredit
+	}
+	return &Limits{MaxFrame: maxFrame, MaxChunk: maxChunk, MaxReorderBuffer: maxReorderBuffer, InitialCredit: initialCredit}
 }
 
 // extractIntFromMeta extracts an integer from a meta map, handling CBOR type variance.
@@ -609,11 +823,13 @@ func (f *Frame) IsEof() bool {
 }
 
 // IsFlowFrame returns true if this frame type participates in flow ordering (seq tracking).
-// Non-flow frames (Hello, Heartbeat, RelayNotify, RelayState, Cancel) bypass seq assignment
-// and reorder buffers entirely. (matches Rust Frame::is_flow_frame)
+// Non-flow frames (Hello, Heartbeat, RelayNotify, RelayState, Cancel, Credit) bypass seq
+// assignment and reorder buffers entirely — Credit in particular must never be delayed by a
+// gapped flow, since a sender waiting on it would stall until the gap is filled.
+// (matches Rust Frame::is_flow_frame)
 func (f *Frame) IsFlowFrame() bool {
 	switch f.FrameType {
-	case FrameTypeHello, FrameTypeHeartbeat, FrameTypeRelayNotify, FrameTypeRelayState, FrameTypeCancel:
+	case FrameTypeHello, FrameTypeHeartbeat, FrameTypeRelayNotify, FrameTypeRelayState, FrameTypeCancel, FrameTypeCredit:
 		return false
 	default:
 		return true
@@ -776,4 +992,62 @@ func (rb *ReorderBuffer) Accept(frame *Frame) ([]*Frame, error) {
 // CleanupFlow removes flow state after terminal frame delivery (END/ERR).
 func (rb *ReorderBuffer) CleanupFlow(key FlowKey) {
 	delete(rb.flows, key)
+}
+
+// =============================================================================
+// DROP REASON — Why a frame was dropped instead of delivered (L8 observability)
+// =============================================================================
+
+// DropReason is why a frame was dropped instead of delivered. The shared
+// vocabulary for counted drops across every runtime (cartridge writer, host,
+// relay switch, executor); every dropped frame increments exactly one of
+// these counters, observable via the protocol stats snapshots. Frames are
+// never dropped silently. (matches Rust DropReason)
+type DropReason uint8
+
+const (
+	// DropReasonPostTerminal: flow frame enqueued/received after the request's terminal (END/ERR) frame.
+	DropReasonPostTerminal DropReason = iota
+	// DropReasonNoRoute: flow frame for a request with no routing state (already released or never registered).
+	DropReasonNoRoute
+	// DropReasonChannelClosed: send attempted on a closed channel (receiver gone).
+	DropReasonChannelClosed
+	// DropReasonCreditViolation: CHUNK received beyond the granted credit window.
+	DropReasonCreditViolation
+	// DropReasonCancelled: frame discarded because its request was cancelled.
+	DropReasonCancelled
+	// DropReasonMasterDied: frame discarded because the owning master/host connection died.
+	DropReasonMasterDied
+)
+
+// DropReasonAll is all variants, for counter arrays and snapshot serialization
+// (matches Rust DropReason::ALL).
+var DropReasonAll = []DropReason{
+	DropReasonPostTerminal,
+	DropReasonNoRoute,
+	DropReasonChannelClosed,
+	DropReasonCreditViolation,
+	DropReasonCancelled,
+	DropReasonMasterDied,
+}
+
+// AsStr returns the stable snake_case name (the wire/snapshot contract for
+// mirrors). (matches Rust DropReason::as_str)
+func (r DropReason) AsStr() string {
+	switch r {
+	case DropReasonPostTerminal:
+		return "post_terminal"
+	case DropReasonNoRoute:
+		return "no_route"
+	case DropReasonChannelClosed:
+		return "channel_closed"
+	case DropReasonCreditViolation:
+		return "credit_violation"
+	case DropReasonCancelled:
+		return "cancelled"
+	case DropReasonMasterDied:
+		return "master_died"
+	default:
+		panic(fmt.Sprintf("BUG: DropReason %d not covered by AsStr", uint8(r)))
+	}
 }

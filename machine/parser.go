@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/google/uuid"
 	peg "github.com/yhirose/go-peg"
 
 	"github.com/machinefabric/capdag-go/cap"
@@ -26,11 +27,9 @@ const goPegGrammar = `
   stmt        <- '[' inner ']' / inner
   inner       <- wiring / header
   header      <- alias cap_urn
-  wiring      <- source arrow loop_cap arrow alias
+  wiring      <- source arrow alias_ref arrow alias
   source      <- group / alias_ref
   group       <- '(' alias_ref (',' alias_ref)+ ')'
-  loop_cap    <- loop_keyword alias_ref / alias_ref
-  loop_keyword <- 'LOOP'
   arrow       <- < '-'+ '>' >
   alias       <- < [a-zA-Z_] [-a-zA-Z0-9_]* >
   alias_ref   <- < [a-zA-Z_] [-a-zA-Z0-9_]* >
@@ -52,7 +51,6 @@ type rawWiring struct {
 	sources  []string
 	capAlias string
 	target   string
-	isLoop   bool
 	position int
 }
 
@@ -147,8 +145,7 @@ func ParseMachineWithNodeNames(input string, registry *cap.FabricRegistry) (*Mac
 			sources := parseSourceNode(sourceNode)
 
 			// contentNode.Nodes[1] = arrow (skip)
-			loopCapNode := contentNode.Nodes[2]
-			isLoop, capAlias := parseLoopCapNode(loopCapNode)
+			capAlias := contentNode.Nodes[2].Token
 
 			// contentNode.Nodes[3] = arrow (skip)
 			target := contentNode.Nodes[4].Token
@@ -157,7 +154,6 @@ func ParseMachineWithNodeNames(input string, registry *cap.FabricRegistry) (*Mac
 				sources:  sources,
 				capAlias: capAlias,
 				target:   target,
-				isLoop:   isLoop,
 				position: stmtIdx,
 			})
 		}
@@ -371,10 +367,13 @@ func ParseMachineWithNodeNames(input string, registry *cap.FabricRegistry) (*Mac
 			targetNodeId := internNamed(w.target)
 
 			wiringSet = append(wiringSet, preInternedWiring{
+				// The notation (static-machine) path has no resolved-strand step to
+				// inherit from, so each parsed wiring's edge gets its own freshly
+				// minted stable identity.
+				tokenId:       uuid.New().String(),
 				capUrn:        entry.capUrn,
 				sourceNodeIds: sourceNodeIds,
 				targetNodeId:  targetNodeId,
-				isLoop:        w.isLoop,
 			})
 		}
 
@@ -411,28 +410,6 @@ func parseSourceNode(node *peg.Ast) []string {
 		}
 	}
 	return nil
-}
-
-// parseLoopCapNode extracts is_loop flag and cap alias from a loop_cap AST node.
-func parseLoopCapNode(node *peg.Ast) (bool, string) {
-	isLoop := false
-	capAlias := ""
-
-	for _, child := range node.Nodes {
-		switch child.Name {
-		case "loop_keyword":
-			isLoop = true
-		case "alias_ref", "alias":
-			capAlias = child.Token
-		}
-	}
-
-	// If no children, the token itself might be the alias.
-	if capAlias == "" && node.Token != "" {
-		capAlias = node.Token
-	}
-
-	return isLoop, capAlias
 }
 
 // assignOrCheckNode assigns a media URN to a node, or checks that an existing

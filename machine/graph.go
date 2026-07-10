@@ -35,6 +35,13 @@ type MachineEdge struct {
 	Assignment []EdgeAssignmentBinding
 	Target     NodeId
 	IsLoop     bool
+	// TokenId is the stable identity of the originating resolved-strand step
+	// (see planner.StrandStep.TokenId), carried onto the executable DAG unit so
+	// a running cap can report *which* step it is — the key the run's live
+	// updates route by. It is IDENTITY, not semantics: IsEquivalent
+	// deliberately ignores it (two structurally-identical machines stay
+	// equivalent even with different per-run TokenIds).
+	TokenId string
 }
 
 func (e *MachineEdge) String() string {
@@ -42,9 +49,11 @@ func (e *MachineEdge) String() string {
 	for i, b := range e.Assignment {
 		assignments[i] = fmt.Sprintf("%s<-#%d", b.CapArgMediaUrn, b.Source)
 	}
+	// Debug-only marker for a per-item map edge. Not notation syntax (the LOOP
+	// keyword is retired); IsLoop is a derived cardinality property.
 	loopPrefix := ""
 	if e.IsLoop {
-		loopPrefix = "LOOP "
+		loopPrefix = "map "
 	}
 	return fmt.Sprintf("%s%s (%s) -> #%d",
 		loopPrefix,
@@ -380,13 +389,13 @@ func (m *Machine) ToMachineNotationFormatted(format NotationFormat) string {
 			parts = append(parts, fmt.Sprintf("%s%s %s%s", open, alias, edge.CapUrn, close_))
 		}
 
-		// Emit wirings in canonical edge order.
+		// Emit wirings in canonical edge order. The per-item map (edge.IsLoop) is
+		// NOT emitted into notation text: it is a derived cardinality property, not
+		// authored syntax (the LOOP keyword is retired). Re-parsing this notation
+		// re-derives the same IsLoop from the cap shapes, so round-trip stays
+		// semantically stable.
 		for eIdx, edge := range strand.edges {
 			alias := aliasOrder[eIdx]
-			loopPrefix := ""
-			if edge.IsLoop {
-				loopPrefix = "LOOP "
-			}
 
 			// Sort assignment by Source for wiring emission.
 			sortedAssignment := make([]EdgeAssignmentBinding, len(edge.Assignment))
@@ -402,12 +411,12 @@ func (m *Machine) ToMachineNotationFormatted(format NotationFormat) string {
 			targetName := assignNodeName(edge.Target)
 
 			if len(sources) == 1 {
-				parts = append(parts, fmt.Sprintf("%s%s -> %s%s -> %s%s",
-					open, sources[0], loopPrefix, alias, targetName, close_))
+				parts = append(parts, fmt.Sprintf("%s%s -> %s -> %s%s",
+					open, sources[0], alias, targetName, close_))
 			} else {
 				group := strings.Join(sources, ", ")
-				parts = append(parts, fmt.Sprintf("%s(%s) -> %s%s -> %s%s",
-					open, group, loopPrefix, alias, targetName, close_))
+				parts = append(parts, fmt.Sprintf("%s(%s) -> %s -> %s%s",
+					open, group, alias, targetName, close_))
 			}
 		}
 	}
@@ -490,15 +499,13 @@ func (m *Machine) ToMachineNotationAliased(registry *cap.FabricRegistry, format 
 		}
 	}
 
-	// Wirings across all strands, in canonical edge order.
+	// Wirings across all strands, in canonical edge order. IsLoop is a derived
+	// cardinality property, not authored syntax (the LOOP keyword is retired) —
+	// it is never emitted into notation text.
 	for sIdx, strand := range m.strands {
 		plan := plans[sIdx]
 		for eIdx, edge := range strand.edges {
 			token := plan.edgeTokens[eIdx]
-			loopPrefix := ""
-			if edge.IsLoop {
-				loopPrefix = "LOOP "
-			}
 
 			sortedAssignment := make([]EdgeAssignmentBinding, len(edge.Assignment))
 			copy(sortedAssignment, edge.Assignment)
@@ -513,12 +520,12 @@ func (m *Machine) ToMachineNotationAliased(registry *cap.FabricRegistry, format 
 			targetName := plan.nodeNames[edge.Target]
 
 			if len(sources) == 1 {
-				parts = append(parts, fmt.Sprintf("%s%s -> %s%s -> %s%s",
-					open, sources[0], loopPrefix, token, targetName, close_))
+				parts = append(parts, fmt.Sprintf("%s%s -> %s -> %s%s",
+					open, sources[0], token, targetName, close_))
 			} else {
 				group := strings.Join(sources, ", ")
-				parts = append(parts, fmt.Sprintf("%s(%s) -> %s%s -> %s%s",
-					open, group, loopPrefix, token, targetName, close_))
+				parts = append(parts, fmt.Sprintf("%s(%s) -> %s -> %s%s",
+					open, group, token, targetName, close_))
 			}
 		}
 	}
@@ -593,7 +600,7 @@ func (m *Machine) renderPayloadJSON(registry *cap.FabricRegistry) string {
 	// Build per-strand node and edge aliases. Counters are global across all
 	// strands, matching the Rust serializer's behavior.
 	type strandPlan struct {
-		nodeNames  []string
+		nodeNames   []string
 		edgeAliases []string
 	}
 	plans := make([]strandPlan, len(m.strands))

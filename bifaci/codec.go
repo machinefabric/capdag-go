@@ -29,6 +29,8 @@ const (
 	keyChecksum    = 16 // checksum (u64, REQUIRED for CHUNK frames - FNV-1a hash)
 	keyIsSequence  = 17 // is_sequence (bool, optional - whether producer used emit_list_item)
 	keyForceKill   = 18 // force_kill (bool, optional - whether Cancel should force-kill)
+	keyCredit      = 19 // credit (u64, REQUIRED for CREDIT frames - flow-control grant in CHUNK units)
+	keyUnbounded   = 20 // unbounded (bool, optional - STREAM_START makes no length promise)
 )
 
 // EncodeFrame encodes a Frame to CBOR bytes using integer keys (matches Rust)
@@ -135,6 +137,16 @@ func EncodeFrame(frame *Frame) ([]byte, error) {
 		m[keyForceKill] = *frame.ForceKill
 	}
 
+	// 19: credit (REQUIRED for CREDIT frames)
+	if frame.Credit != nil {
+		m[keyCredit] = *frame.Credit
+	}
+
+	// 20: unbounded (optional - for STREAM_START frames)
+	if frame.Unbounded != nil {
+		m[keyUnbounded] = *frame.Unbounded
+	}
+
 	return cbor.Marshal(m)
 }
 
@@ -168,13 +180,13 @@ func DecodeFrame(data []byte) (*Frame, error) {
 	}
 	if ft, ok := ftVal.(uint64); ok {
 		frameType := FrameType(ft)
-		// Validate frame type is in valid range (0-12, excluding removed value 2)
-		if frameType < FrameTypeHello || frameType > FrameTypeCancel {
+		// Validate frame type is in valid range (0-13, excluding removed value 2)
+		if frameType < FrameTypeHello || frameType > FrameTypeCredit {
 			return nil, fmt.Errorf("invalid frame_type %d", ft)
 		}
-		// Reject old RES frame type (2) - no longer supported
+		// Reject old RES frame type (2) - permanently retired
 		if frameType == 2 {
-			return nil, fmt.Errorf("frame_type 2 (RES) is no longer supported in protocol v2")
+			return nil, fmt.Errorf("frame_type 2 (RES) is permanently retired, not supported in protocol v3")
 		}
 		frame.FrameType = frameType
 	} else {
@@ -344,6 +356,44 @@ func DecodeFrame(data []byte) (*Frame, error) {
 		}
 	}
 
+	// 17: is_sequence (optional - for STREAM_START frames)
+	if isSequenceVal, ok := m[keyIsSequence]; ok {
+		if isSequence, ok := isSequenceVal.(bool); ok {
+			frame.IsSequence = &isSequence
+		}
+	}
+
+	// 18: force_kill (optional - for CANCEL frames)
+	if forceKillVal, ok := m[keyForceKill]; ok {
+		if forceKill, ok := forceKillVal.(bool); ok {
+			frame.ForceKill = &forceKill
+		}
+	}
+
+	// 19: credit (REQUIRED for CREDIT frames)
+	if creditVal, ok := m[keyCredit]; ok {
+		switch v := creditVal.(type) {
+		case uint64:
+			frame.Credit = &v
+		case int64:
+			u := uint64(v)
+			frame.Credit = &u
+		case int:
+			u := uint64(v)
+			frame.Credit = &u
+		case uint:
+			u := uint64(v)
+			frame.Credit = &u
+		}
+	}
+
+	// 20: unbounded (optional - for STREAM_START frames)
+	if unboundedVal, ok := m[keyUnbounded]; ok {
+		if unbounded, ok := unboundedVal.(bool); ok {
+			frame.Unbounded = &unbounded
+		}
+	}
+
 	// Validate required fields based on frame type
 	if frame.FrameType == FrameTypeChunk {
 		if frame.ChunkIndex == nil {
@@ -353,9 +403,12 @@ func DecodeFrame(data []byte) (*Frame, error) {
 			return nil, errors.New("CHUNK frame missing required field: checksum")
 		}
 	}
-	if frame.FrameType == FrameTypeStreamEnd {
-		if frame.ChunkCount == nil {
-			return nil, errors.New("STREAM_END frame missing required field: chunk_count")
+	// STREAM_END: chunk_count is optional on the wire — unbounded streams make
+	// no length promise (protocol v3, L16). Bounded-stream receivers that want
+	// to verify completeness check chunk_count when present.
+	if frame.FrameType == FrameTypeCredit {
+		if frame.Credit == nil {
+			return nil, errors.New("CREDIT frame missing required field: credit")
 		}
 	}
 

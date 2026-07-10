@@ -170,3 +170,31 @@ func AssembleCborSequence(items [][]byte) ([]byte, error) {
 	}
 	return result, nil
 }
+
+// WrapRawItemsAsCborSequence wraps raw (unwrapped) item bytes into an RFC 8742 CBOR sequence.
+//
+// Each raw item — the bytes yielded by DecodeTerminalOutput / UnwrapCborValue (PNG
+// frames, JSON records, …) — is re-encoded as a single self-delimiting CBOR byte
+// string value, and the values are concatenated. This is the storage form a
+// *sequence* node's node data must take so that a downstream cap's input
+// (send_one_stream, which splits the sequence and forwards each item's CBOR bytes
+// *without* re-wrapping) and SplitCborSequence both see well-formed self-delimiting
+// values.
+//
+// Contrast AssembleCborSequence, which requires each item to ALREADY be a complete
+// CBOR value (it validates rather than wraps) — the form used when the caller has
+// itself CBOR-encoded each item (e.g. machfab's file-item interpreter).
+//
+// Returns a CborUtilError with kind CborErrSerialize if an item cannot be
+// CBOR-serialized (practically never for a byte string).
+func WrapRawItemsAsCborSequence(items [][]byte) ([]byte, error) {
+	var result []byte
+	for _, item := range items {
+		encoded, err := cborlib.Marshal(item)
+		if err != nil {
+			return nil, cborSerializeError(err.Error())
+		}
+		result = append(result, encoded...)
+	}
+	return result, nil
+}

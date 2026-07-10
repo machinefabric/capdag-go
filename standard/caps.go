@@ -123,6 +123,69 @@ func AllCoercionPaths() [][2]string {
 	}
 }
 
+// SameUrn builds the URN for the `same` semantic-equivalence capability.
+// Two items + optional context in; a semantic-judgment record
+// (`{same, confidence, reason}`) out. The first of the
+// semantic-primitive family (docs/semantic-primitives.md).
+func SameUrn(langCode string) string {
+	return fmt.Sprintf(`cap:same;language=%s;constrained;in="%s";out="%s"`, langCode, MediaString, MediaSemanticJudgment)
+}
+
+// semanticJudgmentUrn builds the shared shape of the semantic-primitive
+// judgment cap URNs (docs/semantic-primitives.md): a bare marker + language +
+// constrained, text in, judgment-envelope out.
+func semanticJudgmentUrn(marker, langCode string) string {
+	return fmt.Sprintf(`cap:%s;language=%s;constrained;in="%s";out="%s"`, marker, langCode, MediaString, MediaSemanticJudgment)
+}
+
+// ClassifyUrn builds the URN for the `classify` closed-set labeling capability.
+func ClassifyUrn(langCode string) string {
+	return semanticJudgmentUrn("classify", langCode)
+}
+
+// ScoreUrn builds the URN for the `score` rubric-scoring capability.
+func ScoreUrn(langCode string) string {
+	return semanticJudgmentUrn("score", langCode)
+}
+
+// VerifyUrn builds the URN for the `verify` requirements-check capability.
+func VerifyUrn(langCode string) string {
+	return semanticJudgmentUrn("verify", langCode)
+}
+
+// RouteUrn builds the URN for the `route` dispatch-judgment capability.
+func RouteUrn(langCode string) string {
+	return semanticJudgmentUrn("route", langCode)
+}
+
+// NormalizeUrn builds the URN for the `normalize` entity-canonicalization capability.
+func NormalizeUrn(langCode string) string {
+	return semanticJudgmentUrn("normalize", langCode)
+}
+
+// ExtractUrn builds the URN for the `extract` schema-guided extraction capability
+// (the judgment-envelope generalization of `generate-json`).
+func ExtractUrn(langCode string) string {
+	return semanticJudgmentUrn("extract", langCode)
+}
+
+// AskUrn builds the URN for the `ask` grounded question-answering capability.
+func AskUrn(langCode string) string {
+	return semanticJudgmentUrn("ask", langCode)
+}
+
+// ExplainUrn builds the URN for the `explain` opaque-data root-cause capability.
+func ExplainUrn(langCode string) string {
+	return semanticJudgmentUrn("explain", langCode)
+}
+
+// SummarizeUrn builds the URN for the `summarize` purpose-driven compression
+// capability. Unlike the judgment caps its output is finalised plain text
+// (the summary itself), not a judgment record.
+func SummarizeUrn(langCode string) string {
+	return fmt.Sprintf(`cap:summarize;language=%s;constrained;in="%s";out="%s"`, langCode, MediaString, MediaPlainText)
+}
+
 // FormatConversionUrn builds a URN for converting between formats.
 func FormatConversionUrn(inMedia, outMedia string) string {
 	return fmt.Sprintf(`cap:in="%s";convert-format;out="%s"`, inMedia, outMedia)

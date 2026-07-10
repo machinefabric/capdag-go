@@ -834,7 +834,13 @@ func Test423_multi_cartridge_distinct_caps(t *testing.T) {
 					break
 				}
 			}
-			w.WriteFrame(NewEnd(req.Id, []byte("from-A")))
+			// A real cartridge echoes the XID it received on the inbound REQ back
+			// on its response terminal (the runtime's emitter stamps routing_id);
+			// the host keys response cleanup off that XID. Omitting it would leave
+			// the incoming route dangling so cartridge teardown double-terminates.
+			endA := NewEnd(req.Id, []byte("from-A"))
+			endA.RoutingId = req.RoutingId
+			w.WriteFrame(endA)
 		})
 		cartridgeReadA.Close()
 		cartridgeWriteA.Close()
@@ -854,7 +860,9 @@ func Test423_multi_cartridge_distinct_caps(t *testing.T) {
 					break
 				}
 			}
-			w.WriteFrame(NewEnd(req.Id, []byte("from-B")))
+			endB := NewEnd(req.Id, []byte("from-B"))
+			endB.RoutingId = req.RoutingId
+			w.WriteFrame(endB)
 		})
 		cartridgeReadB.Close()
 		cartridgeWriteB.Close()
@@ -1097,6 +1105,127 @@ func anyContains(haystack []string, needle string) bool {
 		}
 	}
 	return false
+}
+
+// anyRecordHasID reports whether any record in records carries the given id.
+func anyRecordHasID(records []InstalledCartridgeRecord, id string) bool {
+	for _, r := range records {
+		if r.Id == id {
+			return true
+		}
+	}
+	return false
+}
+
+// TEST7089: A cartridge whose HELLO permanently failed stays IN the
+// inventory advertisement carrying a handshake_failed attachment error and
+// no cap groups — failure is named, never silently absent; a
+// roster-retired cartridge disappears entirely.
+func Test7089_hello_failed_stays_in_inventory_with_error(t *testing.T) {
+	host := NewCartridgeHost()
+	registerTempCartridge(t, host, "stalecart", standard.CapIdentity)
+
+	// Healthy (never spawned): advertised without an attachment error.
+	host.mu.Lock()
+	records := host.buildInstalledCartridgeIdentities()
+	host.mu.Unlock()
+	require.Len(t, records, 1)
+	assert.Nil(t, records[0].AttachmentError)
+
+	// HELLO permanently fails (e.g. a pre-v3 binary rejected by the
+	// version check): the record STAYS, carrying the failure — the UI
+	// must always be able to name why a cartridge is not serving.
+	host.mu.Lock()
+	host.cartridges[0].helloFailed = true
+	records = host.buildInstalledCartridgeIdentities()
+	host.mu.Unlock()
+	require.Len(t, records, 1, "a hello-failed cartridge must remain in the inventory (never silent)")
+	assert.Equal(t, "stalecart", records[0].Id)
+	assert.Empty(t, records[0].CapGroups, "failed ⇒ never routable")
+	require.NotNil(t, records[0].AttachmentError, "failure must be named on the record")
+	assert.Equal(t, CartridgeAttachmentErrorKindHandshakeFailed, records[0].AttachmentError.Kind,
+		"the failure kind identifies the handshake as the cause")
+
+	// Static inventory records (discovery outcomes the host doesn't
+	// manage) ride every advertisement too.
+	host.SetStaticInventoryRecords([]InstalledCartridgeRecord{{
+		Id:      "rejectedcart",
+		Channel: string(CartridgeChannelRelease),
+		Version: "2.0.0",
+		AttachmentError: &CartridgeAttachmentError{
+			Kind:                  CartridgeAttachmentErrorKindIncompatible,
+			Message:               "version not listed in registry",
+			DetectedAtUnixSeconds: 1,
+		},
+		Lifecycle: CartridgeLifecycleDiscovered,
+	}})
+	host.mu.Lock()
+	records = host.buildInstalledCartridgeIdentities()
+	host.mu.Unlock()
+	require.Len(t, records, 2, "static inventory merges into every advertisement")
+	assert.True(t, anyRecordHasID(records, "rejectedcart"))
+
+	// Roster retirement is NOT a failure: a removed cartridge disappears
+	// from the inventory entirely (there is nothing to report).
+	host.mu.Lock()
+	host.cartridges[0].removed = true
+	records = host.buildInstalledCartridgeIdentities()
+	host.mu.Unlock()
+	require.Len(t, records, 1, "retired installs vanish from the inventory")
+	assert.Equal(t, "rejectedcart", records[0].Id)
+}
+
+// TEST7090: The cartridge's cumulative protocol drop counter (`drops_total`
+// heartbeat meta, L8) is ingested by the host and surfaces on the
+// cartridge's inventory runtime stats as ProtocolDropsTotal — absent until
+// the first reading, then tracking the running total as-is.
+func Test7090_heartbeat_drops_total_reaches_inventory_stats(t *testing.T) {
+	host := NewCartridgeHost()
+	registerTempCartridge(t, host, "dropcart", standard.CapIdentity)
+
+	// No heartbeat round-trip yet: the reading must be ABSENT, never a
+	// fabricated zero (a zero claims "measured: no drops").
+	host.mu.Lock()
+	records := host.buildInstalledCartridgeIdentities()
+	host.mu.Unlock()
+	require.Len(t, records, 1)
+	require.NotNil(t, records[0].RuntimeStats, "inventory records always carry runtime stats")
+	assert.Nil(t, records[0].RuntimeStats.ProtocolDropsTotal,
+		"no reading before the first heartbeat round-trip")
+
+	relayOut := &relayOutbound{ch: make(chan *Frame, 8)}
+
+	// Heartbeat response to our pending probe, carrying the cartridge's
+	// running drop total exactly as cartridge_runtime emits it.
+	hbID := NewMessageIdRandom()
+	host.mu.Lock()
+	host.cartridges[0].pendingHeartbeats[hbID.ToString()] = time.Now()
+	host.mu.Unlock()
+	response := NewHeartbeat(hbID)
+	response.Meta = map[string]interface{}{"drops_total": uint64(42)}
+	host.handleCartridgeFrame(0, response, relayOut)
+
+	host.mu.Lock()
+	records = host.buildInstalledCartridgeIdentities()
+	host.mu.Unlock()
+	require.NotNil(t, records[0].RuntimeStats.ProtocolDropsTotal)
+	assert.Equal(t, uint64(42), *records[0].RuntimeStats.ProtocolDropsTotal,
+		"the heartbeat's drops_total must reach the inventory stats")
+
+	// A later heartbeat carries a larger running total — stored as-is.
+	hbID2 := NewMessageIdRandom()
+	host.mu.Lock()
+	host.cartridges[0].pendingHeartbeats[hbID2.ToString()] = time.Now()
+	host.mu.Unlock()
+	response2 := NewHeartbeat(hbID2)
+	response2.Meta = map[string]interface{}{"drops_total": uint64(45)}
+	host.handleCartridgeFrame(0, response2, relayOut)
+
+	host.mu.Lock()
+	records = host.buildInstalledCartridgeIdentities()
+	host.mu.Unlock()
+	require.NotNil(t, records[0].RuntimeStats.ProtocolDropsTotal)
+	assert.Equal(t, uint64(45), *records[0].RuntimeStats.ProtocolDropsTotal)
 }
 
 // TEST6600: parse_cap_groups_from_manifest classifies failures by kind Manifest JSON that parses but lacks CAP_IDENTITY is `Incompatible` (schema-rejected). Manifest bytes that don't parse as CapManifest are `ManifestInvalid` (JSON-level failure). The split lets the host's attachment-error reporter surface the right kind to the UI.

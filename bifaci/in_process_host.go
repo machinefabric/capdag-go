@@ -528,7 +528,7 @@ func (h *InProcessCartridgeHost) Run(localRead io.Reader, localWrite io.Writer) 
 	// Send initial RelayNotify with aggregate caps.
 	manifest := h.BuildManifest()
 	limits := DefaultLimits()
-	notify := NewRelayNotify(manifest, limits.MaxFrame, limits.MaxChunk, limits.MaxReorderBuffer)
+	notify := NewRelayNotify(manifest, limits.MaxFrame, limits.MaxChunk, limits.MaxReorderBuffer, limits.InitialCredit)
 	writeTx <- *notify
 
 	capTable := buildCapTable(h.handlers)

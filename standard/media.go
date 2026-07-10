@@ -305,6 +305,12 @@ const MediaTranscriptionOutput = "media:enc=utf-8;record;transcription"
 // MediaDecision is the media URN for decision output (Make Decision) - scalar by default
 const MediaDecision = "media:decision;fmt=json;record"
 
+// MediaSemanticJudgment is the media URN for a semantic-judgment record — the
+// shared output envelope of the semantic-primitive cap family (`same`, and
+// the primitives that follow it): `{result..., confidence, reason}`.
+// See docs/semantic-primitives.md (law P2).
+const MediaSemanticJudgment = "media:fmt=json;record;semantic-judgment"
+
 // MediaHFToken is the media URN for a Hugging Face API token (secret)
 const MediaHFToken = "media:enc=utf-8;hf-token;secret"
 

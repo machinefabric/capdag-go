@@ -81,7 +81,7 @@ func Test405_master_reads_relay_notify(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		writer := NewFrameWriter(slaveWrite)
-		frame := NewRelayNotify(manifest, limits.MaxFrame, limits.MaxChunk, limits.MaxReorderBuffer)
+		frame := NewRelayNotify(manifest, limits.MaxFrame, limits.MaxChunk, limits.MaxReorderBuffer, limits.InitialCredit)
 		if err := writer.WriteFrame(frame); err != nil {
 			t.Errorf("WriteFrame failed: %v", err)
 		}
@@ -460,7 +460,7 @@ func Test410_master_receives_updated_relay_notify(t *testing.T) {
 		writer := NewFrameWriter(slaveSocketWrite)
 
 		// Initial RelayNotify
-		initial := NewRelayNotify([]byte(`{"caps":["cap:a"]}`), limits.MaxFrame, limits.MaxChunk, limits.MaxReorderBuffer)
+		initial := NewRelayNotify([]byte(`{"caps":["cap:a"]}`), limits.MaxFrame, limits.MaxChunk, limits.MaxReorderBuffer, limits.InitialCredit)
 		if err := writer.WriteFrame(initial); err != nil {
 			t.Errorf("WriteFrame initial notify failed: %v", err)
 		}
@@ -473,7 +473,7 @@ func Test410_master_receives_updated_relay_notify(t *testing.T) {
 
 		// Updated RelayNotify with new limits
 		updatedLimits := Limits{MaxFrame: 3_000_000, MaxChunk: 200_000, MaxReorderBuffer: DefaultMaxReorderBuffer}
-		updated := NewRelayNotify([]byte(`{"caps":["cap:a","cap:b"]}`), updatedLimits.MaxFrame, updatedLimits.MaxChunk, updatedLimits.MaxReorderBuffer)
+		updated := NewRelayNotify([]byte(`{"caps":["cap:a","cap:b"]}`), updatedLimits.MaxFrame, updatedLimits.MaxChunk, updatedLimits.MaxReorderBuffer, updatedLimits.InitialCredit)
 		if err := writer.WriteFrame(updated); err != nil {
 			t.Errorf("WriteFrame updated notify failed: %v", err)
 		}
@@ -563,7 +563,7 @@ func Test411_socket_close_detection(t *testing.T) {
 		defer wg.Done()
 		writer := NewFrameWriter(slaveSocketWrite2)
 		// Send RelayNotify then close
-		notify := NewRelayNotify([]byte("[]"), DefaultLimits().MaxFrame, DefaultLimits().MaxChunk, DefaultLimits().MaxReorderBuffer)
+		notify := NewRelayNotify([]byte("[]"), DefaultLimits().MaxFrame, DefaultLimits().MaxChunk, DefaultLimits().MaxReorderBuffer, DefaultLimits().InitialCredit)
 		writer.WriteFrame(notify)
 		slaveSocketWrite2.Close()
 	}()
@@ -766,7 +766,7 @@ func Test414_relay_slave_forwards_host_relay_notify(t *testing.T) {
 		_ = hostWriter.WriteFrame(NewRelayState([]byte(`{"memory":1}`)))
 		_ = hostWriter.WriteFrame(NewRelayNotify(
 			[]byte(`{"installed_cartridges":[{"id":"CartA"}]}`),
-			DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer,
+			DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit,
 		))
 	}()
 

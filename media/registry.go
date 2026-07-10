@@ -4,12 +4,17 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
 
 	"github.com/machinefabric/capdag-go/urn"
 )
+
+// defaultMediaRegistryBaseURL mirrors cap.DefaultRegistryBaseURL — the same
+// origin the unified Rust fabric::registry defaults to.
+const defaultMediaRegistryBaseURL = "https://fabric.capdag.com"
 
 // MediaValidation represents validation rules for media data
 type MediaValidation struct {
@@ -21,14 +26,52 @@ type MediaValidation struct {
 	AllowedValues []string `json:"allowed_values,omitempty"`
 }
 
-// RegistryConfig holds configuration for media registry
+// RegistryConfig holds configuration for the media registry — the base URL
+// object paths (media_url_and_cache_path) are built against. Mirrors Rust's
+// fabric::registry::RegistryConfig (registry_base_url / schema_base_url) and
+// cap.RegistryConfig, which carries the same two fields for the cap side.
 type RegistryConfig struct {
-	// Add config fields as needed
+	RegistryBaseURL string
+	SchemaBaseURL   string
 }
 
-// DefaultRegistryConfig returns default registry configuration
+// DefaultRegistryConfig returns registry configuration from environment
+// variables or defaults (CDG_FABRIC_REGISTRY_URL / CDG_SCHEMA_BASE_URL),
+// mirroring Rust's RegistryConfig::default and cap.DefaultRegistryConfig.
 func DefaultRegistryConfig() RegistryConfig {
-	return RegistryConfig{}
+	registryBase := os.Getenv("CDG_FABRIC_REGISTRY_URL")
+	if registryBase == "" {
+		registryBase = defaultMediaRegistryBaseURL
+	}
+	schemaBase := os.Getenv("CDG_SCHEMA_BASE_URL")
+	if schemaBase == "" {
+		schemaBase = registryBase + "/schema"
+	}
+	return RegistryConfig{RegistryBaseURL: registryBase, SchemaBaseURL: schemaBase}
+}
+
+// RegistryOption is a functional option for configuring the media registry.
+// Mirrors cap.RegistryOption.
+type RegistryOption func(*RegistryConfig)
+
+// WithRegistryURL sets a custom registry URL. If the schema URL was derived
+// from the old registry URL it is re-derived from the new one. Mirrors Rust's
+// RegistryConfig::with_registry_url and cap.WithRegistryURL.
+func WithRegistryURL(url string) RegistryOption {
+	return func(c *RegistryConfig) {
+		if c.SchemaBaseURL == c.RegistryBaseURL+"/schema" {
+			c.SchemaBaseURL = url + "/schema"
+		}
+		c.RegistryBaseURL = url
+	}
+}
+
+// WithSchemaURL sets a custom schema base URL. Mirrors Rust's
+// RegistryConfig::with_schema_url and cap.WithSchemaURL.
+func WithSchemaURL(url string) RegistryOption {
+	return func(c *RegistryConfig) {
+		c.SchemaBaseURL = url
+	}
 }
 
 // StoredMediaDef represents a media def from the registry (matches Rust StoredMediaDef)
@@ -388,6 +431,74 @@ func EmptyManifest(version uint32) *Manifest {
 		Media:    make(map[string]uint32),
 		Aliases:  make(map[string]uint32),
 	}
+}
+
+// ManifestVersion returns the fabric manifest version this registry is
+// pinned to. Mirrors Rust FabricRegistry::manifest_version.
+func (r *FabricRegistry) ManifestVersion() uint32 {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.manifestVersion
+}
+
+// =============================================================================
+// Media defver resolution (manifest pin)
+// =============================================================================
+
+// mediaDefver resolves a normalized media URN to its defver under the pinned
+// manifest. At v0 this is unconditionally 0 (flat path). The bare wildcard
+// `media:` is a sentinel with no published spec — caps use it to denote "any
+// media" — so it always resolves to 0 rather than a manifest lookup. At v >= 1
+// the URN MUST be in the manifest's media map; absence is a hard not-found (no
+// fallback to the flat path, which would 404 against a versioned registry and
+// mix snapshot versions). Mirrors Rust's media_defver.
+func (r *FabricRegistry) mediaDefver(normalizedUrn string) (uint32, error) {
+	if r.manifestVersion == 0 {
+		return 0, nil
+	}
+	if normalizedUrn == "media:" {
+		return 0, nil
+	}
+	defver, ok := r.manifest.Media[normalizedUrn]
+	if !ok {
+		return 0, &FabricRegistryError{Message: fmt.Sprintf(
+			"media def '%s' is not part of manifest v%d", normalizedUrn, r.manifestVersion)}
+	}
+	return defver, nil
+}
+
+// MediaDefverFor normalizes urnStr and resolves its pinned defver under this
+// registry's manifest, without fetching. Public so external callers (e.g.
+// fetchcartridge) can resolve URN -> (urn, defver) before issuing a network
+// request. Mirrors Rust's media_defver_for.
+func (r *FabricRegistry) MediaDefverFor(urnStr string) (uint32, error) {
+	normalized, err := normalizeMediaUrn(urnStr)
+	if err != nil {
+		return 0, err
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.mediaDefver(normalized)
+}
+
+// MediaURLAndCachePath builds the registry URL and on-disk cache path for a
+// per-media object at the given defver. defver == 0 addresses the frozen v0
+// flat path (`<base>/media/<sha>`, cached at `<cacheDir>/media/<sha>.json`);
+// defver >= 1 addresses the versioned subpath
+// (`<base>/media/<sha>/<defver>.json`, cached at
+// `<cacheDir>/media/<sha>/<defver>.json`). Mirrors Rust's
+// media_url_and_cache_path.
+func MediaURLAndCachePath(cacheDir string, config RegistryConfig, normalizedUrn string, defver uint32) (string, string) {
+	hash := sha256.Sum256([]byte(normalizedUrn))
+	hexHash := fmt.Sprintf("%x", hash)
+	if defver == 0 {
+		url := fmt.Sprintf("%s/media/%s", config.RegistryBaseURL, hexHash)
+		cachePath := filepath.Join(cacheDir, "media", hexHash+".json")
+		return url, cachePath
+	}
+	url := fmt.Sprintf("%s/media/%s/%d.json", config.RegistryBaseURL, hexHash, defver)
+	cachePath := filepath.Join(cacheDir, "media", hexHash, fmt.Sprintf("%d.json", defver))
+	return url, cachePath
 }
 
 // =============================================================================

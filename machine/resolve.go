@@ -11,20 +11,21 @@ import (
 // preInternedWiring is one wiring after the caller has pre-interned its
 // source and target slots into NodeIds against a parallel nodes slice.
 type preInternedWiring struct {
+	// tokenId is the originating resolved-strand step's stable identity,
+	// carried onto the resulting MachineEdge (see MachineEdge.TokenId).
+	tokenId       string
 	capUrn        *urn.CapUrn
 	sourceNodeIds []NodeId
 	targetNodeId  NodeId
-	isLoop        bool
 }
 
 // resolveStrand converts a planner-produced Strand into a single MachineStrand.
 //
-// Walks the strand step-by-step and pre-interns NodeIds using positional flow:
-// each cap step's input is linked to the preceding cap step's output iff their
-// URNs are on the same specialization chain (IsComparable). Each step's output
-// always allocates a FRESH NodeId.
-//
-// ForEach sets isLoop=true on the next cap; Collect is elided.
+// Every cap step names each of its inputs' producers explicitly (StrandInput or
+// another step's TokenId) — there is no positional predecessor assumption, so
+// fan-out and convergence both wire correctly. ForEach and Collect steps are
+// elided here; IsLoop is derived from cardinality in resolvePreInterned, the
+// single source of truth shared with path search.
 func resolveStrand(
 	strand *planner.Strand,
 	registry *cap.FabricRegistry,
@@ -32,48 +33,63 @@ func resolveStrand(
 ) (*MachineStrand, *MachineAbstractionError) {
 	var nodes []*urn.MediaUrn
 	var preInterned []preInternedWiring
-	pendingLoop := false
-	var prevTarget *NodeId
+
+	// Producer of each node, by producing step's stable TokenId -> its output
+	// NodeId. Explicit input sources (CapInput.Source) resolve against this — no
+	// positional predecessor assumption, so fan-out and convergence both wire
+	// correctly.
+	producerNode := make(map[string]NodeId)
+	// The single shared strand input anchor node, allocated on first StrandInput
+	// reference and refined to the most specific consuming FromSpec.
+	var strandInputNode *NodeId
 
 	for _, step := range strand.Steps {
 		switch step.StepType {
 		case planner.StepTypeCap:
-			fromSpec := step.FromSpec
-			toSpec := step.ToSpec
-			capUrnParsed := step.CapUrnVal
-
-			var sourceId NodeId
-			if prevTarget != nil && nodes[*prevTarget].IsComparable(fromSpec) {
-				// Reuse previous target node; refine if fromSpec is more specific.
-				if fromSpec.Specificity() > nodes[*prevTarget].Specificity() {
-					nodes[*prevTarget] = fromSpec
+			sourceNodeIds := make([]NodeId, 0, len(step.Inputs))
+			for _, input := range step.Inputs {
+				var sourceId NodeId
+				switch input.Source.Kind {
+				case planner.ArgSourceStrandInput:
+					if strandInputNode != nil {
+						id := *strandInputNode
+						if step.FromSpec.Specificity() > nodes[id].Specificity() {
+							nodes[id] = step.FromSpec
+						}
+						sourceId = id
+					} else {
+						id := NodeId(len(nodes))
+						nodes = append(nodes, step.FromSpec)
+						strandInputNode = &id
+						sourceId = id
+					}
+				case planner.ArgSourceStep:
+					id, ok := producerNode[input.Source.TokenId]
+					if !ok {
+						return nil, disconnectedStrandError(strandIndex)
+					}
+					sourceId = id
 				}
-				sourceId = *prevTarget
-			} else {
-				id := NodeId(len(nodes))
-				nodes = append(nodes, fromSpec)
-				sourceId = id
+				sourceNodeIds = append(sourceNodeIds, sourceId)
 			}
 
+			// Target: always a fresh position.
 			targetId := NodeId(len(nodes))
-			nodes = append(nodes, toSpec)
+			nodes = append(nodes, step.ToSpec)
 
 			preInterned = append(preInterned, preInternedWiring{
-				capUrn:        capUrnParsed,
-				sourceNodeIds: []NodeId{sourceId},
+				tokenId:       step.TokenId,
+				capUrn:        step.CapUrnVal,
+				sourceNodeIds: sourceNodeIds,
 				targetNodeId:  targetId,
-				isLoop:        pendingLoop,
 			})
-			pendingLoop = false
-			prevTarget = &targetId
 
-		case planner.StepTypeForEach:
-			pendingLoop = true
-			// prevTarget passes through unchanged.
+			producerNode[step.TokenId] = targetId
 
-		case planner.StepTypeCollect:
-			// Elided — cardinality transitions are implicit.
-			// prevTarget passes through unchanged.
+		case planner.StepTypeForEach, planner.StepTypeCollect:
+			// Cardinality transitions are elided — caps name their producers
+			// directly, and IsLoop is derived from cardinality in
+			// resolvePreInterned, so these steps carry no wiring here.
 		}
 	}
 
@@ -105,6 +121,21 @@ func resolvePreInterned(
 		return nil, noCapabilityStepsError()
 	}
 
+	// Cardinality of every node, derived from the single canonical rule
+	// (cap.SequenceShape): a node holds a sequence iff the cap that PRODUCES it
+	// has a sequence output; root nodes (never a wiring target) are scalar.
+	// IsLoop is DERIVED from cardinality, never authored. It replaces the
+	// retired LOOP keyword.
+	nodeIsSequence := make([]bool, len(nodes))
+	for _, wiring := range wirings {
+		capDef, ok := registry.GetCachedCap(wiring.capUrn.String())
+		if !ok {
+			return nil, unknownCapError(wiring.capUrn.String())
+		}
+		_, outputIsSequence := capDef.SequenceShape()
+		nodeIsSequence[wiring.targetNodeId] = outputIsSequence
+	}
+
 	// Step 1: per-wiring source-to-cap-arg matching.
 	indexedEdges := make([]*MachineEdge, 0, len(wirings))
 	for _, wiring := range wirings {
@@ -113,23 +144,27 @@ func resolvePreInterned(
 			return nil, unknownCapError(wiring.capUrn.String())
 		}
 
-		// Build the stdin arg URNs and their slot URNs.
+		// Wiring sources are matched against EVERY arg by its stream URN (its
+		// Stdin source URN if it declares one, else its declared URN — a cap may
+		// have no stdin at all). ALL args are producer-feedable: a producer is
+		// anything that supplies a value (a prior cap's output, config, a
+		// literal, …), so every arg is a candidate. The matcher assigns each
+		// source to the arg it conforms to; args no source matches take their
+		// value from config/defaults; genuine ambiguity is a hard failure (in
+		// matchSourcesToArgs). stdin* names are historical — these are the
+		// per-arg stream and slot URNs.
 		var stdinArgUrns []*urn.MediaUrn
 		var stdinArgSlotUrns []*urn.MediaUrn
 		for _, arg := range capDef.Args {
-			stdinUrnStr := arg.GetStdinMediaUrn()
-			if stdinUrnStr == nil {
-				continue
-			}
-			stdinUrn, err := urn.NewMediaUrnFromString(*stdinUrnStr)
+			streamUrn, err := urn.NewMediaUrnFromString(arg.StreamUrn())
 			if err != nil {
-				panic("cap registry invariant: every Stdin source URN is a valid MediaUrn: " + err.Error())
+				panic("cap registry invariant: every arg stream URN is a valid MediaUrn: " + err.Error())
 			}
 			slotUrn, err := urn.NewMediaUrnFromString(arg.MediaUrn)
 			if err != nil {
 				panic("cap registry invariant: every cap arg media_urn is a valid MediaUrn: " + err.Error())
 			}
-			stdinArgUrns = append(stdinArgUrns, stdinUrn)
+			stdinArgUrns = append(stdinArgUrns, streamUrn)
 			stdinArgSlotUrns = append(stdinArgSlotUrns, slotUrn)
 		}
 
@@ -192,11 +227,30 @@ func resolvePreInterned(
 			return bindings[a].CapArgMediaUrn.String() < bindings[b].CapArgMediaUrn.String()
 		})
 
+		// Derive IsLoop from cardinality — the single ForEach rule
+		// (cap.NeedsForeach): the primary data input (the first stdin arg)
+		// carries a sequence but this cap consumes it as a scalar, so it maps
+		// per-item. The primary stdin source node is the binding feeding the
+		// first stdin arg's slot. A cap with no stdin arg (config-only) never
+		// loops.
+		primaryStdinSourceIsSequence := false
+		if len(stdinArgSlotUrns) > 0 {
+			primarySlot := stdinArgSlotUrns[0]
+			for _, b := range bindings {
+				if b.CapArgMediaUrn.IsEquivalent(primarySlot) {
+					primaryStdinSourceIsSequence = nodeIsSequence[b.Source]
+					break
+				}
+			}
+		}
+		isLoop := capDef.NeedsForeach(primaryStdinSourceIsSequence)
+
 		indexedEdges = append(indexedEdges, &MachineEdge{
+			TokenId:    wiring.tokenId,
 			CapUrn:     wiring.capUrn,
 			Assignment: bindings,
 			Target:     wiring.targetNodeId,
-			IsLoop:     wiring.isLoop,
+			IsLoop:     isLoop,
 		})
 	}
 

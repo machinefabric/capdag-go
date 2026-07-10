@@ -676,3 +676,149 @@ func Test6259_CapJSONRoundTrip(t *testing.T) {
 	assert.Equal(t, cap.GetArgs()[0].MediaUrn, deserialized.GetArgs()[0].MediaUrn)
 	assert.Equal(t, cap.Output.MediaUrn, deserialized.Output.MediaUrn)
 }
+
+// Bifaci v3: CapArg.StreamUrn / CapArg.IsMainInput.
+// No numbered Rust test exists for these two pure accessors as of the v3
+// diff (src/cap/definition.rs) — they are exercised indirectly by consumers
+// in other subsystems (machine::resolve, machine::realize,
+// orchestrator::parser, planner::plan_builder). These are plain Go unit
+// tests pinning the same semantics described in the Rust doc comments.
+
+// TestStreamUrn_PrefersStdinSourceOverSlotMediaUrn mirrors Rust stream_urn():
+// when an arg declares a Stdin source, StreamUrn returns the STDIN URN, not
+// the declared slot media_urn, even when the two differ (e.g. a file-path
+// slot whose piped content is a pdf-stream).
+func TestStreamUrn_PrefersStdinSourceOverSlotMediaUrn(t *testing.T) {
+	stdinUrn := "media:enc=binary;pdf-stream"
+	arg := CapArg{
+		MediaUrn: "media:file-path",
+		Required: true,
+		Sources:  []ArgSource{{Stdin: &stdinUrn}},
+	}
+	assert.Equal(t, stdinUrn, arg.StreamUrn())
+	assert.NotEqual(t, arg.MediaUrn, arg.StreamUrn())
+}
+
+// TestStreamUrn_FallsBackToSlotMediaUrnWhenNoStdinSource mirrors Rust
+// stream_urn(): a cap need not declare any Stdin source at all — a
+// producer-fed arg (position/cli_flag only) is delivered by its declared
+// slot media_urn.
+func TestStreamUrn_FallsBackToSlotMediaUrnWhenNoStdinSource(t *testing.T) {
+	flag := "--input"
+	arg := CapArg{
+		MediaUrn: "media:string",
+		Required: true,
+		Sources:  []ArgSource{{CliFlag: &flag}},
+	}
+	assert.Equal(t, "media:string", arg.StreamUrn())
+}
+
+// TestStreamUrn_NoSources mirrors Rust stream_urn(): with zero sources
+// declared, the slot media_urn is still returned (never panics, never
+// defaults to something else).
+func TestStreamUrn_NoSources(t *testing.T) {
+	arg := CapArg{MediaUrn: "media:string", Required: true}
+	assert.Equal(t, "media:string", arg.StreamUrn())
+}
+
+// TestIsMainInput_TrueWhenStdinUrnIsEquivalentToInSpec mirrors Rust
+// is_main_input(): the arg's Stdin source URN is compared to in_spec by
+// tagged-URN EQUIVALENCE, not string equality — reordered tags still match.
+func TestIsMainInput_TrueWhenStdinUrnIsEquivalentToInSpec(t *testing.T) {
+	inSpec, err := urn.NewMediaUrnFromString("media:fmt=json;record")
+	require.NoError(t, err)
+
+	stdinUrn := "media:record;fmt=json" // same tags, different order
+	arg := CapArg{
+		MediaUrn: "media:record;fmt=json",
+		Required: true,
+		Sources:  []ArgSource{{Stdin: &stdinUrn}},
+	}
+	assert.True(t, arg.IsMainInput(inSpec))
+}
+
+// TestIsMainInput_UsesStdinUrnNotDeclaredSlotUrn mirrors Rust
+// is_main_input(): the DECLARED slot media_urn may differ from the stdin
+// URN (e.g. a file-path slot whose piped content is a pdf-stream) — only
+// the stdin URN is compared against in_spec, never the slot URN.
+func TestIsMainInput_UsesStdinUrnNotDeclaredSlotUrn(t *testing.T) {
+	inSpec, err := urn.NewMediaUrnFromString("media:enc=binary;pdf-stream")
+	require.NoError(t, err)
+
+	stdinUrn := "media:enc=binary;pdf-stream"
+	arg := CapArg{
+		MediaUrn: "media:file-path", // declared slot URN differs from in_spec
+		Required: true,
+		Sources:  []ArgSource{{Stdin: &stdinUrn}},
+	}
+	assert.True(t, arg.IsMainInput(inSpec))
+
+	// Confirm the declared slot URN alone would NOT have matched in_spec —
+	// proves the comparison genuinely reads the stdin source, not MediaUrn.
+	slotUrn, err := urn.NewMediaUrnFromString(arg.MediaUrn)
+	require.NoError(t, err)
+	assert.False(t, slotUrn.IsEquivalent(inSpec))
+}
+
+// TestIsMainInput_FalseWithoutStdinSource mirrors Rust is_main_input(): an
+// arg delivered only by position/cli_flag is never the main input, no
+// matter how its declared media_urn compares to in_spec.
+func TestIsMainInput_FalseWithoutStdinSource(t *testing.T) {
+	inSpec, err := urn.NewMediaUrnFromString("media:string")
+	require.NoError(t, err)
+
+	pos := 0
+	arg := CapArg{
+		MediaUrn: "media:string",
+		Required: true,
+		Sources:  []ArgSource{{Position: &pos}},
+	}
+	assert.False(t, arg.IsMainInput(inSpec))
+}
+
+// TestIsMainInput_FalseWhenStdinUrnDiffersFromInSpec mirrors Rust
+// is_main_input(): a Stdin source whose URN is not equivalent to in_spec
+// does not make the arg the main input (e.g. a secondary stdin-fed arg in
+// a distinct-URN convergence).
+func TestIsMainInput_FalseWhenStdinUrnDiffersFromInSpec(t *testing.T) {
+	inSpec, err := urn.NewMediaUrnFromString("media:fmt=json;record")
+	require.NoError(t, err)
+
+	stdinUrn := "media:string"
+	arg := CapArg{
+		MediaUrn: "media:string",
+		Required: true,
+		Sources:  []ArgSource{{Stdin: &stdinUrn}},
+	}
+	assert.False(t, arg.IsMainInput(inSpec))
+}
+
+// TestIsMainInput_NilInSpecIsFalse: is_main_input must FAIL HARD toward
+// false, never panic, when handed a nil in_spec.
+func TestIsMainInput_NilInSpecIsFalse(t *testing.T) {
+	stdinUrn := "media:string"
+	arg := CapArg{
+		MediaUrn: "media:string",
+		Required: true,
+		Sources:  []ArgSource{{Stdin: &stdinUrn}},
+	}
+	assert.False(t, arg.IsMainInput(nil))
+}
+
+// TestIsMainInput_InvalidStdinUrnIsIgnoredNotFatal mirrors Rust
+// is_main_input(): MediaUrn::from_string failing on a malformed stdin URN
+// is treated as non-matching (via .unwrap_or(false)), not a panic/crash —
+// the search continues to other sources instead of failing hard, matching
+// the reference's explicit fallback-to-false on parse failure.
+func TestIsMainInput_InvalidStdinUrnIsIgnoredNotFatal(t *testing.T) {
+	inSpec, err := urn.NewMediaUrnFromString("media:string")
+	require.NoError(t, err)
+
+	malformed := "not-a-valid-urn-at-all"
+	arg := CapArg{
+		MediaUrn: "media:string",
+		Required: true,
+		Sources:  []ArgSource{{Stdin: &malformed}},
+	}
+	assert.False(t, arg.IsMainInput(inSpec))
+}

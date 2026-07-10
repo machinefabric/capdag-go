@@ -23,6 +23,7 @@ func Test171_frame_type_roundtrip(t *testing.T) {
 		FrameTypeStreamStart,
 		FrameTypeStreamEnd,
 		FrameTypeCancel,
+		FrameTypeCredit,
 	}
 
 	for _, ft := range types {
@@ -50,9 +51,10 @@ func Test172_frame_type_valid_range(t *testing.T) {
 		10: true,  // RELAY_NOTIFY
 		11: true,  // RELAY_STATE
 		12: true,  // CANCEL
+		13: true,  // CREDIT (protocol v3)
 	}
 
-	for i := uint8(0); i <= 12; i++ {
+	for i := uint8(0); i <= 13; i++ {
 		if expected, exists := validTypes[i]; exists && expected {
 			ft := FrameType(i)
 			if ft.String() == fmt.Sprintf("UNKNOWN(%d)", i) {
@@ -60,10 +62,16 @@ func Test172_frame_type_valid_range(t *testing.T) {
 			}
 		}
 	}
-	// 13 is one past Cancel — must be invalid
-	ft13 := FrameType(13)
-	if ft13.String() != "UNKNOWN(13)" {
-		t.Errorf("Expected 13 to be invalid, got %s", ft13.String())
+	// 14 is one past Credit — must be invalid
+	ft14 := FrameType(14)
+	if ft14.String() != "UNKNOWN(14)" {
+		t.Errorf("Expected 14 to be invalid, got %s", ft14.String())
+	}
+	if FrameType(100).String() != "UNKNOWN(100)" {
+		t.Errorf("Expected 100 to be invalid")
+	}
+	if FrameType(255).String() != "UNKNOWN(255)" {
+		t.Errorf("Expected 255 to be invalid")
 	}
 }
 
@@ -190,7 +198,7 @@ func Test179_message_id_default(t *testing.T) {
 
 // TEST180: Test Frame::hello without manifest produces correct HELLO frame for host side
 func Test180_frame_hello_without_manifest(t *testing.T) {
-	frame := NewHello(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer)
+	frame := NewHello(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit)
 	if frame.FrameType != FrameTypeHello {
 		t.Errorf("Expected HELLO frame type, got %v", frame.FrameType)
 	}
@@ -206,7 +214,7 @@ func Test180_frame_hello_without_manifest(t *testing.T) {
 // TEST181: Test Frame::hello_with_manifest produces HELLO with manifest bytes for cartridge side
 func Test181_frame_hello_with_manifest(t *testing.T) {
 	manifest := []byte(`{"name":"test"}`)
-	frame := NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, manifest)
+	frame := NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit, manifest)
 	if frame.FrameType != FrameTypeHello {
 		t.Errorf("Expected HELLO frame type, got %v", frame.FrameType)
 	}
@@ -417,7 +425,7 @@ func Test191_error_accessors_on_non_err_frame(t *testing.T) {
 		t.Error("REQ must have no error_message")
 	}
 
-	hello := NewHello(1000, 500, DefaultMaxReorderBuffer)
+	hello := NewHello(1000, 500, DefaultMaxReorderBuffer, DefaultInitialCredit)
 	if hello.ErrorCode() != "" {
 		t.Error("HELLO must have no error_code")
 	}
@@ -530,12 +538,15 @@ func Test198_limits_default(t *testing.T) {
 	if limits.MaxChunk != 262_144 {
 		t.Error("default max_chunk should be 256 KB")
 	}
+	if limits.InitialCredit != 32 {
+		t.Errorf("default initial_credit should be 32 chunks, got %d", limits.InitialCredit)
+	}
 }
 
-// TEST199: Test PROTOCOL_VERSION is 2
+// TEST199: Test PROTOCOL_VERSION is 3
 func Test199_protocol_version_constant(t *testing.T) {
-	if ProtocolVersion != 2 {
-		t.Errorf("PROTOCOL_VERSION must be 2, got %d", ProtocolVersion)
+	if ProtocolVersion != 3 {
+		t.Errorf("PROTOCOL_VERSION must be 3, got %d", ProtocolVersion)
 	}
 }
 
@@ -579,7 +590,7 @@ func Test200_key_constants(t *testing.T) {
 // TEST201: Test hello_with_manifest preserves binary manifest data (not just JSON text)
 func Test201_hello_manifest_binary_data(t *testing.T) {
 	binaryManifest := []byte{0x00, 0x01, 0xFF, 0xFE, 0x80}
-	frame := NewHelloWithManifest(1000, 500, DefaultMaxReorderBuffer, binaryManifest)
+	frame := NewHelloWithManifest(1000, 500, DefaultMaxReorderBuffer, DefaultInitialCredit, binaryManifest)
 
 	// Extract manifest from meta
 	if frame.Meta == nil {
@@ -761,7 +772,7 @@ func Test401_relay_notify_factory_and_accessors(t *testing.T) {
 	maxFrame := 2_000_000
 	maxChunk := 128_000
 
-	frame := NewRelayNotify(manifest, maxFrame, maxChunk, DefaultMaxReorderBuffer)
+	frame := NewRelayNotify(manifest, maxFrame, maxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit)
 
 	if frame.FrameType != FrameTypeRelayNotify {
 		t.Errorf("Expected RELAY_NOTIFY, got %v", frame.FrameType)
@@ -814,9 +825,19 @@ func Test402_relay_state_factory_and_payload(t *testing.T) {
 
 // TEST403: Verify from_u8 returns None for values past the last valid frame type
 func Test403_frame_type_one_past_cancel(t *testing.T) {
-	ft := FrameType(13)
-	if ft.String() != fmt.Sprintf("UNKNOWN(%d)", 13) {
-		t.Errorf("FrameType(13) must be unknown, got %s", ft.String())
+	if FrameType(12) != FrameTypeCancel {
+		t.Errorf("12 must be Cancel, got %s", FrameType(12).String())
+	}
+	if FrameType(13) != FrameTypeCredit {
+		t.Errorf("13 must be Credit (v3), got %s", FrameType(13).String())
+	}
+	ft := FrameType(14)
+	if ft.String() != fmt.Sprintf("UNKNOWN(%d)", 14) {
+		t.Errorf("FrameType(14) must be unknown (past the last valid frame type), got %s", ft.String())
+	}
+	ft2 := FrameType(2)
+	if ft2.String() != fmt.Sprintf("UNKNOWN(%d)", 2) {
+		t.Errorf("FrameType(2) (old Res) must be permanently retired, got %s", ft2.String())
 	}
 }
 
@@ -934,9 +955,9 @@ func Test443_seq_assigner_independent_rids(t *testing.T) {
 func Test444_seq_assigner_skips_non_flow(t *testing.T) {
 	assigner := NewSeqAssigner()
 
-	hello := NewHello(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer)
+	hello := NewHello(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit)
 	hb := NewHeartbeat(NewMessageIdRandom())
-	rn := NewRelayNotify(nil, DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer)
+	rn := NewRelayNotify(nil, DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit)
 	rs := NewRelayState(nil)
 
 	assigner.Assign(hello)
@@ -1301,9 +1322,9 @@ func Test457_reorder_buffer_cleanup(t *testing.T) {
 func Test458_reorder_buffer_non_flow_bypass(t *testing.T) {
 	rb := NewReorderBuffer(10)
 
-	hello := NewHello(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer)
+	hello := NewHello(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit)
 	hb := NewHeartbeat(NewMessageIdRandom())
-	rn := NewRelayNotify(nil, DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer)
+	rn := NewRelayNotify(nil, DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit)
 	rs := NewRelayState(nil)
 
 	for _, frame := range []*Frame{hello, hb, rn, rs} {
@@ -1886,7 +1907,7 @@ func Test520_reorder_buffer_per_flow_limit(t *testing.T) {
 func Test521_relay_notify_cbor_roundtrip(t *testing.T) {
 	manifest := []byte(`{"name":"Test","version":"1.0","description":"Test","cap_groups":[{"name":"default","caps":[{"urn":"cap:in=\"media:void\";convert;out=\"media:image\"","title":"Convert","command":"convert"}]}]}`)
 
-	frame := NewRelayNotify(manifest, 3_000_000, 256_000, 128)
+	frame := NewRelayNotify(manifest, 3_000_000, 256_000, 128, DefaultInitialCredit)
 	encoded, err := EncodeFrame(frame)
 	require.NoError(t, err)
 	decoded, err := DecodeFrame(encoded)
@@ -1900,6 +1921,7 @@ func Test521_relay_notify_cbor_roundtrip(t *testing.T) {
 	assert.Equal(t, 3_000_000, limits.MaxFrame)
 	assert.Equal(t, 256_000, limits.MaxChunk)
 	assert.Equal(t, 128, limits.MaxReorderBuffer)
+	assert.Equal(t, DefaultInitialCredit, limits.InitialCredit, "initial_credit must roundtrip through RelayNotify (v3)")
 }
 
 // TEST522: RelayState CBOR roundtrip preserves payload
@@ -1920,7 +1942,7 @@ func Test522_relay_state_cbor_roundtrip(t *testing.T) {
 
 // TEST523: is_flow_frame returns false for RelayNotify
 func Test523_relay_notify_not_flow_frame(t *testing.T) {
-	frame := NewRelayNotify([]byte("test"), DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer)
+	frame := NewRelayNotify([]byte("test"), DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit)
 	assert.False(t, frame.IsFlowFrame(), "RelayNotify must not be a flow frame")
 }
 
@@ -1932,7 +1954,7 @@ func Test524_relay_state_not_flow_frame(t *testing.T) {
 
 // TEST525: RelayNotify with empty manifest is valid
 func Test525_relay_notify_empty_manifest(t *testing.T) {
-	frame := NewRelayNotify([]byte{}, DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer)
+	frame := NewRelayNotify([]byte{}, DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit)
 	assert.Equal(t, FrameTypeRelayNotify, frame.FrameType)
 	assert.Equal(t, []byte{}, frame.RelayNotifyManifest())
 }
@@ -1952,7 +1974,7 @@ func Test527_relay_notify_large_manifest(t *testing.T) {
 	}
 	largeManifest += "]}]}"
 
-	frame := NewRelayNotify([]byte(largeManifest), DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer)
+	frame := NewRelayNotify([]byte(largeManifest), DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit)
 	encoded, err := EncodeFrame(frame)
 	require.NoError(t, err)
 	decoded, err := DecodeFrame(encoded)
@@ -1963,7 +1985,7 @@ func Test527_relay_notify_large_manifest(t *testing.T) {
 
 // TEST528: RelayNotify and RelayState use MessageId::Uint(0)
 func Test528_relay_frames_use_uint_zero_id(t *testing.T) {
-	notify := NewRelayNotify([]byte("test"), DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer)
+	notify := NewRelayNotify([]byte("test"), DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit)
 	state := NewRelayState([]byte("test"))
 
 	assert.False(t, notify.Id.IsUuid(), "RelayNotify must use uint ID, not UUID")
@@ -2040,26 +2062,228 @@ func Test904_stream_end_with_chunk_count(t *testing.T) {
 	assert.Equal(t, uint64(42), *frame.ChunkCount, "chunk_count should be set")
 }
 
-// TEST6672: CBOR decode REJECTS STREAM_END frame missing chunk_count field
-func Test6672_cbor_rejects_stream_end_without_chunk_count(t *testing.T) {
+// TEST6672: CBOR decode ACCEPTS STREAM_END without chunk_count — unbounded streams make no length promise (v3, L16)
+func Test6672_cbor_accepts_stream_end_without_chunk_count(t *testing.T) {
 	reqId := NewMessageIdRandom()
 
-	// Create STREAM_END without chunk_count
-	frame := NewFrame(FrameTypeStreamEnd, reqId)
-	streamId := "s1"
-	frame.StreamId = &streamId
-	// chunk_count deliberately missing
+	frame := NewStreamEndUnbounded(reqId, "s1")
+	assert.Nil(t, frame.ChunkCount)
 
 	encoded, err := EncodeFrame(frame)
 	require.NoError(t, err, "encoding should succeed")
 
-	// Decode should FAIL
+	decoded, decErr := DecodeFrame(encoded)
+	require.NoError(t, decErr, "v3 accepts STREAM_END without chunk_count")
+	assert.Equal(t, FrameTypeStreamEnd, decoded.FrameType)
+	assert.Equal(t, reqId, decoded.Id)
+	require.NotNil(t, decoded.StreamId)
+	assert.Equal(t, "s1", *decoded.StreamId)
+	assert.Nil(t, decoded.ChunkCount, "absent chunk_count must decode as nil, not a default")
+}
+
+// TEST7010: CREDIT frame round-trips encode/decode with rid, stream_id, and credit count
+func Test7010_credit_frame_roundtrip(t *testing.T) {
+	rid := NewMessageIdRandom()
+	streamID := "s1"
+	frame := NewCredit(rid, &streamID, 17, CreditDirectionResponse)
+	require.NotNil(t, frame.CreditCount())
+	assert.Equal(t, uint64(17), *frame.CreditCount())
+
+	encoded, err := EncodeFrame(frame)
+	require.NoError(t, err)
+	decoded, err := DecodeFrame(encoded)
+	require.NoError(t, err)
+	assert.Equal(t, FrameTypeCredit, decoded.FrameType)
+	assert.Equal(t, rid, decoded.Id)
+	require.NotNil(t, decoded.StreamId)
+	assert.Equal(t, "s1", *decoded.StreamId)
+	require.NotNil(t, decoded.CreditCount())
+	assert.Equal(t, uint64(17), *decoded.CreditCount())
+	dir := decoded.CreditDirectionValue()
+	require.NotNil(t, dir, "the routing direction must survive the wire (L11)")
+	assert.Equal(t, CreditDirectionResponse, *dir)
+
+	// Stream-less grant (request's sole stream) round-trips too
+	frame2 := NewCredit(rid, nil, 3, CreditDirectionRequest)
+	decoded2, err := DecodeFrame(mustEncode(t, frame2))
+	require.NoError(t, err)
+	assert.Nil(t, decoded2.StreamId)
+	require.NotNil(t, decoded2.CreditCount())
+	assert.Equal(t, uint64(3), *decoded2.CreditCount())
+	dir2 := decoded2.CreditDirectionValue()
+	require.NotNil(t, dir2)
+	assert.Equal(t, CreditDirectionRequest, *dir2)
+
+	// A Credit frame with no direction reports nil — hosts drop it as
+	// unroutable (counted), since (xid, rid) alone cannot place it.
+	dirless := NewFrame(FrameTypeCredit, NewMessageIdRandom())
+	credit := uint64(1)
+	dirless.Credit = &credit
+	assert.Nil(t, dirless.CreditDirectionValue())
+
+	// CreditCount is nil on non-Credit frames even if the field is set
+	chunkish := NewFrame(FrameTypeLog, rid)
+	c9 := uint64(9)
+	chunkish.Credit = &c9
+	assert.Nil(t, chunkish.CreditCount())
+}
+
+// TEST7011: CREDIT is a non-flow frame — no seq assigned, passes the reorder buffer untouched regardless of flow state
+func Test7011_credit_is_non_flow(t *testing.T) {
+	rid := NewMessageIdRandom()
+
+	// SeqAssigner leaves Credit at seq 0 while flow frames advance
+	assigner := NewSeqAssigner()
+	chunk := NewChunk(rid, "s1", 0, []byte{1}, 0, 1)
+	assigner.Assign(chunk)
+	assert.Equal(t, uint64(0), chunk.Seq)
+	streamID := "s1"
+	credit := NewCredit(rid, &streamID, 4, CreditDirectionResponse)
+	assigner.Assign(credit)
+	assert.Equal(t, uint64(0), credit.Seq, "Credit must not consume a flow seq")
+	chunk2 := NewChunk(rid, "s1", 0, []byte{2}, 1, 1)
+	assigner.Assign(chunk2)
+	assert.Equal(t, uint64(1), chunk2.Seq, "flow seq must be contiguous across a Credit")
+
+	// ReorderBuffer returns Credit immediately even while the flow is gapped
+	buffer := NewReorderBuffer(8)
+	gapped := NewChunk(rid, "s1", 5, []byte{3}, 5, 1)
+	gapped.Seq = 5
+	delivered, err := buffer.Accept(gapped)
+	require.NoError(t, err)
+	assert.Empty(t, delivered, "out-of-order flow frame must be buffered")
+	creditFrame := NewCredit(rid, &streamID, 4, CreditDirectionResponse)
+	delivered2, err := buffer.Accept(creditFrame)
+	require.NoError(t, err)
+	require.Len(t, delivered2, 1, "Credit must bypass the reorder buffer and deliver immediately")
+	assert.Equal(t, FrameTypeCredit, delivered2[0].FrameType)
+}
+
+// TEST7012: STREAM_START unbounded flag round-trips through CBOR; absent flag means bounded
+func Test7012_stream_start_unbounded_roundtrip(t *testing.T) {
+	rid := NewMessageIdRandom()
+	isSeq := false
+	bounded := NewStreamStart(rid, "s1", "media:enc=utf-8", &isSeq)
+	assert.False(t, bounded.IsUnbounded())
+	decoded, err := DecodeFrame(mustEncode(t, bounded))
+	require.NoError(t, err)
+	assert.False(t, decoded.IsUnbounded(), "absent flag must read as bounded")
+	assert.Nil(t, decoded.Unbounded, "bounded frames omit the key")
+
+	isSeqTrue := true
+	unbounded := NewStreamStartUnbounded(rid, "s2", "media:enc=utf-8", &isSeqTrue)
+	assert.True(t, unbounded.IsUnbounded())
+	decoded2, err := DecodeFrame(mustEncode(t, unbounded))
+	require.NoError(t, err)
+	assert.True(t, decoded2.IsUnbounded())
+	require.NotNil(t, decoded2.StreamId)
+	assert.Equal(t, "s2", *decoded2.StreamId)
+	require.NotNil(t, decoded2.IsSequence)
+	assert.True(t, *decoded2.IsSequence)
+}
+
+// TEST7013: CBOR decode REJECTS a CREDIT frame missing its credit count
+func Test7013_cbor_rejects_credit_without_count(t *testing.T) {
+	frame := NewFrame(FrameTypeCredit, NewMessageIdRandom())
+	streamID := "s1"
+	frame.StreamId = &streamID
+	// credit deliberately missing
+
+	encoded, err := EncodeFrame(frame)
+	require.NoError(t, err, "encoding should succeed")
+
 	_, decErr := DecodeFrame(encoded)
-	require.Error(t, decErr, "decode must reject STREAM_END without chunk_count")
+	require.Error(t, decErr, "decode must reject CREDIT without a credit count")
 	msg := decErr.Error()
 	assert.True(t,
-		strings.Contains(msg, "chunk_count") || strings.Contains(msg, "STREAM_END"),
-		"error must mention missing chunk_count: %s", msg)
+		strings.Contains(msg, "credit") || strings.Contains(msg, "CREDIT"),
+		"error must name the missing field: %s", msg)
+}
+
+// TEST7026: An out-of-order terminal is buffered until the gap fills; buffered pre-terminal frames flush ahead of it in seq order, and only then may the flow be cleaned up
+func Test7026_reorder_flushes_pre_terminal_before_cleanup(t *testing.T) {
+	rid := NewMessageIdRandom()
+	buffer := NewReorderBuffer(8)
+
+	mk := func(seq uint64, ftype FrameType) *Frame {
+		f := NewFrame(ftype, rid)
+		f.Seq = seq
+		return f
+	}
+
+	// seq 0 delivers immediately.
+	delivered, err := buffer.Accept(mk(0, FrameTypeChunk))
+	require.NoError(t, err)
+	require.Len(t, delivered, 1)
+
+	// seq 2 (chunk) and seq 3 (END) arrive out of order — both buffered,
+	// nothing delivered, no premature cleanup possible.
+	d2, err := buffer.Accept(mk(2, FrameTypeChunk))
+	require.NoError(t, err)
+	assert.Empty(t, d2)
+	d3, err := buffer.Accept(mk(3, FrameTypeEnd))
+	require.NoError(t, err)
+	assert.Empty(t, d3)
+
+	// The gap fills: seq 1 arrives → 1, 2, 3(END) all deliver in order.
+	// The terminal is DELIVERED strictly after every pre-terminal frame.
+	delivered4, err := buffer.Accept(mk(1, FrameTypeChunk))
+	require.NoError(t, err)
+	require.Len(t, delivered4, 3)
+	seqs := []uint64{delivered4[0].Seq, delivered4[1].Seq, delivered4[2].Seq}
+	assert.Equal(t, []uint64{1, 2, 3}, seqs)
+	assert.Equal(t, FrameTypeEnd, delivered4[len(delivered4)-1].FrameType)
+
+	// Cleanup after delivered terminal (as the relay does, post-drain): the
+	// flow state resets and a fresh flow under the same key starts cleanly at seq 0.
+	buffer.CleanupFlow(FlowKeyFromFrame(delivered4[2]))
+	fresh, err := buffer.Accept(mk(0, FrameTypeChunk))
+	require.NoError(t, err)
+	require.Len(t, fresh, 1, "cleaned flow accepts a fresh seq 0")
+}
+
+// TEST7014: END terminal meta (progress, message) round-trips; successful END without progress reads as 1.0; failed END without progress reads as nil
+func Test7014_end_terminal_meta_roundtrip(t *testing.T) {
+	rid := NewMessageIdRandom()
+
+	// Explicit terminal progress + message round-trip
+	progress := 0.87
+	message := "partial corpus"
+	end := EndOkWith(rid, nil, &progress, &message)
+	decoded, err := DecodeFrame(mustEncode(t, end))
+	require.NoError(t, err)
+	require.NotNil(t, decoded.FinalProgress())
+	assert.InDelta(t, 0.87, *decoded.FinalProgress(), 1e-9)
+	require.NotNil(t, decoded.FinalMessage())
+	assert.Equal(t, "partial corpus", *decoded.FinalMessage())
+	require.NotNil(t, decoded.ExitCode(), "end_ok_with implies success")
+	assert.Equal(t, int64(0), *decoded.ExitCode())
+
+	// Successful END with no explicit progress reads as 1.0
+	end2 := EndOk(rid, nil)
+	decoded2, err := DecodeFrame(mustEncode(t, end2))
+	require.NoError(t, err)
+	require.NotNil(t, decoded2.FinalProgress())
+	assert.Equal(t, 1.0, *decoded2.FinalProgress())
+	assert.Nil(t, decoded2.FinalMessage())
+
+	// Non-successful END (no exit_code) with no explicit progress: nil —
+	// failure must not synthesize a completion value.
+	end3 := NewEnd(rid, nil)
+	decoded3, err := DecodeFrame(mustEncode(t, end3))
+	require.NoError(t, err)
+	assert.Nil(t, decoded3.FinalProgress())
+
+	// Non-END frames never report a final progress
+	log := NewProgress(rid, 0.5, "halfway")
+	assert.Nil(t, log.FinalProgress())
+}
+
+func mustEncode(t *testing.T, frame *Frame) []byte {
+	t.Helper()
+	encoded, err := EncodeFrame(frame)
+	require.NoError(t, err)
+	return encoded
 }
 
 // TEST502: Keys module has constants for new fields

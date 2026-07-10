@@ -53,6 +53,28 @@ func Test312_all_urn_builders_produce_valid_urns(t *testing.T) {
 
 	llmStr := LlmGenerateTextUrn()
 	assert.True(t, strings.HasPrefix(llmStr, "cap:"), "must be a cap URN")
+
+	// Semantic-primitive family (docs/semantic-primitives.md): same,
+	// classify, score, verify, route, normalize, extract, ask, explain,
+	// summarize. Each must produce a well-formed cap URN with a text
+	// input and (for all but summarize) the shared semantic-judgment
+	// output envelope; summarize's output is finalised plain text.
+	for _, fn := range []func(string) string{
+		SameUrn, ClassifyUrn, ScoreUrn, VerifyUrn, RouteUrn,
+		NormalizeUrn, ExtractUrn, AskUrn, ExplainUrn,
+	} {
+		urnStr := fn("en")
+		assert.True(t, strings.HasPrefix(urnStr, "cap:"), "must be a cap URN: %s", urnStr)
+		assert.True(t, strings.Contains(urnStr, `in="media:enc=utf-8"`), "must accept text input: %s", urnStr)
+		assert.True(t, strings.Contains(urnStr, MediaSemanticJudgment), "must produce a semantic-judgment record: %s", urnStr)
+		assert.True(t, strings.Contains(urnStr, "constrained"), "must be constrained: %s", urnStr)
+		assert.True(t, strings.Contains(urnStr, "language=en"), "must carry the language tag: %s", urnStr)
+	}
+
+	summarizeStr := SummarizeUrn("en")
+	assert.True(t, strings.HasPrefix(summarizeStr, "cap:"), "must be a cap URN")
+	assert.True(t, strings.Contains(summarizeStr, `in="media:enc=utf-8"`), "must accept text input")
+	assert.True(t, strings.Contains(summarizeStr, MediaPlainText), "must produce finalised plain text, not a judgment record")
 }
 
 // TEST473: CAP_DISCARD parses as valid CapUrn with in=media: and out=media:void

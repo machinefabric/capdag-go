@@ -185,6 +185,7 @@ func Test426_relay_switch_single_master_req_response(t *testing.T) {
 		}
 		if frame.FrameType == FrameTypeReq {
 			response := NewEnd(frame.Id, []byte{42})
+			response.RoutingId = frame.RoutingId
 			writer.WriteFrame(response)
 		}
 	}()
@@ -245,6 +246,7 @@ func Test427_relay_switch_multi_master_cap_routing(t *testing.T) {
 			}
 			if frame.FrameType == FrameTypeReq {
 				response := NewEnd(frame.Id, []byte{1})
+				response.RoutingId = frame.RoutingId
 				writer.WriteFrame(response)
 			}
 		}
@@ -266,6 +268,7 @@ func Test427_relay_switch_multi_master_cap_routing(t *testing.T) {
 			}
 			if frame.FrameType == FrameTypeReq {
 				response := NewEnd(frame.Id, []byte{2})
+				response.RoutingId = frame.RoutingId
 				writer.WriteFrame(response)
 			}
 		}
@@ -459,6 +462,7 @@ func Test430_relay_switch_tie_breaking(t *testing.T) {
 			}
 			if frame.FrameType == FrameTypeReq {
 				response := NewEnd(frame.Id, []byte{1})
+				response.RoutingId = frame.RoutingId
 				writer.WriteFrame(response)
 			}
 		}
@@ -479,6 +483,7 @@ func Test430_relay_switch_tie_breaking(t *testing.T) {
 			}
 			if frame.FrameType == FrameTypeReq {
 				response := NewEnd(frame.Id, []byte{2})
+				response.RoutingId = frame.RoutingId
 				writer.WriteFrame(response)
 			}
 		}
@@ -550,6 +555,7 @@ func Test431_relay_switch_continuation_frame_routing(t *testing.T) {
 
 		// Send response
 		response := NewEnd(req.Id, []byte{42})
+		response.RoutingId = req.RoutingId
 		writer.WriteFrame(response)
 	}()
 
@@ -729,6 +735,7 @@ func Test435_relay_switch_urn_matching(t *testing.T) {
 			}
 			if frame.FrameType == FrameTypeReq {
 				response := NewEnd(frame.Id, []byte{42})
+				response.RoutingId = frame.RoutingId
 				writer.WriteFrame(response)
 			}
 		}
@@ -2055,5 +2062,660 @@ func Test0142_add_master_reattach_verifies_identity(t *testing.T) {
 	// INVENTORY: its cartridges remain visible.
 	if len(sw.InstalledCartridges()) == 0 {
 		t.Fatalf("an unhealthy reattached master's installed cartridges must remain visible in the inventory aggregate")
+	}
+}
+
+// =============================================================================
+// Protocol v3: unified RequestTable, credit forwarding, counted no_route
+// drops, protocol_stats(), and host protocol stats retention.
+// =============================================================================
+
+// TEST7085: The RelayNotify capabilities payload carries the host's
+// protocol stats snapshot, surviving the wire round-trip.
+func Test7085_relay_notify_carries_host_protocol_stats(t *testing.T) {
+	counters := NewDropCounters()
+	counters.Record(DropReasonNoRoute)
+	counters.Record(DropReasonNoRoute)
+	stats := HostProtocolStats{
+		Drops:                 counters.Snapshot(),
+		OutgoingRids:          3,
+		IncomingRxids:         5,
+		RoutingGcRunsTotal:    2,
+		RoutingGcEvictedTotal: 7,
+	}
+	payload := RelayNotifyCapabilitiesPayload{InstalledCartridges: []InstalledCartridgeRecord{}}.
+		WithHostProtocolStats(stats)
+	wireBytes, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+
+	parsed, err := parseRelayNotifyPayload(wireBytes)
+	if err != nil {
+		t.Fatalf("payload must parse: %v", err)
+	}
+	got := parsed.HostProtocolStats
+	if got == nil {
+		t.Fatalf("host stats must survive the round trip")
+	}
+	if got.Drops.Total != 2 {
+		t.Errorf("expected drops.total=2, got %d", got.Drops.Total)
+	}
+	if got.Drops.ByReason["no_route"] != 2 {
+		t.Errorf("expected drops.by_reason[no_route]=2, got %v", got.Drops.ByReason)
+	}
+	if got.IncomingRxids != 5 {
+		t.Errorf("expected incoming_rxids=5, got %d", got.IncomingRxids)
+	}
+	if got.RoutingGcEvictedTotal != 7 {
+		t.Errorf("expected routing_gc_evicted_total=7, got %d", got.RoutingGcEvictedTotal)
+	}
+
+	// A payload WITHOUT stats (initial capability advertisement) still
+	// parses — the field is a per-republish refresh, not a requirement.
+	bare := RelayNotifyCapabilitiesPayload{InstalledCartridges: []InstalledCartridgeRecord{}}
+	bareBytes, err := json.Marshal(bare)
+	if err != nil {
+		t.Fatalf("marshal bare payload: %v", err)
+	}
+	parsedBare, err := parseRelayNotifyPayload(bareBytes)
+	if err != nil {
+		t.Fatalf("bare payload parses: %v", err)
+	}
+	if parsedBare.HostProtocolStats != nil {
+		t.Errorf("expected no host stats on bare payload, got %+v", parsedBare.HostProtocolStats)
+	}
+}
+
+// TEST7093: A response frame for a LIVE request whose external consumer is
+// gone (dropped/timed-out caller future) is a counted channel_closed drop
+// AND cancels the request upstream — the destination receives Cancel, the
+// entry terminates as cancelled, and the cartridge stops producing for a
+// dead channel instead of running to completion against it.
+//
+// This mirror has no execute_cap-style external-caller API (see
+// RelaySwitch.requests' doc comment), so the registration execute_cap would
+// perform — response channel + routing registered atomically BEFORE
+// sending, then the REQ written to the destination master — is done by
+// hand here, mirroring what runIdentityProbeViaRelay already does for the
+// deferred-probe's own external registration.
+func Test7093_dead_consumer_cancels_upstream(t *testing.T) {
+	const capURN = "cap:effect=none"
+	engineRead, slaveWrite := net.Pipe()
+	slaveRead, engineWrite := net.Pipe()
+
+	type slaveOutcome struct {
+		cancelID  MessageId
+		sawCancel bool
+		err       error
+	}
+	resultCh := make(chan slaveOutcome, 1)
+
+	go func() {
+		reader := NewFrameReader(slaveRead)
+		writer := NewFrameWriter(slaveWrite)
+		if !serveRelayHandshake(t, reader, writer, []string{capURN}) {
+			resultCh <- slaveOutcome{err: fmt.Errorf("handshake failed")}
+			return
+		}
+
+		// Serve one REQ: read it, then stream a non-terminal response
+		// frame. The engine-side consumer will already be gone — the
+		// switch must answer with Cancel on this connection.
+		var req *Frame
+		for {
+			f, err := reader.ReadFrame()
+			if err != nil || f == nil {
+				resultCh <- slaveOutcome{err: fmt.Errorf("expected REQ: %v", err)}
+				return
+			}
+			if f.FrameType == FrameTypeReq {
+				req = f
+				break
+			}
+		}
+		logFrame := NewLog(req.Id, "info", "first result row")
+		logFrame.RoutingId = req.RoutingId
+		if err := writer.WriteFrame(logFrame); err != nil {
+			resultCh <- slaveOutcome{err: fmt.Errorf("write log: %v", err)}
+			return
+		}
+
+		// The switch must now cancel this request (dead consumer).
+		for {
+			f, err := reader.ReadFrame()
+			if err != nil || f == nil {
+				resultCh <- slaveOutcome{err: fmt.Errorf("expected Cancel: %v", err)}
+				return
+			}
+			if f.FrameType == FrameTypeCancel {
+				resultCh <- slaveOutcome{sawCancel: true, cancelID: f.Id}
+				return
+			}
+		}
+	}()
+
+	sw, err := NewRelaySwitch([]SocketPair{{ID: "test-master-0", Read: engineRead, Write: engineWrite}})
+	if err != nil {
+		t.Fatalf("NewRelaySwitch: %v", err)
+	}
+	sw.StartBackgroundPump()
+
+	rid := NewMessageIdRandom()
+	xid := NewMessageIdFromUint(atomic.AddUint64(&sw.xidCounter, 1))
+	key := RequestKey{Xid: xid, Rid: rid}
+	// Unbuffered and deliberately never read: simulates the caller
+	// abandoning the request (a dropped/timed-out future) — the switch's
+	// non-blocking deliverExternal send fails immediately, exactly the
+	// "dead consumer" condition under test.
+	ch := make(chan Frame)
+	registeredCap := capURN
+
+	sw.mu.Lock()
+	state := NewRequestState(
+		RequestRoutingEntry{SourceMasterIdx: nil, DestinationMasterIdx: 0},
+		nil,
+		ch,
+		false,
+	).WithCapUrn(&registeredCap)
+	if regErr := sw.requests.Register(key, state); regErr != nil {
+		sw.mu.Unlock()
+		t.Fatalf("register: %v", regErr)
+	}
+	req := NewReq(rid, capURN, []byte{}, "application/cbor")
+	req.RoutingId = &xid
+	if werr := sw.masters[0].socketWriter.WriteFrame(req); werr != nil {
+		sw.mu.Unlock()
+		t.Fatalf("write REQ: %v", werr)
+	}
+	sw.mu.Unlock()
+
+	// The caller abandons the request: nobody will ever read `ch`.
+
+	select {
+	case res := <-resultCh:
+		if res.err != nil {
+			t.Fatalf("slave error: %v", res.err)
+		}
+		if !res.sawCancel {
+			t.Fatalf("expected Cancel frame")
+		}
+		if res.cancelID.ToString() != rid.ToString() {
+			t.Fatalf("cancel targets the abandoned request: got %s want %s", res.cancelID.ToString(), rid.ToString())
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("slave must observe Cancel before timeout")
+	}
+
+	stats := sw.ProtocolStats()
+	if got := stats.Drops.ByReason["channel_closed"]; got != 1 {
+		t.Errorf("the abandoned frame is a counted channel_closed drop: got %d (%v)", got, stats.Drops.ByReason)
+	}
+	if got := stats.Requests.TerminatedByKind["cancelled"]; got != 1 {
+		t.Errorf("the abandoned request terminates as cancelled — it never lingers: got %d", got)
+	}
+	if len(stats.Requests.Active) != 0 {
+		t.Errorf("no state remains for the abandoned request (L7): %+v", stats.Requests.Active)
+	}
+}
+
+// TEST7091: Host protocol stats carried by a master's RelayNotify are
+// RETAINED by the switch (not parsed-and-discarded) and surface in
+// ProtocolStats().Hosts keyed by master id; a master that has not yet
+// advertised stats is absent from the map — never a zeroed placeholder.
+func Test7091_switch_retains_host_protocol_stats_from_relay_notify(t *testing.T) {
+	engineRead, slaveWrite := net.Pipe()
+	slaveRead, engineWrite := net.Pipe()
+
+	go func() {
+		reader := NewFrameReader(slaveRead)
+		writer := NewFrameWriter(slaveWrite)
+		if !serveRelayHandshake(t, reader, writer, []string{testCapIdentity}) {
+			return
+		}
+
+		// Republish the SAME inventory (no cap change → no re-verify),
+		// now carrying host protocol stats — the periodic refresh path.
+		manifest := testManifestWithCaps([]string{testCapIdentity})
+		manifest["host_protocol_stats"] = map[string]interface{}{
+			"drops": map[string]interface{}{
+				"total": 3,
+				"by_reason": map[string]interface{}{
+					"post_terminal": 2,
+					"no_route":      1,
+				},
+			},
+			"outgoing_rids":            4,
+			"incoming_rxids":           6,
+			"incoming_to_peer_rids":    0,
+			"outgoing_max_seq":         2,
+			"routing_gc_runs_total":    1,
+			"routing_gc_evicted_total": 9,
+		}
+		manifestJSON, err := json.Marshal(manifest)
+		if err != nil {
+			t.Errorf("marshal republish manifest: %v", err)
+			return
+		}
+		if err := SendNotify(writer, manifestJSON, DefaultLimits()); err != nil {
+			t.Errorf("republish SendNotify: %v", err)
+			return
+		}
+		// Keep the connection open until the assertion side finishes.
+		for {
+			if _, err := reader.ReadFrame(); err != nil {
+				return
+			}
+		}
+	}()
+
+	sw, err := NewRelaySwitch([]SocketPair{{ID: "test-master-0", Read: engineRead, Write: engineWrite}})
+	if err != nil {
+		t.Fatalf("NewRelaySwitch: %v", err)
+	}
+
+	// The initial advertisement carried no host stats: absent, not zeroed.
+	if hosts := sw.ProtocolStats().Hosts; len(hosts) != 0 {
+		t.Fatalf("no host stats before a RelayNotify carries them, got %+v", hosts)
+	}
+
+	sw.StartBackgroundPump()
+
+	deadline := time.Now().Add(2 * time.Second)
+	var got HostProtocolStats
+	found := false
+	for time.Now().Before(deadline) {
+		if h, ok := sw.ProtocolStats().Hosts["test-master-0"]; ok {
+			got = h
+			found = true
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !found {
+		t.Fatalf("host stats must surface in ProtocolStats().Hosts after RelayNotify")
+	}
+
+	if got.Drops.Total != 3 {
+		t.Errorf("expected drops.total=3, got %d", got.Drops.Total)
+	}
+	if got.Drops.ByReason["post_terminal"] != 2 {
+		t.Errorf("expected drops.by_reason[post_terminal]=2, got %v", got.Drops.ByReason)
+	}
+	if got.IncomingRxids != 6 {
+		t.Errorf("expected incoming_rxids=6, got %d", got.IncomingRxids)
+	}
+	if got.RoutingGcEvictedTotal != 9 {
+		t.Errorf("expected routing_gc_evicted_total=9, got %d", got.RoutingGcEvictedTotal)
+	}
+}
+
+// TEST7025: A flow frame for a request with no routing state is a counted
+// no_route drop — not a protocol error and not a silent loss — observable
+// in the protocol stats snapshot.
+//
+// The Rust reference constructs an empty (zero-master) RelaySwitch for
+// this test; this Go mirror's NewRelaySwitch hard-rejects an empty
+// cardinality list (a pre-existing, unrelated divergence — see TEST432),
+// so a single capless connected master stands in. Neither dropped frame
+// below references the master (both fail the routing-table lookup before
+// any master index is touched), so the substitution changes nothing about
+// the behavior under test.
+func Test7025_unroutable_flow_frame_is_counted_drop(t *testing.T) {
+	sw := buildSwitchWithNCaplessMasters(t, 1)
+
+	// Response continuation (has XID) for a key that was never registered
+	// (or already terminated): must be dropped + counted, never an error.
+	orphan := NewProgress(NewMessageIdRandom(), 0.5, "orphan")
+	orphanXid := NewMessageIdFromUint(999)
+	orphan.RoutingId = &orphanXid
+	sw.mu.Lock()
+	result, err := sw.handleMasterFrame(0, orphan)
+	sw.mu.Unlock()
+	if err != nil {
+		t.Fatalf("unroutable frame must not surface as an error (L6): %v", err)
+	}
+	if result != nil {
+		t.Fatalf("nothing to deliver, got %+v", result)
+	}
+
+	// Request continuation (no XID) for an unknown RID: same law.
+	chunk := newFrame(FrameTypeChunk, NewMessageIdRandom())
+	streamID := "s"
+	chunk.StreamId = &streamID
+	zero := uint64(0)
+	chunk.ChunkIndex = &zero
+	chunk.Checksum = &zero
+	sw.mu.Lock()
+	result, err = sw.handleMasterFrame(0, chunk)
+	sw.mu.Unlock()
+	if err != nil {
+		t.Fatalf("unknown request continuation must not error: %v", err)
+	}
+	if result != nil {
+		t.Fatalf("nothing to deliver, got %+v", result)
+	}
+
+	stats := sw.ProtocolStats()
+	if got := stats.Drops.ByReason["no_route"]; got != 2 {
+		t.Fatalf("both drops counted, exactly once each (L8): got %d, %+v", got, stats.Drops)
+	}
+	if len(stats.Requests.Active) != 0 {
+		t.Fatalf("expected no active requests, got %+v", stats.Requests.Active)
+	}
+}
+
+// TEST7035: After END, the switch holds zero state for the request —
+// entry, rid index, and response channel all released atomically, with
+// the terminal delivered and a terminated summary recorded.
+//
+// Uses a single capless connected master in place of the Rust reference's
+// zero-master switch — see TEST7025's doc comment.
+func Test7035_end_terminates_and_releases_all_state(t *testing.T) {
+	sw := buildSwitchWithNCaplessMasters(t, 1)
+
+	xid := NewMessageIdFromUint(11)
+	rid := NewMessageIdRandom()
+	key := RequestKey{Xid: xid, Rid: rid}
+	ch := make(chan Frame, 1)
+	sw.mu.Lock()
+	if err := sw.requests.Register(key, NewRequestState(
+		RequestRoutingEntry{SourceMasterIdx: nil, DestinationMasterIdx: 0},
+		nil,
+		ch,
+		false,
+	)); err != nil {
+		sw.mu.Unlock()
+		t.Fatalf("registration must succeed: %v", err)
+	}
+	sw.mu.Unlock()
+
+	if got := len(sw.ProtocolStats().Requests.Active); got != 1 {
+		t.Fatalf("expected 1 active request, got %d", got)
+	}
+
+	// Terminal END arrives from the master side.
+	progress := 1.0
+	end := EndOkWith(rid, nil, &progress, nil)
+	end.RoutingId = &xid
+	sw.mu.Lock()
+	_, err := sw.handleMasterFrame(0, end)
+	sw.mu.Unlock()
+	if err != nil {
+		t.Fatalf("terminal must route: %v", err)
+	}
+
+	// The terminal was DELIVERED to the waiting channel...
+	select {
+	case delivered := <-ch:
+		if delivered.FrameType != FrameTypeEnd {
+			t.Fatalf("expected END frame, got %d", delivered.FrameType)
+		}
+		if got := delivered.FinalProgress(); got == nil || *got != 1.0 {
+			t.Fatalf("expected final progress 1.0, got %v", got)
+		}
+	default:
+		t.Fatalf("END must reach the response channel")
+	}
+
+	// ...and zero state remains (L7), with the lifecycle recorded.
+	stats := sw.ProtocolStats()
+	if len(stats.Requests.Active) != 0 {
+		t.Fatalf("no live entry after END, got %+v", stats.Requests.Active)
+	}
+	if got := stats.Requests.TerminatedByKind["end"]; got != 1 {
+		t.Fatalf("expected 1 end termination, got %d", got)
+	}
+	if len(stats.Requests.RecentTerminated) == 0 {
+		t.Fatalf("terminated summary must be recorded")
+	}
+	summary := stats.Requests.RecentTerminated[len(stats.Requests.RecentTerminated)-1]
+	if summary.Rid != rid.ToString() {
+		t.Fatalf("expected summary.rid=%s, got %s", rid.ToString(), summary.Rid)
+	}
+	if summary.FramesIn != 1 {
+		t.Fatalf("ingress recording captured the terminal frame: expected frames_in=1, got %d", summary.FramesIn)
+	}
+
+	// A follow-up frame for the released key is a counted no_route drop.
+	late := NewProgress(rid, 1.0, "late")
+	late.RoutingId = &xid
+	sw.mu.Lock()
+	_, err = sw.handleMasterFrame(0, late)
+	sw.mu.Unlock()
+	if err != nil {
+		t.Fatalf("post-terminal frame must not error: %v", err)
+	}
+	if got := sw.ProtocolStats().Drops.ByReason["no_route"]; got != 1 {
+		t.Fatalf("expected 1 no_route drop, got %d", got)
+	}
+}
+
+// TEST7036: After ERR, the same total-cleanup invariant holds as after
+// END, with kind err.
+func Test7036_err_terminates_and_releases_all_state(t *testing.T) {
+	sw := buildSwitchWithNCaplessMasters(t, 1)
+
+	xid := NewMessageIdFromUint(21)
+	rid := NewMessageIdRandom()
+	key := RequestKey{Xid: xid, Rid: rid}
+	ch := make(chan Frame, 1)
+	sw.mu.Lock()
+	if err := sw.requests.Register(key, NewRequestState(
+		RequestRoutingEntry{SourceMasterIdx: nil, DestinationMasterIdx: 0},
+		nil,
+		ch,
+		false,
+	)); err != nil {
+		sw.mu.Unlock()
+		t.Fatalf("registration must succeed: %v", err)
+	}
+	sw.mu.Unlock()
+
+	errFrame := NewErr(rid, "HANDLER_ERROR", "boom")
+	errFrame.RoutingId = &xid
+	sw.mu.Lock()
+	_, err := sw.handleMasterFrame(0, errFrame)
+	sw.mu.Unlock()
+	if err != nil {
+		t.Fatalf("handleMasterFrame: %v", err)
+	}
+
+	select {
+	case delivered := <-ch:
+		if delivered.FrameType != FrameTypeErr {
+			t.Fatalf("expected ERR frame, got %d", delivered.FrameType)
+		}
+		if delivered.ErrorCode() != "HANDLER_ERROR" {
+			t.Fatalf("expected error code HANDLER_ERROR, got %q", delivered.ErrorCode())
+		}
+	default:
+		t.Fatalf("ERR must reach the channel")
+	}
+
+	stats := sw.ProtocolStats()
+	if len(stats.Requests.Active) != 0 {
+		t.Fatalf("expected no active requests, got %+v", stats.Requests.Active)
+	}
+	if got := stats.Requests.TerminatedByKind["err"]; got != 1 {
+		t.Fatalf("expected 1 err termination, got %d", got)
+	}
+}
+
+// TEST7037: Cancelling a request terminates it AND its recursively-linked
+// peer children — Cancel frames reach the destination, waiting channels
+// get ERR CANCELLED, and zero state remains for parent or child.
+func Test7037_cancel_cascades_to_children_and_cleans_all_state(t *testing.T) {
+	engineRead, slaveWrite := net.Pipe()
+	slaveRead, engineWrite := net.Pipe()
+
+	cancelsCh := make(chan []MessageId, 1)
+	go func() {
+		reader := NewFrameReader(slaveRead)
+		writer := NewFrameWriter(slaveWrite)
+		if !serveRelayHandshake(t, reader, writer, []string{testCapIdentity}) {
+			cancelsCh <- nil
+			return
+		}
+		var cancels []MessageId
+		for len(cancels) < 2 {
+			f, err := reader.ReadFrame()
+			if err != nil || f == nil {
+				break
+			}
+			if f.FrameType == FrameTypeCancel {
+				cancels = append(cancels, f.Id)
+			}
+		}
+		cancelsCh <- cancels
+	}()
+
+	sw, err := NewRelaySwitch([]SocketPair{{ID: "test-master-0", Read: engineRead, Write: engineWrite}})
+	if err != nil {
+		t.Fatalf("switch with one master must construct: %v", err)
+	}
+
+	// Parent (engine-origin, has a waiting channel) + child peer call.
+	parentXid := NewMessageIdFromUint(1)
+	parentRid := NewMessageIdRandom()
+	parentKey := RequestKey{Xid: parentXid, Rid: parentRid}
+	childXid := NewMessageIdFromUint(2)
+	childRid := NewMessageIdRandom()
+	childKey := RequestKey{Xid: childXid, Rid: childRid}
+
+	pch := make(chan Frame, 1)
+	srcIdx := 0
+	sw.mu.Lock()
+	if err := sw.requests.Register(parentKey, NewRequestState(
+		RequestRoutingEntry{SourceMasterIdx: nil, DestinationMasterIdx: 0},
+		nil,
+		pch,
+		false,
+	)); err != nil {
+		sw.mu.Unlock()
+		t.Fatalf("register parent: %v", err)
+	}
+	if err := sw.requests.Register(childKey, NewRequestState(
+		RequestRoutingEntry{SourceMasterIdx: &srcIdx, DestinationMasterIdx: 0},
+		&srcIdx,
+		nil,
+		true,
+	)); err != nil {
+		sw.mu.Unlock()
+		t.Fatalf("register child: %v", err)
+	}
+	sw.requests.LinkChild(parentKey, childKey)
+	sw.mu.Unlock()
+
+	sw.CancelRequest(parentRid, false)
+
+	// Parent's waiter observes ERR CANCELLED.
+	select {
+	case delivered := <-pch:
+		if delivered.ErrorCode() != "CANCELLED" {
+			t.Fatalf("expected error code CANCELLED, got %q", delivered.ErrorCode())
+		}
+	default:
+		t.Fatalf("parent channel gets ERR")
+	}
+
+	// Both parent and child are fully released (L7), recorded cancelled.
+	stats := sw.ProtocolStats()
+	if len(stats.Requests.Active) != 0 {
+		t.Fatalf("no state for parent or child remains: %+v", stats.Requests.Active)
+	}
+	if got := stats.Requests.TerminatedByKind["cancelled"]; got != 2 {
+		t.Fatalf("expected 2 cancelled terminations, got %d", got)
+	}
+
+	// The destination master received Cancel for BOTH rids.
+	var cancels []MessageId
+	select {
+	case cancels = <-cancelsCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("slave task timed out")
+	}
+	if len(cancels) != 2 {
+		t.Fatalf("expected parent + cascaded child Cancel frames, got %d", len(cancels))
+	}
+	foundParent, foundChild := false, false
+	for _, id := range cancels {
+		if id.ToString() == parentRid.ToString() {
+			foundParent = true
+		}
+		if id.ToString() == childRid.ToString() {
+			foundChild = true
+		}
+	}
+	if !foundParent || !foundChild {
+		t.Fatalf("expected cancels for both parent and child rids, got %v", cancels)
+	}
+}
+
+// TEST7038: Master death terminates every request routed to it with kind
+// master_died, delivering synthetic MASTER_DIED ERRs to waiting channels
+// and leaving zero state.
+func Test7038_master_death_terminates_pending_requests(t *testing.T) {
+	engineRead, slaveWrite := net.Pipe()
+	slaveRead, engineWrite := net.Pipe()
+
+	go func() {
+		reader := NewFrameReader(slaveRead)
+		writer := NewFrameWriter(slaveWrite)
+		if !serveRelayHandshake(t, reader, writer, []string{testCapIdentity}) {
+			return
+		}
+		// Keep the connection alive until the test drops it.
+		for {
+			if _, err := reader.ReadFrame(); err != nil {
+				return
+			}
+		}
+	}()
+
+	sw, err := NewRelaySwitch([]SocketPair{{ID: "test-master-0", Read: engineRead, Write: engineWrite}})
+	if err != nil {
+		t.Fatalf("switch with one master must construct: %v", err)
+	}
+
+	xid := NewMessageIdFromUint(5)
+	rid := NewMessageIdRandom()
+	key := RequestKey{Xid: xid, Rid: rid}
+	ch := make(chan Frame, 1)
+	sw.mu.Lock()
+	if err := sw.requests.Register(key, NewRequestState(
+		RequestRoutingEntry{SourceMasterIdx: nil, DestinationMasterIdx: 0},
+		nil,
+		ch,
+		false,
+	)); err != nil {
+		sw.mu.Unlock()
+		t.Fatalf("register: %v", err)
+	}
+	sw.handleMasterDeath(0)
+	sw.mu.Unlock()
+
+	select {
+	case delivered := <-ch:
+		if delivered.ErrorCode() != "MASTER_DIED" {
+			t.Fatalf("expected error code MASTER_DIED, got %q", delivered.ErrorCode())
+		}
+	default:
+		t.Fatalf("synthetic ERR must be delivered")
+	}
+
+	stats := sw.ProtocolStats()
+	if len(stats.Requests.Active) != 0 {
+		t.Fatalf("zero state remains (L7), got %+v", stats.Requests.Active)
+	}
+	if got := stats.Requests.TerminatedByKind["master_died"]; got != 1 {
+		t.Fatalf("expected 1 master_died termination, got %d", got)
+	}
+	if len(stats.Requests.RecentTerminated) == 0 {
+		t.Fatalf("expected a recorded terminated summary")
+	}
+	summary := stats.Requests.RecentTerminated[len(stats.Requests.RecentTerminated)-1]
+	if summary.Rid != rid.ToString() {
+		t.Fatalf("expected summary.rid=%s, got %s", rid.ToString(), summary.Rid)
 	}
 }

@@ -152,6 +152,12 @@ type CartridgeRuntimeStats struct {
 	MemoryRSSMB              uint64  `json:"memory_rss_mb"`
 	LastHeartbeatUnixSeconds *int64  `json:"last_heartbeat_unix_seconds,omitempty"`
 	RestartCount             uint64  `json:"restart_count"`
+	// ProtocolDropsTotal is the cumulative protocol-level frame drop count
+	// self-reported by the cartridge as `drops_total` on every heartbeat
+	// response meta (L8: every drop is countable end-to-end). nil until
+	// the first heartbeat round-trip delivers a reading. Mirrors Rust
+	// CartridgeRuntimeStats::protocol_drops_total.
+	ProtocolDropsTotal *uint64 `json:"protocol_drops_total,omitempty"`
 }
 
 // NotRunning returns a CartridgeRuntimeStats representing a stopped cartridge.
@@ -259,6 +265,14 @@ func (i *InstalledCartridgeRecord) RegistrySlug() string {
 // it from `InstalledCartridges[*].CapGroups` via `CapURNs()`.
 type RelayNotifyCapabilitiesPayload struct {
 	InstalledCartridges []InstalledCartridgeRecord `json:"installed_cartridges"`
+	// HostProtocolStats carries the host's protocol-level observability
+	// snapshot (L8): drop counters and routing-table sizes. Refreshed with
+	// each stats republish so the engine can surface the state of
+	// communications per host. Absent on some advertisements (the initial
+	// capability advertisement typically omits it) — a per-republish
+	// refresh, not a requirement. Mirrors Rust's
+	// RelayNotifyCapabilitiesPayload::host_protocol_stats.
+	HostProtocolStats *HostProtocolStats `json:"host_protocol_stats,omitempty"`
 }
 
 // CapURNs returns the flat de-duplicated cap-URN union across every
@@ -278,11 +292,12 @@ func (p *RelayNotifyCapabilitiesPayload) CapURNs() []string {
 	return out
 }
 
-// RoutingEntry tracks request source and destination
-type RoutingEntry struct {
-	SourceMasterIdx      int
-	DestinationMasterIdx int
-	RequestId            MessageId // original MessageId for cancel frames
+// WithHostProtocolStats attaches the host's protocol stats snapshot,
+// returning the updated payload. Mirrors Rust's
+// RelayNotifyCapabilitiesPayload::with_host_protocol_stats.
+func (p RelayNotifyCapabilitiesPayload) WithHostProtocolStats(stats HostProtocolStats) RelayNotifyCapabilitiesPayload {
+	p.HostProtocolStats = &stats
+	return p
 }
 
 // MasterConnection represents a connection to a single RelayMaster.
@@ -298,7 +313,14 @@ type MasterConnection struct {
 	limits              Limits
 	caps                []string
 	installedCartridges []InstalledCartridgeRecord
-	healthy             bool
+	// hostProtocolStats is the latest per-host protocol stats (drops,
+	// routing-table sizes) reported by this master's RelayNotify. nil until
+	// the first advertisement that carries them. Previously this payload
+	// field was parsed and silently discarded — retained here so
+	// ProtocolStats can name the host behind a drop. Mirrors Rust
+	// MasterConnection.host_protocol_stats.
+	hostProtocolStats *HostProtocolStats
+	healthy           bool
 	// lastError carries the most recent attachment / identity-probe
 	// failure reason for this slot (nil when none). Set when a
 	// synchronous or deferred identity probe fails, cleared when a
@@ -308,18 +330,24 @@ type MasterConnection struct {
 	lastError *string
 }
 
-// peerCallChild stores a child peer-call routing key for cancel cascading
-type peerCallChild struct {
-	key string
-}
-
 // RelaySwitch is a cap-aware routing multiplexer for multiple RelayMasters
 type RelaySwitch struct {
-	masters                      []*MasterConnection
-	capTable                     []CapTableEntry
-	requestRouting               map[string]*RoutingEntry
-	peerRequests                 map[string]bool
-	peerCallParents              map[string][]peerCallChild // parent key → list of child peer calls
+	masters  []*MasterConnection
+	capTable []CapTableEntry
+	// requests is the unified per-request state (L7): routing, origin, peer
+	// markers, cancel-cascade children, external response channel (used by
+	// the deferred runtime identity probe — this mirror has no execute_cap-
+	// style external caller API), per-stream flow stats, and the rid→xid
+	// index — one entry, one registration, one termination. Replaces the
+	// pre-v3 requestRouting/peerRequests/peerCallParents/
+	// externalResponseChannels maps. Guarded by mu (the table itself is
+	// unsynchronized, mirroring the Rust reference's RwLock<RequestTable>
+	// and the Swift mirror's lock-guarded RequestTable).
+	requests *RequestTable
+	// drops is dropped-frame accounting (L8): unroutable/post-terminal
+	// frames are counted drops, never silent losses and never protocol
+	// errors.
+	drops                        *DropCounters
 	capabilities                 []byte
 	aggregateInstalledCartridges []InstalledCartridgeRecord
 	negotiatedLimits             Limits
@@ -333,13 +361,6 @@ type RelaySwitch struct {
 	// rather than advancing to "ready" prematurely.
 	expectedMasterCount int
 	mu                  sync.Mutex
-	// externalResponseChannels delivers a master's reply frames for a
-	// relay-internal request (currently the deferred runtime identity
-	// probe) to the goroutine that issued it, keyed by the request's
-	// rid string. handleMasterFrame consults this map BEFORE its normal
-	// continuation-frame routing so the probe's echo lands on the
-	// probe's channel rather than being returned to ReadFromMasters.
-	externalResponseChannels map[string]chan *Frame
 	// pendingProbes queues master indices whose advertised cap set
 	// transitioned empty → non-empty in the last RelayNotify update and
 	// therefore need an end-to-end identity probe before their caps may
@@ -441,9 +462,6 @@ type MasterFrame struct {
 	Frame     *Frame
 	Err       error
 }
-
-// ENGINE_SOURCE sentinel value for engine-initiated requests
-const ENGINE_SOURCE = -1
 
 // NewRelaySwitch creates a new RelaySwitch with the given socket pairs.
 //
@@ -563,6 +581,7 @@ func NewRelaySwitch(sockets []SocketPair) (*RelaySwitch, error) {
 			limits:              *limits,
 			caps:                caps,
 			installedCartridges: payload.InstalledCartridges,
+			hostProtocolStats:   payload.HostProtocolStats,
 			healthy:             true,
 		})
 	}
@@ -591,12 +610,10 @@ func NewRelaySwitch(sockets []SocketPair) (*RelaySwitch, error) {
 	sw := &RelaySwitch{
 		masters:                      masters,
 		capTable:                     []CapTableEntry{},
-		requestRouting:               make(map[string]*RoutingEntry),
-		peerRequests:                 make(map[string]bool),
-		peerCallParents:              make(map[string][]peerCallChild),
+		requests:                     NewRequestTable(),
+		drops:                        NewDropCounters(),
 		aggregateInstalledCartridges: []InstalledCartridgeRecord{},
 		frameRx:                      frameRx,
-		externalResponseChannels:     make(map[string]chan *Frame),
 		pendingProbes:                make(chan int, 256),
 		capWatch:                     newCapWatch(),
 	}
@@ -773,6 +790,7 @@ func (sw *RelaySwitch) AddMaster(sockPair SocketPair) (int, error) {
 			limits:              *limits,
 			caps:                caps,
 			installedCartridges: payload.InstalledCartridges,
+			hostProtocolStats:   payload.HostProtocolStats,
 			healthy:             healthyAtRegister,
 			lastError:           identityFailure,
 		})
@@ -795,6 +813,7 @@ func (sw *RelaySwitch) AddMaster(sockPair SocketPair) (int, error) {
 		slot.limits = *limits
 		slot.caps = caps
 		slot.installedCartridges = payload.InstalledCartridges
+		slot.hostProtocolStats = payload.HostProtocolStats
 		slot.healthy = healthyAtRegister
 		slot.lastError = identityFailure
 	}
@@ -853,6 +872,57 @@ func (sw *RelaySwitch) Limits() Limits {
 // mere inventory presence. Mirrors Rust's `subscribe_capabilities`.
 func (sw *RelaySwitch) SubscribeCapabilities() *CapabilitiesReceiver {
 	return sw.capWatch.subscribe()
+}
+
+// RelaySwitchProtocolStats is the switch's protocol observability snapshot
+// (L8): live request state, recent terminations, and per-reason drop
+// counters. Field names are the mirror contract (TEST7087).
+//
+// Hosts carries the per-master HostProtocolStats drawn from each host's
+// latest RelayNotify (RelayNotifyCapabilitiesPayload.HostProtocolStats /
+// MasterConnection.hostProtocolStats), keyed by master id. A master that has
+// not yet advertised host stats is absent — never a zeroed placeholder. Note
+// this mirror's HostProtocolStats (bifaci/host.go) omits the Rust/Swift
+// incoming_to_peer_rids and outgoing_max_seq fields — CartridgeHost's
+// simpler channel-based routing has no honest value for them (see the
+// doc-comment on HostProtocolStats). (matches Rust RelaySwitchProtocolStats)
+type RelaySwitchProtocolStats struct {
+	Requests RequestTableSnapshot         `json:"requests"`
+	Drops    DropSnapshot                 `json:"drops"`
+	Hosts    map[string]HostProtocolStats `json:"hosts"`
+}
+
+// ProtocolStats returns the switch's protocol observability snapshot (L8):
+// every live request's phase, age, per-stream flow counters, and children;
+// the recently-terminated ring; and the per-reason drop totals.
+func (sw *RelaySwitch) ProtocolStats() RelaySwitchProtocolStats {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	// Per-master host protocol stats, keyed by master id, as reported in
+	// each host's latest RelayNotify. A master that has not yet advertised
+	// host stats is absent — never a zeroed placeholder.
+	hosts := make(map[string]HostProtocolStats)
+	for _, m := range sw.masters {
+		if m.hostProtocolStats != nil {
+			hosts[m.id] = *m.hostProtocolStats
+		}
+	}
+	return RelaySwitchProtocolStats{
+		Requests: sw.requests.Snapshot(),
+		Drops:    sw.drops.Snapshot(),
+		Hosts:    hosts,
+	}
+}
+
+// SetTerminateObserver installs a termination observer on the request table
+// (L8): called with every termination's summary, under sw.mu — must be
+// cheap. Lets a caller accumulate complete per-run history without missing
+// terminations between ProtocolStats polls (the ring evicts at
+// RecentTerminatedCap).
+func (sw *RelaySwitch) SetTerminateObserver(observer TerminateObserver) {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	sw.requests.SetTerminateObserver(observer)
 }
 
 // StartBackgroundPump spawns the persistent frame-drain pump and the
@@ -916,17 +986,24 @@ func (sw *RelaySwitch) runProbeDriver() {
 }
 
 // runIdentityProbeViaRelay runs an end-to-end CAP_IDENTITY probe against a
-// single master through the relay's normal master writer + reader path.
-// The reply frames route back via handleMasterFrame, which delivers them
-// to the per-probe externalResponseChannels entry registered here. On
-// success returns nil; on failure returns a typed error suitable for
-// MasterConnection.lastError. Mirrors Rust's run_identity_probe_via_relay.
+// single master through the relay's normal master writer + reader path. The
+// probe is registered on the unified request table (L7) exactly like any
+// other request — origin nil (external), destination masterIdx, external
+// channel `ch` — so its reply frames route back through handleMasterFrame's
+// normal response-continuation path (RouteBack::External) instead of a
+// bespoke interception map. Whatever the outcome (success, failure, or
+// timeout) the entry is unconditionally terminated on exit — the success and
+// failure paths already self-terminate via handleMasterFrame's End/Err
+// handling; the final Terminate call here only matters for the timeout case,
+// where it is the sole cleanup path. On success returns nil; on failure
+// returns a typed error suitable for MasterConnection.lastError. Mirrors
+// Rust's run_identity_probe_via_relay + register_external.
 func (sw *RelaySwitch) runIdentityProbeViaRelay(masterIdx int) error {
 	const probeTimeout = 10 * time.Second
 
 	rid := NewMessageIdRandom()
 	xid := NewMessageIdFromUint(atomic.AddUint64(&sw.xidCounter, 1))
-	key := rid.ToString()
+	key := RequestKey{Xid: xid, Rid: rid}
 
 	nonce := identityNonce()
 	cborNonce, err := cbor2.Marshal(nonce)
@@ -935,20 +1012,30 @@ func (sw *RelaySwitch) runIdentityProbeViaRelay(masterIdx int) error {
 	}
 	streamID := "identity-verify-runtime"
 
-	// Buffered so handleMasterFrame's send (under sw.mu) never blocks for
-	// the bounded probe response (REQ echo is STREAM_START + CHUNK +
+	// Buffered so handleMasterFrame's delivery (under sw.mu) never blocks
+	// for the bounded probe response (REQ echo is STREAM_START + CHUNK +
 	// STREAM_END + END, or a single ERR).
-	ch := make(chan *Frame, 64)
+	ch := make(chan Frame, 64)
 
-	// Register the response channel and send all five probe frames under
-	// sw.mu so the writes don't interleave with other master writers
-	// (the relay serialises every switch→master write through sw.mu).
+	// Register the request and send all five probe frames under sw.mu so
+	// the writes don't interleave with other master writers (the relay
+	// serialises every switch→master write through sw.mu).
 	sw.mu.Lock()
 	if masterIdx < 0 || masterIdx >= len(sw.masters) {
 		sw.mu.Unlock()
 		return fmt.Errorf("runtime identity probe: master index %d out of range", masterIdx)
 	}
-	sw.externalResponseChannels[key] = ch
+	probeCap := standard.CapIdentity
+	state := NewRequestState(
+		RequestRoutingEntry{SourceMasterIdx: nil, DestinationMasterIdx: masterIdx},
+		nil,
+		ch,
+		false,
+	).WithCapUrn(&probeCap)
+	if regErr := sw.requests.Register(key, state); regErr != nil {
+		sw.mu.Unlock()
+		return fmt.Errorf("runtime identity probe registration failed: %w", regErr)
+	}
 	writer := sw.masters[masterIdx].socketWriter
 
 	seq := NewSeqAssigner()
@@ -978,61 +1065,69 @@ func (sw *RelaySwitch) runIdentityProbeViaRelay(masterIdx int) error {
 	}
 	sw.mu.Unlock()
 
-	// Always purge the registered channel on exit, whatever the outcome.
-	defer func() {
-		sw.mu.Lock()
-		delete(sw.externalResponseChannels, key)
-		sw.mu.Unlock()
-	}()
+	probeErr := func() error {
+		if sendErr != nil {
+			return fmt.Errorf("identity probe send failed: %w", sendErr)
+		}
 
-	if sendErr != nil {
-		return fmt.Errorf("identity probe send failed: %w", sendErr)
-	}
-
-	timeout := time.After(probeTimeout)
-	var accumulated []byte
-	for {
-		select {
-		case <-timeout:
-			return fmt.Errorf("runtime identity probe timed out after %v", probeTimeout)
-		case fr, ok := <-ch:
-			if !ok {
-				return fmt.Errorf("runtime identity probe channel closed before END")
-			}
-			switch fr.FrameType {
-			case FrameTypeStreamStart, FrameTypeStreamEnd:
-				// no-op
-			case FrameTypeChunk:
-				if fr.Payload != nil {
-					var decoded []byte
-					if derr := cbor2.Unmarshal(fr.Payload, &decoded); derr != nil {
-						return fmt.Errorf("identity probe: failed to decode CBOR chunk: %w", derr)
+		timeout := time.After(probeTimeout)
+		var accumulated []byte
+		for {
+			select {
+			case <-timeout:
+				return fmt.Errorf("runtime identity probe timed out after %v", probeTimeout)
+			case fr, ok := <-ch:
+				if !ok {
+					return fmt.Errorf("runtime identity probe channel closed before END")
+				}
+				switch fr.FrameType {
+				case FrameTypeStreamStart, FrameTypeStreamEnd:
+					// no-op
+				case FrameTypeChunk:
+					if fr.Payload != nil {
+						var decoded []byte
+						if derr := cbor2.Unmarshal(fr.Payload, &decoded); derr != nil {
+							return fmt.Errorf("identity probe: failed to decode CBOR chunk: %w", derr)
+						}
+						accumulated = append(accumulated, decoded...)
 					}
-					accumulated = append(accumulated, decoded...)
+				case FrameTypeEnd:
+					if !bytesEqual(accumulated, nonce) {
+						return fmt.Errorf(
+							"identity probe payload mismatch (expected %d bytes, got %d)",
+							len(nonce), len(accumulated),
+						)
+					}
+					return nil
+				case FrameTypeErr:
+					code := fr.ErrorCode()
+					if code == "" {
+						code = "UNKNOWN"
+					}
+					msg := fr.ErrorMessage()
+					if msg == "" {
+						msg = "no message"
+					}
+					return fmt.Errorf("identity probe failed: [%s] %s", code, msg)
+				default:
+					return fmt.Errorf("identity probe: unexpected frame type %v", fr.FrameType)
 				}
-			case FrameTypeEnd:
-				if !bytesEqual(accumulated, nonce) {
-					return fmt.Errorf(
-						"identity probe payload mismatch (expected %d bytes, got %d)",
-						len(nonce), len(accumulated),
-					)
-				}
-				return nil
-			case FrameTypeErr:
-				code := fr.ErrorCode()
-				if code == "" {
-					code = "UNKNOWN"
-				}
-				msg := fr.ErrorMessage()
-				if msg == "" {
-					msg = "no message"
-				}
-				return fmt.Errorf("identity probe failed: [%s] %s", code, msg)
-			default:
-				return fmt.Errorf("identity probe: unexpected frame type %v", fr.FrameType)
 			}
 		}
+	}()
+
+	// Always terminate the request on exit — whether the probe succeeded,
+	// failed, or timed out. Leaking the entry would waste memory and
+	// confuse introspection over time (L7).
+	kind := TerminalKindEnd
+	if probeErr != nil {
+		kind = TerminalKindErr
 	}
+	sw.mu.Lock()
+	sw.requests.Terminate(key, kind)
+	sw.mu.Unlock()
+
+	return probeErr
 }
 
 // SetExpectedMasterCount declares how many cardinality slots the
@@ -1086,43 +1181,71 @@ func (sw *RelaySwitch) AllMastersReady() bool {
 	return true
 }
 
+// deliverExternal attempts a non-blocking send onto an external response
+// channel (the deferred runtime identity probe is this mirror's only
+// consumer — there is no execute_cap-style external-caller API). Returns
+// false if the buffer is full, which the caller counts as a channel_closed
+// drop for observability rather than blocking indefinitely while holding
+// sw.mu. In this port's usage (bounded identity-probe response streams)
+// the buffer should never actually fill.
+func deliverExternal(ch chan<- Frame, frame Frame) bool {
+	select {
+	case ch <- frame:
+		return true
+	default:
+		return false
+	}
+}
+
 // CancelRequest cancels a specific in-flight request by request ID.
 //
-// Sends Cancel frame to the destination master, cascades to child peer calls,
-// and cleans up all routing maps.
+//  1. Looks up RID → XID → routing destination.
+//  2. Terminates the request (Cancelled) FIRST — one atomic removal yields
+//     the destination, the children for the cascade, and the external
+//     channel for the final ERR (L7). A concurrent terminal for the same
+//     key loses the race and is simply a no-op here (Terminate returns nil).
+//  3. Sends a Cancel frame to the destination master.
+//  4. Recursively cancels the child peer calls recorded on the entry.
+//  5. Sends ERR "CANCELLED" to the external response channel if present.
 func (sw *RelaySwitch) CancelRequest(rid MessageId, forceKill bool) {
 	sw.mu.Lock()
 	defer sw.mu.Unlock()
-	sw.cancelRequestLocked(rid.ToString(), forceKill)
+	sw.cancelRequestLocked(rid, forceKill)
 }
 
-// cancelRequestLocked must be called with sw.mu held.
-// ridKey is the string form of rid for map lookups.
-func (sw *RelaySwitch) cancelRequestLocked(ridKey string, forceKill bool) {
-	entry, ok := sw.requestRouting[ridKey]
+// cancelRequestLocked must be called with sw.mu held. Recurses directly
+// (without re-locking) to cancel child peer calls.
+func (sw *RelaySwitch) cancelRequestLocked(rid MessageId, forceKill bool) {
+	xid, ok := sw.requests.XidForRid(rid)
 	if !ok {
 		return
 	}
+	key := RequestKey{Xid: xid, Rid: rid}
 
-	destIdx := entry.DestinationMasterIdx
-	rid := entry.RequestId
-
-	// Build and send cancel frame to destination
-	cancelFrame := NewCancelFrame(rid, forceKill)
-	_ = sw.masters[destIdx].socketWriter.WriteFrame(cancelFrame)
-
-	// Collect child peer calls for recursive cancel
-	children := sw.peerCallParents[ridKey]
-	delete(sw.peerCallParents, ridKey)
-
-	// Recursively cancel children
-	for _, child := range children {
-		sw.cancelRequestLocked(child.key, forceKill)
+	state := sw.requests.Terminate(key, TerminalKindCancelled)
+	if state == nil {
+		return
 	}
 
-	// Cleanup routing maps
-	delete(sw.requestRouting, ridKey)
-	delete(sw.peerRequests, ridKey)
+	// Send Cancel frame to destination.
+	cancelFrame := NewCancelFrame(rid, forceKill)
+	cancelFrame.RoutingId = &xid
+	_ = sw.masters[state.Routing.DestinationMasterIdx].socketWriter.WriteFrame(cancelFrame)
+
+	// Recursively cancel children.
+	for _, child := range state.Children {
+		sw.cancelRequestLocked(child.Rid, forceKill)
+	}
+
+	// Send ERR "CANCELLED" to the external response channel if present.
+	// Best-effort: the request is already gone, so a failed final delivery
+	// here is not itself counted as a drop — mirrors Rust's `let _ =
+	// tx.send(err_frame)` and Swift's `_ = channel(errFrame)`.
+	if state.ExternalChannel != nil {
+		errFrame := NewErr(rid, "CANCELLED", "Request cancelled")
+		errFrame.RoutingId = &xid
+		deliverExternal(state.ExternalChannel, *errFrame)
+	}
 }
 
 // CancelAllRequests cancels all external-origin (engine-initiated) in-flight requests.
@@ -1131,26 +1254,18 @@ func (sw *RelaySwitch) CancelAllRequests(forceKill bool) []MessageId {
 	sw.mu.Lock()
 	defer sw.mu.Unlock()
 
-	// Snapshot all engine-origin entries before mutating
-	type entry struct {
-		key string
-		rid MessageId
-	}
-	var entries []entry
-	for key, e := range sw.requestRouting {
-		if e.SourceMasterIdx == ENGINE_SOURCE {
-			entries = append(entries, entry{key: key, rid: e.RequestId})
-		}
+	// Snapshot all external-origin (origin == nil) request RIDs before
+	// mutating the table.
+	keys := sw.requests.KeysWhere(func(s *RequestState) bool { return s.Origin == nil })
+	rids := make([]MessageId, len(keys))
+	for i, k := range keys {
+		rids[i] = k.Rid
 	}
 
-	for _, e := range entries {
-		sw.cancelRequestLocked(e.key, forceKill)
+	for _, rid := range rids {
+		sw.cancelRequestLocked(rid, forceKill)
 	}
 
-	rids := make([]MessageId, len(entries))
-	for i, e := range entries {
-		rids[i] = e.rid
-	}
 	return rids
 }
 
@@ -1177,38 +1292,58 @@ func (sw *RelaySwitch) SendToMaster(frame *Frame, preferredCap *string) error {
 			return err
 		}
 
-		sw.requestRouting[frame.Id.ToString()] = &RoutingEntry{
-			SourceMasterIdx:      ENGINE_SOURCE,
-			DestinationMasterIdx: destIdx,
-			RequestId:            frame.Id,
+		// No XID: first arrival at the RelaySwitch — assign and register
+		// (origin nil = external caller via SendToMaster, no response
+		// channel; responses return via ReadFromMasters), then forward
+		// (L7). Every frame the switch emits toward a master must carry an
+		// XID — the host runtime's path-C invariant.
+		xid := NewMessageIdFromUint(atomic.AddUint64(&sw.xidCounter, 1))
+		frame.RoutingId = &xid
+		key := RequestKey{Xid: xid, Rid: frame.Id}
+
+		state := NewRequestState(
+			RequestRoutingEntry{SourceMasterIdx: nil, DestinationMasterIdx: destIdx},
+			nil,
+			nil,
+			false,
+		).WithCapUrn(frame.Cap)
+		if regErr := sw.requests.Register(key, state); regErr != nil {
+			return &RelaySwitchError{Type: RelaySwitchErrorTypeProtocol, Message: regErr.Error()}
 		}
 
 		return sw.masters[destIdx].socketWriter.WriteFrame(frame)
 
 	case FrameTypeStreamStart, FrameTypeChunk, FrameTypeStreamEnd,
-		FrameTypeEnd, FrameTypeErr:
-		entry, ok := sw.requestRouting[frame.Id.ToString()]
-		if !ok {
+		FrameTypeEnd, FrameTypeErr, FrameTypeCancel, FrameTypeCredit:
+		// Continuation/control frames from the engine: look up XID from RID
+		// if missing, then the destination. Unknown RID is a hard error
+		// back to the caller: the engine is a direct API client and must
+		// observe that the request no longer exists (already terminated)
+		// so it stops sending.
+		var xid MessageId
+		if frame.RoutingId != nil {
+			xid = *frame.RoutingId
+		} else {
+			foundXid, ok := sw.requests.XidForRid(frame.Id)
+			if !ok {
+				return &RelaySwitchError{
+					Type:    RelaySwitchErrorTypeUnknownRequest,
+					Message: frame.Id.ToString(),
+				}
+			}
+			xid = foundXid
+		}
+		key := RequestKey{Xid: xid, Rid: frame.Id}
+		state := sw.requests.Get(key)
+		if state == nil {
 			return &RelaySwitchError{
 				Type:    RelaySwitchErrorTypeUnknownRequest,
 				Message: frame.Id.ToString(),
 			}
 		}
+		frame.RoutingId = &xid
 
-		destIdx := entry.DestinationMasterIdx
-		err := sw.masters[destIdx].socketWriter.WriteFrame(frame)
-		if err != nil {
-			return err
-		}
-
-		// Cleanup on terminal frames for peer responses
-		isTerminal := frame.FrameType == FrameTypeEnd || frame.FrameType == FrameTypeErr
-		if isTerminal && sw.peerRequests[frame.Id.ToString()] {
-			delete(sw.requestRouting, frame.Id.ToString())
-			delete(sw.peerRequests, frame.Id.ToString())
-		}
-
-		return nil
+		return sw.masters[state.Routing.DestinationMasterIdx].socketWriter.WriteFrame(frame)
 
 	default:
 		return &RelaySwitchError{
@@ -1352,75 +1487,219 @@ func (sw *RelaySwitch) findMasterForCap(capURN string, preferredCap *string) (in
 }
 
 // handleMasterFrame handles a frame from a master
+// parentRidFromMeta extracts the "parent_rid" cancel-cascade link from a
+// peer REQ frame's meta, if present. Mirrors Rust's parent_rid parsing in
+// handle_master_frame: a 16-byte UUID or an unsigned integer RID.
+func parentRidFromMeta(frame *Frame) (MessageId, bool) {
+	if frame.Meta == nil {
+		return MessageId{}, false
+	}
+	v, ok := frame.Meta["parent_rid"]
+	if !ok {
+		return MessageId{}, false
+	}
+	switch pv := v.(type) {
+	case []byte:
+		if len(pv) == 16 {
+			return MessageId{uuidBytes: pv}, true
+		}
+	case uint64:
+		return NewMessageIdFromUint(pv), true
+	}
+	return MessageId{}, false
+}
+
 func (sw *RelaySwitch) handleMasterFrame(sourceIdx int, frame *Frame) (*Frame, error) {
 	switch frame.FrameType {
 	case FrameTypeReq:
-		// Peer request
+		// Peer request (cartridge → cartridge via switch).
 		if frame.Cap == nil {
 			return nil, &RelaySwitchError{
 				Type:    RelaySwitchErrorTypeProtocol,
 				Message: "REQ frame missing cap URN",
 			}
 		}
+		if frame.RoutingId != nil {
+			return nil, &RelaySwitchError{
+				Type:    RelaySwitchErrorTypeProtocol,
+				Message: "REQ from cartridge should not have XID",
+			}
+		}
 
-		// Peer request (no preference)
+		// Validate XID-absence and assign the XID FIRST, before any
+		// dispatch-failure path: every frame the switch emits toward a
+		// master must carry an XID (the host runtime's path-C invariant),
+		// including the synthetic ERR produced below for an unhandled cap.
+		xid := NewMessageIdFromUint(atomic.AddUint64(&sw.xidCounter, 1))
+		frame.RoutingId = &xid
+
+		// Find destination master (no preference for peer requests).
 		destIdx, err := sw.findMasterForCap(*frame.Cap, nil)
 		if err != nil {
+			// No handler registered for this cap. Rather than erroring —
+			// which would abort the pump and leave the caller hanging
+			// until its own activity timeout — send an ERR frame straight
+			// back to the source master so the peer call fails fast with a
+			// clear error. Stamp the synthetic XID assigned above so the
+			// receiving cartridge host runtime accepts it (path-C
+			// invariant). Mirrors Rust's handle_master_frame NO_HANDLER
+			// branch (Ok(None) + ERR to caller).
+			errFrame := NewErr(frame.Id, "NO_HANDLER", fmt.Sprintf("No handler found for cap: %s", *frame.Cap))
+			errFrame.RoutingId = &xid
+			_ = sw.masters[sourceIdx].socketWriter.WriteFrame(errFrame)
+			return nil, nil
+		}
+
+		rid := frame.Id
+		key := RequestKey{Xid: xid, Rid: rid}
+		srcIdx := sourceIdx
+		state := NewRequestState(
+			RequestRoutingEntry{SourceMasterIdx: &srcIdx, DestinationMasterIdx: destIdx},
+			&srcIdx,
+			nil,
+			true,
+		).WithCapUrn(frame.Cap)
+		if regErr := sw.requests.Register(key, state); regErr != nil {
+			return nil, &RelaySwitchError{Type: RelaySwitchErrorTypeProtocol, Message: regErr.Error()}
+		}
+
+		// Track parent→child for the cancel cascade.
+		if parentRid, ok := parentRidFromMeta(frame); ok {
+			if parentXid, ok := sw.requests.XidForRid(parentRid); ok {
+				sw.requests.LinkChild(RequestKey{Xid: parentXid, Rid: parentRid}, key)
+			}
+		}
+
+		// Forward to destination with XID.
+		if err := sw.masters[destIdx].socketWriter.WriteFrame(frame); err != nil {
 			return nil, err
 		}
 
-		sw.requestRouting[frame.Id.ToString()] = &RoutingEntry{
-			SourceMasterIdx:      sourceIdx,
-			DestinationMasterIdx: destIdx,
-			RequestId:            frame.Id,
-		}
-		sw.peerRequests[frame.Id.ToString()] = true
-
-		err = sw.masters[destIdx].socketWriter.WriteFrame(frame)
-		if err != nil {
-			return nil, err
-		}
-
-		return nil, nil // Internal routing
+		return nil, nil // Internal routing — do not return to engine.
 
 	case FrameTypeStreamStart, FrameTypeChunk, FrameTypeStreamEnd,
-		FrameTypeEnd, FrameTypeErr, FrameTypeLog:
-		// Relay-internal request responses (the deferred runtime identity
-		// probe) route to the issuing goroutine's channel rather than back
-		// to ReadFromMasters. Checked BEFORE normal continuation routing.
-		if ch, ok := sw.externalResponseChannels[frame.Id.ToString()]; ok {
-			ch <- frame
-			if frame.FrameType == FrameTypeEnd || frame.FrameType == FrameTypeErr {
-				delete(sw.externalResponseChannels, frame.Id.ToString())
-			}
-			return nil, nil
-		}
-
-		entry, ok := sw.requestRouting[frame.Id.ToString()]
-		if ok && entry.SourceMasterIdx != ENGINE_SOURCE {
-			// Response to peer request
-			destIdx := entry.SourceMasterIdx
+		FrameTypeEnd, FrameTypeErr, FrameTypeLog, FrameTypeCredit:
+		// Branch based on XID presence to distinguish response vs
+		// request-continuation direction.
+		if frame.RoutingId != nil {
+			// ========================================
+			// HAS XID = RESPONSE CONTINUATION
+			// ========================================
+			xid := *frame.RoutingId
+			rid := frame.Id
+			key := RequestKey{Xid: xid, Rid: rid}
 			isTerminal := frame.FrameType == FrameTypeEnd || frame.FrameType == FrameTypeErr
 
-			err := sw.masters[destIdx].socketWriter.WriteFrame(frame)
-			if err != nil {
+			// Record flow stats, resolve the return path, and — on
+			// terminal — remove the whole entry atomically (L7). A frame
+			// for a released key is a counted no_route drop, never a
+			// protocol error and never silent (L8).
+			sw.requests.RecordFrame(key, FrameDirectionInbound, frame)
+
+			var state *RequestState
+			if isTerminal {
+				kind := TerminalKindEnd
+				if frame.FrameType == FrameTypeErr {
+					kind = TerminalKindErr
+				}
+				state = sw.requests.Terminate(key, kind)
+				if state == nil {
+					sw.drops.Record(DropReasonNoRoute)
+					return nil, nil
+				}
+			} else {
+				state = sw.requests.Get(key)
+				if state == nil {
+					sw.drops.Record(DropReasonNoRoute)
+					return nil, nil
+				}
+			}
+
+			if state.Origin == nil {
+				if state.ExternalChannel != nil {
+					// Deliver to the external response channel (keep XID).
+					if !deliverExternal(state.ExternalChannel, *frame) {
+						sw.drops.Record(DropReasonChannelClosed)
+						// A dead consumer on a LIVE request means the
+						// caller abandoned it. Nobody can ever read this
+						// response — cancel upstream so the cartridge
+						// stops producing for a dead channel. Terminal
+						// frames need no cancel: the entry is already
+						// terminated.
+						if !isTerminal {
+							sw.cancelRequestLocked(rid, false)
+						}
+					}
+					return nil, nil
+				}
+				// No response channel (sent via SendToMaster, not a
+				// registered external caller). Strip XID and return to
+				// caller (final leg).
+				frame.RoutingId = nil
+				return frame, nil
+			}
+
+			// Route back to source master — KEEP XID.
+			if err := sw.masters[*state.Origin].socketWriter.WriteFrame(frame); err != nil {
 				return nil, err
 			}
-
-			if isTerminal && !sw.peerRequests[frame.Id.ToString()] {
-				delete(sw.requestRouting, frame.Id.ToString())
-			}
-
 			return nil, nil
 		}
 
-		// Response to engine request
-		isTerminal := frame.FrameType == FrameTypeEnd || frame.FrameType == FrameTypeErr
-		if isTerminal && !sw.peerRequests[frame.Id.ToString()] {
-			delete(sw.requestRouting, frame.Id.ToString())
+		// ========================================
+		// NO XID = REQUEST CONTINUATION
+		// ========================================
+		// Frame has no XID, so it's a request continuation (peer-call
+		// argument streams / grants) flowing to the destination. An
+		// unknown RID means the request already terminated: counted drop
+		// (L6), not an error.
+		rid := frame.Id
+		xid, ok := sw.requests.XidForRid(rid)
+		if !ok {
+			sw.drops.Record(DropReasonNoRoute)
+			return nil, nil
+		}
+		key := RequestKey{Xid: xid, Rid: rid}
+		sw.requests.RecordFrame(key, FrameDirectionInbound, frame)
+		state := sw.requests.Get(key)
+		if state == nil {
+			sw.drops.Record(DropReasonNoRoute)
+			return nil, nil
 		}
 
-		return frame, nil
+		// Add XID to frame for forwarding.
+		frame.RoutingId = &xid
+		if err := sw.masters[state.Routing.DestinationMasterIdx].socketWriter.WriteFrame(frame); err != nil {
+			return nil, err
+		}
+		return nil, nil
+
+	case FrameTypeCancel:
+		// Cancel from cartridge — route to destination like a continuation
+		// frame. Cartridge is cancelling its own peer call. Unknown RID
+		// means the request already completed: a well-defined no-op.
+		rid := frame.Id
+		var xid MessageId
+		var ok bool
+		if frame.RoutingId != nil {
+			xid = *frame.RoutingId
+			ok = true
+		} else {
+			xid, ok = sw.requests.XidForRid(rid)
+		}
+		if !ok {
+			return nil, nil
+		}
+		key := RequestKey{Xid: xid, Rid: rid}
+		state := sw.requests.Get(key)
+		if state == nil {
+			return nil, nil
+		}
+		frame.RoutingId = &xid
+		if err := sw.masters[state.Routing.DestinationMasterIdx].socketWriter.WriteFrame(frame); err != nil {
+			return nil, err
+		}
+		return nil, nil
 
 	case FrameTypeRelayNotify:
 		// Capability update from host — update our cap table
@@ -1462,6 +1741,7 @@ func (sw *RelaySwitch) handleMasterFrame(sourceIdx int, frame *Frame) (*Frame, e
 		// cap_table rebuild excludes its caps.
 		sw.masters[sourceIdx].caps = newCaps
 		sw.masters[sourceIdx].installedCartridges = payload.InstalledCartridges
+		sw.masters[sourceIdx].hostProtocolStats = payload.HostProtocolStats
 		sw.masters[sourceIdx].manifest = manifest
 		if limits := frame.RelayNotifyLimits(); limits != nil {
 			sw.masters[sourceIdx].limits = *limits
@@ -1499,7 +1779,9 @@ func (sw *RelaySwitch) handleMasterFrame(sourceIdx int, frame *Frame) (*Frame, e
 	}
 }
 
-// handleMasterDeath handles master death
+// handleMasterDeath handles master death: marks the slot unhealthy, terminates
+// every pending request routed to it (MasterDied) with a synthetic ERR
+// delivered to whoever was waiting, and rebuilds the health-filtered tables.
 func (sw *RelaySwitch) handleMasterDeath(masterIdx int) {
 	if !sw.masters[masterIdx].healthy {
 		return
@@ -1507,11 +1789,36 @@ func (sw *RelaySwitch) handleMasterDeath(masterIdx int) {
 
 	sw.masters[masterIdx].healthy = false
 
-	// Cleanup routing
-	for reqID, entry := range sw.requestRouting {
-		if entry.DestinationMasterIdx == masterIdx {
-			delete(sw.requestRouting, reqID)
-			delete(sw.peerRequests, reqID)
+	// Find all pending requests routed to this master.
+	deadKeys := sw.requests.KeysWhere(func(s *RequestState) bool {
+		return s.Routing.DestinationMasterIdx == masterIdx
+	})
+
+	// Terminate each pending request (MasterDied) and deliver a synthetic
+	// ERR to whoever was waiting on it. Terminate atomically removes ALL
+	// state for the key (L7) and hands back the origin + channel needed for
+	// delivery.
+	for _, key := range deadKeys {
+		state := sw.requests.Terminate(key, TerminalKindMasterDied)
+		if state == nil {
+			continue // raced another terminal — already fully cleaned up
+		}
+
+		xid := key.Xid
+		errFrame := NewErr(key.Rid, "MASTER_DIED", fmt.Sprintf("Relay master %d connection closed", masterIdx))
+		errFrame.RoutingId = &xid
+
+		if state.Origin == nil {
+			if state.ExternalChannel != nil {
+				if !deliverExternal(state.ExternalChannel, *errFrame) {
+					sw.drops.Record(DropReasonChannelClosed)
+				}
+			}
+		} else {
+			srcIdx := *state.Origin
+			if srcIdx >= 0 && srcIdx < len(sw.masters) && sw.masters[srcIdx].healthy {
+				_ = sw.masters[srcIdx].socketWriter.WriteFrame(errFrame)
+			}
 		}
 	}
 
@@ -1609,8 +1916,10 @@ func (sw *RelaySwitch) rebuildCapabilities() {
 
 // rebuildLimits rebuilds negotiated limits
 func (sw *RelaySwitch) rebuildLimits() {
-	minFrame := int(^uint(0) >> 1) // Max int
-	minChunk := int(^uint(0) >> 1)
+	maxInt := int(^uint(0) >> 1) // Max int
+	minFrame := maxInt
+	minChunk := maxInt
+	minInitialCredit := maxInt
 
 	for _, master := range sw.masters {
 		if master.healthy {
@@ -1620,19 +1929,26 @@ func (sw *RelaySwitch) rebuildLimits() {
 			if master.limits.MaxChunk < minChunk {
 				minChunk = master.limits.MaxChunk
 			}
+			if master.limits.InitialCredit < minInitialCredit {
+				minInitialCredit = master.limits.InitialCredit
+			}
 		}
 	}
 
-	if minFrame == int(^uint(0)>>1) {
+	if minFrame == maxInt {
 		minFrame = DefaultMaxFrame
 	}
-	if minChunk == int(^uint(0)>>1) {
+	if minChunk == maxInt {
 		minChunk = DefaultMaxChunk
+	}
+	if minInitialCredit == maxInt {
+		minInitialCredit = DefaultInitialCredit
 	}
 
 	sw.negotiatedLimits = Limits{
-		MaxFrame: minFrame,
-		MaxChunk: minChunk,
+		MaxFrame:      minFrame,
+		MaxChunk:      minChunk,
+		InitialCredit: minInitialCredit,
 	}
 }
 
@@ -1671,7 +1987,22 @@ func parseRelayNotifyPayload(manifest []byte) (*RelayNotifyCapabilitiesPayload, 
 		installedCartridges = []InstalledCartridgeRecord{}
 	}
 
-	return &RelayNotifyCapabilitiesPayload{
+	payload := &RelayNotifyCapabilitiesPayload{
 		InstalledCartridges: installedCartridges,
-	}, nil
+	}
+
+	// host_protocol_stats is optional (a per-republish refresh, not a
+	// requirement) — absent or explicit null both mean "no stats yet".
+	if hpsRaw, ok := raw["host_protocol_stats"]; ok && string(hpsRaw) != "null" {
+		var hps HostProtocolStats
+		if err := json.Unmarshal(hpsRaw, &hps); err != nil {
+			return nil, &RelaySwitchError{
+				Type:    RelaySwitchErrorTypeProtocol,
+				Message: fmt.Sprintf("invalid host_protocol_stats field: %v", err),
+			}
+		}
+		payload.HostProtocolStats = &hps
+	}
+
+	return payload, nil
 }

@@ -290,8 +290,6 @@ func Test247_response_chunk_clone(t *testing.T) {
 	assert.NotEqual(t, original.Payload[0], cloned.Payload[0])
 }
 
-
-
 // TEST462: An attached cartridge (pre-connected over raw streams, no
 // on-disk anchor) gets a resolvable install identity derived from its
 // HELLO manifest — `installedCartridgeRecordFromManifest`. Identity gates

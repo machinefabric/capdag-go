@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -55,6 +56,10 @@ func (m *mockStreamEmitter) EmitLog(level, message string) {
 }
 
 func (m *mockStreamEmitter) Progress(progress float32, message string) {
+	// No-op for tests
+}
+
+func (m *mockStreamEmitter) Finish(progress float32, message string) {
 	// No-op for tests
 }
 
@@ -2731,10 +2736,10 @@ func Test398_BuildPayloadIOError(t *testing.T) {
 func Test544_peer_invoker_sends_end_frame(t *testing.T) {
 	var buf bytes.Buffer
 	writer := NewFrameWriter(&buf)
-	syncWriter := &syncFrameWriter{writer: writer, seqAssigner: NewSeqAssigner()}
+	syncWriter := newSyncFrameWriter(writer, NewDropCounters())
 	pendingRequests := &sync.Map{}
 
-	peer := newPeerInvokerImpl(syncWriter, pendingRequests, DefaultLimits().MaxChunk)
+	peer := newPeerInvokerImpl(syncWriter, pendingRequests, DefaultLimits().MaxChunk, nil, 0)
 	args := []cap.CapArgumentValue{
 		cap.NewCapArgumentValueFromStr("media:test", "hello"),
 	}
@@ -3036,7 +3041,7 @@ func (m *mockFrameWriter) WriteFrame(frame *Frame) error {
 func Test842_progress_sender_emits_frames(t *testing.T) {
 	var buf bytes.Buffer
 	writer := NewFrameWriter(&buf)
-	syncWriter := &syncFrameWriter{writer: writer, seqAssigner: NewSeqAssigner()}
+	syncWriter := newSyncFrameWriter(writer, NewDropCounters())
 	reqId := NewMessageIdRandom()
 	ps := &ProgressSender{
 		writer:    syncWriter,
@@ -3082,7 +3087,7 @@ func Test842_progress_sender_emits_frames(t *testing.T) {
 func Test843_progress_sender_from_goroutine(t *testing.T) {
 	var buf bytes.Buffer
 	writer := NewFrameWriter(&buf)
-	syncWriter := &syncFrameWriter{writer: writer, seqAssigner: NewSeqAssigner()}
+	syncWriter := newSyncFrameWriter(writer, NewDropCounters())
 	reqId := NewMessageIdRandom()
 	ps := &ProgressSender{
 		writer:    syncWriter,
@@ -3115,7 +3120,7 @@ func Test843_progress_sender_from_goroutine(t *testing.T) {
 func Test844_progress_sender_multiple_goroutines(t *testing.T) {
 	var buf bytes.Buffer
 	writer := NewFrameWriter(&buf)
-	syncWriter := &syncFrameWriter{writer: writer, seqAssigner: NewSeqAssigner()}
+	syncWriter := newSyncFrameWriter(writer, NewDropCounters())
 	reqId := NewMessageIdRandom()
 	ps := &ProgressSender{
 		writer:    syncWriter,
@@ -3160,7 +3165,7 @@ func Test844_progress_sender_multiple_goroutines(t *testing.T) {
 func Test845_progress_sender_independent_of_emitter(t *testing.T) {
 	var buf bytes.Buffer
 	writer := NewFrameWriter(&buf)
-	syncWriter := &syncFrameWriter{writer: writer, seqAssigner: NewSeqAssigner()}
+	syncWriter := newSyncFrameWriter(writer, NewDropCounters())
 	reqId := NewMessageIdRandom()
 	ps := &ProgressSender{
 		writer:    syncWriter,
@@ -3688,8 +3693,8 @@ func outputEmitterCapture(t *testing.T, streamID, mediaUrn string, maxChunk int,
 	t.Helper()
 	var buf bytes.Buffer
 	writer := NewFrameWriter(&buf)
-	syncWriter := &syncFrameWriter{writer: writer, seqAssigner: NewSeqAssigner()}
-	emitter := newThreadSafeEmitter(syncWriter, NewMessageIdRandom(), nil, streamID, mediaUrn, maxChunk)
+	syncWriter := newSyncFrameWriter(writer, NewDropCounters())
+	emitter := newThreadSafeEmitter(syncWriter, NewMessageIdRandom(), nil, streamID, mediaUrn, maxChunk, nil, 0)
 	emit(emitter)
 	emitter.Finalize()
 
@@ -3797,5 +3802,670 @@ func Test542_output_stream_empty(t *testing.T) {
 	}
 	if chunkCount != 0 {
 		t.Errorf("empty stream must have zero chunks, got %d", chunkCount)
+	}
+}
+
+// =============================================================================
+// Protocol v3 parity: credit-based output, input demux credit window, writer
+// terminal gate, counted drops, END-carried final progress, concurrency
+// capacity. Ported from the Rust reference's cartridge_runtime.rs `#[cfg(test)]`
+// module and the Swift/ObjC mirror's CartridgeRuntimeTests — numbered tests
+// assert the SAME behavior as those references; a few are Go-only (no shared
+// number) because they validate functionality this mirror did not have before
+// this port (CapacityHandle, OutputStream::finish).
+// =============================================================================
+
+// decodeWireFrames decodes every length-prefixed frame from a captured wire
+// buffer (mirrors the Rust tests' decode_wire helper).
+func decodeWireFrames(t *testing.T, buf []byte) []Frame {
+	t.Helper()
+	reader := NewFrameReader(bytes.NewReader(buf))
+	var frames []Frame
+	for {
+		frame, err := reader.ReadFrame()
+		if err != nil {
+			break
+		}
+		frames = append(frames, *frame)
+	}
+	return frames
+}
+
+func f64Ptr(v float64) *float64 { return &v }
+
+// TEST7020: A flow frame reaching the writer after the flow's END has been
+// written is dropped with a counted post_terminal drop — END is the last flow
+// frame on the wire.
+func Test7020_writer_gate_drops_post_terminal_flow_frames(t *testing.T) {
+	rid := NewMessageIdRandom()
+	var buf bytes.Buffer
+	drops := NewDropCounters()
+	w := newSyncFrameWriter(NewFrameWriter(&buf), drops)
+
+	// In-order: chunk, END — both written.
+	payload := []byte{1, 2, 3}
+	checksum := ComputeChecksum(payload)
+	chunk := NewChunk(rid, "s1", 0, payload, 0, checksum)
+	if err := w.WriteFrame(chunk); err != nil {
+		t.Fatalf("chunk write must succeed: %v", err)
+	}
+	end := EndOkWith(rid, nil, f64Ptr(1.0), nil)
+	if err := w.WriteFrame(end); err != nil {
+		t.Fatalf("end write must succeed: %v", err)
+	}
+
+	// The detached-sender race: a straggler progress LOG enqueued after the
+	// handler returned reaches the writer after END. Dropped + counted, not
+	// an error the caller must handle differently.
+	straggler := NewProgress(rid, 1.0, "late keepalive")
+	if err := w.WriteFrame(straggler); err != nil {
+		t.Fatalf("post-terminal drop must not surface as a write error: %v", err)
+	}
+	if got := drops.Get(DropReasonPostTerminal); got != 1 {
+		t.Errorf("expected 1 post_terminal drop, got %d", got)
+	}
+
+	frames := decodeWireFrames(t, buf.Bytes())
+	if len(frames) != 2 {
+		t.Fatalf("straggler must not reach the wire, got %d frames", len(frames))
+	}
+	if frames[0].FrameType != FrameTypeChunk {
+		t.Errorf("frame 0 must be CHUNK, got %v", frames[0].FrameType)
+	}
+	if frames[1].FrameType != FrameTypeEnd {
+		t.Errorf("frame 1 must be END, got %v", frames[1].FrameType)
+	}
+	if frames[len(frames)-1].FrameType != FrameTypeEnd {
+		t.Error("END must be the last flow frame on the wire (L4)")
+	}
+	if frames[0].Seq != 0 || frames[1].Seq != 1 {
+		t.Errorf("seq must be contiguous, got %d, %d", frames[0].Seq, frames[1].Seq)
+	}
+}
+
+// TEST7021: The writer gate is precise — flow frames before END are written,
+// non-flow frames (heartbeat, credit) still pass after a flow's terminal, and
+// only that flow is gated.
+func Test7021_writer_gate_precision(t *testing.T) {
+	ridA := NewMessageIdFromUint(1)
+	ridB := NewMessageIdFromUint(2)
+	var buf bytes.Buffer
+	drops := NewDropCounters()
+	w := newSyncFrameWriter(NewFrameWriter(&buf), drops)
+
+	// Progress before END is written (the gate never over-drops).
+	if err := w.WriteFrame(NewProgress(ridA, 0.5, "halfway")); err != nil {
+		t.Fatalf("progress write must succeed: %v", err)
+	}
+	if err := w.WriteFrame(EndOk(ridA, nil)); err != nil {
+		t.Fatalf("end write must succeed: %v", err)
+	}
+
+	// Non-flow frames for the terminated flow still pass (heartbeats and
+	// credit must never be blocked by data-flow termination).
+	if err := w.WriteFrame(NewHeartbeat(ridA)); err != nil {
+		t.Fatalf("heartbeat write must succeed: %v", err)
+	}
+	streamID := "s1"
+	if err := w.WriteFrame(NewCredit(ridA, &streamID, 4, CreditDirectionResponse)); err != nil {
+		t.Fatalf("credit write must succeed: %v", err)
+	}
+
+	// A different flow is untouched by A's terminal.
+	if err := w.WriteFrame(NewProgress(ridB, 0.1, "other request")); err != nil {
+		t.Fatalf("progress for a different flow must succeed: %v", err)
+	}
+
+	// But a flow frame for A is gated.
+	if err := w.WriteFrame(NewLog(ridA, "info", "late")); err != nil {
+		t.Fatalf("post-terminal drop must not surface as a write error: %v", err)
+	}
+
+	frames := decodeWireFrames(t, buf.Bytes())
+	wantTypes := []FrameType{FrameTypeLog, FrameTypeEnd, FrameTypeHeartbeat, FrameTypeCredit, FrameTypeLog}
+	if len(frames) != len(wantTypes) {
+		t.Fatalf("expected %d frames on the wire, got %d", len(wantTypes), len(frames))
+	}
+	for i, want := range wantTypes {
+		if frames[i].FrameType != want {
+			t.Errorf("frame %d: expected %v, got %v", i, want, frames[i].FrameType)
+		}
+	}
+	if got := drops.Get(DropReasonPostTerminal); got != 1 {
+		t.Errorf("expected 1 post_terminal drop, got %d", got)
+	}
+}
+
+// failingWriter is an io.Writer that starts healthy and can be switched to
+// always fail, simulating a dead output connection (broken pipe / host gone).
+type failingWriter struct{ fail bool }
+
+func (f *failingWriter) Write(p []byte) (int, error) {
+	if f.fail {
+		return 0, fmt.Errorf("broken pipe")
+	}
+	return len(p), nil
+}
+
+// TEST7027: A frame sent through the writer whose sink is gone is a counted
+// channel_closed drop, never a silent loss.
+func Test7027_channel_closed_sends_are_counted(t *testing.T) {
+	fw := &failingWriter{}
+	drops := NewDropCounters()
+	w := newSyncFrameWriter(NewFrameWriter(fw), drops)
+
+	frame := NewProgress(NewMessageIdRandom(), 0.4, "working")
+
+	// Sink alive: send succeeds, nothing counted.
+	if err := w.WriteFrame(frame); err != nil {
+		t.Fatalf("open sink accepts frames: %v", err)
+	}
+	if got := drops.Get(DropReasonChannelClosed); got != 0 {
+		t.Fatalf("expected 0 channel_closed drops before failure, got %d", got)
+	}
+
+	// Sink dead: send fails AND the drop is counted.
+	fw.fail = true
+	if err := w.WriteFrame(frame); err == nil {
+		t.Fatal("dead sink must return an error")
+	}
+	if got := drops.Get(DropReasonChannelClosed); got != 1 {
+		t.Errorf("expected 1 channel_closed drop, got %d", got)
+	}
+	if err := w.WriteFrame(frame); err == nil {
+		t.Fatal("dead sink must keep erroring")
+	}
+	if got := drops.Get(DropReasonChannelClosed); got != 2 {
+		t.Errorf("every dropped frame increments exactly once (L8), got %d", got)
+	}
+}
+
+// TEST7086: One runtime's drop counters aggregate every drop source —
+// post-terminal writer drops and closed-channel sends — each counted exactly
+// once, and the snapshot totals match the induced drops.
+func Test7086_drop_snapshot_matches_induced_drops(t *testing.T) {
+	drops := NewDropCounters()
+	rid := NewMessageIdRandom()
+
+	// Source 1: post-terminal drops at the writer gate (two stragglers).
+	var buf bytes.Buffer
+	w := newSyncFrameWriter(NewFrameWriter(&buf), drops)
+	if err := w.WriteFrame(EndOk(rid, nil)); err != nil {
+		t.Fatalf("end write must succeed: %v", err)
+	}
+	for i := 0; i < 2; i++ {
+		if err := w.WriteFrame(NewProgress(rid, 1.0, "straggler")); err != nil {
+			t.Fatalf("post-terminal drop must not surface as a write error: %v", err)
+		}
+	}
+
+	// Source 2: closed-sink send (one drop).
+	fw := &failingWriter{fail: true}
+	w2 := newSyncFrameWriter(NewFrameWriter(fw), drops)
+	_ = w2.WriteFrame(NewLog(rid, "info", "dead sink"))
+
+	snap := drops.Snapshot()
+	if snap.Total != 3 {
+		t.Errorf("expected each induced drop counted exactly once (L8), total=%d", snap.Total)
+	}
+	if got := snap.ByReason["post_terminal"]; got != 2 {
+		t.Errorf("expected 2 post_terminal drops in snapshot, got %d", got)
+	}
+	if got := snap.ByReason["channel_closed"]; got != 1 {
+		t.Errorf("expected 1 channel_closed drop in snapshot, got %d", got)
+	}
+}
+
+// safeWireBuf is a mutex-guarded byte sink for tests that read captured wire
+// bytes concurrently with a credit-gated sender goroutine still writing.
+type safeWireBuf struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (s *safeWireBuf) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.Write(p)
+}
+
+func (s *safeWireBuf) Bytes() []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]byte, s.buf.Len())
+	copy(out, s.buf.Bytes())
+	return out
+}
+
+// TEST7050: A credited sender emits exactly its window of chunks then stalls
+// until a CREDIT grant arrives — observed on the captured wire bytes.
+func Test7050_sender_stalls_at_window_and_resumes_on_grant(t *testing.T) {
+	buf := &safeWireBuf{}
+	w := newSyncFrameWriter(NewFrameWriter(buf), NewDropCounters())
+	router := NewCreditRouter()
+	rid := NewMessageIdRandom()
+
+	// Window of 4 chunks; payload needs 6 chunks at max_chunk=4 bytes.
+	emitter := newThreadSafeEmitter(w, rid, nil, "s1", "media:enc=utf-8", 4, router, 4)
+
+	data := make([]byte, 24) // 6 chunks of 4 bytes
+	for i := range data {
+		data[i] = byte(i)
+	}
+	writerDone := make(chan error, 1)
+	go func() {
+		writerDone <- emitter.Write(data)
+	}()
+
+	// Exactly STREAM_START + 4 chunks appear, then the sender stalls.
+	time.Sleep(100 * time.Millisecond)
+	got := decodeWireFrames(t, buf.Bytes())
+	if len(got) == 0 || got[0].FrameType != FrameTypeStreamStart {
+		t.Fatalf("first frame must be STREAM_START, got %v", got)
+	}
+	chunksBefore := 0
+	for _, f := range got {
+		if f.FrameType == FrameTypeChunk {
+			chunksBefore++
+		}
+	}
+	if chunksBefore != 4 {
+		t.Fatalf("sender must stall at exactly the window, got %d chunks", chunksBefore)
+	}
+	select {
+	case <-writerDone:
+		t.Fatal("writer must be blocked on credit")
+	default:
+	}
+
+	// Grant 2 → the remaining 2 chunks + STREAM_END flow; data is intact and
+	// chunk indexes are contiguous (nothing lost or reordered).
+	streamID := "s1"
+	router.Grant(NewCredit(rid, &streamID, 2, CreditDirectionResponse))
+	select {
+	case err := <-writerDone:
+		if err != nil {
+			t.Fatalf("write must succeed after grant: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("grant must unblock the writer")
+	}
+	if err := emitter.writer.WriteFrame(NewStreamEnd(rid, "s1", 6)); err != nil {
+		t.Fatalf("stream end must succeed: %v", err)
+	}
+
+	frames := decodeWireFrames(t, buf.Bytes())
+	var indexes []uint64
+	sawStreamEnd := false
+	for _, f := range frames {
+		if f.FrameType == FrameTypeChunk {
+			indexes = append(indexes, *f.ChunkIndex)
+		}
+		if f.FrameType == FrameTypeStreamEnd {
+			sawStreamEnd = true
+		}
+	}
+	if len(indexes) != 6 {
+		t.Fatalf("grant releases exactly the granted chunks, expected 6 total, got %d", len(indexes))
+	}
+	for i, idx := range indexes {
+		if idx != uint64(i) {
+			t.Fatalf("chunk indexes must be in order, none lost: %v", indexes)
+		}
+	}
+	if !sawStreamEnd {
+		t.Error("STREAM_END must follow the released chunks")
+	}
+}
+
+// TEST7062: LOG/progress frames flow while the data window is exhausted —
+// control frames are never credited.
+func Test7062_log_flows_while_window_exhausted(t *testing.T) {
+	buf := &safeWireBuf{}
+	w := newSyncFrameWriter(NewFrameWriter(buf), NewDropCounters())
+	router := NewCreditRouter()
+	rid := NewMessageIdRandom()
+
+	emitter := newThreadSafeEmitter(w, rid, nil, "s1", "media:enc=utf-8", 4, router, 1)
+	t.Cleanup(func() { router.CloseRequest(rid, "test-cleanup") })
+
+	// Exhaust the window (1 chunk), then block trying to send another.
+	writerDone := make(chan error, 1)
+	go func() {
+		writerDone <- emitter.Write(make([]byte, 8)) // 2 chunks; blocks after 1
+	}()
+	time.Sleep(100 * time.Millisecond)
+	select {
+	case <-writerDone:
+		t.Fatal("data sender must be stalled")
+	default:
+	}
+
+	// Progress still flows — uncredited (L14): it does not go through the
+	// seqMu-guarded chunk path that acquireCredit blocks on.
+	emitter.Progress(0.5, "still alive")
+
+	frames := decodeWireFrames(t, buf.Bytes())
+	sawProgress := false
+	for _, f := range frames {
+		if f.FrameType == FrameTypeLog {
+			if p, ok := f.LogProgress(); ok && p == 0.5 {
+				sawProgress = true
+			}
+		}
+	}
+	if !sawProgress {
+		t.Error("progress must bypass the exhausted data window")
+	}
+}
+
+// testCapUrn is the "test" cap declared in testManifest, used by the
+// end-to-end runCBORModeIO harness below.
+const testCapUrn = `cap:in="media:void";test;out="media:void"`
+
+// startTestCartridge starts rt.runCBORModeIO over an in-memory duplex pipe,
+// performs the v3 handshake as the host (proposing initialCredit), and
+// returns a writer to send frames to the cartridge, a channel of frames the
+// cartridge sends back, and the negotiated limits. Registers a cleanup that
+// closes the input side and waits for the runtime to exit.
+func startTestCartridge(t *testing.T, rt *CartridgeRuntime, initialCredit int) (*FrameWriter, <-chan Frame, Limits) {
+	t.Helper()
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- rt.runCBORModeIO(inR, outW)
+	}()
+
+	hostWriter := NewFrameWriter(inW)
+	hostReader := NewFrameReader(outR)
+
+	hello := NewHello(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, initialCredit)
+	if err := hostWriter.WriteFrame(hello); err != nil {
+		t.Fatalf("failed to send HELLO: %v", err)
+	}
+	resp, err := hostReader.ReadFrame()
+	if err != nil {
+		t.Fatalf("failed to read HELLO response: %v", err)
+	}
+	if resp.FrameType != FrameTypeHello {
+		t.Fatalf("expected HELLO response, got %v", resp.FrameType)
+	}
+	negotiated := NegotiateLimits(DefaultLimits(), Limits{
+		MaxFrame:         DefaultMaxFrame,
+		MaxChunk:         DefaultMaxChunk,
+		MaxReorderBuffer: DefaultMaxReorderBuffer,
+		InitialCredit:    initialCredit,
+	})
+
+	outFrames := make(chan Frame, 4096)
+	go func() {
+		defer close(outFrames)
+		for {
+			f, err := hostReader.ReadFrame()
+			if err != nil {
+				return
+			}
+			outFrames <- *f
+		}
+	}()
+
+	t.Cleanup(func() {
+		inW.Close()
+		<-done
+	})
+
+	return hostWriter, outFrames, negotiated
+}
+
+// drainingHandler is a HandlerFunc that consumes every input frame and
+// produces no output — used by the end-to-end harness tests below, which
+// exercise the demux/dispatch machinery rather than handler output.
+func drainingHandler(frames <-chan Frame, emitter StreamEmitter, peer PeerInvoker) error {
+	for range frames {
+	}
+	return nil
+}
+
+// TEST7052: Input consumption emits batched CREDIT grants — one grant per
+// half-window of chunks accepted, not one per chunk. In this mirror's
+// buffer-then-dispatch demux (see runCBORModeIO's FrameTypeChunk handling),
+// acceptance IS consumption — grants fire deterministically as chunks arrive,
+// with no dependency on handler scheduling.
+func Test7052_input_grants_are_batched(t *testing.T) {
+	rt, err := NewCartridgeRuntime([]byte(testManifest))
+	if err != nil {
+		t.Fatalf("failed to create runtime: %v", err)
+	}
+	rt.Register(testCapUrn, drainingHandler)
+
+	hostWriter, outFrames, negotiated := startTestCartridge(t, rt, 8)
+	if negotiated.InitialCredit != 8 {
+		t.Fatalf("expected negotiated initial_credit 8, got %d", negotiated.InitialCredit)
+	}
+
+	rid := NewMessageIdRandom()
+	if err := hostWriter.WriteFrame(NewReq(rid, testCapUrn, nil, "application/cbor")); err != nil {
+		t.Fatalf("REQ: %v", err)
+	}
+	if err := hostWriter.WriteFrame(NewStreamStart(rid, "s1", "media:enc=utf-8", boolPtr(false))); err != nil {
+		t.Fatalf("STREAM_START: %v", err)
+	}
+	for i := uint64(0); i < 16; i++ {
+		payload, encErr := cborlib.Marshal([]byte{byte(i)})
+		if encErr != nil {
+			t.Fatalf("cbor encode: %v", encErr)
+		}
+		checksum := ComputeChecksum(payload)
+		if err := hostWriter.WriteFrame(NewChunk(rid, "s1", i, payload, i, checksum)); err != nil {
+			t.Fatalf("CHUNK %d: %v", i, err)
+		}
+	}
+	if err := hostWriter.WriteFrame(NewStreamEnd(rid, "s1", 16)); err != nil {
+		t.Fatalf("STREAM_END: %v", err)
+	}
+	if err := hostWriter.WriteFrame(NewEnd(rid, nil)); err != nil {
+		t.Fatalf("END: %v", err)
+	}
+
+	var grants []uint64
+	deadline := time.After(3 * time.Second)
+collect:
+	for {
+		select {
+		case f, ok := <-outFrames:
+			if !ok {
+				t.Fatal("output closed before END")
+			}
+			if f.FrameType == FrameTypeCredit && f.StreamId != nil && *f.StreamId == "s1" {
+				if cc := f.CreditCount(); cc != nil {
+					grants = append(grants, *cc)
+				}
+			}
+			if f.FrameType == FrameTypeEnd && f.Id.Equals(rid) {
+				break collect
+			}
+		case <-deadline:
+			t.Fatal("timed out waiting for END")
+		}
+	}
+
+	if len(grants) != 4 {
+		t.Fatalf("expected 4 batched grants (window/2 = 4 each), got %v", grants)
+	}
+	for i, g := range grants {
+		if g != 4 {
+			t.Errorf("grant %d: expected 4, got %d", i, g)
+		}
+	}
+}
+
+// TEST7053 (Rust/Swift: "a chunk received beyond the granted window is a
+// fatal CREDIT_VIOLATION") is NOT reachable as an end-to-end wire test in
+// this mirror and is deliberately not ported as a false pass. Two
+// independent, documented properties of this codebase make the Rust/Swift
+// scenario (send 3 chunks against a window of 2, with nothing consumed)
+// unreproducible here:
+//
+//  1. Architecture: this mirror's buffer-then-dispatch demux treats
+//     "accepted a chunk" as "consumed" (see TEST7052's comment above) — every
+//     accepted chunk immediately re-grants once its half-window batch
+//     threshold is crossed, synchronously, in the same read-process cycle.
+//     For any initial_credit >= 1 the window is therefore bounded below by
+//     initial_credit - batch >= 0 and cannot go negative under any
+//     single-stream chunk sequence a real (even malicious) sender can
+//     produce over this mirror's synchronous one-frame-at-a-time transport:
+//     there is no decoupled "handler hasn't consumed yet" phase to exploit
+//     the way the Rust/Swift live-streaming demux's TEST7053 does (it stalls
+//     consumption by never calling recv()).
+//  2. The one value that WOULD make even the first chunk violate —
+//     initial_credit=0 — cannot be wire-negotiated: extractIntFromMeta
+//     (io.go) returns Go's int zero value for both "key absent from HELLO
+//     meta" and "key present with value 0", so HandshakeAccept's
+//     unwrap-or-default treats an explicit 0 identically to an omitted
+//     field and substitutes DefaultInitialCredit (32). That is a
+//     wire-negotiation gap in io.go, outside this file/subsystem's scope —
+//     ported honestly as "unreachable", not silently skipped or faked.
+//
+// The credit-violation MECHANISM itself (window decrement, `< 0` check,
+// CREDIT_VIOLATION ERR, counted CreditViolation drop) is still exercised
+// structurally by inspection of runCBORModeIO's FrameTypeChunk handling and
+// remains intact; only the wire-reachable trigger for it does not exist in
+// this architecture at any negotiable window size.
+
+// TestCapacityHandleQueuesRequestsBeyondLimit: with capacity set to 1, a
+// second request arriving while the first is still running is queued (LOG
+// level="queued") instead of dispatched; once the first finishes, the queued
+// request is dequeued (LOG level="dequeued") and runs. Go-only — validates
+// CapacityHandle / concurrency-capacity queueing, which this mirror did not
+// have before this port (no corresponding number in the v3 diff: capacity
+// pre-dates it in the Rust reference).
+func TestCapacityHandleQueuesRequestsBeyondLimit(t *testing.T) {
+	rt, err := NewCartridgeRuntime([]byte(testManifest))
+	if err != nil {
+		t.Fatalf("failed to create runtime: %v", err)
+	}
+	rt.SetCapacity(1)
+
+	release := make(chan struct{}, 2)
+	rt.Register(testCapUrn, func(frames <-chan Frame, emitter StreamEmitter, peer PeerInvoker) error {
+		for range frames {
+		}
+		<-release
+		return nil
+	})
+
+	hostWriter, outFrames, _ := startTestCartridge(t, rt, DefaultInitialCredit)
+
+	sendEmptyRequest := func(rid MessageId) {
+		t.Helper()
+		if err := hostWriter.WriteFrame(NewReq(rid, testCapUrn, nil, "application/cbor")); err != nil {
+			t.Fatalf("REQ: %v", err)
+		}
+		if err := hostWriter.WriteFrame(NewEnd(rid, nil)); err != nil {
+			t.Fatalf("END: %v", err)
+		}
+	}
+
+	rid1 := NewMessageIdRandom()
+	rid2 := NewMessageIdRandom()
+	sendEmptyRequest(rid1)
+	// Give the runtime a moment to dispatch rid1 immediately (capacity 1,
+	// nothing else running) before rid2 arrives, so rid2 deterministically
+	// finds the slot occupied.
+	time.Sleep(50 * time.Millisecond)
+	sendEmptyRequest(rid2)
+
+	waitFor := func(pred func(f Frame) bool, what string) Frame {
+		t.Helper()
+		deadline := time.After(3 * time.Second)
+		for {
+			select {
+			case f, ok := <-outFrames:
+				if !ok {
+					t.Fatalf("output closed waiting for %s", what)
+				}
+				if pred(f) {
+					return f
+				}
+			case <-deadline:
+				t.Fatalf("timed out waiting for %s", what)
+			}
+		}
+	}
+
+	queuedLog := waitFor(func(f Frame) bool {
+		return f.FrameType == FrameTypeLog && f.Id.Equals(rid2) && f.LogLevel() == "queued"
+	}, "queued LOG for rid2")
+	if !strings.Contains(queuedLog.LogMessage(), "queued") {
+		t.Errorf("queued LOG message should mention queueing, got %q", queuedLog.LogMessage())
+	}
+
+	// Release rid1's handler — it must finish before rid2 is ever dequeued
+	// (capacity 1 is never exceeded).
+	release <- struct{}{}
+	waitFor(func(f Frame) bool { return f.FrameType == FrameTypeEnd && f.Id.Equals(rid1) }, "END for rid1")
+	waitFor(func(f Frame) bool {
+		return f.FrameType == FrameTypeLog && f.Id.Equals(rid2) && f.LogLevel() == "dequeued"
+	}, "dequeued LOG for rid2")
+
+	release <- struct{}{}
+	waitFor(func(f Frame) bool { return f.FrameType == FrameTypeEnd && f.Id.Equals(rid2) }, "END for rid2")
+}
+
+// TestOutputStreamFinishSetsEndFinalProgress: OutputStream.Finish declares the
+// terminal status delivered in the END frame's terminal metadata (protocol
+// v3, L3/L5). Go-only — validates StreamEmitter.Finish / Frame.FinalProgress
+// wiring added by this port (the shared Rust/Swift behavior these mirror is
+// exercised structurally by TEST7020's use of EndOkWith above).
+func TestOutputStreamFinishSetsEndFinalProgress(t *testing.T) {
+	frames := outputEmitterCapture(t, "stream-1", "media:test", 256000, func(e *threadSafeEmitter) {
+		if err := e.EmitCbor([]byte("hi")); err != nil {
+			t.Fatalf("emit must succeed: %v", err)
+		}
+		e.Finish(0.75, "almost done")
+	})
+
+	var end *Frame
+	for i := range frames {
+		if frames[i].FrameType == FrameTypeEnd {
+			end = &frames[i]
+		}
+	}
+	if end == nil {
+		t.Fatal("must send END")
+	}
+	progress := end.FinalProgress()
+	if progress == nil || *progress != 0.75 {
+		t.Errorf("expected final progress 0.75, got %v", progress)
+	}
+	message := end.FinalMessage()
+	if message == nil || *message != "almost done" {
+		t.Errorf("expected final message 'almost done', got %v", message)
+	}
+}
+
+// TestOutputStreamDefaultFinalProgressIsOne: without a Finish() call, a
+// successful END reads as final progress 1.0 (the documented default).
+func TestOutputStreamDefaultFinalProgressIsOne(t *testing.T) {
+	frames := outputEmitterCapture(t, "stream-1", "media:test", 256000, func(e *threadSafeEmitter) {
+		if err := e.EmitCbor([]byte("hi")); err != nil {
+			t.Fatalf("emit must succeed: %v", err)
+		}
+	})
+
+	var end *Frame
+	for i := range frames {
+		if frames[i].FrameType == FrameTypeEnd {
+			end = &frames[i]
+		}
+	}
+	if end == nil {
+		t.Fatal("must send END")
+	}
+	progress := end.FinalProgress()
+	if progress == nil || *progress != 1.0 {
+		t.Errorf("expected default final progress 1.0, got %v", progress)
 	}
 }

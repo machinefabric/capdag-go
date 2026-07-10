@@ -191,6 +191,48 @@ func (a *CapArg) ClearMetadata() {
 	a.Metadata = nil
 }
 
+// StreamUrn returns the media URN the runtime demuxes this arg's input stream by:
+// its Stdin source URN if it declares one, otherwise its declared slot media URN.
+// A cap need not declare any Stdin source at all — a producer-fed arg may be
+// delivered by its declared URN — so this never assumes a stdin source exists.
+// Matches Rust: pub fn stream_urn(&self) -> &str
+func (a *CapArg) StreamUrn() string {
+	for _, s := range a.Sources {
+		if s.Stdin != nil {
+			return *s.Stdin
+		}
+	}
+	return a.MediaUrn
+}
+
+// IsMainInput reports whether this arg is the cap's MAIN input relative to inSpec
+// (the cap URN's in= value): it declares a Stdin source whose URN is in=. The main
+// input is always the value piped in on stdin (like a Unix command's stdin), so the
+// main arg always declares a Stdin source carrying in=. Its DECLARED slot URN may
+// differ from that stdin URN (e.g. a file-path slot whose piped content is a
+// pdf-stream) — the stdin URN, not the slot URN, is in=. The main input may ALSO be
+// delivered by position/cli-flag, but stdin is the defining route. Compared by
+// tagged-URN equivalence, never as strings.
+// Matches Rust: pub fn is_main_input(&self, in_spec: &MediaUrn) -> bool
+func (a *CapArg) IsMainInput(inSpec *urn.MediaUrn) bool {
+	if inSpec == nil {
+		return false
+	}
+	for _, s := range a.Sources {
+		if s.Stdin == nil {
+			continue
+		}
+		stdinUrn, err := urn.NewMediaUrnFromString(*s.Stdin)
+		if err != nil {
+			continue
+		}
+		if stdinUrn.IsEquivalent(inSpec) {
+			return true
+		}
+	}
+	return false
+}
+
 // HasStdinSource returns true if this argument has a stdin source
 func (a *CapArg) HasStdinSource() bool {
 	for _, s := range a.Sources {
@@ -634,6 +676,47 @@ func (c *Cap) GetStdinMediaUrn() *string {
 // AcceptsStdin returns true if any arg has a stdin source
 func (c *Cap) AcceptsStdin() bool {
 	return c.GetStdinMediaUrn() != nil
+}
+
+// SequenceShape returns the cardinality shape of this cap's primary data path:
+// (inputIsSequence, outputIsSequence).
+//
+// inputIsSequence is the IsSequence flag of the first arg that carries a Stdin
+// source — the primary data input the wire delivers. outputIsSequence is the
+// output's IsSequence flag.
+//
+// This is THE single definition of cap cardinality. Path search
+// (planner.LiveCapFab path search), editor realization (machine.realizeStrand),
+// and notation resolution (machine.resolvePreInterned) all read it here so they
+// can never diverge — the distinction that decides whether a ForEach is
+// synthesized.
+// Matches Rust: pub fn sequence_shape(&self) -> (bool, bool)
+func (c *Cap) SequenceShape() (bool, bool) {
+	inputIsSequence := false
+	for _, arg := range c.Args {
+		if arg.HasStdinSource() {
+			inputIsSequence = arg.IsSequence
+			break
+		}
+	}
+	outputIsSequence := false
+	if c.Output != nil {
+		outputIsSequence = c.Output.IsSequence
+	}
+	return inputIsSequence, outputIsSequence
+}
+
+// NeedsForeach reports whether a data position of cardinality sourceIsSequence
+// feeding this cap's primary input requires a ForEach (per-item map) to be
+// inserted before it.
+//
+// The one rule, shared by every planner/resolver path: a sequence feeding a
+// scalar-input cap must be mapped. The media URN does not change — ForEach is a
+// shape transition, not a type transition.
+// Matches Rust: pub fn needs_foreach(&self, source_is_sequence: bool) -> bool
+func (c *Cap) NeedsForeach(sourceIsSequence bool) bool {
+	inputIsSequence, _ := c.SequenceShape()
+	return sourceIsSequence && !inputIsSequence
 }
 
 // GetArgs returns the args

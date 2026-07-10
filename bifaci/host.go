@@ -201,11 +201,31 @@ type ManagedCartridge struct {
 	// HELLO time. This is the source of truth on the wire; the engine
 	// reads `installed_cartridges[*].cap_groups` and computes its own
 	// flat list.
-	capGroups                []CapGroup
-	running                  bool
-	helloFailed              bool
+	capGroups   []CapGroup
+	running     bool
+	helloFailed bool
+	// removed marks a cartridge retired by a roster sync (the install was
+	// removed/replaced on disk). A removed cartridge disappears from the
+	// inventory entirely — unlike helloFailed, which stays visible
+	// carrying an attachment error. Cartridge slots are never physically
+	// removed (routing state holds indices), so this flag is the
+	// retirement mechanism. Mirrors Rust ManagedCartridge::removed /
+	// Swift isRemoved.
+	removed                  bool
 	LastHeartbeatUnixSeconds *int64
 	RestartCount             uint64
+	// protocolDropsTotal is the cumulative protocol drop count
+	// self-reported by the cartridge as `drops_total` in heartbeat
+	// response meta (writer-gate post-terminal drops, closed-channel
+	// sends, …). nil until the first heartbeat round-trip carries the
+	// counter. Survives across readings (each heartbeat carries the
+	// cartridge's running total). Mirrors Rust protocol_drops_total.
+	protocolDropsTotal *uint64
+	// pendingHeartbeats tracks health probes this host has sent to the
+	// cartridge (id string → sent time), so a later HEARTBEAT frame from
+	// the cartridge can be told apart from a cartridge-initiated
+	// heartbeat. Mirrors Rust ManagedCartridge::pending_heartbeats.
+	pendingHeartbeats map[string]time.Time
 	// installedIdentity is the resolvable (registry_url, channel, id,
 	// version) identity of the cartridge. Every registration path stamps
 	// one: RegisterCartridgeDir from the directory-tree hash,
@@ -301,6 +321,37 @@ type CartridgeHost struct {
 	outgoingRids  map[string]outgoingRoute  // rid string → route (carries typed RID)
 	incomingRxids map[rxidKey]incomingRoute // (xid, rid) → route (carries typed XID/RID)
 
+	// incomingBodyDone marks keys in incomingRxids whose REQUEST BODY has
+	// completed (body END routed to the handler) but whose RESPONSE has
+	// not yet terminated. Protocol v3 keeps the incomingRxids entry alive
+	// through this phase — engine→cartridge CREDIT grants for the
+	// handler's OUTPUT arrive throughout it (removing the entry at body
+	// END, as the pre-v3 code did, silently kills every output grant and
+	// deadlocks any response larger than the initial window). Data
+	// frames arriving from the relay during this phase are self-loop
+	// peer responses and fall through to outgoingRids as before. Cleared
+	// with the entry. Mirrors Rust incoming_body_done.
+	incomingBodyDone map[rxidKey]struct{}
+	// incomingResponseDone marks keys whose handler RESPONSE terminal
+	// already passed outbound while the request body was still open
+	// (response-first race). When the body END later arrives, the entry
+	// is released immediately instead of being marked body-done. Cleared
+	// with the entry. Mirrors Rust incoming_response_done.
+	incomingResponseDone map[rxidKey]struct{}
+
+	// drops is the dropped-frame accounting (L8): unroutable
+	// continuations and frames for dead cartridges are counted drops,
+	// never silent losses. Mirrors Rust CartridgeHostRuntime.drops.
+	drops *DropCounters
+
+	// staticInventoryRecords are inventory records this host does NOT
+	// manage as processes — discovery outcomes such as incompatible
+	// installs (verdict-rejected, wrong manifest version, quarantined).
+	// Merged into every capabilities advertisement so a host-originated
+	// RelayNotify can never erase them from the engine's inventory.
+	// Mirrors Rust CartridgeHostRuntime.static_inventory_records.
+	staticInventoryRecords []InstalledCartridgeRecord
+
 	// Routing-table GC bookkeeping — mirror of the Rust runtime's
 	// touch-sequence-based garbage collector
 	// (capdag/src/bifaci/host_runtime.rs). The `*Touched` maps stamp
@@ -335,6 +386,9 @@ func NewCartridgeHost() *CartridgeHost {
 		incomingRxids:        make(map[rxidKey]incomingRoute),
 		incomingRxidsTouched: make(map[rxidKey]uint64),
 		outgoingRidsTouched:  make(map[string]uint64),
+		incomingBodyDone:     make(map[rxidKey]struct{}),
+		incomingResponseDone: make(map[rxidKey]struct{}),
+		drops:                NewDropCounters(),
 		eventCh:              make(chan cartridgeEvent, 256),
 		commandCh:            make(chan hostCommand, 16),
 	}
@@ -480,6 +534,56 @@ func (p *CartridgeProcessHandle) SyncRoster(cartridges []RegisteredDirSpec) erro
 	return nil
 }
 
+// SetStaticInventoryRecords provides inventory records for cartridges this
+// host does NOT manage as processes — discovery outcomes such as
+// incompatible installs, carrying their AttachmentError. They are merged
+// into every capabilities advertisement (initial and republished), so the
+// engine's inventory — and therefore the UI — always shows every on-disk
+// cartridge with its status. Mirrors Rust set_static_inventory_records.
+func (h *CartridgeHost) SetStaticInventoryRecords(records []InstalledCartridgeRecord) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.staticInventoryRecords = records
+}
+
+// HostProtocolStats is the host runtime's protocol observability snapshot
+// (L8): per-reason drop counters and routing-table sizes. Field names are
+// the mirror contract. Mirrors Rust HostProtocolStats / Swift's
+// HostProtocolStats.
+//
+// Go's CartridgeHost does not maintain incoming_to_peer_rids (peer-call
+// cancel-cascade linkage) or outgoing_max_seq (per-flow max-seen-seq
+// bookkeeping) — those routing tables don't exist in this simpler,
+// channel-based routing design, so the two corresponding Rust/Swift fields
+// have no honest value to report here and are omitted rather than
+// fabricated as a permanent zero.
+type HostProtocolStats struct {
+	Drops                 DropSnapshot `json:"drops"`
+	OutgoingRids          int          `json:"outgoing_rids"`
+	IncomingRxids         int          `json:"incoming_rxids"`
+	RoutingGcRunsTotal    uint64       `json:"routing_gc_runs_total"`
+	RoutingGcEvictedTotal uint64       `json:"routing_gc_evicted_total"`
+}
+
+// ProtocolStats returns the protocol observability snapshot (L8): drop
+// counters and routing-table sizes for this host.
+func (h *CartridgeHost) ProtocolStats() HostProtocolStats {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.protocolStatsLocked()
+}
+
+// protocolStatsLocked builds the snapshot. Caller must hold h.mu.
+func (h *CartridgeHost) protocolStatsLocked() HostProtocolStats {
+	return HostProtocolStats{
+		Drops:                 h.drops.Snapshot(),
+		OutgoingRids:          len(h.outgoingRids),
+		IncomingRxids:         len(h.incomingRxids),
+		RoutingGcRunsTotal:    h.routingGcRunsTotal,
+		RoutingGcEvictedTotal: h.routingGcEvictedTotal,
+	}
+}
+
 // installedCartridgeRecordFromBinary builds the install identity for a
 // cartridge registered by binary path (on-demand spawn). The identity tuple
 // (registry_url, channel, id, version) comes from the cartridge's manifest
@@ -530,6 +634,7 @@ func (h *CartridgeHost) RegisterCartridge(path, name, version string, channel Ca
 		running:           false,
 		limits:            DefaultLimits(),
 		installedIdentity: installedCartridgeRecordFromBinary(path, name, version, channel, registryURL),
+		pendingHeartbeats: make(map[string]time.Time),
 	}
 	h.cartridges = append(h.cartridges, cartridge)
 
@@ -559,12 +664,13 @@ func (h *CartridgeHost) registerCartridgeDirLocked(spec RegisteredDirSpec) {
 	cartridgeIdx := len(h.cartridges)
 
 	cartridge := &ManagedCartridge{
-		path:         spec.EntryPoint,
-		cartridgeDir: spec.VersionDir,
-		capGroups:    spec.CapGroups,
-		caps:         capURNsFromGroups(spec.CapGroups),
-		running:      false,
-		limits:       DefaultLimits(),
+		path:              spec.EntryPoint,
+		cartridgeDir:      spec.VersionDir,
+		capGroups:         spec.CapGroups,
+		caps:              capURNsFromGroups(spec.CapGroups),
+		running:           false,
+		limits:            DefaultLimits(),
+		pendingHeartbeats: make(map[string]time.Time),
 	}
 
 	sha256, err := HashCartridgeDirectory(spec.VersionDir)
@@ -685,6 +791,7 @@ func (h *CartridgeHost) AttachCartridge(cartridgeRead io.Reader, cartridgeWrite 
 		// silently excluded from every RelayNotify and the engine can never
 		// route to it (the dev/interop relay path).
 		installedIdentity: installedCartridgeRecordFromManifest(manifest),
+		pendingHeartbeats: make(map[string]time.Time),
 	}
 	h.cartridges = append(h.cartridges, cartridge)
 
@@ -952,7 +1059,7 @@ func (h *CartridgeHost) syncRegisteredRoster(desired []RegisteredDirSpec, relayW
 	// Retire registered-dir cartridges no longer desired.
 	for idx := range h.cartridges {
 		cartridge := h.cartridges[idx]
-		if cartridge.helloFailed {
+		if cartridge.removed {
 			continue
 		}
 		rec := cartridge.installedCartridgeRecord()
@@ -976,7 +1083,8 @@ func (h *CartridgeHost) syncRegisteredRoster(desired []RegisteredDirSpec, relayW
 			}
 			cartridge.running = false
 		}
-		cartridge.helloFailed = true // drop from cap table + inventory
+		cartridge.removed = true     // retire: drop from cap table + inventory
+		cartridge.helloFailed = true // keep out of dispatch/spawn paths
 	}
 
 	// Add newly-desired specs not already registered.
@@ -1086,13 +1194,16 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 			relayWriter.WriteFrame(errFrame)
 		}
 
-	case FrameTypeStreamStart, FrameTypeChunk, FrameTypeStreamEnd, FrameTypeEnd, FrameTypeErr:
-		// Continuation frame from the relay. Two possibilities:
+	case FrameTypeStreamStart, FrameTypeChunk, FrameTypeStreamEnd, FrameTypeEnd, FrameTypeErr, FrameTypeCredit:
+		// Continuation frame from the relay. CREDIT rides the same route
+		// as data continuations (protocol v3, L11): it targets whichever
+		// cartridge is sending the credited stream — the handler
+		// cartridge for a normal request (via incomingRxids) or the
+		// requester cartridge for a peer call's argument streams (via
+		// outgoingRids). Two possibilities for data/terminal frames:
 		//   1. Body phase — `incomingRxids[(xid, rid)]` says which
-		//      cartridge is handling the original request. END
-		//      here marks the end of the body; we drop the entry
-		//      so a self-loop peer response (same RID) can fall
-		//      through to outgoingRids next.
+		//      cartridge is handling the original request. Body END no
+		//      longer drops the entry (v3) — see incomingBodyDone below.
 		//   2. Response phase — `outgoingRids[rid]` says which
 		//      cartridge sent the peer REQ; the relay is now
 		//      delivering the response back. END/ERR here marks
@@ -1106,33 +1217,69 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 		xid := *frame.RoutingId
 		key := makeRxidKey(xid, frame.Id)
 
+		// Route selection:
+		//   - CREDIT routes by its mandatory direction (L11): a
+		//     `response` grant credits the HANDLER's output → incoming
+		//     side; a `request` grant credits the REQUESTER's argument
+		//     streams → outgoing side. The (xid, rid) key alone cannot
+		//     distinguish these for self-loop peer calls.
+		//   - Data/terminal frames prefer the incoming side while the
+		//     request body is still flowing; after body END they are
+		//     self-loop peer responses and fall through to outgoing.
+		var preferIncoming bool
+		if frame.FrameType == FrameTypeCredit {
+			dir := frame.CreditDirectionValue()
+			if dir == nil {
+				// Dropped: v3 requires credit_dir on every CREDIT frame —
+				// never a silent loss (no_route, L6/L8).
+				h.drops.Record(DropReasonNoRoute)
+				return nil
+			}
+			preferIncoming = *dir == CreditDirectionResponse
+		} else {
+			_, bodyDone := h.incomingBodyDone[key]
+			preferIncoming = !bodyDone
+		}
+
 		var (
 			cartridgeIdx      int
 			routedViaIncoming bool
 			haveRoute         bool
 		)
-		if route, ok := h.incomingRxids[key]; ok {
-			cartridgeIdx = route.cartridgeIdx
-			routedViaIncoming = true
-			haveRoute = true
-		} else if route, ok := h.outgoingRids[frame.Id.ToString()]; ok {
-			cartridgeIdx = route.cartridgeIdx
-			routedViaIncoming = false
-			haveRoute = true
+		if preferIncoming {
+			if route, ok := h.incomingRxids[key]; ok {
+				h.touchIncomingRxid(key)
+				cartridgeIdx = route.cartridgeIdx
+				routedViaIncoming = true
+				haveRoute = true
+			}
+		}
+		if !haveRoute {
+			if route, ok := h.outgoingRids[frame.Id.ToString()]; ok {
+				h.touchOutgoingRid(frame.Id.ToString())
+				cartridgeIdx = route.cartridgeIdx
+				routedViaIncoming = false
+				haveRoute = true
+			}
+		}
+		if !haveRoute {
+			// Fallback: no outgoing entry, so this cannot be a
+			// self-loop peer response — route to the handler even
+			// post-body-END (defensive; normal requests only ever
+			// see CREDIT here, handled above).
+			if route, ok := h.incomingRxids[key]; ok {
+				h.touchIncomingRxid(key)
+				cartridgeIdx = route.cartridgeIdx
+				routedViaIncoming = true
+				haveRoute = true
+			}
 		}
 		if !haveRoute {
 			// No routing — the request was already torn down (e.g.
-			// after cartridge death). Drop silently rather than
-			// resurrecting state.
+			// after cartridge death). A counted no_route drop (L6/L8),
+			// never a silent loss.
+			h.drops.Record(DropReasonNoRoute)
 			return nil
-		}
-
-		// Re-stamp the entry that matched so a still-streaming flow
-		// stays "fresh" for the GC.
-		if routedViaIncoming {
-			h.touchIncomingRxid(key)
-		} else {
-			h.touchOutgoingRid(frame.Id.ToString())
 		}
 
 		isTerminal := frame.FrameType == FrameTypeEnd || frame.FrameType == FrameTypeErr
@@ -1148,6 +1295,8 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 			if routedViaIncoming {
 				delete(h.incomingRxids, key)
 				delete(h.incomingRxidsTouched, key)
+				delete(h.incomingBodyDone, key)
+				delete(h.incomingResponseDone, key)
 			} else {
 				delete(h.outgoingRids, frame.Id.ToString())
 				delete(h.outgoingRidsTouched, frame.Id.ToString())
@@ -1158,13 +1307,24 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 			return nil
 		}
 
+		// Terminal bookkeeping.
+		//   - Via incomingRxids: the REQUEST BODY completed. The entry
+		//     STAYS — the handler's response is still flowing and its
+		//     output CREDIT grants route through it (v3). It is removed
+		//     when the handler's response terminal passes outbound
+		//     (handleCartridgeFrame) or on cartridge death.
+		//   - Via outgoingRids: a peer RESPONSE completed — clean up.
 		if isTerminal {
 			if routedViaIncoming {
-				// Body phase done. The cartridge's response phase
-				// is independent and tracked via the cartridge's
-				// outbound frames carrying the same XID.
-				delete(h.incomingRxids, key)
-				delete(h.incomingRxidsTouched, key)
+				if _, responseAlreadyDone := h.incomingResponseDone[key]; responseAlreadyDone {
+					// Response already terminated (response-first
+					// race): the request is fully over — release.
+					delete(h.incomingResponseDone, key)
+					delete(h.incomingRxids, key)
+					delete(h.incomingRxidsTouched, key)
+				} else {
+					h.incomingBodyDone[key] = struct{}{}
+				}
 			} else {
 				// Peer response phase done. Drop the requester's
 				// entry so the next REQ with the same RID
@@ -1221,12 +1381,32 @@ func (h *CartridgeHost) handleCartridgeFrame(cartridgeIdx int, frame *Frame, rel
 
 	switch frame.FrameType {
 	case FrameTypeHeartbeat:
-		// Respond to cartridge heartbeat locally — don't forward.
-		// Best-effort: if the cartridge has already died, the
-		// heartbeat reply is dropped and the death will surface on
-		// the next reader-loop iteration.
-		response := NewHeartbeat(frame.Id)
-		_ = h.sendToCartridge(cartridgeIdx, response)
+		cartridge := h.cartridges[cartridgeIdx]
+		probeKey := frame.Id.ToString()
+		if _, isOurProbe := cartridge.pendingHeartbeats[probeKey]; isOurProbe {
+			delete(cartridge.pendingHeartbeats, probeKey)
+			// Response to our health probe — cartridge is alive.
+			// Cumulative protocol drop counter (L8). The reading is the
+			// cartridge's running total — stored as-is, never merged or
+			// maxed. Mirrors Rust's ingestion of `drops_total` from
+			// heartbeat response meta.
+			if frame.Meta != nil {
+				if v, ok := extractUint64FromMeta(frame.Meta, "drops_total"); ok {
+					cartridge.protocolDropsTotal = &v
+				}
+			}
+			// Stamp the round-trip completion timestamp so the
+			// runtime-stats snapshot can surface heartbeat age to the UI.
+			now := unixSecondsNow()
+			cartridge.LastHeartbeatUnixSeconds = &now
+		} else {
+			// Cartridge-initiated heartbeat — respond immediately.
+			// Best-effort: if the cartridge has already died, the
+			// heartbeat reply is dropped and the death will surface on
+			// the next reader-loop iteration.
+			response := NewHeartbeat(frame.Id)
+			_ = h.sendToCartridge(cartridgeIdx, response)
+		}
 
 	case FrameTypeHello:
 		// HELLO post-handshake — protocol violation, ignore.
@@ -1253,7 +1433,49 @@ func (h *CartridgeHost) handleCartridgeFrame(cartridgeIdx int, frame *Frame, rel
 		// Continuation frames (StreamStart/Chunk/StreamEnd/End/Err/Log).
 		// Forward as-is, with whatever XID the cartridge stamped (it
 		// echoes back the XID it received on the inbound REQ).
+		isTerminal := frame.FrameType == FrameTypeEnd || frame.FrameType == FrameTypeErr
+		if isTerminal && frame.RoutingId != nil {
+			// The handler's RESPONSE terminal is the request's true end
+			// at this host (v3): once the body has completed too,
+			// release the incoming routing entry and its body-done
+			// marker. If the response terminates BEFORE the body END
+			// arrives (response-first race), remember it so the body
+			// END releases the entry immediately.
+			key := makeRxidKey(*frame.RoutingId, frame.Id)
+			if _, bodyDone := h.incomingBodyDone[key]; bodyDone {
+				delete(h.incomingBodyDone, key)
+				delete(h.incomingRxids, key)
+				delete(h.incomingRxidsTouched, key)
+			} else if _, stillIncoming := h.incomingRxids[key]; stillIncoming {
+				h.incomingResponseDone[key] = struct{}{}
+			}
+		}
 		relayWriter.WriteFrame(frame)
+	}
+}
+
+// extractUint64FromMeta reads an unsigned integer from a frame meta map,
+// handling CBOR type variance (int, int64, uint64, float64). Returns
+// (0, false) if the key is absent — the caller MUST treat absence as "no
+// reading", never a fabricated zero (mirrors extractIntFromMeta's type
+// handling, but preserves presence so callers can distinguish "not yet
+// measured" from "measured as zero").
+func extractUint64FromMeta(meta map[string]interface{}, key string) (uint64, bool) {
+	v, ok := meta[key]
+	if !ok {
+		return 0, false
+	}
+	switch n := v.(type) {
+	case int:
+		return uint64(n), true
+	case int64:
+		return uint64(n), true
+	case uint64:
+		return n, true
+	case float64:
+		return uint64(n), true
+	default:
+		return 0, false
 	}
 }
 
@@ -1299,6 +1521,8 @@ func (h *CartridgeHost) handleCartridgeDeath(cartridgeIdx int, relayWriter *rela
 	for _, key := range incomingKeys {
 		delete(h.incomingRxids, key)
 		delete(h.incomingRxidsTouched, key)
+		delete(h.incomingBodyDone, key)
+		delete(h.incomingResponseDone, key)
 	}
 
 	var outgoingKeys []string
@@ -1464,8 +1688,11 @@ func (h *CartridgeHost) buildInstalledCartridgeIdentities() []InstalledCartridge
 
 	var installed []InstalledCartridgeRecord
 	for idx, cartridge := range h.cartridges {
-		if cartridge.helloFailed {
-			continue // Permanently broken, not advertised.
+		// Retired installs are gone from the inventory entirely —
+		// retirement is not a failure, there is nothing to report.
+		// Mirrors the reference build_installed_cartridge_identities.
+		if cartridge.removed {
+			continue
 		}
 
 		// cap_groups is the manifest-derived source of truth, captured at
@@ -1474,9 +1701,12 @@ func (h *CartridgeHost) buildInstalledCartridgeIdentities() []InstalledCartridge
 		capGroups := cartridge.capGroups
 
 		stats := &CartridgeRuntimeStats{
-			Running:            cartridge.running,
-			ActiveRequestCount: activeCounts[idx],
-			PeerRequestCount:   peerCounts[idx],
+			Running:                  cartridge.running,
+			ActiveRequestCount:       activeCounts[idx],
+			PeerRequestCount:         peerCounts[idx],
+			LastHeartbeatUnixSeconds: cartridge.LastHeartbeatUnixSeconds,
+			RestartCount:             cartridge.RestartCount,
+			ProtocolDropsTotal:       cartridge.protocolDropsTotal,
 		}
 		if cartridge.cmd != nil && cartridge.cmd.Process != nil {
 			pid := uint32(cartridge.cmd.Process.Pid)
@@ -1495,13 +1725,35 @@ func (h *CartridgeHost) buildInstalledCartridgeIdentities() []InstalledCartridge
 		if rec == nil {
 			continue
 		}
-		// Copy the base identity and overlay the live cap_groups + runtime
-		// stats.
+		// Copy the base identity and overlay the runtime stats.
 		out := *rec
-		out.CapGroups = capGroups
 		out.RuntimeStats = stats
+
+		// A cartridge whose HELLO permanently failed (e.g. a pre-v3 binary
+		// hard-rejected by the version check) stays IN the inventory with
+		// an attachment error — never silently absent. It carries no
+		// cap_groups, so it is never routable. Mirrors the reference
+		// build_installed_cartridge_identities.
+		if cartridge.helloFailed {
+			out.CapGroups = nil
+			out.AttachmentError = &CartridgeAttachmentError{
+				Kind: CartridgeAttachmentErrorKindHandshakeFailed,
+				Message: "HELLO handshake failed (protocol version mismatch or " +
+					"malformed manifest) — rebuild the cartridge against the " +
+					"current protocol",
+				DetectedAtUnixSeconds: unixSecondsNow(),
+			}
+			installed = append(installed, out)
+			continue
+		}
+
+		// Healthy: overlay the live cap_groups (source of truth from HELLO).
+		out.CapGroups = capGroups
 		installed = append(installed, out)
 	}
+	// Discovery outcomes the host doesn't manage (incompatible installs)
+	// ride every advertisement so no republish can erase them.
+	installed = append(installed, h.staticInventoryRecords...)
 	return installed
 }
 
@@ -1545,8 +1797,31 @@ func (h *CartridgeHost) rebuildCapabilitiesLocked(relayWriter *relayOutbound) {
 	if err != nil {
 		return
 	}
-	frame := NewRelayNotify(notifyBytes, DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer)
+	// Advertise the host's REAL aggregate limits — the element-wise minimum
+	// over every running cartridge's negotiated handshake limits. Sending
+	// defaults here would clobber genuine negotiations on every republish.
+	// Mirrors Rust CartridgeHostRuntime::rebuild_capabilities.
+	limits := h.aggregateLimits()
+	frame := NewRelayNotify(notifyBytes, limits.MaxFrame, limits.MaxChunk, limits.MaxReorderBuffer, limits.InitialCredit)
 	relayWriter.WriteFrame(frame)
+}
+
+// aggregateLimits computes the element-wise minimum over the negotiated
+// limits of every running cartridge; defaults when none are running. This is
+// what the host is actually able to honor across its fleet. Caller must hold
+// h.mu. Mirrors Rust CartridgeHostRuntime::aggregate_limits.
+func (h *CartridgeHost) aggregateLimits() Limits {
+	limits := DefaultLimits()
+	for _, cartridge := range h.cartridges {
+		if !cartridge.running {
+			continue
+		}
+		limits.MaxFrame = min(limits.MaxFrame, cartridge.limits.MaxFrame)
+		limits.MaxChunk = min(limits.MaxChunk, cartridge.limits.MaxChunk)
+		limits.MaxReorderBuffer = min(limits.MaxReorderBuffer, cartridge.limits.MaxReorderBuffer)
+		limits.InitialCredit = min(limits.InitialCredit, cartridge.limits.InitialCredit)
+	}
+	return limits
 }
 
 // killAllCartridges stops all managed cartridges.
