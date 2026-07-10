@@ -10,7 +10,7 @@ import (
 // CBOR map keys (MUST match Rust implementation exactly)
 // From capdag/src/cbor_frame.rs lines 10-22:
 const (
-	keyVersion     = 0  // version (u8, always 2)
+	keyVersion     = 0  // version (u8, always PROTOCOL_VERSION = 3)
 	keyFrameType   = 1  // frame_type (u8)
 	keyId          = 2  // id (bytes[16] or uint)
 	keySeq         = 3  // seq (u64)
@@ -38,7 +38,7 @@ func EncodeFrame(frame *Frame) ([]byte, error) {
 	// Build CBOR map with integer keys matching Rust layout
 	m := make(map[int]interface{})
 
-	// 0: version (always 1)
+	// 0: version (always PROTOCOL_VERSION)
 	m[keyVersion] = uint8(ProtocolVersion)
 
 	// 1: frame_type

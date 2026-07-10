@@ -1075,6 +1075,31 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 			if pending, ok := pendingPeerRequests.Load(idKey); ok {
 				pendingReq := pending.(*pendingPeerRequest)
 				pendingReq.sender <- *frame
+
+				// Peer-response consumption grants (protocol v3, L10/L14):
+				// as this cartridge consumes the responding peer's OUTPUT
+				// stream, replenish the peer's output window with batched
+				// Response-direction CREDIT grants — otherwise a responder
+				// whose output exceeds the negotiated initial window stalls
+				// forever waiting on credit this caller never sends. Mirrors
+				// Rust demux_single_stream's InputGrantEmitter (Response
+				// direction, stream-less single-response grants, batch =
+				// initial_credit/2 min 1); grant-on-forward matches this
+				// mirror's eager crediting model (see the incoming
+				// FrameTypeChunk path above — checksum was already verified
+				// before this branch, so every chunk here is real
+				// consumption). A Response grant carries no routing_id
+				// (Rust's xid = None) and no stream_id: the host routes it to
+				// the responder's sole output gate by direction (L11).
+				pendingReq.responseConsumed++
+				if pendingReq.responseConsumed >= creditBatch {
+					n := pendingReq.responseConsumed
+					pendingReq.responseConsumed = 0
+					grantFrame := NewCredit(frame.Id, nil, n, CreditDirectionResponse)
+					if err := writer.WriteFrame(grantFrame); err != nil {
+						fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write peer-response CREDIT grant: %v\n", err)
+					}
+				}
 			}
 
 		case FrameTypeEnd:
@@ -2375,6 +2400,16 @@ func (e *threadSafeEmitter) Finalize() {
 	e.finalMu.Lock()
 	progress, message := e.finalProgress, e.finalMessage
 	e.finalMu.Unlock()
+	// The END frame always carries an explicit final progress: the handler's
+	// declared value, or the 1.0 success default when Finish was never called.
+	// Rust's spawn_handler stamps Some(1.0) rather than omitting the key, so
+	// stamp it here too — the success-END wire bytes must match exactly, not
+	// merely decode equivalently via FinalProgress's reader-side default.
+	// (matches Rust spawn_handler's `None => (1.0, None)` + end_ok_with)
+	if progress == nil {
+		one := 1.0
+		progress = &one
+	}
 	endFrame := EndOkWith(e.requestID, nil, progress, message)
 	endFrame.RoutingId = e.routingId
 	if err := e.writer.WriteFrame(endFrame); err != nil {
@@ -2560,6 +2595,15 @@ type pendingPeerRequest struct {
 	sender  chan Frame        // Channel to send response frames to handler
 	streams map[string]string // stream_id → media_urn mapping
 	ended   bool              // true after END frame (close channel)
+
+	// responseConsumed counts peer-response CHUNK frames this cartridge has
+	// consumed since the last Response-direction CREDIT grant it emitted back
+	// to the responder (protocol v3, L10/L14). A batched grant (creditBatch =
+	// initial_credit/2, min 1) replenishes the responder's output window so a
+	// large peer response cannot stall the responding cartridge on credit.
+	// Only touched from the single-threaded main read loop. (matches Rust
+	// demux_single_stream's InputGrantEmitter for the peer response)
+	responseConsumed uint64
 }
 
 // peerInvokerImpl implements PeerInvoker

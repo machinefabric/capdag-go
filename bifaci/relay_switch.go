@@ -1809,10 +1809,11 @@ func (sw *RelaySwitch) handleMasterDeath(masterIdx int) {
 		errFrame.RoutingId = &xid
 
 		if state.Origin == nil {
+			// External caller — send to response channel if present.
+			// Best-effort, like the cancelled-CANCELLED delivery above: not
+			// itself counted as a drop. Mirrors Rust's `let _ = tx.send(...)`.
 			if state.ExternalChannel != nil {
-				if !deliverExternal(state.ExternalChannel, *errFrame) {
-					sw.drops.Record(DropReasonChannelClosed)
-				}
+				deliverExternal(state.ExternalChannel, *errFrame)
 			}
 		} else {
 			srcIdx := *state.Origin

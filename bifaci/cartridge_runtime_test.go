@@ -4159,6 +4159,113 @@ func Test7062_log_flows_while_window_exhausted(t *testing.T) {
 	}
 }
 
+// TestPeerInvokerArgStreamsAreCredited: a peer call's argument stream is
+// flow-controlled by the callee's consumption exactly like a handler's
+// response stream (protocol v3, L14 — matches Rust PeerCall::arg's
+// with_credit / PeerInvokerImpl::credit_router). peerInvokerImpl.Invoke
+// registers one CreditGate per argument stream and blocks writing further
+// CHUNKs once its window is exhausted; a CREDIT frame for that (rid,
+// stream_id) unblocks it. Go-only — this port added credit gating to
+// PeerCall/PeerInvokerImpl, which previously sent peer-argument chunks
+// unconditionally (no corresponding number in the v3 diff singles this
+// gap out, since Rust/Swift never had it to begin with).
+func TestPeerInvokerArgStreamsAreCredited(t *testing.T) {
+	buf := &safeWireBuf{}
+	w := newSyncFrameWriter(NewFrameWriter(buf), NewDropCounters())
+	router := NewCreditRouter()
+	pending := &sync.Map{}
+
+	// Window of 4 chunks; the argument needs 6 chunks at max_chunk=4 bytes
+	// (each chunk is itself CBOR-wrapped, so max_chunk gates the RAW slice
+	// size passed to Invoke below, matching peerInvokerImpl's chunking loop).
+	peer := newPeerInvokerImpl(w, pending, 4, router, 4)
+
+	argData := make([]byte, 24)
+	for i := range argData {
+		argData[i] = byte(i)
+	}
+	args := []cap.CapArgumentValue{cap.NewCapArgumentValue("media:enc=utf-8", argData)}
+
+	invokeDone := make(chan error, 1)
+	go func() {
+		_, err := peer.Invoke(`cap:in="media:void";peer-test;out="media:void"`, args)
+		invokeDone <- err
+	}()
+
+	// Exactly REQ + STREAM_START + 4 CHUNKs appear, then the sender stalls —
+	// it must not have written STREAM_END, let alone END, without a grant.
+	time.Sleep(100 * time.Millisecond)
+	got := decodeWireFrames(t, buf.Bytes())
+	var peerRid MessageId
+	var streamID string
+	sawReq, sawStreamStart := false, false
+	chunksBefore := 0
+	for _, f := range got {
+		switch f.FrameType {
+		case FrameTypeReq:
+			sawReq = true
+			peerRid = f.Id
+		case FrameTypeStreamStart:
+			sawStreamStart = true
+			if f.StreamId != nil {
+				streamID = *f.StreamId
+			}
+		case FrameTypeChunk:
+			chunksBefore++
+		case FrameTypeStreamEnd, FrameTypeEnd:
+			t.Fatalf("must not reach %v before the window is granted", f.FrameType)
+		}
+	}
+	if !sawReq || !sawStreamStart {
+		t.Fatalf("expected REQ + STREAM_START before stalling, got %v", got)
+	}
+	if chunksBefore != 4 {
+		t.Fatalf("arg sender must stall at exactly the window, got %d chunks", chunksBefore)
+	}
+	select {
+	case <-invokeDone:
+		t.Fatal("Invoke must be blocked on the callee's credit")
+	default:
+	}
+
+	// Grant 2 → the remaining 2 chunks + STREAM_END + END flow; Invoke returns.
+	router.Grant(NewCredit(peerRid, &streamID, 2, CreditDirectionResponse))
+	select {
+	case err := <-invokeDone:
+		if err != nil {
+			t.Fatalf("Invoke must succeed after grant: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("grant must unblock the arg sender")
+	}
+
+	frames := decodeWireFrames(t, buf.Bytes())
+	var indexes []uint64
+	sawStreamEnd, sawEnd := false, false
+	for _, f := range frames {
+		if f.FrameType == FrameTypeChunk {
+			indexes = append(indexes, *f.ChunkIndex)
+		}
+		if f.FrameType == FrameTypeStreamEnd {
+			sawStreamEnd = true
+		}
+		if f.FrameType == FrameTypeEnd {
+			sawEnd = true
+		}
+	}
+	if len(indexes) != 6 {
+		t.Fatalf("grant releases exactly the granted chunks, expected 6 total, got %d", len(indexes))
+	}
+	for i, idx := range indexes {
+		if idx != uint64(i) {
+			t.Fatalf("chunk indexes must be in order, none lost: %v", indexes)
+		}
+	}
+	if !sawStreamEnd || !sawEnd {
+		t.Error("STREAM_END and END must follow the released chunks")
+	}
+}
+
 // testCapUrn is the "test" cap declared in testManifest, used by the
 // end-to-end runCBORModeIO harness below.
 const testCapUrn = `cap:in="media:void";test;out="media:void"`
@@ -4227,6 +4334,19 @@ func drainingHandler(frames <-chan Frame, emitter StreamEmitter, peer PeerInvoke
 	}
 	return nil
 }
+
+// TEST7063 (Rust/Swift: "a receiver flushes pending sub-batch grants before
+// blocking on an empty input") has no analog in this mirror and is
+// deliberately not ported. The scenario it guards against — a receiver
+// parked in recv() on an empty channel, holding a sub-batch-threshold count
+// of already-consumed-but-ungranted chunks that only a flush-before-block
+// releases — requires a receiver whose grant emission is decoupled from, and
+// lags behind, chunk arrival. This mirror's demux has no such receiver: a
+// CREDIT grant is computed and written synchronously in the SAME
+// read-process cycle that accepts the chunk (see TEST7052's comment), so
+// there is never a "pending" grant sitting unflushed while something blocks
+// on empty input — the analogous deadlock-freedom property (L10) holds here
+// unconditionally rather than needing a flush-before-block corollary.
 
 // TEST7052: Input consumption emits batched CREDIT grants — one grant per
 // half-window of chunks accepted, not one per chunk. In this mirror's
@@ -4302,37 +4422,30 @@ collect:
 }
 
 // TEST7053 (Rust/Swift: "a chunk received beyond the granted window is a
-// fatal CREDIT_VIOLATION") is NOT reachable as an end-to-end wire test in
-// this mirror and is deliberately not ported as a false pass. Two
-// independent, documented properties of this codebase make the Rust/Swift
-// scenario (send 3 chunks against a window of 2, with nothing consumed)
-// unreproducible here:
+// fatal CREDIT_VIOLATION", exercised by sending 3 chunks against a window of
+// 2 with nothing consumed) is NOT reachable as an end-to-end wire test in
+// this mirror and is deliberately not ported as a false pass.
 //
-//  1. Architecture: this mirror's buffer-then-dispatch demux treats
-//     "accepted a chunk" as "consumed" (see TEST7052's comment above) — every
-//     accepted chunk immediately re-grants once its half-window batch
-//     threshold is crossed, synchronously, in the same read-process cycle.
-//     For any initial_credit >= 1 the window is therefore bounded below by
-//     initial_credit - batch >= 0 and cannot go negative under any
-//     single-stream chunk sequence a real (even malicious) sender can
-//     produce over this mirror's synchronous one-frame-at-a-time transport:
-//     there is no decoupled "handler hasn't consumed yet" phase to exploit
-//     the way the Rust/Swift live-streaming demux's TEST7053 does (it stalls
-//     consumption by never calling recv()).
-//  2. The one value that WOULD make even the first chunk violate —
-//     initial_credit=0 — cannot be wire-negotiated: extractIntFromMeta
-//     (io.go) returns Go's int zero value for both "key absent from HELLO
-//     meta" and "key present with value 0", so HandshakeAccept's
-//     unwrap-or-default treats an explicit 0 identically to an omitted
-//     field and substitutes DefaultInitialCredit (32). That is a
-//     wire-negotiation gap in io.go, outside this file/subsystem's scope —
-//     ported honestly as "unreachable", not silently skipped or faked.
+// This mirror's buffer-then-dispatch demux treats "accepted a chunk" as
+// "consumed" (see TEST7052's comment above) — every accepted chunk
+// immediately re-grants once its half-window batch threshold is crossed,
+// synchronously, in the same read-process cycle. For any wire-negotiable
+// initial_credit (>= 1 — both this mirror's HandshakeAccept and the Rust
+// reference's hello_initial_credit() treat a non-positive value identically
+// to an absent field and substitute DEFAULT_INITIAL_CREDIT, so 0 is not a
+// negotiable window either language honors) the window is therefore bounded
+// below by initial_credit - batch >= 0 and cannot go negative under any
+// single-stream chunk sequence a real sender can produce over this mirror's
+// synchronous one-frame-at-a-time transport: there is no decoupled "handler
+// hasn't consumed yet" phase to exploit the way the Rust/Swift
+// live-streaming demux's TEST7053 does (it stalls consumption by never
+// calling recv()).
 //
 // The credit-violation MECHANISM itself (window decrement, `< 0` check,
-// CREDIT_VIOLATION ERR, counted CreditViolation drop) is still exercised
-// structurally by inspection of runCBORModeIO's FrameTypeChunk handling and
-// remains intact; only the wire-reachable trigger for it does not exist in
-// this architecture at any negotiable window size.
+// CREDIT_VIOLATION ERR, counted CreditViolation drop) is still exercised by
+// inspection of runCBORModeIO's FrameTypeChunk handling and remains intact;
+// only the wire-reachable trigger for it does not exist in this
+// architecture at any negotiable window size.
 
 // TestCapacityHandleQueuesRequestsBeyondLimit: with capacity set to 1, a
 // second request arriving while the first is still running is queued (LOG

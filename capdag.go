@@ -67,6 +67,6 @@ const CapDiscard = standard.CapDiscard
 const CapAdapterSelection = standard.CapAdapterSelection
 
 // Protocol constants
-const ProtocolVersion = 2  // matches bifaci.PROTOCOL_VERSION
+const ProtocolVersion = bifaci.ProtocolVersion  // v3 substrate; single source of truth
 const DefaultMaxFrame = 16 * 1024 * 1024  // 16MB
 const DefaultMaxChunk = 256 * 1024  // 256KB
