@@ -1109,6 +1109,13 @@ func (sw *RelaySwitch) runIdentityProbeViaRelay(masterIdx int) error {
 						msg = "no message"
 					}
 					return fmt.Errorf("identity probe failed: [%s] %s", code, msg)
+				case FrameTypeLog, FrameTypeCredit, FrameTypeHeartbeat:
+					// Control/side-channel frames are legal ANYWHERE during
+					// the probe (spec 12.4: LOG interleaves without affecting
+					// data flow; CREDIT/HEARTBEAT are the control plane the
+					// writer gate itself exempts, L4). A v3 cartridge
+					// crediting its probe input as it consumes (L10) must
+					// not fail identity verification.
 				default:
 					return fmt.Errorf("identity probe: unexpected frame type %v", fr.FrameType)
 				}
