@@ -1,10 +1,10 @@
 # Go Test Catalog
 
-**Total Tests:** 1156
+**Total Tests:** 1226
 
-**Numbered Tests:** 1156
+**Numbered Tests:** 1213
 
-**Unnumbered Tests:** 0
+**Unnumbered Tests:** 13
 
 **Numbered Tests Missing Descriptions:** 0
 
@@ -119,28 +119,29 @@ This catalog lists all tests in the Go codebase.
 | test119 | `Test119_cartridge_response_concatenated_and_final_payload_diverge_for_multi_chunk` | TEST119: CartridgeResponse::Streaming concatenated() and final_payload() diverge for multi-chunk responses: concatenated returns all chunk data joined; final_payload returns only the last chunk. A consumer that confuses the two will silently drop all but the last chunk of a multi-chunk response. | bifaci/host_test.go:10 |
 | test0120 | `Test0120_registry_url_under_dev_slug_is_rejected` | TEST120: Registry url under dev slug is rejected | bifaci/cartridge_discovery_test.go:103 |
 | test0123 | `Test0123_CapExists` | TEST0123: Cap exists | cap/registry_test.go:116 |
-| test0124 | `Test0124_ParseHeadersWithNoWiringsReturnsNoEdgesError` | Test0124_ParseHeadersWithNoWiringsReturnsNoEdgesError verifies the ErrNoEdges case. | machine/machine_test.go:485 |
+| test0124 | `Test0124_ParseHeadersWithNoWiringsReturnsNoEdgesError` | Test0124_ParseHeadersWithNoWiringsReturnsNoEdgesError verifies the ErrNoEdges case. | machine/machine_test.go:519 |
 | test0125 | `Test0125_effect_none_preserves_runtime_media` | TEST125: effect=none preserves runtime media identity | urn/cap_urn_test.go:2047 |
 | test0126 | `Test0126_effect_declared_uses_declared_output` | TEST126: default effect=declared uses the declared output | urn/cap_urn_test.go:2065 |
 | test0127 | `Test0127_invalid_effect_none_fails_hard` | TEST127: invalid effect=none declarations fail hard | urn/cap_urn_test.go:2077 |
 | test0128 | `Test0128_effect_dispatch_requires_explicit_wildcard` | TEST128: omitted effect means declared; unconstrained effect must be explicit | urn/cap_urn_test.go:2082 |
-| test129 | `Test129_gc_evicts_oldest_entries_by_touch_sequence` | TEST129: / Contract #2 — the GC drops the OLDEST entries by / touch-sequence, not arbitrary keys. Seed a known age / distribution and assert the post-GC keyset is exactly / what the test computes should survive (test recomputes / independently of production code). / / A regression where the GC e.g. iterates the HashMap and / drops the first N (HashMap iteration order is arbitrary / in Rust) would still pass contract #1 but fail this one — / the more dangerous bug because it silently drops / in-flight continuation frames. | bifaci/host_multi_test.go:1473 |
-| test0131 | `Test0131_runtime_identity_probe_required_on_empty_to_nonempty_transition` | TEST0131: When a master initially advertises empty caps (so the constructor skips the identity probe) and later sends a RelayNotify update with non-empty caps, the relay must run an end-to-end identity probe before the new caps become routable. A master that fails the runtime probe must end up unhealthy with lastError populated, and its caps must NOT appear in the cap_table. | bifaci/relay_switch_test.go:1767 |
-| test0132 | `Test0132_add_master_dynamic` | TEST132: add_master dynamically connects new host to running switch | bifaci/relay_switch_test.go:1484 |
-| test133 | `Test133_ReattachByIDPreservesSlotIndex` | Reattach-by-id tests for the cardinality-stable slot model. When a master dies and the host reconnects, the new socket MUST attach to the same slot index — preserving routing entries keyed by index. Accumulating zombie slots on each reconnect was the bug class these tests guard against. | bifaci/relay_switch_test.go:1043 |
-| test134 | `Test134_AddMasterWithDuplicateHealthyIDErrors` | TEST134: Add master with duplicate healthy i d errors | bifaci/relay_switch_test.go:1126 |
-| test0135 | `Test0135_runtime_identity_probe_success_makes_caps_routable` | TEST0135: the runtime identity probe SUCCESS path — a master that advertises caps AFTER connecting (empty→non-empty) and then passes the probe must flip healthy and its caps must become routable. | bifaci/relay_switch_test.go:1817 |
-| test0136 | `Test0136_all_masters_ready_false_when_expected_count_unset` | TEST136: All masters ready false when expected count unset | bifaci/relay_switch_test.go:1361 |
-| test0137 | `Test0137_all_masters_ready_false_when_partially_connected` | TEST137: All masters ready false when partially connected | bifaci/relay_switch_test.go:1375 |
-| test0138 | `Test0138_unhealthy_master_inventory_retained_but_not_routable` | TEST0138: the installed-cartridge INVENTORY is NOT health-filtered. A master held unhealthy by a failed runtime identity probe still has its cartridges visible in the aggregate inventory (so a transient master flap does not make cartridges "disappear" from the engine's view), even though its caps are excluded from ROUTING. | bifaci/relay_switch_test.go:1865 |
+| test129 | `Test129_gc_evicts_oldest_entries_by_touch_sequence` | TEST129: / Contract #2 — the GC drops the OLDEST entries by / touch-sequence, not arbitrary keys. Seed a known age / distribution and assert the post-GC keyset is exactly / what the test computes should survive (test recomputes / independently of production code). / / A regression where the GC e.g. iterates the HashMap and / drops the first N (HashMap iteration order is arbitrary / in Rust) would still pass contract #1 but fail this one — / the more dangerous bug because it silently drops / in-flight continuation frames. | bifaci/host_multi_test.go:1602 |
+| test0131 | `Test0131_runtime_identity_probe_required_on_empty_to_nonempty_transition` | TEST0131: When a master initially advertises empty caps (so the constructor skips the identity probe) and later sends a RelayNotify update with non-empty caps, the relay must run an end-to-end identity probe before the new caps become routable. A master that fails the runtime probe must end up unhealthy with lastError populated, and its caps must NOT appear in the cap_table. | bifaci/relay_switch_test.go:1774 |
+| test0132 | `Test0132_add_master_dynamic` | TEST132: add_master dynamically connects new host to running switch | bifaci/relay_switch_test.go:1491 |
+| test133 | `Test133_ReattachByIDPreservesSlotIndex` | Reattach-by-id tests for the cardinality-stable slot model. When a master dies and the host reconnects, the new socket MUST attach to the same slot index — preserving routing entries keyed by index. Accumulating zombie slots on each reconnect was the bug class these tests guard against. | bifaci/relay_switch_test.go:1050 |
+| test134 | `Test134_AddMasterWithDuplicateHealthyIDErrors` | TEST134: Add master with duplicate healthy i d errors | bifaci/relay_switch_test.go:1133 |
+| test0135 | `Test0135_runtime_identity_probe_success_makes_caps_routable` | TEST0135: the runtime identity probe SUCCESS path — a master that advertises caps AFTER connecting (empty→non-empty) and then passes the probe must flip healthy and its caps must become routable. | bifaci/relay_switch_test.go:1824 |
+| test0136 | `Test0136_all_masters_ready_false_when_expected_count_unset` | TEST136: All masters ready false when expected count unset | bifaci/relay_switch_test.go:1368 |
+| test0137 | `Test0137_all_masters_ready_false_when_partially_connected` | TEST137: All masters ready false when partially connected | bifaci/relay_switch_test.go:1382 |
+| test0138 | `Test0138_unhealthy_master_inventory_retained_but_not_routable` | TEST0138: the installed-cartridge INVENTORY is NOT health-filtered. A master held unhealthy by a failed runtime identity probe still has its cartridges visible in the aggregate inventory (so a transient master flap does not make cartridges "disappear" from the engine's view), even though its caps are excluded from ROUTING. | bifaci/relay_switch_test.go:1872 |
 | test138 | `Test138_parse_registry_json_with_stdin` | TEST138: Test parsing registry JSON with stdin args verifies stdin media URN extraction | cap/registry_test.go:98 |
-| test0139 | `Test0139_all_masters_ready_true_when_masters_connected_but_capless` | TEST139: All masters ready true when masters connected but capless | bifaci/relay_switch_test.go:1388 |
-| test0140 | `Test0140_all_masters_ready_does_not_overshoot` | TEST140: All masters ready does not overshoot | bifaci/relay_switch_test.go:1404 |
-| test0141 | `Test0141_subscribe_capabilities_delivers_routable_set` | TEST0141: the routable-capability watch (SubscribeCapabilities). A subscriber must receive the CURRENT routable cap set on subscribe even though it was rebuilt during construction — BEFORE any receiver existed (the watch must persist the value, i.e. send_replace semantics). The delivered snapshot must be the health-filtered routable set. | bifaci/relay_switch_test.go:1931 |
+| test0139 | `Test0139_all_masters_ready_true_when_masters_connected_but_capless` | TEST139: All masters ready true when masters connected but capless | bifaci/relay_switch_test.go:1395 |
+| test0140 | `Test0140_all_masters_ready_does_not_overshoot` | TEST140: All masters ready does not overshoot | bifaci/relay_switch_test.go:1411 |
+| test0141 | `Test0141_subscribe_capabilities_delivers_routable_set` | TEST0141: the routable-capability watch (SubscribeCapabilities). A subscriber must receive the CURRENT routable cap set on subscribe even though it was rebuilt during construction — BEFORE any receiver existed (the watch must persist the value, i.e. send_replace semantics). The delivered snapshot must be the health-filtered routable set. | bifaci/relay_switch_test.go:1938 |
 | test141 | `Test141_per_cap_url_shape` | TEST141: URL has the right shape — protocol, host, /caps/ prefix, 64 hex chars, no extension. | cap/registry_test.go:159 |
-| test0142 | `Test0142_add_master_reattach_verifies_identity` | TEST0142: AddMaster runs an end-to-end identity probe on reattach whenever the host advertises caps (mirrors Rust add_master). When the reattaching host FAILS the probe, the master rejoins as UNHEALTHY — its installed cartridges stay visible in the inventory aggregate while its caps are held out of the routing table — rather than the reattach erroring out. | bifaci/relay_switch_test.go:1987 |
+| test0142 | `Test0142_add_master_reattach_verifies_identity` | TEST0142: AddMaster runs an end-to-end identity probe on reattach whenever the host advertises caps (mirrors Rust add_master). When the reattaching host FAILS the probe, the master rejoins as UNHEALTHY — its installed cartridges stay visible in the inventory aggregate while its caps are held out of the routing table — rather than the reattach erroring out. | bifaci/relay_switch_test.go:1994 |
 | test142 | `Test142_normalize_handles_different_tag_orders` | TEST142: Different tag orders normalise to the same URL — the canonicaliser strips the variation before hashing. | cap/registry_test.go:171 |
 | test143 | `Test143_default_config` | TEST143: Default config points at https://fabric.capdag.com/ unless overridden by CDG_FABRIC_REGISTRY_URL. | cap/registry_test.go:182 |
+| test0144 | `Test0144_MediaDefResolvesToVersionedObjectPathUnderManifest` | TEST0144: a media def published under a manifest (v >= 1) resolves to the VERSIONED object path `/media/<sha>/<defver>.json`, never the legacy flat path `/media/<sha>`. The flat path is the pre-manifest (v0) layout; a registry that silently runs in v0 mode fetches it and 404s every lookup against a versioned registry — the exact regression where a fabric-registry mirror defaulted its manifest version to 0. This pins both the URL rule and the manifest-driven defver resolution. Mirrors the Rust reference's test0144_media_def_resolves_to_versioned_object_path_under_manifest. | media/registry_test.go:20 |
 | test144 | `Test144_custom_registry_url` | TEST144: Test custom registry URL updates both registry and schema base URLs | cap/registry_test.go:195 |
 | test145 | `Test145_custom_registry_and_schema_url` | TEST145: Test custom registry and schema URLs set independently | cap/registry_test.go:203 |
 | test146 | `Test146_schema_url_not_overwritten_when_explicit` | TEST146: Test schema URL not overwritten when set explicitly before registry URL | cap/registry_test.go:212 |
@@ -160,78 +161,78 @@ This catalog lists all tests in the Go codebase.
 | test160 | `Test160_StdinSourceClone` | TEST160: Test StdinSource Data clone creates independent copy with same data | cap/caller_test.go:57 |
 | test161 | `Test161_StdinSourceFileReferenceClone` | TEST161: Test StdinSource FileReference clone creates independent copy with same fields | cap/caller_test.go:68 |
 | test162 | `Test162_StdinSourceDebug` | TEST162: Test StdinSource Debug format displays variant type and relevant fields | cap/caller_test.go:86 |
-| test163 | `Test163_schema_validator_validate_argument_with_schema_success` | TEST163: Test argument schema validation succeeds with valid JSON matching schema | cap/schema_validation_test.go:14 |
-| test164 | `Test164_schema_validator_validate_argument_with_schema_failure` | TEST164: Test argument schema validation fails with JSON missing required fields | cap/schema_validation_test.go:53 |
-| test165 | `Test165_schema_validator_validate_output_with_schema_success` | TEST165: Test output schema validation succeeds with valid JSON matching schema | cap/schema_validation_test.go:116 |
-| test166 | `Test166_schema_validator_skip_validation_without_schema` | TEST166: Test validation skipped when resolved media def has no schema | cap/schema_validation_test.go:689 |
-| test167 | `Test167_schema_validator_unresolvable_media_urn_fails_hard` | TEST167: Test validation fails hard when media URN cannot be resolved from any source | cap/schema_validation_test.go:714 |
+| test163 | `Test163_schema_validator_validate_argument_with_schema_success` | TEST163: Test argument schema validation succeeds with valid JSON matching schema | cap/schema_validation_test.go:16 |
+| test164 | `Test164_schema_validator_validate_argument_with_schema_failure` | TEST164: Test argument schema validation fails with JSON missing required fields | cap/schema_validation_test.go:55 |
+| test165 | `Test165_schema_validator_validate_output_with_schema_success` | TEST165: Test output schema validation succeeds with valid JSON matching schema | cap/schema_validation_test.go:118 |
+| test166 | `Test166_schema_validator_skip_validation_without_schema` | TEST166: Test validation skipped when resolved media def has no schema | cap/schema_validation_test.go:714 |
+| test167 | `Test167_schema_validator_unresolvable_media_urn_fails_hard` | TEST167: Test validation fails hard when media URN cannot be resolved from any source | cap/schema_validation_test.go:739 |
 | test168 | `Test168_response_wrapper_from_json` | TEST168: Test ResponseWrapper from JSON deserializes to correct structured type | cap/response_test.go:22 |
 | test169 | `Test169_response_wrapper_as_int` | TEST169: Test ResponseWrapper converts to primitive types integer, float, boolean, string | cap/response_test.go:65 |
 | test170 | `Test170_response_wrapper_from_binary` | TEST170: Test ResponseWrapper from binary stores and retrieves raw bytes correctly | cap/response_test.go:52 |
 | test171 | `Test171_frame_type_roundtrip` | TEST171: Test all FrameType discriminants roundtrip through u8 conversion preserving identity | bifaci/frame_test.go:13 |
-| test172 | `Test172_frame_type_valid_range` | TEST172: Test FrameType::from_u8 returns None for values outside the valid discriminant range | bifaci/frame_test.go:38 |
-| test173 | `Test173_frame_type_wire_protocol_values` | TEST173: Test FrameType discriminant values match the wire protocol specification exactly | bifaci/frame_test.go:71 |
-| test174 | `Test174_message_id_new_uuid_roundtrip` | TEST174: Test MessageId::new_uuid generates valid UUID that roundtrips through string conversion | bifaci/frame_test.go:106 |
-| test175 | `Test175_message_id_uuid_distinct` | TEST175: Test two MessageId::new_uuid calls produce distinct IDs (no collisions) | bifaci/frame_test.go:127 |
-| test176 | `Test176_message_id_uint_no_uuid_string` | TEST176: Test MessageId::Uint does not produce a UUID string, to_uuid_string returns None | bifaci/frame_test.go:137 |
-| test177 | `Test177_message_id_from_invalid_uuid_str` | TEST177: Test MessageId::from_uuid_str rejects invalid UUID strings | bifaci/frame_test.go:150 |
-| test178 | `Test178_message_id_as_bytes` | TEST178: Test MessageId::as_bytes produces correct byte representations for Uuid and Uint variants | bifaci/frame_test.go:160 |
-| test179 | `Test179_message_id_default` | TEST179: Test MessageId::default creates a UUID variant (not Uint) | bifaci/frame_test.go:181 |
-| test180 | `Test180_frame_hello_without_manifest` | TEST180: Test Frame::hello without manifest produces correct HELLO frame for host side | bifaci/frame_test.go:192 |
-| test181 | `Test181_frame_hello_with_manifest` | TEST181: Test Frame::hello_with_manifest produces HELLO with manifest bytes for cartridge side | bifaci/frame_test.go:207 |
-| test182 | `Test182_frame_req` | TEST182: Test Frame::req stores cap URN, payload, and content_type correctly | bifaci/frame_test.go:223 |
+| test172 | `Test172_frame_type_valid_range` | TEST172: Test FrameType::from_u8 returns None for values outside the valid discriminant range | bifaci/frame_test.go:39 |
+| test173 | `Test173_frame_type_wire_protocol_values` | TEST173: Test FrameType discriminant values match the wire protocol specification exactly | bifaci/frame_test.go:79 |
+| test174 | `Test174_message_id_new_uuid_roundtrip` | TEST174: Test MessageId::new_uuid generates valid UUID that roundtrips through string conversion | bifaci/frame_test.go:114 |
+| test175 | `Test175_message_id_uuid_distinct` | TEST175: Test two MessageId::new_uuid calls produce distinct IDs (no collisions) | bifaci/frame_test.go:135 |
+| test176 | `Test176_message_id_uint_no_uuid_string` | TEST176: Test MessageId::Uint does not produce a UUID string, to_uuid_string returns None | bifaci/frame_test.go:145 |
+| test177 | `Test177_message_id_from_invalid_uuid_str` | TEST177: Test MessageId::from_uuid_str rejects invalid UUID strings | bifaci/frame_test.go:158 |
+| test178 | `Test178_message_id_as_bytes` | TEST178: Test MessageId::as_bytes produces correct byte representations for Uuid and Uint variants | bifaci/frame_test.go:168 |
+| test179 | `Test179_message_id_default` | TEST179: Test MessageId::default creates a UUID variant (not Uint) | bifaci/frame_test.go:189 |
+| test180 | `Test180_frame_hello_without_manifest` | TEST180: Test Frame::hello without manifest produces correct HELLO frame for host side | bifaci/frame_test.go:200 |
+| test181 | `Test181_frame_hello_with_manifest` | TEST181: Test Frame::hello_with_manifest produces HELLO with manifest bytes for cartridge side | bifaci/frame_test.go:215 |
+| test182 | `Test182_frame_req` | TEST182: Test Frame::req stores cap URN, payload, and content_type correctly | bifaci/frame_test.go:231 |
 | test0183 | `Test0183_IntegrationMediaUrnResolution` | Test0183_IntegrationMediaUrnResolution verifies media URN resolution | bifaci/integration_test.go:163 |
-| test184 | `Test184_frame_chunk` | TEST184: Test Frame::chunk stores seq and payload for streaming (with stream_id) | bifaci/frame_test.go:248 |
-| test185 | `Test185_frame_err` | TEST185: Test Frame::err stores error code and message in metadata | bifaci/frame_test.go:273 |
-| test186 | `Test186_frame_log` | TEST186: Test Frame::log stores level and message in metadata | bifaci/frame_test.go:292 |
-| test187 | `Test187_frame_end_with_payload` | TEST187: Test Frame::end with payload sets eof and optional final payload | bifaci/frame_test.go:311 |
-| test188 | `Test188_frame_end_without_payload` | TEST188: Test Frame::end without payload still sets eof marker | bifaci/frame_test.go:329 |
-| test189 | `Test189_frame_chunk_with_offset` | TEST189: Test chunk_with_offset sets offset on all chunks but len only on seq=0 (with stream_id) | bifaci/frame_test.go:345 |
-| test190 | `Test190_frame_heartbeat` | TEST190: Test Frame::heartbeat creates minimal frame with no payload or metadata | bifaci/frame_test.go:395 |
-| test191 | `Test191_error_accessors_on_non_err_frame` | TEST191: Test error_code and error_message return None for non-Err frame types | bifaci/frame_test.go:411 |
-| test192 | `Test192_log_accessors_on_non_log_frame` | TEST192: Test log_level and log_message return None for non-Log frame types | bifaci/frame_test.go:427 |
-| test193 | `Test193_hello_accessors_on_non_hello_frame` | TEST193: Test hello_max_frame and hello_max_chunk return None for non-Hello frame types | bifaci/frame_test.go:438 |
-| test194 | `Test194_frame_new_defaults` | TEST194: Test Frame::new sets version and defaults correctly, optional fields are None | bifaci/frame_test.go:449 |
-| test195 | `Test195_frame_default_type` | TEST195: Test Frame::default creates a Req frame (the documented default) | bifaci/frame_test.go:489 |
-| test196 | `Test196_is_eof_when_none` | TEST196: Test is_eof returns false when eof field is None (unset) | bifaci/frame_test.go:500 |
-| test197 | `Test197_is_eof_when_false` | TEST197: Test is_eof returns false when eof field is explicitly Some(false) | bifaci/frame_test.go:508 |
-| test198 | `Test198_limits_default` | TEST198: Test Limits::default provides the documented default values | bifaci/frame_test.go:518 |
-| test199 | `Test199_protocol_version_constant` | TEST199: Test PROTOCOL_VERSION is 2 | bifaci/frame_test.go:536 |
-| test200 | `Test200_key_constants` | TEST200: Test integer key constants match the protocol specification | bifaci/frame_test.go:543 |
-| test201 | `Test201_hello_manifest_binary_data` | TEST201: Test hello_with_manifest preserves binary manifest data (not just JSON text) | bifaci/frame_test.go:580 |
-| test202 | `Test202_message_id_equality_and_hash` | TEST202: Test MessageId Eq/Hash semantics: equal UUIDs are equal, different ones are not | bifaci/frame_test.go:602 |
-| test203 | `Test203_message_id_cross_variant_inequality` | TEST203: Test Uuid and Uint variants of MessageId are never equal even for coincidental byte values | bifaci/frame_test.go:630 |
-| test204 | `Test204_req_frame_empty_payload` | TEST204: Test Frame::req with empty payload stores Some(empty vec) not None | bifaci/frame_test.go:641 |
-| test205 | `Test205_req_frame_roundtrip` | TEST205: Test REQ frame encode/decode roundtrip preserves all fields | bifaci/io_test.go:30 |
-| test206 | `Test206_hello_frame_roundtrip` | TEST206: Test HELLO frame encode/decode roundtrip preserves max_frame, max_chunk, max_reorder_buffer | bifaci/io_test.go:62 |
-| test207 | `Test207_err_frame_roundtrip` | TEST207: Test ERR frame encode/decode roundtrip preserves error code and message | bifaci/io_test.go:87 |
-| test208 | `Test208_log_frame_roundtrip` | TEST208: Test LOG frame encode/decode roundtrip preserves level and message | bifaci/io_test.go:112 |
+| test184 | `Test184_frame_chunk` | TEST184: Test Frame::chunk stores seq and payload for streaming (with stream_id) | bifaci/frame_test.go:256 |
+| test185 | `Test185_frame_err` | TEST185: Test Frame::err stores error code and message in metadata | bifaci/frame_test.go:281 |
+| test186 | `Test186_frame_log` | TEST186: Test Frame::log stores level and message in metadata | bifaci/frame_test.go:300 |
+| test187 | `Test187_frame_end_with_payload` | TEST187: Test Frame::end with payload sets eof and optional final payload | bifaci/frame_test.go:319 |
+| test188 | `Test188_frame_end_without_payload` | TEST188: Test Frame::end without payload still sets eof marker | bifaci/frame_test.go:337 |
+| test189 | `Test189_frame_chunk_with_offset` | TEST189: Test chunk_with_offset sets offset on all chunks but len only on seq=0 (with stream_id) | bifaci/frame_test.go:353 |
+| test190 | `Test190_frame_heartbeat` | TEST190: Test Frame::heartbeat creates minimal frame with no payload or metadata | bifaci/frame_test.go:403 |
+| test191 | `Test191_error_accessors_on_non_err_frame` | TEST191: Test error_code and error_message return None for non-Err frame types | bifaci/frame_test.go:419 |
+| test192 | `Test192_log_accessors_on_non_log_frame` | TEST192: Test log_level and log_message return None for non-Log frame types | bifaci/frame_test.go:435 |
+| test193 | `Test193_hello_accessors_on_non_hello_frame` | TEST193: Test hello_max_frame and hello_max_chunk return None for non-Hello frame types | bifaci/frame_test.go:446 |
+| test194 | `Test194_frame_new_defaults` | TEST194: Test Frame::new sets version and defaults correctly, optional fields are None | bifaci/frame_test.go:457 |
+| test195 | `Test195_frame_default_type` | TEST195: Test Frame::default creates a Req frame (the documented default) | bifaci/frame_test.go:497 |
+| test196 | `Test196_is_eof_when_none` | TEST196: Test is_eof returns false when eof field is None (unset) | bifaci/frame_test.go:508 |
+| test197 | `Test197_is_eof_when_false` | TEST197: Test is_eof returns false when eof field is explicitly Some(false) | bifaci/frame_test.go:516 |
+| test198 | `Test198_limits_default` | TEST198: Test Limits::default provides the documented default values | bifaci/frame_test.go:526 |
+| test199 | `Test199_protocol_version_constant` | TEST199: Test PROTOCOL_VERSION is 3 | bifaci/frame_test.go:547 |
+| test200 | `Test200_key_constants` | TEST200: Test integer key constants match the protocol specification | bifaci/frame_test.go:554 |
+| test201 | `Test201_hello_manifest_binary_data` | TEST201: Test hello_with_manifest preserves binary manifest data (not just JSON text) | bifaci/frame_test.go:591 |
+| test202 | `Test202_message_id_equality_and_hash` | TEST202: Test MessageId Eq/Hash semantics: equal UUIDs are equal, different ones are not | bifaci/frame_test.go:613 |
+| test203 | `Test203_message_id_cross_variant_inequality` | TEST203: Test Uuid and Uint variants of MessageId are never equal even for coincidental byte values | bifaci/frame_test.go:641 |
+| test204 | `Test204_req_frame_empty_payload` | TEST204: Test Frame::req with empty payload stores Some(empty vec) not None | bifaci/frame_test.go:652 |
+| test205 | `Test205_req_frame_roundtrip` | TEST205: Test REQ frame encode/decode roundtrip preserves all fields | bifaci/io_test.go:31 |
+| test206 | `Test206_hello_frame_roundtrip` | TEST206: Test HELLO frame encode/decode roundtrip preserves max_frame, max_chunk, max_reorder_buffer | bifaci/io_test.go:63 |
+| test207 | `Test207_err_frame_roundtrip` | TEST207: Test ERR frame encode/decode roundtrip preserves error code and message | bifaci/io_test.go:88 |
+| test208 | `Test208_log_frame_roundtrip` | TEST208: Test LOG frame encode/decode roundtrip preserves level and message | bifaci/io_test.go:113 |
 | test0209 | `Test0209_IntegrationMediaDefConstruction` | Test0209_IntegrationMediaDefConstruction verifies media.MediaDef construction | bifaci/integration_test.go:214 |
-| test210 | `Test210_end_frame_roundtrip` | TEST210: Test END frame encode/decode roundtrip preserves eof marker and optional payload | bifaci/io_test.go:139 |
-| test211 | `Test211_hello_with_manifest_roundtrip` | TEST211: Test HELLO with manifest encode/decode roundtrip preserves manifest bytes and limits | bifaci/io_test.go:166 |
-| test212 | `Test212_chunk_with_offset_roundtrip` | TEST212: Test chunk_with_offset encode/decode roundtrip preserves offset, len, eof (with stream_id) | bifaci/io_test.go:192 |
-| test213 | `Test213_heartbeat_roundtrip` | TEST213: Test heartbeat frame encode/decode roundtrip preserves ID with no extra fields | bifaci/io_test.go:236 |
-| test214 | `Test214_frame_io_roundtrip` | TEST214: Test write_frame/read_frame IO roundtrip through length-prefixed wire format | bifaci/io_test.go:259 |
-| test215 | `Test215_read_multiple_frames` | TEST215: Test reading multiple sequential frames from a single buffer | bifaci/io_test.go:284 |
-| test216 | `Test216_write_frame_rejects_oversized` | TEST216: Test write_frame rejects frames exceeding max_frame limit | bifaci/io_test.go:318 |
-| test217 | `Test217_read_frame_rejects_oversized` | TEST217: Test read_frame rejects incoming frames exceeding the negotiated max_frame limit | bifaci/io_test.go:337 |
-| test218 | `Test218_write_chunked` | TEST218: Test write_chunked splits data into chunks respecting max_chunk and reconstructs correctly Chunks from write_chunked have seq=0. SeqAssigner at the output stage assigns final seq. Chunk ordering within a stream is tracked by chunk_index (chunk_index field). | bifaci/io_test.go:358 |
-| test219 | `Test219_write_chunked_empty` | TEST219: Test write_chunked with empty data produces a single EOF chunk | bifaci/io_test.go:416 |
-| test220 | `Test220_write_chunked_exact_chunk_size` | TEST220: Test write_chunked with data exactly equal to max_chunk produces exactly one chunk | bifaci/io_test.go:459 |
-| test221 | `Test221_read_frame_eof` | TEST221: Test read_frame returns Ok(None) on clean EOF (empty stream) | bifaci/io_test.go:496 |
-| test222 | `Test222_read_frame_truncated_length_prefix` | TEST222: Test read_frame handles truncated length prefix (fewer than 4 bytes available) | bifaci/io_test.go:507 |
-| test223 | `Test223_read_frame_truncated_body` | TEST223: Test read_frame returns error on truncated frame body (length prefix says more bytes than available) | bifaci/io_test.go:518 |
-| test224 | `Test224_message_id_uint_roundtrip` | TEST224: Test MessageId::Uint roundtrips through encode/decode | bifaci/io_test.go:534 |
-| test225 | `Test225_decode_non_map_value` | TEST225: Test decode_frame rejects non-map CBOR values (e.g., array, integer, string) | bifaci/io_test.go:554 |
-| test226 | `Test226_decode_missing_version` | TEST226: Test decode_frame rejects CBOR map missing required version field | bifaci/io_test.go:565 |
-| test227 | `Test227_decode_invalid_frame_type_value` | TEST227: Test decode_frame rejects CBOR map with invalid frame_type value | bifaci/io_test.go:580 |
-| test228 | `Test228_decode_missing_id` | TEST228: Test decode_frame rejects CBOR map missing required id field | bifaci/io_test.go:594 |
-| test229 | `Test229_frame_reader_writer_set_limits` | TEST229: Test FrameReader/FrameWriter set_limits updates the negotiated limits | bifaci/io_test.go:608 |
-| test230 | `Test230_sync_handshake` | TEST230: Test async handshake exchanges HELLO frames and negotiates minimum limits | bifaci/io_test.go:632 |
-| test231 | `Test231_handshake_rejects_non_hello` | TEST231: Test handshake fails when peer sends non-HELLO frame | bifaci/io_test.go:730 |
-| test232 | `Test232_handshake_rejects_missing_manifest` | TEST232: Test handshake fails when cartridge HELLO is missing required manifest | bifaci/io_test.go:766 |
-| test233 | `Test233_binary_payload_all_byte_values` | TEST233: Test binary payload with all 256 byte values roundtrips through encode/decode | bifaci/io_test.go:800 |
-| test234 | `Test234_decode_garbage_bytes` | TEST234: Test decode_frame handles garbage CBOR bytes gracefully with an error | bifaci/io_test.go:825 |
+| test210 | `Test210_end_frame_roundtrip` | TEST210: Test END frame encode/decode roundtrip preserves eof marker and optional payload | bifaci/io_test.go:140 |
+| test211 | `Test211_hello_with_manifest_roundtrip` | TEST211: Test HELLO with manifest encode/decode roundtrip preserves manifest bytes and limits | bifaci/io_test.go:167 |
+| test212 | `Test212_chunk_with_offset_roundtrip` | TEST212: Test chunk_with_offset encode/decode roundtrip preserves offset, len, eof (with stream_id) | bifaci/io_test.go:193 |
+| test213 | `Test213_heartbeat_roundtrip` | TEST213: Test heartbeat frame encode/decode roundtrip preserves ID with no extra fields | bifaci/io_test.go:237 |
+| test214 | `Test214_frame_io_roundtrip` | TEST214: Test write_frame/read_frame IO roundtrip through length-prefixed wire format | bifaci/io_test.go:260 |
+| test215 | `Test215_read_multiple_frames` | TEST215: Test reading multiple sequential frames from a single buffer | bifaci/io_test.go:285 |
+| test216 | `Test216_write_frame_rejects_oversized` | TEST216: Test write_frame rejects frames exceeding max_frame limit | bifaci/io_test.go:319 |
+| test217 | `Test217_read_frame_rejects_oversized` | TEST217: Test read_frame rejects incoming frames exceeding the negotiated max_frame limit | bifaci/io_test.go:338 |
+| test218 | `Test218_write_chunked` | TEST218: Test write_chunked splits data into chunks respecting max_chunk and reconstructs correctly Chunks from write_chunked have seq=0. SeqAssigner at the output stage assigns final seq. Chunk ordering within a stream is tracked by chunk_index (chunk_index field). | bifaci/io_test.go:359 |
+| test219 | `Test219_write_chunked_empty` | TEST219: Test write_chunked with empty data produces a single EOF chunk | bifaci/io_test.go:417 |
+| test220 | `Test220_write_chunked_exact_chunk_size` | TEST220: Test write_chunked with data exactly equal to max_chunk produces exactly one chunk | bifaci/io_test.go:460 |
+| test221 | `Test221_read_frame_eof` | TEST221: Test read_frame returns Ok(None) on clean EOF (empty stream) | bifaci/io_test.go:497 |
+| test222 | `Test222_read_frame_truncated_length_prefix` | TEST222: Test read_frame handles truncated length prefix (fewer than 4 bytes available) | bifaci/io_test.go:508 |
+| test223 | `Test223_read_frame_truncated_body` | TEST223: Test read_frame returns error on truncated frame body (length prefix says more bytes than available) | bifaci/io_test.go:519 |
+| test224 | `Test224_message_id_uint_roundtrip` | TEST224: Test MessageId::Uint roundtrips through encode/decode | bifaci/io_test.go:535 |
+| test225 | `Test225_decode_non_map_value` | TEST225: Test decode_frame rejects non-map CBOR values (e.g., array, integer, string) | bifaci/io_test.go:555 |
+| test226 | `Test226_decode_missing_version` | TEST226: Test decode_frame rejects CBOR map missing required version field | bifaci/io_test.go:566 |
+| test227 | `Test227_decode_invalid_frame_type_value` | TEST227: Test decode_frame rejects CBOR map with invalid frame_type value | bifaci/io_test.go:581 |
+| test228 | `Test228_decode_missing_id` | TEST228: Test decode_frame rejects CBOR map missing required id field | bifaci/io_test.go:595 |
+| test229 | `Test229_frame_reader_writer_set_limits` | TEST229: Test FrameReader/FrameWriter set_limits updates the negotiated limits | bifaci/io_test.go:751 |
+| test230 | `Test230_sync_handshake` | TEST230: Test async handshake exchanges HELLO frames and negotiates minimum limits | bifaci/io_test.go:775 |
+| test231 | `Test231_handshake_rejects_non_hello` | TEST231: Test handshake fails when peer sends non-HELLO frame | bifaci/io_test.go:873 |
+| test232 | `Test232_handshake_rejects_missing_manifest` | TEST232: Test handshake fails when cartridge HELLO is missing required manifest | bifaci/io_test.go:909 |
+| test233 | `Test233_binary_payload_all_byte_values` | TEST233: Test binary payload with all 256 byte values roundtrips through encode/decode | bifaci/io_test.go:943 |
+| test234 | `Test234_decode_garbage_bytes` | TEST234: Test decode_frame handles garbage CBOR bytes gracefully with an error | bifaci/io_test.go:968 |
 | test235 | `Test235_response_chunk_fields` | TEST235: Test ResponseChunk stores payload, seq, offset, len, and eof fields correctly | bifaci/host_test.go:28 |
 | test236 | `Test236_response_chunk_all_fields_populated` | TEST236: Test ResponseChunk with all fields populated preserves offset, len, and eof | bifaci/host_test.go:52 |
 | test237 | `Test237_cartridge_response_single_final_payload` | TEST237: Test CartridgeResponse::Single final_payload returns the single payload slice | bifaci/host_test.go:74 |
@@ -245,30 +246,30 @@ This catalog lists all tests in the Go codebase.
 | test245 | `Test245_host_error_io_variant` | TEST245: Test AsyncHostError::from converts io::Error to Io variant | bifaci/host_test.go:224 |
 | test246 | `Test246_response_chunk_copy` | TEST246: Test AsyncHostError Clone implementation produces equal values | bifaci/host_test.go:235 |
 | test247 | `Test247_response_chunk_clone` | TEST247: Test ResponseChunk Clone produces independent copy with same data | bifaci/host_test.go:259 |
-| test248 | `Test248_register_and_find_handler` | TEST248: Test register_op and find_handler by exact cap URN | bifaci/cartridge_runtime_test.go:100 |
-| test249 | `Test249_raw_handler` | TEST249: Test register_op handler echoes bytes directly | bifaci/cartridge_runtime_test.go:118 |
-| test250 | `Test250_typed_handler_deserialization` | TEST250: Test Op handler collects input and processes it | bifaci/cartridge_runtime_test.go:156 |
-| test251 | `Test251_typed_handler_rejects_invalid_json` | TEST251: Test Op handler propagates errors through RuntimeError::Handler | bifaci/cartridge_runtime_test.go:196 |
-| test252 | `Test252_find_handler_unknown_cap` | TEST252: Test find_handler returns None for unregistered cap URNs | bifaci/cartridge_runtime_test.go:225 |
-| test253 | `Test253_handler_is_send_sync` | TEST253: Test OpFactory can be cloned via Arc and sent across tasks (Send + Sync) | bifaci/cartridge_runtime_test.go:238 |
-| test254 | `Test254_no_peer_invoker` | TEST254: Test NoPeerInvoker always returns PeerRequest error | bifaci/cartridge_runtime_test.go:276 |
-| test255 | `Test255_no_peer_invoker_with_arguments` | TEST255: Test NoPeerInvoker call_with_bytes also returns error | bifaci/cartridge_runtime_test.go:288 |
-| test256 | `Test256_new_cartridge_runtime_with_valid_json` | TEST256: Test CartridgeRuntime::with_manifest_json stores manifest data and parses when valid | bifaci/cartridge_runtime_test.go:300 |
-| test257 | `Test257_new_cartridge_runtime_with_invalid_json` | TEST257: Test CartridgeRuntime::new with invalid JSON still creates runtime (manifest is None) | bifaci/cartridge_runtime_test.go:315 |
-| test258 | `Test258_new_cartridge_runtime_with_manifest_struct` | TEST258: Test CartridgeRuntime::with_manifest creates runtime with valid manifest data | bifaci/cartridge_runtime_test.go:330 |
-| test259 | `Test259_extract_effective_payload_non_cbor` | TEST259: Test extract_effective_payload with non-CBOR content_type returns raw payload unchanged | bifaci/cartridge_runtime_test.go:350 |
-| test260 | `Test260_extract_effective_payload_no_content_type` | TEST260: Test extract_effective_payload with None content_type returns raw payload unchanged | bifaci/cartridge_runtime_test.go:363 |
-| test261 | `Test261_extract_effective_payload_cbor_match` | TEST261: Test extract_effective_payload with CBOR content extracts matching argument value | bifaci/cartridge_runtime_test.go:376 |
-| test262 | `Test262_extract_effective_payload_cbor_no_match` | TEST262: Test extract_effective_payload with CBOR content fails when no argument matches expected input | bifaci/cartridge_runtime_test.go:421 |
-| test263 | `Test263_extract_effective_payload_invalid_cbor` | TEST263: Test extract_effective_payload with invalid CBOR bytes returns deserialization error | bifaci/cartridge_runtime_test.go:444 |
-| test264 | `Test264_extract_effective_payload_cbor_not_array` | TEST264: Test extract_effective_payload with CBOR non-array (e.g. map) returns error | bifaci/cartridge_runtime_test.go:453 |
+| test248 | `Test248_register_and_find_handler` | TEST248: Test register_op and find_handler by exact cap URN | bifaci/cartridge_runtime_test.go:110 |
+| test249 | `Test249_raw_handler` | TEST249: Test register_op handler echoes bytes directly | bifaci/cartridge_runtime_test.go:128 |
+| test250 | `Test250_typed_handler_deserialization` | TEST250: Test Op handler collects input and processes it | bifaci/cartridge_runtime_test.go:166 |
+| test251 | `Test251_typed_handler_rejects_invalid_json` | TEST251: Test Op handler propagates errors through RuntimeError::Handler | bifaci/cartridge_runtime_test.go:206 |
+| test252 | `Test252_find_handler_unknown_cap` | TEST252: Test find_handler returns None for unregistered cap URNs | bifaci/cartridge_runtime_test.go:235 |
+| test253 | `Test253_handler_is_send_sync` | TEST253: Test OpFactory can be cloned via Arc and sent across tasks (Send + Sync) | bifaci/cartridge_runtime_test.go:248 |
+| test254 | `Test254_no_peer_invoker` | TEST254: Test NoPeerInvoker always returns PeerRequest error | bifaci/cartridge_runtime_test.go:286 |
+| test255 | `Test255_no_peer_invoker_with_arguments` | TEST255: Test NoPeerInvoker call_with_bytes also returns error | bifaci/cartridge_runtime_test.go:298 |
+| test256 | `Test256_new_cartridge_runtime_with_valid_json` | TEST256: Test CartridgeRuntime::with_manifest_json stores manifest data and parses when valid | bifaci/cartridge_runtime_test.go:310 |
+| test257 | `Test257_new_cartridge_runtime_with_invalid_json` | TEST257: Test CartridgeRuntime::new with invalid JSON still creates runtime (manifest is None) | bifaci/cartridge_runtime_test.go:325 |
+| test258 | `Test258_new_cartridge_runtime_with_manifest_struct` | TEST258: Test CartridgeRuntime::with_manifest creates runtime with valid manifest data | bifaci/cartridge_runtime_test.go:340 |
+| test259 | `Test259_extract_effective_payload_non_cbor` | TEST259: Test extract_effective_payload with non-CBOR content_type returns raw payload unchanged | bifaci/cartridge_runtime_test.go:360 |
+| test260 | `Test260_extract_effective_payload_no_content_type` | TEST260: Test extract_effective_payload with None content_type returns raw payload unchanged | bifaci/cartridge_runtime_test.go:373 |
+| test261 | `Test261_extract_effective_payload_cbor_match` | TEST261: Test extract_effective_payload with CBOR content extracts matching argument value | bifaci/cartridge_runtime_test.go:386 |
+| test262 | `Test262_extract_effective_payload_cbor_no_match` | TEST262: Test extract_effective_payload with CBOR content fails when no argument matches expected input | bifaci/cartridge_runtime_test.go:431 |
+| test263 | `Test263_extract_effective_payload_invalid_cbor` | TEST263: Test extract_effective_payload with invalid CBOR bytes returns deserialization error | bifaci/cartridge_runtime_test.go:454 |
+| test264 | `Test264_extract_effective_payload_cbor_not_array` | TEST264: Test extract_effective_payload with CBOR non-array (e.g. map) returns error | bifaci/cartridge_runtime_test.go:463 |
 | test0265 | `Test0265_CartridgeErrorResponse` | Mirror-specific coverage: Test cartridge ERR frame is received by host as error | bifaci/integration_test.go:504 |
 | test0267 | `Test0267_HeartbeatDuringStreaming` | Mirror-specific coverage: Test cartridge-initiated heartbeat mid-stream is handled transparently by host | bifaci/integration_test.go:849 |
 | test0269 | `Test0269_ArgumentsRoundtrip` | Mirror-specific coverage: Test host call with unified CBOR arguments sends correct content_type and payload | bifaci/integration_test.go:1029 |
-| test270 | `Test270_multiple_handlers` | TEST270: Test registering multiple Op handlers for different caps and finding each independently | bifaci/cartridge_runtime_test.go:467 |
-| test271 | `Test271_handler_replacement` | TEST271: Test Op handler replacing an existing registration for the same cap URN | bifaci/cartridge_runtime_test.go:517 |
-| test272 | `Test272_extract_effective_payload_multiple_args` | TEST272: Test extract_effective_payload CBOR with multiple arguments selects the correct one | bifaci/cartridge_runtime_test.go:544 |
-| test273 | `Test273_ExtractEffectivePayloadBinaryValue` | TEST273: Test extract_effective_payload with binary data in CBOR value (not just text) | bifaci/cartridge_runtime_test.go:613 |
+| test270 | `Test270_multiple_handlers` | TEST270: Test registering multiple Op handlers for different caps and finding each independently | bifaci/cartridge_runtime_test.go:477 |
+| test271 | `Test271_handler_replacement` | TEST271: Test Op handler replacing an existing registration for the same cap URN | bifaci/cartridge_runtime_test.go:527 |
+| test272 | `Test272_extract_effective_payload_multiple_args` | TEST272: Test extract_effective_payload CBOR with multiple arguments selects the correct one | bifaci/cartridge_runtime_test.go:554 |
+| test273 | `Test273_ExtractEffectivePayloadBinaryValue` | TEST273: Test extract_effective_payload with binary data in CBOR value (not just text) | bifaci/cartridge_runtime_test.go:623 |
 | test274 | `Test274_CapArgumentValueNew` | TEST274: Test CapArgumentValue::new stores media_urn and raw byte value | cap/caller_test.go:104 |
 | test275 | `Test275_CapArgumentValueFromStr` | TEST275: Test CapArgumentValue::from_str converts string to UTF-8 bytes | cap/caller_test.go:111 |
 | test276 | `Test276_CapArgumentValueAsStrValid` | TEST276: Test CapArgumentValue::value_as_str succeeds for UTF-8 data | cap/caller_test.go:118 |
@@ -317,47 +318,47 @@ This catalog lists all tests in the Go codebase.
 | test333 | `Test333_cartridge_repo_client_get_all_caps` | TEST333: CartridgeRepoClient.get_all_caps() returns aggregate cap URNs from all cached cartridges | bifaci/cartridge_repo_test.go:603 |
 | test334 | `Test334_cartridge_repo_client_needs_sync` | TEST334: CartridgeRepoClient.needs_sync() returns true when cache TTL has expired | bifaci/cartridge_repo_test.go:668 |
 | test335 | `Test335_cartridge_repo_server_client_integration` | TEST335: Server creates registry response and client consumes it end-to-end | bifaci/cartridge_repo_test.go:687 |
-| test336 | `Test336_FilePathReadsFilePassesBytes` | TEST336: Single file-path arg with stdin source reads file and passes bytes to handler | bifaci/cartridge_runtime_test.go:859 |
-| test337 | `Test337_FilePathWithoutStdinPassesString` | TEST337: file-path arg without stdin source passes path as string (no conversion) | bifaci/cartridge_runtime_test.go:938 |
-| test338 | `Test338_FilePathViaCliFlag` | TEST338: file-path arg reads file via --file CLI flag | bifaci/cartridge_runtime_test.go:979 |
-| test339 | `Test339_FilePathArrayGlobExpansion` | TEST339: file-path arg with is_sequence=true expands a glob to N files and the runtime delivers them as a CBOR Array of Bytes — one array item per matched file. List-ness comes from the arg declaration, not from any `;list` URN tag. Mirrors Rust test339_file_path_array_glob_expansion. | bifaci/cartridge_runtime_test.go:1026 |
-| test340 | `Test340_FileNotFoundClearError` | TEST340: File not found error provides clear message | bifaci/cartridge_runtime_test.go:1110 |
-| test341 | `Test341_StdinPrecedenceOverFilePath` | TEST341: stdin takes precedence over file-path in source order | bifaci/cartridge_runtime_test.go:1152 |
-| test342 | `Test342_FilePathPositionZeroReadsFirstArg` | TEST342: file-path with position 0 reads first positional arg as file | bifaci/cartridge_runtime_test.go:1195 |
-| test343 | `Test343_NonFilePathArgsUnaffected` | TEST343: Non-file-path args are not affected by file reading | bifaci/cartridge_runtime_test.go:1252 |
-| test346 | `Test346_LargeFileReadsSuccessfully` | TEST346: Large file (1MB) reads successfully | bifaci/cartridge_runtime_test.go:1377 |
-| test347 | `Test347_EmptyFileReadsAsEmptyBytes` | TEST347: Empty file reads as empty bytes | bifaci/cartridge_runtime_test.go:1425 |
-| test348 | `Test348_FilePathConversionRespectsSourceOrder` | TEST348: file-path conversion respects source order | bifaci/cartridge_runtime_test.go:1469 |
-| test349 | `Test349_FilePathMultipleSourcesFallback` | TEST349: file-path arg with multiple sources tries all in order | bifaci/cartridge_runtime_test.go:1516 |
-| test350 | `Test350_FullCLIModeWithFilePathIntegration` | TEST350: Integration test - full CLI mode invocation with file-path | bifaci/cartridge_runtime_test.go:1562 |
-| test352 | `Test352_FilePermissionDeniedClearError` | TEST352: file permission denied error is clear (Unix-specific) | bifaci/cartridge_runtime_test.go:1696 |
-| test353 | `Test353_CBORPayloadFormatConsistency` | TEST353: CBOR payload format matches between CLI and CBOR mode | bifaci/cartridge_runtime_test.go:1749 |
-| test354 | `Test354_GlobPatternNoMatchesEmptyArray` | TEST354: Glob pattern with no matches fails hard (NO FALLBACK) | bifaci/cartridge_runtime_test.go:1807 |
-| test355 | `Test355_GlobPatternSkipsDirectories` | TEST355: Glob pattern skips directories. Mirrors Rust test355_glob_pattern_skips_directories. | bifaci/cartridge_runtime_test.go:1852 |
-| test356 | `Test356_MultipleGlobPatternsCombined` | TEST356: Multiple glob patterns combined | bifaci/cartridge_runtime_test.go:1924 |
-| test357 | `Test357_SymlinksFollowed` | TEST357: Symlinks are followed when reading files | bifaci/cartridge_runtime_test.go:2003 |
-| test358 | `Test358_BinaryFileNonUTF8` | TEST358: Binary file with non-UTF8 data reads correctly | bifaci/cartridge_runtime_test.go:2060 |
-| test359 | `Test359_InvalidGlobPatternFails` | TEST359: Invalid glob pattern fails with clear error | bifaci/cartridge_runtime_test.go:2110 |
-| test360 | `Test360_ExtractEffectivePayloadWithFileData` | TEST360: Extract effective payload handles file-path data correctly | bifaci/cartridge_runtime_test.go:2149 |
-| test361 | `Test361_CLIModeFilePath` | TEST361: CLI mode with file path - pass file path as command-line argument | bifaci/cartridge_runtime_test.go:2231 |
-| test362 | `Test362_CLIModePipedBinary` | TEST362: CLI mode with binary piped in - pipe binary data via stdin This test simulates real-world conditions: - Pure binary data piped to stdin (NOT CBOR) - CLI mode detected (command arg present) - Cap accepts stdin source - Binary is chunked on-the-fly and accumulated - Handler receives complete CBOR payload | bifaci/cartridge_runtime_test.go:2280 |
-| test363 | `Test363_CBORModeChunkedContent` | TEST363: CBOR mode with chunked content - send file content streaming as chunks | bifaci/cartridge_runtime_test.go:2367 |
-| test364 | `Test364_CBORModeFilePath` | TEST364: CBOR mode with file path - send file path in CBOR arguments (auto-conversion) | bifaci/cartridge_runtime_test.go:2510 |
-| test365 | `Test365_stream_start_frame` | TEST365: Frame::stream_start stores request_id, stream_id, and media_urn | bifaci/frame_test.go:652 |
-| test366 | `Test366_stream_end_frame` | TEST366: Frame::stream_end stores request_id and stream_id | bifaci/frame_test.go:674 |
-| test367 | `Test367_stream_start_with_empty_stream_id` | TEST367: StreamStart frame with empty stream_id still constructs (validation happens elsewhere) | bifaci/frame_test.go:695 |
-| test368 | `Test368_stream_start_with_empty_media_urn` | TEST368: StreamStart frame with empty media_urn still constructs (validation happens elsewhere) | bifaci/frame_test.go:714 |
-| test389 | `Test389_stream_start_roundtrip` | TEST389: StreamStart encode/decode roundtrip preserves stream_id and media_urn | bifaci/io_test.go:834 |
-| test390 | `Test390_stream_end_roundtrip` | TEST390: StreamEnd encode/decode roundtrip preserves stream_id, no media_urn | bifaci/io_test.go:862 |
-| test395 | `Test395_BuildPayloadSmall` | TEST395: Small payload (< max_chunk) produces correct CBOR arguments | bifaci/cartridge_runtime_test.go:2565 |
-| test396 | `Test396_BuildPayloadLarge` | TEST396: Large payload (> max_chunk) accumulates across chunks correctly | bifaci/cartridge_runtime_test.go:2614 |
-| test397 | `Test397_BuildPayloadEmpty` | TEST397: Empty reader produces valid empty CBOR arguments | bifaci/cartridge_runtime_test.go:2658 |
-| test398 | `Test398_BuildPayloadIOError` | TEST398: IO error from reader propagates as RuntimeError::Io | bifaci/cartridge_runtime_test.go:2701 |
-| test399 | `Test399_relay_notify_discriminant_roundtrip` | TEST399: Verify RelayNotify frame type discriminant roundtrips through u8 (value 10) | bifaci/frame_test.go:733 |
-| test400 | `Test400_relay_state_discriminant_roundtrip` | TEST400: Verify RelayState frame type discriminant roundtrips through u8 (value 11) | bifaci/frame_test.go:746 |
-| test401 | `Test401_relay_notify_factory_and_accessors` | TEST401: Verify relay_notify factory stores manifest and limits, and accessors extract them | bifaci/frame_test.go:759 |
-| test402 | `Test402_relay_state_factory_and_payload` | TEST402: Verify relay_state factory stores resource payload in frame payload field | bifaci/frame_test.go:802 |
-| test403 | `Test403_frame_type_one_past_cancel` | TEST403: Verify from_u8 returns None for values past the last valid frame type | bifaci/frame_test.go:816 |
+| test336 | `Test336_FilePathReadsFilePassesBytes` | TEST336: Single file-path arg with stdin source reads file and passes bytes to handler | bifaci/cartridge_runtime_test.go:869 |
+| test337 | `Test337_FilePathWithoutStdinPassesString` | TEST337: file-path arg without stdin source passes path as string (no conversion) | bifaci/cartridge_runtime_test.go:948 |
+| test338 | `Test338_FilePathViaCliFlag` | TEST338: file-path arg reads file via --file CLI flag | bifaci/cartridge_runtime_test.go:989 |
+| test339 | `Test339_FilePathArrayGlobExpansion` | TEST339: file-path arg with is_sequence=true expands a glob to N files and the runtime delivers them as a CBOR Array of Bytes — one array item per matched file. List-ness comes from the arg declaration, not from any `;list` URN tag. Mirrors Rust test339_file_path_array_glob_expansion. | bifaci/cartridge_runtime_test.go:1036 |
+| test340 | `Test340_FileNotFoundClearError` | TEST340: File not found error provides clear message | bifaci/cartridge_runtime_test.go:1120 |
+| test341 | `Test341_StdinPrecedenceOverFilePath` | TEST341: stdin takes precedence over file-path in source order | bifaci/cartridge_runtime_test.go:1162 |
+| test342 | `Test342_FilePathPositionZeroReadsFirstArg` | TEST342: file-path with position 0 reads first positional arg as file | bifaci/cartridge_runtime_test.go:1205 |
+| test343 | `Test343_NonFilePathArgsUnaffected` | TEST343: Non-file-path args are not affected by file reading | bifaci/cartridge_runtime_test.go:1262 |
+| test346 | `Test346_LargeFileReadsSuccessfully` | TEST346: Large file (1MB) reads successfully | bifaci/cartridge_runtime_test.go:1387 |
+| test347 | `Test347_EmptyFileReadsAsEmptyBytes` | TEST347: Empty file reads as empty bytes | bifaci/cartridge_runtime_test.go:1435 |
+| test348 | `Test348_FilePathConversionRespectsSourceOrder` | TEST348: file-path conversion respects source order | bifaci/cartridge_runtime_test.go:1479 |
+| test349 | `Test349_FilePathMultipleSourcesFallback` | TEST349: file-path arg with multiple sources tries all in order | bifaci/cartridge_runtime_test.go:1526 |
+| test350 | `Test350_FullCLIModeWithFilePathIntegration` | TEST350: Integration test - full CLI mode invocation with file-path | bifaci/cartridge_runtime_test.go:1572 |
+| test352 | `Test352_FilePermissionDeniedClearError` | TEST352: file permission denied error is clear (Unix-specific) | bifaci/cartridge_runtime_test.go:1706 |
+| test353 | `Test353_CBORPayloadFormatConsistency` | TEST353: CBOR payload format matches between CLI and CBOR mode | bifaci/cartridge_runtime_test.go:1759 |
+| test354 | `Test354_GlobPatternNoMatchesEmptyArray` | TEST354: Glob pattern with no matches fails hard (NO FALLBACK) | bifaci/cartridge_runtime_test.go:1817 |
+| test355 | `Test355_GlobPatternSkipsDirectories` | TEST355: Glob pattern skips directories. Mirrors Rust test355_glob_pattern_skips_directories. | bifaci/cartridge_runtime_test.go:1862 |
+| test356 | `Test356_MultipleGlobPatternsCombined` | TEST356: Multiple glob patterns combined | bifaci/cartridge_runtime_test.go:1934 |
+| test357 | `Test357_SymlinksFollowed` | TEST357: Symlinks are followed when reading files | bifaci/cartridge_runtime_test.go:2013 |
+| test358 | `Test358_BinaryFileNonUTF8` | TEST358: Binary file with non-UTF8 data reads correctly | bifaci/cartridge_runtime_test.go:2070 |
+| test359 | `Test359_InvalidGlobPatternFails` | TEST359: Invalid glob pattern fails with clear error | bifaci/cartridge_runtime_test.go:2120 |
+| test360 | `Test360_ExtractEffectivePayloadWithFileData` | TEST360: Extract effective payload handles file-path data correctly | bifaci/cartridge_runtime_test.go:2159 |
+| test361 | `Test361_CLIModeFilePath` | TEST361: CLI mode with file path - pass file path as command-line argument | bifaci/cartridge_runtime_test.go:2241 |
+| test362 | `Test362_CLIModePipedBinary` | TEST362: CLI mode with binary piped in - pipe binary data via stdin This test simulates real-world conditions: - Pure binary data piped to stdin (NOT CBOR) - CLI mode detected (command arg present) - Cap accepts stdin source - Binary is chunked on-the-fly and accumulated - Handler receives complete CBOR payload | bifaci/cartridge_runtime_test.go:2290 |
+| test363 | `Test363_CBORModeChunkedContent` | TEST363: CBOR mode with chunked content - send file content streaming as chunks | bifaci/cartridge_runtime_test.go:2377 |
+| test364 | `Test364_CBORModeFilePath` | TEST364: CBOR mode with file path - send file path in CBOR arguments (auto-conversion) | bifaci/cartridge_runtime_test.go:2520 |
+| test365 | `Test365_stream_start_frame` | TEST365: Frame::stream_start stores request_id, stream_id, and media_urn | bifaci/frame_test.go:663 |
+| test366 | `Test366_stream_end_frame` | TEST366: Frame::stream_end stores request_id and stream_id | bifaci/frame_test.go:685 |
+| test367 | `Test367_stream_start_with_empty_stream_id` | TEST367: StreamStart frame with empty stream_id still constructs (validation happens elsewhere) | bifaci/frame_test.go:706 |
+| test368 | `Test368_stream_start_with_empty_media_urn` | TEST368: StreamStart frame with empty media_urn still constructs (validation happens elsewhere) | bifaci/frame_test.go:725 |
+| test389 | `Test389_stream_start_roundtrip` | TEST389: StreamStart encode/decode roundtrip preserves stream_id and media_urn | bifaci/io_test.go:977 |
+| test390 | `Test390_stream_end_roundtrip` | TEST390: StreamEnd encode/decode roundtrip preserves stream_id, no media_urn | bifaci/io_test.go:1005 |
+| test395 | `Test395_BuildPayloadSmall` | TEST395: Small payload (< max_chunk) produces correct CBOR arguments | bifaci/cartridge_runtime_test.go:2575 |
+| test396 | `Test396_BuildPayloadLarge` | TEST396: Large payload (> max_chunk) accumulates across chunks correctly | bifaci/cartridge_runtime_test.go:2624 |
+| test397 | `Test397_BuildPayloadEmpty` | TEST397: Empty reader produces valid empty CBOR arguments | bifaci/cartridge_runtime_test.go:2668 |
+| test398 | `Test398_BuildPayloadIOError` | TEST398: IO error from reader propagates as RuntimeError::Io | bifaci/cartridge_runtime_test.go:2711 |
+| test399 | `Test399_relay_notify_discriminant_roundtrip` | TEST399: Verify RelayNotify frame type discriminant roundtrips through u8 (value 10) | bifaci/frame_test.go:744 |
+| test400 | `Test400_relay_state_discriminant_roundtrip` | TEST400: Verify RelayState frame type discriminant roundtrips through u8 (value 11) | bifaci/frame_test.go:757 |
+| test401 | `Test401_relay_notify_factory_and_accessors` | TEST401: Verify relay_notify factory stores manifest and limits, and accessors extract them | bifaci/frame_test.go:770 |
+| test402 | `Test402_relay_state_factory_and_payload` | TEST402: Verify relay_state factory stores resource payload in frame payload field | bifaci/frame_test.go:813 |
+| test403 | `Test403_frame_type_one_past_cancel` | TEST403: Verify from_u8 returns None for values past the last valid frame type | bifaci/frame_test.go:827 |
 | test404 | `Test404_slave_sends_relay_notify_on_connect` | TEST404: Slave sends RelayNotify on connect (initial_notify parameter) | bifaci/relay_test.go:16 |
 | test405 | `Test405_master_reads_relay_notify` | TEST405: Master reads RelayNotify and extracts manifest + limits | bifaci/relay_test.go:71 |
 | test406 | `Test406_slave_stores_relay_state` | TEST406: Slave stores RelayState from master | bifaci/relay_test.go:113 |
@@ -378,115 +379,115 @@ This catalog lists all tests in the Go codebase.
 | test421 | `Test421_cartridge_death_updates_caps` | TEST421: Cartridge death updates capability list (caps removed) | bifaci/host_multi_test.go:650 |
 | test422 | `Test422_cartridge_death_sends_err` | TEST422: a cartridge that dies mid-request must not wedge the host — Run() must exit cleanly once the cartridge is gone and the relay disconnects. Mirrors the Rust reference test (host_runtime.rs test422_cartridge_death_sends_err_for_pending_requests): the engine sends REQ+END then drops the relay connection (in real use it would time out the pending request); the contract under test is that the runtime tears down gracefully rather than blocking forever on a response the dead cartridge will never send. Delivery of the CARTRIDGE_DIED ERR to the engine is best-effort and NOT guaranteed before teardown, so asserting its receipt would over-specify beyond the reference contract. | bifaci/host_multi_test.go:714 |
 | test423 | `Test423_multi_cartridge_distinct_caps` | TEST423: Multiple cartridges registered with distinct caps route independently | bifaci/host_multi_test.go:808 |
-| test424 | `Test424_concurrent_requests_same_cartridge` | TEST424: Concurrent requests to the same cartridge are handled independently | bifaci/host_multi_test.go:939 |
-| test425 | `Test425_find_cartridge_for_cap_unknown` | TEST425: find_cartridge_for_cap returns None for unregistered cap | bifaci/host_multi_test.go:1057 |
+| test424 | `Test424_concurrent_requests_same_cartridge` | TEST424: Concurrent requests to the same cartridge are handled independently | bifaci/host_multi_test.go:947 |
+| test425 | `Test425_find_cartridge_for_cap_unknown` | TEST425: find_cartridge_for_cap returns None for unregistered cap | bifaci/host_multi_test.go:1065 |
 | test426 | `Test426_relay_switch_single_master_req_response` | TEST426: Single master REQ/response routing | bifaci/relay_switch_test.go:167 |
-| test427 | `Test427_relay_switch_multi_master_cap_routing` | TEST427: Multi-master cap routing | bifaci/relay_switch_test.go:226 |
-| test428 | `Test428_relay_switch_unknown_cap_returns_error` | TEST428: Unknown cap returns error | bifaci/relay_switch_test.go:310 |
-| test429 | `Test429_relay_switch_find_master_for_cap` | TEST429: Cap routing logic (find_master_for_cap) | bifaci/relay_switch_test.go:353 |
-| test430 | `Test430_relay_switch_tie_breaking` | TEST430: Tie-breaking (same cap on multiple masters - first match wins, routing is consistent) | bifaci/relay_switch_test.go:439 |
-| test431 | `Test431_relay_switch_continuation_frame_routing` | TEST431: Continuation frame routing (CHUNK, END follow REQ) | bifaci/relay_switch_test.go:510 |
-| test432 | `Test432_relay_switch_empty_masters_list_error` | TEST432: Empty masters list creates empty switch, add_master works | bifaci/relay_switch_test.go:585 |
-| test433 | `Test433_relay_switch_capability_aggregation_deduplicates` | TEST433: Capability aggregation deduplicates caps | bifaci/relay_switch_test.go:600 |
-| test434 | `Test434_relay_switch_limits_negotiation_minimum` | TEST434: Limits negotiation takes minimum | bifaci/relay_switch_test.go:663 |
-| test435 | `Test435_relay_switch_urn_matching` | TEST435: URN matching (exact vs accepts()) | bifaci/relay_switch_test.go:712 |
-| test436 | `Test436_compute_checksum` | TEST436: Verify FNV-1a checksum function produces consistent results | bifaci/frame_test.go:862 |
-| test437 | `Test437_preferred_cap_routes_to_generic` | TEST437: find_master_for_cap with preferred_cap routes to generic handler With is_dispatchable semantics: - Generic provider (in=media:) CAN dispatch specific request (in="media:ext=pdf") because media: (wildcard) accepts any input type - Preference routes to preferred among dispatchable candidates | bifaci/relay_switch_test.go:771 |
-| test438 | `Test438_preferred_cap_falls_back_when_not_comparable` | TEST438: find_master_for_cap with preference falls back to closest-specificity when preferred cap is not in the comparable set | bifaci/relay_switch_test.go:835 |
-| test439 | `Test439_generic_provider_can_dispatch_specific_request` | TEST439: Generic provider CAN dispatch specific request (but only matches if no more specific provider exists) With is_dispatchable: generic provider (in=media:) CAN handle specific request (in="media:ext=pdf") because media: accepts any input type. With preference, can route to generic even when more specific exists. | bifaci/relay_switch_test.go:873 |
-| test440 | `Test440_chunk_index_checksum_roundtrip` | TEST440: CHUNK frame with chunk_index and checksum roundtrips through encode/decode | bifaci/io_test.go:953 |
-| test441 | `Test441_stream_end_chunk_count_roundtrip` | TEST441: STREAM_END frame with chunk_count roundtrips through encode/decode | bifaci/io_test.go:994 |
-| test442 | `Test442_seq_assigner_monotonic_same_rid` | TEST442: SeqAssigner assigns seq 0,1,2,3 for consecutive frames with same RID | bifaci/frame_test.go:879 |
-| test443 | `Test443_seq_assigner_independent_rids` | TEST443: SeqAssigner maintains independent counters for different RIDs | bifaci/frame_test.go:908 |
-| test444 | `Test444_seq_assigner_skips_non_flow` | TEST444: SeqAssigner skips non-flow frames (Heartbeat, RelayNotify, RelayState, Hello) | bifaci/frame_test.go:934 |
-| test445 | `Test445_seq_assigner_remove_by_flow_key` | TEST445: SeqAssigner.remove with FlowKey(rid, None) resets that flow; FlowKey(rid, Some(xid)) is unaffected | bifaci/frame_test.go:962 |
-| test446 | `Test446_seq_assigner_mixed_types` | TEST446: SeqAssigner handles mixed frame types (REQ, CHUNK, LOG, END) for same RID | bifaci/frame_test.go:1044 |
-| test447 | `Test447_flow_key_with_xid` | TEST447: FlowKey::from_frame extracts (rid, Some(xid)) when routing_id present | bifaci/frame_test.go:1065 |
-| test448 | `Test448_flow_key_without_xid` | TEST448: FlowKey::from_frame extracts (rid, None) when routing_id absent | bifaci/frame_test.go:1082 |
-| test449 | `Test449_flow_key_equality` | TEST449: FlowKey equality: same rid+xid equal, different xid different key | bifaci/frame_test.go:1096 |
-| test450 | `Test450_flow_key_hash_lookup` | TEST450: FlowKey hash: same keys hash equal (HashMap lookup) | bifaci/frame_test.go:1118 |
-| test451 | `Test451_reorder_buffer_in_order` | TEST451: ReorderBuffer in-order delivery: seq 0,1,2 delivered immediately | bifaci/frame_test.go:1132 |
-| test452 | `Test452_reorder_buffer_out_of_order` | TEST452: ReorderBuffer out-of-order: seq 1 then 0 delivers both in order | bifaci/frame_test.go:1157 |
-| test453 | `Test453_reorder_buffer_gap_fill` | TEST453: ReorderBuffer gap fill: seq 0,2,1 delivers 0, buffers 2, then delivers 1+2 | bifaci/frame_test.go:1180 |
-| test454 | `Test454_reorder_buffer_stale_seq` | TEST454: ReorderBuffer stale seq is hard error | bifaci/frame_test.go:1207 |
-| test455 | `Test455_reorder_buffer_overflow` | TEST455: ReorderBuffer overflow triggers protocol error | bifaci/frame_test.go:1228 |
-| test456 | `Test456_reorder_buffer_independent_flows` | TEST456: Multiple concurrent flows reorder independently | bifaci/frame_test.go:1248 |
-| test457 | `Test457_reorder_buffer_cleanup` | TEST457: cleanup_flow removes state; new frames start at seq 0 | bifaci/frame_test.go:1276 |
-| test458 | `Test458_reorder_buffer_non_flow_bypass` | TEST458: Non-flow frames bypass reorder entirely | bifaci/frame_test.go:1301 |
-| test459 | `Test459_reorder_buffer_end_frame` | TEST459: Terminal END frame flows through correctly | bifaci/frame_test.go:1317 |
-| test460 | `Test460_reorder_buffer_err_frame` | TEST460: Terminal ERR frame flows through correctly | bifaci/frame_test.go:1975 |
-| test461 | `Test461_write_chunked_seq_zero` | TEST461: write_chunked produces frames with seq=0; SeqAssigner assigns at output stage | bifaci/io_test.go:1263 |
-| test462 | `Test462_attached_cartridge_identity_from_manifest` | TEST462: An attached cartridge (pre-connected over raw streams, no on-disk anchor) gets a resolvable install identity derived from its HELLO manifest — `installedCartridgeRecordFromManifest`. Identity gates advertisement, so a nil record means the cartridge is silently dropped from every RelayNotify and the engine can never route to it. Locks the attached-cartridge identity path (the swift mirror regressed here: its attached cartridges returned nil and never reached the engine). Mirrors the reference installed_cartridge_record_from_manifest. | bifaci/host_test.go:303 |
-| test472 | `Test472_handshake_negotiates_reorder_buffer` | TEST472: Handshake negotiates max_reorder_buffer (minimum of both sides) | bifaci/io_test.go:1213 |
-| test473 | `Test473_cap_discard_parses_as_valid_urn` | TEST473: CAP_DISCARD parses as valid CapUrn with in=media: and out=media:void | standard/caps_test.go:59 |
-| test474 | `Test474_cap_discard_structure` | TEST474: CAP_DISCARD accepts specific-input/void-output caps | standard/caps_test.go:68 |
+| test427 | `Test427_relay_switch_multi_master_cap_routing` | TEST427: Multi-master cap routing | bifaci/relay_switch_test.go:227 |
+| test428 | `Test428_relay_switch_unknown_cap_returns_error` | TEST428: Unknown cap returns error | bifaci/relay_switch_test.go:313 |
+| test429 | `Test429_relay_switch_find_master_for_cap` | TEST429: Cap routing logic (find_master_for_cap) | bifaci/relay_switch_test.go:356 |
+| test430 | `Test430_relay_switch_tie_breaking` | TEST430: Tie-breaking (same cap on multiple masters - first match wins, routing is consistent) | bifaci/relay_switch_test.go:442 |
+| test431 | `Test431_relay_switch_continuation_frame_routing` | TEST431: Continuation frame routing (CHUNK, END follow REQ) | bifaci/relay_switch_test.go:515 |
+| test432 | `Test432_relay_switch_empty_masters_list_error` | TEST432: Empty masters list creates empty switch, add_master works | bifaci/relay_switch_test.go:591 |
+| test433 | `Test433_relay_switch_capability_aggregation_deduplicates` | TEST433: Capability aggregation deduplicates caps | bifaci/relay_switch_test.go:606 |
+| test434 | `Test434_relay_switch_limits_negotiation_minimum` | TEST434: Limits negotiation takes minimum | bifaci/relay_switch_test.go:669 |
+| test435 | `Test435_relay_switch_urn_matching` | TEST435: URN matching (exact vs accepts()) | bifaci/relay_switch_test.go:718 |
+| test436 | `Test436_compute_checksum` | TEST436: Verify FNV-1a checksum function produces consistent results | bifaci/frame_test.go:883 |
+| test437 | `Test437_preferred_cap_routes_to_generic` | TEST437: find_master_for_cap with preferred_cap routes to generic handler With is_dispatchable semantics: - Generic provider (in=media:) CAN dispatch specific request (in="media:ext=pdf") because media: (wildcard) accepts any input type - Preference routes to preferred among dispatchable candidates | bifaci/relay_switch_test.go:778 |
+| test438 | `Test438_preferred_cap_falls_back_when_not_comparable` | TEST438: find_master_for_cap with preference falls back to closest-specificity when preferred cap is not in the comparable set | bifaci/relay_switch_test.go:842 |
+| test439 | `Test439_generic_provider_can_dispatch_specific_request` | TEST439: Generic provider CAN dispatch specific request (but only matches if no more specific provider exists) With is_dispatchable: generic provider (in=media:) CAN handle specific request (in="media:ext=pdf") because media: accepts any input type. With preference, can route to generic even when more specific exists. | bifaci/relay_switch_test.go:880 |
+| test440 | `Test440_chunk_index_checksum_roundtrip` | TEST440: CHUNK frame with chunk_index and checksum roundtrips through encode/decode | bifaci/io_test.go:1096 |
+| test441 | `Test441_stream_end_chunk_count_roundtrip` | TEST441: STREAM_END frame with chunk_count roundtrips through encode/decode | bifaci/io_test.go:1137 |
+| test442 | `Test442_seq_assigner_monotonic_same_rid` | TEST442: SeqAssigner assigns seq 0,1,2,3 for consecutive frames with same RID | bifaci/frame_test.go:900 |
+| test443 | `Test443_seq_assigner_independent_rids` | TEST443: SeqAssigner maintains independent counters for different RIDs | bifaci/frame_test.go:929 |
+| test444 | `Test444_seq_assigner_skips_non_flow` | TEST444: SeqAssigner skips non-flow frames (Heartbeat, RelayNotify, RelayState, Hello) | bifaci/frame_test.go:955 |
+| test445 | `Test445_seq_assigner_remove_by_flow_key` | TEST445: SeqAssigner.remove with FlowKey(rid, None) resets that flow; FlowKey(rid, Some(xid)) is unaffected | bifaci/frame_test.go:983 |
+| test446 | `Test446_seq_assigner_mixed_types` | TEST446: SeqAssigner handles mixed frame types (REQ, CHUNK, LOG, END) for same RID | bifaci/frame_test.go:1065 |
+| test447 | `Test447_flow_key_with_xid` | TEST447: FlowKey::from_frame extracts (rid, Some(xid)) when routing_id present | bifaci/frame_test.go:1086 |
+| test448 | `Test448_flow_key_without_xid` | TEST448: FlowKey::from_frame extracts (rid, None) when routing_id absent | bifaci/frame_test.go:1103 |
+| test449 | `Test449_flow_key_equality` | TEST449: FlowKey equality: same rid+xid equal, different xid different key | bifaci/frame_test.go:1117 |
+| test450 | `Test450_flow_key_hash_lookup` | TEST450: FlowKey hash: same keys hash equal (HashMap lookup) | bifaci/frame_test.go:1139 |
+| test451 | `Test451_reorder_buffer_in_order` | TEST451: ReorderBuffer in-order delivery: seq 0,1,2 delivered immediately | bifaci/frame_test.go:1153 |
+| test452 | `Test452_reorder_buffer_out_of_order` | TEST452: ReorderBuffer out-of-order: seq 1 then 0 delivers both in order | bifaci/frame_test.go:1178 |
+| test453 | `Test453_reorder_buffer_gap_fill` | TEST453: ReorderBuffer gap fill: seq 0,2,1 delivers 0, buffers 2, then delivers 1+2 | bifaci/frame_test.go:1201 |
+| test454 | `Test454_reorder_buffer_stale_seq` | TEST454: ReorderBuffer stale seq is hard error | bifaci/frame_test.go:1228 |
+| test455 | `Test455_reorder_buffer_overflow` | TEST455: ReorderBuffer overflow triggers protocol error | bifaci/frame_test.go:1249 |
+| test456 | `Test456_reorder_buffer_independent_flows` | TEST456: Multiple concurrent flows reorder independently | bifaci/frame_test.go:1269 |
+| test457 | `Test457_reorder_buffer_cleanup` | TEST457: cleanup_flow removes state; new frames start at seq 0 | bifaci/frame_test.go:1297 |
+| test458 | `Test458_reorder_buffer_non_flow_bypass` | TEST458: Non-flow frames bypass reorder entirely | bifaci/frame_test.go:1322 |
+| test459 | `Test459_reorder_buffer_end_frame` | TEST459: Terminal END frame flows through correctly | bifaci/frame_test.go:1338 |
+| test460 | `Test460_reorder_buffer_err_frame` | TEST460: Terminal ERR frame flows through correctly | bifaci/frame_test.go:1997 |
+| test461 | `Test461_write_chunked_seq_zero` | TEST461: write_chunked produces frames with seq=0; SeqAssigner assigns at output stage | bifaci/io_test.go:1406 |
+| test462 | `Test462_attached_cartridge_identity_from_manifest` | TEST462: An attached cartridge (pre-connected over raw streams, no on-disk anchor) gets a resolvable install identity derived from its HELLO manifest — `installedCartridgeRecordFromManifest`. Identity gates advertisement, so a nil record means the cartridge is silently dropped from every RelayNotify and the engine can never route to it. Locks the attached-cartridge identity path (the swift mirror regressed here: its attached cartridges returned nil and never reached the engine). Mirrors the reference installed_cartridge_record_from_manifest. | bifaci/host_test.go:301 |
+| test472 | `Test472_handshake_negotiates_reorder_buffer` | TEST472: Handshake negotiates max_reorder_buffer (minimum of both sides) | bifaci/io_test.go:1356 |
+| test473 | `Test473_cap_discard_parses_as_valid_urn` | TEST473: CAP_DISCARD parses as valid CapUrn with in=media: and out=media:void | standard/caps_test.go:81 |
+| test474 | `Test474_cap_discard_structure` | TEST474: CAP_DISCARD accepts specific-input/void-output caps | standard/caps_test.go:90 |
 | test475 | `Test475_validate_passes_with_identity` | TEST475: validate() passes with CAP_IDENTITY in a cap group | bifaci/manifest_test.go:325 |
 | test476 | `Test476_validate_fails_without_identity` | TEST476: validate() fails without CAP_IDENTITY | bifaci/manifest_test.go:336 |
-| test478 | `Test478_auto_registers_identity_handler` | TEST478: CartridgeRuntime auto-registers identity and discard handlers on construction | bifaci/cartridge_runtime_test.go:3371 |
-| test479 | `Test479_custom_identity_overrides_default` | TEST479: Custom identity Op overrides auto-registered default | bifaci/cartridge_runtime_test.go:3396 |
-| test481 | `Test481_verify_identity_succeeds` | TEST481: verify_identity succeeds with standard identity echo handler | bifaci/io_test.go:1510 |
-| test482 | `Test482_verify_identity_fails_on_err` | TEST482: verify_identity fails when cartridge returns ERR on identity call | bifaci/io_test.go:1569 |
-| test483 | `Test483_verify_identity_fails_on_close` | TEST483: verify_identity fails when connection closes before response | bifaci/io_test.go:1616 |
-| test485 | `Test485_attach_cartridge_identity_verification_succeeds` | TEST485: attach_cartridge completes identity verification with working cartridge | bifaci/host_multi_test.go:1137 |
-| test486 | `Test486_attach_cartridge_identity_verification_fails` | TEST486: attach_cartridge rejects cartridge that fails identity verification | bifaci/host_multi_test.go:1182 |
-| test487 | `Test487_relay_switch_identity_verification_succeeds` | TEST487: RelaySwitch construction verifies identity through relay chain | bifaci/relay_switch_test.go:1190 |
-| test488 | `Test488_relay_switch_identity_verification_fails` | TEST488: RelaySwitch construction fails when master's identity verification fails | bifaci/relay_switch_test.go:1235 |
+| test478 | `Test478_auto_registers_identity_handler` | TEST478: CartridgeRuntime auto-registers identity and discard handlers on construction | bifaci/cartridge_runtime_test.go:3381 |
+| test479 | `Test479_custom_identity_overrides_default` | TEST479: Custom identity Op overrides auto-registered default | bifaci/cartridge_runtime_test.go:3406 |
+| test481 | `Test481_verify_identity_succeeds` | TEST481: verify_identity succeeds with standard identity echo handler | bifaci/io_test.go:1653 |
+| test482 | `Test482_verify_identity_fails_on_err` | TEST482: verify_identity fails when cartridge returns ERR on identity call | bifaci/io_test.go:1712 |
+| test483 | `Test483_verify_identity_fails_on_close` | TEST483: verify_identity fails when connection closes before response | bifaci/io_test.go:1759 |
+| test485 | `Test485_attach_cartridge_identity_verification_succeeds` | TEST485: attach_cartridge completes identity verification with working cartridge | bifaci/host_multi_test.go:1266 |
+| test486 | `Test486_attach_cartridge_identity_verification_fails` | TEST486: attach_cartridge rejects cartridge that fails identity verification | bifaci/host_multi_test.go:1311 |
+| test487 | `Test487_relay_switch_identity_verification_succeeds` | TEST487: RelaySwitch construction verifies identity through relay chain | bifaci/relay_switch_test.go:1197 |
+| test488 | `Test488_relay_switch_identity_verification_fails` | TEST488: RelaySwitch construction fails when master's identity verification fails | bifaci/relay_switch_test.go:1242 |
 | test489 | `Test489_FullPathIdentityVerification` | TEST489: Full path identity verification: engine → host (AttachCartridge) → cartridge In both the Rust and Go mirrors, attach_cartridge runs identity verification end-to-end (simulateCartridge answers the identity REQ during attach); this then verifies that after attach the cartridge is live and handles a real request through the full relay path. | bifaci/integration_test.go:2496 |
 | test490 | `Test490_IdentityVerificationMultipleCartridges` | TEST490: Identity verification with multiple cartridges through single relay Both cartridges must be live and routed independently after attach. Each cartridge answers the identity REQ during attach (simulateCartridge), matching Rust's attach_cartridge identity verification. | bifaci/integration_test.go:2614 |
-| test491 | `Test491_chunk_requires_chunk_index_and_checksum` | TEST491: Frame::chunk constructor requires and sets chunk_index and checksum | bifaci/frame_test.go:1370 |
-| test492 | `Test492_stream_end_requires_chunk_count` | TEST492: Frame::stream_end constructor requires and sets chunk_count | bifaci/frame_test.go:1386 |
-| test493 | `Test493_compute_checksum_fnv1a_test_vectors` | TEST493: compute_checksum produces correct FNV-1a hash for known test vectors | bifaci/frame_test.go:1399 |
-| test494 | `Test494_compute_checksum_deterministic` | TEST494: compute_checksum is deterministic | bifaci/frame_test.go:1406 |
-| test495 | `Test495_cbor_rejects_chunk_without_chunk_index` | TEST495: CBOR decode REJECTS CHUNK frame missing chunk_index field | bifaci/frame_test.go:1417 |
-| test496 | `Test496_cbor_rejects_chunk_without_checksum` | TEST496: CBOR decode REJECTS CHUNK frame missing checksum field | bifaci/frame_test.go:1445 |
-| test497 | `Test497_chunk_corrupted_payload_rejected` | TEST497: Verify CHUNK frame with corrupted payload is rejected by checksum | bifaci/io_test.go:1024 |
-| test498 | `Test498_routing_id_cbor_roundtrip` | TEST498: routing_id field roundtrips through CBOR encoding | bifaci/frame_test.go:1473 |
-| test499 | `Test499_chunk_index_checksum_cbor_roundtrip` | TEST499: chunk_index and checksum roundtrip through CBOR encoding | bifaci/frame_test.go:1491 |
-| test500 | `Test500_chunk_count_cbor_roundtrip` | TEST500: chunk_count roundtrips through CBOR encoding | bifaci/frame_test.go:1511 |
-| test501 | `Test501_frame_new_initializes_optional_fields_none` | TEST501: Frame::new initializes new fields to None | bifaci/frame_test.go:1528 |
-| test502 | `Test502_keys_module_new_field_constants` | TEST502: Keys module has constants for new fields | bifaci/frame_test.go:2066 |
-| test503 | `Test503_compute_checksum_empty_data` | TEST503: compute_checksum handles empty data correctly | bifaci/frame_test.go:1546 |
-| test504 | `Test504_compute_checksum_large_payload` | TEST504: compute_checksum handles large payloads without overflow | bifaci/frame_test.go:1552 |
-| test505 | `Test505_chunk_with_offset_sets_chunk_index` | TEST505: chunk_with_offset sets chunk_index correctly | bifaci/frame_test.go:1565 |
-| test506 | `Test506_compute_checksum_different_data_different_hash` | TEST506: Different data produces different checksums | bifaci/frame_test.go:1582 |
-| test507 | `Test507_reorder_buffer_xid_isolation` | TEST507: ReorderBuffer isolates flows by XID (routing_id) - same RID different XIDs | bifaci/frame_test.go:1589 |
-| test508 | `Test508_reorder_buffer_duplicate_buffered_seq` | TEST508: ReorderBuffer rejects duplicate seq already in buffer | bifaci/frame_test.go:1620 |
-| test509 | `Test509_reorder_buffer_large_gap_rejected` | TEST509: ReorderBuffer handles large seq gaps without DOS | bifaci/frame_test.go:1636 |
-| test510 | `Test510_reorder_buffer_multiple_gaps` | TEST510: ReorderBuffer with multiple interleaved gaps fills correctly | bifaci/frame_test.go:1655 |
-| test511 | `Test511_reorder_buffer_cleanup_with_buffered_frames` | TEST511: ReorderBuffer cleanup with buffered frames discards them | bifaci/frame_test.go:1689 |
-| test512 | `Test512_reorder_buffer_burst_delivery` | TEST512: ReorderBuffer delivers burst of consecutive buffered frames | bifaci/frame_test.go:1713 |
-| test513 | `Test513_reorder_buffer_mixed_types_same_flow` | TEST513: ReorderBuffer different frame types in same flow maintain order | bifaci/frame_test.go:1734 |
-| test514 | `Test514_reorder_buffer_xid_cleanup_isolation` | TEST514: ReorderBuffer with XID cleanup doesn't affect different XID | bifaci/frame_test.go:1757 |
-| test515 | `Test515_reorder_buffer_overflow_error_details` | TEST515: ReorderBuffer overflow error includes diagnostic information | bifaci/frame_test.go:1783 |
-| test516 | `Test516_reorder_buffer_stale_error_details` | TEST516: ReorderBuffer stale error includes diagnostic information | bifaci/frame_test.go:1799 |
-| test517 | `Test517_flow_key_none_vs_some_xid` | TEST517: FlowKey with None XID differs from Some(xid) | bifaci/frame_test.go:1817 |
-| test518 | `Test518_reorder_buffer_empty_ready_vec` | TEST518: ReorderBuffer handles zero-length ready vec correctly | bifaci/frame_test.go:1832 |
-| test519 | `Test519_reorder_buffer_state_persistence` | TEST519: ReorderBuffer state persists across accept calls | bifaci/frame_test.go:1844 |
-| test520 | `Test520_reorder_buffer_per_flow_limit` | TEST520: ReorderBuffer max_buffer_per_flow is per-flow not global | bifaci/frame_test.go:1863 |
-| test521 | `Test521_relay_notify_cbor_roundtrip` | TEST521: RelayNotify CBOR roundtrip preserves manifest and limits | bifaci/frame_test.go:1886 |
-| test522 | `Test522_relay_state_cbor_roundtrip` | TEST522: RelayState CBOR roundtrip preserves payload | bifaci/frame_test.go:1906 |
-| test523 | `Test523_relay_notify_not_flow_frame` | TEST523: is_flow_frame returns false for RelayNotify | bifaci/frame_test.go:1922 |
-| test524 | `Test524_relay_state_not_flow_frame` | TEST524: is_flow_frame returns false for RelayState | bifaci/frame_test.go:1928 |
-| test525 | `Test525_relay_notify_empty_manifest` | TEST525: RelayNotify with empty manifest is valid | bifaci/frame_test.go:1934 |
-| test526 | `Test526_relay_state_empty_payload` | TEST526: RelayState with empty payload is valid | bifaci/frame_test.go:1941 |
-| test527 | `Test527_relay_notify_large_manifest` | TEST527: RelayNotify with large manifest roundtrips correctly | bifaci/frame_test.go:1948 |
-| test528 | `Test528_relay_frames_use_uint_zero_id` | TEST528: RelayNotify and RelayState use MessageId::Uint(0) | bifaci/frame_test.go:1965 |
-| test529 | `Test529_input_stream_recv_order` | TEST529: InputStream recv yields chunks in order | bifaci/cartridge_runtime_test.go:3476 |
-| test530 | `Test530_input_stream_collect_bytes` | TEST530: InputStream::collect_bytes concatenates byte chunks | bifaci/cartridge_runtime_test.go:3500 |
-| test531 | `Test531_input_stream_collect_bytes_text` | TEST531: InputStream::collect_bytes handles text chunks | bifaci/cartridge_runtime_test.go:3514 |
-| test532 | `Test532_input_stream_empty` | TEST532: InputStream empty stream produces empty bytes | bifaci/cartridge_runtime_test.go:3528 |
-| test533 | `Test533_input_stream_error_propagation` | TEST533: InputStream propagates errors | bifaci/cartridge_runtime_test.go:3541 |
-| test534 | `Test534_input_stream_media_urn` | TEST534: InputStream::media_urn returns correct URN | bifaci/cartridge_runtime_test.go:3572 |
-| test535 | `Test535_input_package_iteration` | TEST535: InputPackage recv yields streams | bifaci/cartridge_runtime_test.go:3594 |
-| test536 | `Test536_input_package_collect_all_bytes` | TEST536: InputPackage::collect_all_bytes aggregates all streams | bifaci/cartridge_runtime_test.go:3619 |
-| test537 | `Test537_input_package_empty` | TEST537: InputPackage empty package produces empty bytes | bifaci/cartridge_runtime_test.go:3637 |
-| test538 | `Test538_input_package_error_propagation` | TEST538: InputPackage propagates stream errors | bifaci/cartridge_runtime_test.go:3652 |
-| test539 | `Test539_output_stream_sends_stream_start` | TEST539: OutputStream sends STREAM_START on first write | bifaci/cartridge_runtime_test.go:3709 |
-| test540 | `Test540_output_stream_close_sends_stream_end` | TEST540: OutputStream::close sends STREAM_END with correct chunk_count | bifaci/cartridge_runtime_test.go:3728 |
-| test541 | `Test541_output_stream_chunks_large_data` | TEST541: OutputStream chunks large data correctly | bifaci/cartridge_runtime_test.go:3751 |
-| test542 | `Test542_output_stream_empty` | TEST542: OutputStream empty stream sends STREAM_START and STREAM_END only | bifaci/cartridge_runtime_test.go:3775 |
-| test544 | `Test544_peer_invoker_sends_end_frame` | TEST544: PeerCall::finish sends END frame | bifaci/cartridge_runtime_test.go:2731 |
-| test545 | `Test545_demux_peer_response_returns_data` | TEST545: PeerCall::finish returns PeerResponse with data | bifaci/cartridge_runtime_test.go:2764 |
+| test491 | `Test491_chunk_requires_chunk_index_and_checksum` | TEST491: Frame::chunk constructor requires and sets chunk_index and checksum | bifaci/frame_test.go:1391 |
+| test492 | `Test492_stream_end_requires_chunk_count` | TEST492: Frame::stream_end constructor requires and sets chunk_count | bifaci/frame_test.go:1407 |
+| test493 | `Test493_compute_checksum_fnv1a_test_vectors` | TEST493: compute_checksum produces correct FNV-1a hash for known test vectors | bifaci/frame_test.go:1420 |
+| test494 | `Test494_compute_checksum_deterministic` | TEST494: compute_checksum is deterministic | bifaci/frame_test.go:1427 |
+| test495 | `Test495_cbor_rejects_chunk_without_chunk_index` | TEST495: CBOR decode REJECTS CHUNK frame missing chunk_index field | bifaci/frame_test.go:1438 |
+| test496 | `Test496_cbor_rejects_chunk_without_checksum` | TEST496: CBOR decode REJECTS CHUNK frame missing checksum field | bifaci/frame_test.go:1466 |
+| test497 | `Test497_chunk_corrupted_payload_rejected` | TEST497: Verify CHUNK frame with corrupted payload is rejected by checksum | bifaci/io_test.go:1167 |
+| test498 | `Test498_routing_id_cbor_roundtrip` | TEST498: routing_id field roundtrips through CBOR encoding | bifaci/frame_test.go:1494 |
+| test499 | `Test499_chunk_index_checksum_cbor_roundtrip` | TEST499: chunk_index and checksum roundtrip through CBOR encoding | bifaci/frame_test.go:1512 |
+| test500 | `Test500_chunk_count_cbor_roundtrip` | TEST500: chunk_count roundtrips through CBOR encoding | bifaci/frame_test.go:1532 |
+| test501 | `Test501_frame_new_initializes_optional_fields_none` | TEST501: Frame::new initializes new fields to None | bifaci/frame_test.go:1549 |
+| test502 | `Test502_keys_module_new_field_constants` | TEST502: Keys module has constants for new fields | bifaci/frame_test.go:2290 |
+| test503 | `Test503_compute_checksum_empty_data` | TEST503: compute_checksum handles empty data correctly | bifaci/frame_test.go:1567 |
+| test504 | `Test504_compute_checksum_large_payload` | TEST504: compute_checksum handles large payloads without overflow | bifaci/frame_test.go:1573 |
+| test505 | `Test505_chunk_with_offset_sets_chunk_index` | TEST505: chunk_with_offset sets chunk_index correctly | bifaci/frame_test.go:1586 |
+| test506 | `Test506_compute_checksum_different_data_different_hash` | TEST506: Different data produces different checksums | bifaci/frame_test.go:1603 |
+| test507 | `Test507_reorder_buffer_xid_isolation` | TEST507: ReorderBuffer isolates flows by XID (routing_id) - same RID different XIDs | bifaci/frame_test.go:1610 |
+| test508 | `Test508_reorder_buffer_duplicate_buffered_seq` | TEST508: ReorderBuffer rejects duplicate seq already in buffer | bifaci/frame_test.go:1641 |
+| test509 | `Test509_reorder_buffer_large_gap_rejected` | TEST509: ReorderBuffer handles large seq gaps without DOS | bifaci/frame_test.go:1657 |
+| test510 | `Test510_reorder_buffer_multiple_gaps` | TEST510: ReorderBuffer with multiple interleaved gaps fills correctly | bifaci/frame_test.go:1676 |
+| test511 | `Test511_reorder_buffer_cleanup_with_buffered_frames` | TEST511: ReorderBuffer cleanup with buffered frames discards them | bifaci/frame_test.go:1710 |
+| test512 | `Test512_reorder_buffer_burst_delivery` | TEST512: ReorderBuffer delivers burst of consecutive buffered frames | bifaci/frame_test.go:1734 |
+| test513 | `Test513_reorder_buffer_mixed_types_same_flow` | TEST513: ReorderBuffer different frame types in same flow maintain order | bifaci/frame_test.go:1755 |
+| test514 | `Test514_reorder_buffer_xid_cleanup_isolation` | TEST514: ReorderBuffer with XID cleanup doesn't affect different XID | bifaci/frame_test.go:1778 |
+| test515 | `Test515_reorder_buffer_overflow_error_details` | TEST515: ReorderBuffer overflow error includes diagnostic information | bifaci/frame_test.go:1804 |
+| test516 | `Test516_reorder_buffer_stale_error_details` | TEST516: ReorderBuffer stale error includes diagnostic information | bifaci/frame_test.go:1820 |
+| test517 | `Test517_flow_key_none_vs_some_xid` | TEST517: FlowKey with None XID differs from Some(xid) | bifaci/frame_test.go:1838 |
+| test518 | `Test518_reorder_buffer_empty_ready_vec` | TEST518: ReorderBuffer handles zero-length ready vec correctly | bifaci/frame_test.go:1853 |
+| test519 | `Test519_reorder_buffer_state_persistence` | TEST519: ReorderBuffer state persists across accept calls | bifaci/frame_test.go:1865 |
+| test520 | `Test520_reorder_buffer_per_flow_limit` | TEST520: ReorderBuffer max_buffer_per_flow is per-flow not global | bifaci/frame_test.go:1884 |
+| test521 | `Test521_relay_notify_cbor_roundtrip` | TEST521: RelayNotify CBOR roundtrip preserves manifest and limits | bifaci/frame_test.go:1907 |
+| test522 | `Test522_relay_state_cbor_roundtrip` | TEST522: RelayState CBOR roundtrip preserves payload | bifaci/frame_test.go:1928 |
+| test523 | `Test523_relay_notify_not_flow_frame` | TEST523: is_flow_frame returns false for RelayNotify | bifaci/frame_test.go:1944 |
+| test524 | `Test524_relay_state_not_flow_frame` | TEST524: is_flow_frame returns false for RelayState | bifaci/frame_test.go:1950 |
+| test525 | `Test525_relay_notify_empty_manifest` | TEST525: RelayNotify with empty manifest is valid | bifaci/frame_test.go:1956 |
+| test526 | `Test526_relay_state_empty_payload` | TEST526: RelayState with empty payload is valid | bifaci/frame_test.go:1963 |
+| test527 | `Test527_relay_notify_large_manifest` | TEST527: RelayNotify with large manifest roundtrips correctly | bifaci/frame_test.go:1970 |
+| test528 | `Test528_relay_frames_use_uint_zero_id` | TEST528: RelayNotify and RelayState use MessageId::Uint(0) | bifaci/frame_test.go:1987 |
+| test529 | `Test529_input_stream_recv_order` | TEST529: InputStream recv yields chunks in order | bifaci/cartridge_runtime_test.go:3486 |
+| test530 | `Test530_input_stream_collect_bytes` | TEST530: InputStream::collect_bytes concatenates byte chunks | bifaci/cartridge_runtime_test.go:3510 |
+| test531 | `Test531_input_stream_collect_bytes_text` | TEST531: InputStream::collect_bytes handles text chunks | bifaci/cartridge_runtime_test.go:3524 |
+| test532 | `Test532_input_stream_empty` | TEST532: InputStream empty stream produces empty bytes | bifaci/cartridge_runtime_test.go:3538 |
+| test533 | `Test533_input_stream_error_propagation` | TEST533: InputStream propagates errors | bifaci/cartridge_runtime_test.go:3551 |
+| test534 | `Test534_input_stream_media_urn` | TEST534: InputStream::media_urn returns correct URN | bifaci/cartridge_runtime_test.go:3582 |
+| test535 | `Test535_input_package_iteration` | TEST535: InputPackage recv yields streams | bifaci/cartridge_runtime_test.go:3604 |
+| test536 | `Test536_input_package_collect_all_bytes` | TEST536: InputPackage::collect_all_bytes aggregates all streams | bifaci/cartridge_runtime_test.go:3629 |
+| test537 | `Test537_input_package_empty` | TEST537: InputPackage empty package produces empty bytes | bifaci/cartridge_runtime_test.go:3647 |
+| test538 | `Test538_input_package_error_propagation` | TEST538: InputPackage propagates stream errors | bifaci/cartridge_runtime_test.go:3662 |
+| test539 | `Test539_output_stream_sends_stream_start` | TEST539: OutputStream sends STREAM_START on first write | bifaci/cartridge_runtime_test.go:3719 |
+| test540 | `Test540_output_stream_close_sends_stream_end` | TEST540: OutputStream::close sends STREAM_END with correct chunk_count | bifaci/cartridge_runtime_test.go:3738 |
+| test541 | `Test541_output_stream_chunks_large_data` | TEST541: OutputStream chunks large data correctly | bifaci/cartridge_runtime_test.go:3761 |
+| test542 | `Test542_output_stream_empty` | TEST542: OutputStream empty stream sends STREAM_START and STREAM_END only | bifaci/cartridge_runtime_test.go:3785 |
+| test544 | `Test544_peer_invoker_sends_end_frame` | TEST544: PeerCall::finish sends END frame | bifaci/cartridge_runtime_test.go:2741 |
+| test545 | `Test545_demux_peer_response_returns_data` | TEST545: PeerCall::finish returns PeerResponse with data | bifaci/cartridge_runtime_test.go:2774 |
 | test546 | `Test546_is_image` | TEST546: is_image returns true only when image marker tag is present | urn/media_urn_test.go:383 |
 | test547 | `Test547_is_audio` | TEST547: is_audio returns true only when audio marker tag is present | urn/media_urn_test.go:411 |
 | test548 | `Test548_is_video` | TEST548: is_video returns true only when video marker tag is present | urn/media_urn_test.go:439 |
@@ -533,8 +534,8 @@ This catalog lists all tests in the Go codebase.
 | test601 | `Test601_get_content_type` | TEST601: get_content_type returns correct MIME type for each variant | cap/response_test.go:305 |
 | test602 | `Test602_as_type_binary_error` | TEST602: as_type on binary response returns error (cannot deserialize binary) | cap/response_test.go:317 |
 | test603 | `Test603_as_bool_edge_cases` | TEST603: as_bool handles all accepted truthy/falsy variants and rejects garbage | cap/response_test.go:326 |
-| test605 | `Test605_all_coercion_paths_build_valid_urns` | TEST605: all_coercion_paths each entry builds a valid parseable CapUrn | standard/caps_test.go:81 |
-| test606 | `Test606_coercion_urn_specs` | TEST606: coercion_urn in/out specs match the type's media URN constant | standard/caps_test.go:98 |
+| test605 | `Test605_all_coercion_paths_build_valid_urns` | TEST605: all_coercion_paths each entry builds a valid parseable CapUrn | standard/caps_test.go:103 |
+| test606 | `Test606_coercion_urn_specs` | TEST606: coercion_urn in/out specs match the type's media URN constant | standard/caps_test.go:120 |
 | test607 | `Test607_media_urns_for_extension_unknown` | TEST607: media_urns_for_extension returns error for unknown extension | media/spec_test.go:521 |
 | test608 | `Test608_media_urns_for_extension_populated` | TEST608: media_urns_for_extension returns URNs after adding a spec with extensions | media/spec_test.go:531 |
 | test609 | `Test609_get_extension_mappings` | TEST609: get_extension_mappings returns all registered extension→URN pairs. | media/spec_test.go:562 |
@@ -582,25 +583,25 @@ This catalog lists all tests in the Go codebase.
 | test658 | `Test658_HeartbeatResponse` | TEST658: InProcessCartridgeHost handles heartbeat by echoing same ID | bifaci/in_process_host_test.go:274 |
 | test659 | `Test659_HandlerErrorReturnsErrFrame` | TEST659: InProcessCartridgeHost handler error returns ERR frame | bifaci/in_process_host_test.go:318 |
 | test660 | `Test660_ClosestSpecificityRouting` | TEST660: InProcessCartridgeHost closest-specificity routing prefers specific over identity | bifaci/in_process_host_test.go:364 |
-| test662 | `Test662_rebuild_capabilities_includes_non_running_cartridges` | TEST662: rebuild_capabilities includes non-running cartridges' caps (each cartridge's `cap_groups` is the source of truth, regardless of whether its process has been spawned yet). | bifaci/host_multi_test.go:1250 |
-| test663 | `Test663_hello_failed_cartridge_removed_from_capabilities` | TEST663: Cartridge with hello_failed is permanently removed from capabilities | bifaci/host_multi_test.go:1274 |
-| test664 | `Test664_running_cartridge_uses_manifest_caps` | TEST664: Attached cartridge replaces pre-registration caps with manifest caps. The pre-attach `cap_groups` (from probe-time discovery) get superseded by the post-HELLO `cap_groups` from the actual handshake. | bifaci/host_multi_test.go:1303 |
-| test665 | `Test665_cap_table_mixed_running_and_non_running` | TEST665: Cap table aggregates caps from every healthy cartridge — attached/running cartridges contribute their post-HELLO cap_groups, registered-but-not-yet-spawned cartridges contribute their probe-time cap_groups. Both flow through the same `cap_urns()` view. | bifaci/host_multi_test.go:1354 |
-| test666 | `Test666_preferred_cap_routing` | TEST666: Preferred cap routing - routes to exact equivalent when multiple masters match | bifaci/relay_switch_test.go:1568 |
-| test667 | `Test667_verify_chunk_checksum_detects_corruption` | TEST667: verify_chunk_checksum detects corrupted payload | bifaci/frame_test.go:824 |
+| test662 | `Test662_rebuild_capabilities_includes_non_running_cartridges` | TEST662: rebuild_capabilities includes non-running cartridges' caps (each cartridge's `cap_groups` is the source of truth, regardless of whether its process has been spawned yet). | bifaci/host_multi_test.go:1379 |
+| test663 | `Test663_hello_failed_cartridge_removed_from_capabilities` | TEST663: Cartridge with hello_failed is permanently removed from capabilities | bifaci/host_multi_test.go:1403 |
+| test664 | `Test664_running_cartridge_uses_manifest_caps` | TEST664: Attached cartridge replaces pre-registration caps with manifest caps. The pre-attach `cap_groups` (from probe-time discovery) get superseded by the post-HELLO `cap_groups` from the actual handshake. | bifaci/host_multi_test.go:1432 |
+| test665 | `Test665_cap_table_mixed_running_and_non_running` | TEST665: Cap table aggregates caps from every healthy cartridge — attached/running cartridges contribute their post-HELLO cap_groups, registered-but-not-yet-spawned cartridges contribute their probe-time cap_groups. Both flow through the same `cap_urns()` view. | bifaci/host_multi_test.go:1483 |
+| test666 | `Test666_preferred_cap_routing` | TEST666: Preferred cap routing - routes to exact equivalent when multiple masters match | bifaci/relay_switch_test.go:1575 |
+| test667 | `Test667_verify_chunk_checksum_detects_corruption` | TEST667: verify_chunk_checksum detects corrupted payload | bifaci/frame_test.go:845 |
 | test668 | `Test668_ResolveSlotWithPopulatedByteSlotValues` | TEST668: resolve_binding returns byte values when slot is populated with data | planner/argument_binding_test.go:20 |
 | test669 | `Test669_ResolveSlotFallsBackToDefault` | TEST669: resolve_binding falls back to cap default value when slot has no data | planner/argument_binding_test.go:48 |
 | test670 | `Test670_ResolveRequiredSlotNoValueReturnsErr` | TEST670: resolve_binding returns error when required slot has no value and no default | planner/argument_binding_test.go:69 |
 | test671 | `Test671_ResolveOptionalSlotNoValueReturnsNone` | TEST671: resolve_binding returns None when optional slot has no value and no default | planner/argument_binding_test.go:83 |
-| test675 | `Test675_build_request_frames_preserves_media_urn_in_stream_start` | TEST675: build_request_frames with full media URN preserves it in STREAM_START frame | bifaci/cartridge_runtime_test.go:3301 |
-| test676 | `Test676_build_request_frames_round_trip_find_stream_succeeds` | TEST676: Full round-trip: build_request_frames → extract streams → find_stream succeeds | bifaci/cartridge_runtime_test.go:3325 |
-| test677 | `Test677_base_urn_does_not_match_full_urn_in_find_stream` | TEST677: build_request_frames with BASE URN → find_stream with FULL URN FAILS This documents the root cause of the cartridge_client.rs bug: sender used "media:llm-generation-request" (base), receiver looked for "media:fmt=json;llm-generation-request;record" (full). is_equivalent requires exact tag set match, so base != full. | bifaci/cartridge_runtime_test.go:3348 |
-| test678 | `Test678_find_stream_equivalent_urn` | TEST678: find_stream with exact equivalent URN (same tags, different order) succeeds | bifaci/cartridge_runtime_test.go:2939 |
-| test679 | `Test679_find_stream_base_vs_full_fails` | TEST679: find_stream with base URN vs full URN fails — is_equivalent is strict This is the root cause of the cartridge_client.rs bug. Sender sent "media:llm-generation-request" but receiver looked for "media:fmt=json;llm-generation-request;record". | bifaci/cartridge_runtime_test.go:2956 |
-| test680 | `Test680_require_stream_missing_fails` | TEST680: require_stream with missing URN returns hard StreamError | bifaci/cartridge_runtime_test.go:2967 |
-| test681 | `Test681_find_stream_multiple` | TEST681: find_stream with multiple streams returns the correct one | bifaci/cartridge_runtime_test.go:2981 |
-| test682 | `Test682_require_stream_returns_data` | TEST682: require_stream_str returns UTF-8 string for text data | bifaci/cartridge_runtime_test.go:2997 |
-| test683 | `Test683_find_stream_invalid_urn_returns_nil` | TEST683: find_stream returns None for invalid media URN string (not a parse error — just None) | bifaci/cartridge_runtime_test.go:3011 |
+| test675 | `Test675_build_request_frames_preserves_media_urn_in_stream_start` | TEST675: build_request_frames with full media URN preserves it in STREAM_START frame | bifaci/cartridge_runtime_test.go:3311 |
+| test676 | `Test676_build_request_frames_round_trip_find_stream_succeeds` | TEST676: Full round-trip: build_request_frames → extract streams → find_stream succeeds | bifaci/cartridge_runtime_test.go:3335 |
+| test677 | `Test677_base_urn_does_not_match_full_urn_in_find_stream` | TEST677: build_request_frames with BASE URN → find_stream with FULL URN FAILS This documents the root cause of the cartridge_client.rs bug: sender used "media:llm-generation-request" (base), receiver looked for "media:fmt=json;llm-generation-request;record" (full). is_equivalent requires exact tag set match, so base != full. | bifaci/cartridge_runtime_test.go:3358 |
+| test678 | `Test678_find_stream_equivalent_urn` | TEST678: find_stream with exact equivalent URN (same tags, different order) succeeds | bifaci/cartridge_runtime_test.go:2949 |
+| test679 | `Test679_find_stream_base_vs_full_fails` | TEST679: find_stream with base URN vs full URN fails — is_equivalent is strict This is the root cause of the cartridge_client.rs bug. Sender sent "media:llm-generation-request" but receiver looked for "media:fmt=json;llm-generation-request;record". | bifaci/cartridge_runtime_test.go:2966 |
+| test680 | `Test680_require_stream_missing_fails` | TEST680: require_stream with missing URN returns hard StreamError | bifaci/cartridge_runtime_test.go:2977 |
+| test681 | `Test681_find_stream_multiple` | TEST681: find_stream with multiple streams returns the correct one | bifaci/cartridge_runtime_test.go:2991 |
+| test682 | `Test682_require_stream_returns_data` | TEST682: require_stream_str returns UTF-8 string for text data | bifaci/cartridge_runtime_test.go:3007 |
+| test683 | `Test683_find_stream_invalid_urn_returns_nil` | TEST683: find_stream returns None for invalid media URN string (not a parse error — just None) | bifaci/cartridge_runtime_test.go:3021 |
 | test688 | `Test688_is_multiple` | TEST688: Tests is_multiple method correctly identifies multi-value cardinalities Verifies Single returns false while Sequence and AtLeastOne return true | planner/cardinality_test.go:13 |
 | test689 | `Test689_accepts_single` | TEST689: Tests accepts_single method identifies cardinalities that accept single values Verifies Single and AtLeastOne accept singles while Sequence does not | planner/cardinality_test.go:20 |
 | test690 | `Test690_compatibility_single_to_single` | TEST690: Tests cardinality compatibility for single-to-single data flow Verifies Direct compatibility when both input and output are Single | planner/cardinality_test.go:27 |
@@ -738,19 +739,19 @@ This catalog lists all tests in the Go codebase.
 | test836 | `Test836_equivalent_non_equivalent` | TEST836: is_equivalent — non-equivalent comparable caps | urn/cap_urn_test.go:1413 |
 | test837 | `Test837_dispatch_op_mismatch` | TEST837: is_dispatchable — op tag mismatch rejects | urn/cap_urn_test.go:1423 |
 | test838 | `Test838_dispatch_request_wildcard_output` | TEST838: is_dispatchable — request with wildcard output accepts any provider output | urn/cap_urn_test.go:1432 |
-| test839 | `Test839_peer_response_delivers_logs_before_stream_start` | TEST839: LOG frames arriving BEFORE StreamStart are delivered immediately This tests the critical fix: during a peer call, the peer (e.g., modelcartridge) sends LOG frames for minutes during model download BEFORE sending any data (StreamStart + Chunk). The handler must receive these LOGs in real-time so it can re-emit progress and keep the engine's activity timer alive. Previously, demux_single_stream blocked on awaiting StreamStart before returning PeerResponse, which meant the handler couldn't call recv() until data arrived — causing 120s activity timeouts during long downloads. | bifaci/cartridge_runtime_test.go:2792 |
-| test840 | `Test840_peer_response_collect_bytes_discards_logs` | TEST840: PeerResponse::collect_bytes discards LOG frames | bifaci/cartridge_runtime_test.go:2860 |
-| test841 | `Test841_peer_response_collect_value_discards_logs` | TEST841: PeerResponse::collect_value discards LOG frames | bifaci/cartridge_runtime_test.go:2888 |
-| test842 | `Test842_progress_sender_emits_frames` | TEST842: run_with_keepalive returns closure result (fast operation, no keepalive frames) | bifaci/cartridge_runtime_test.go:3036 |
-| test843 | `Test843_progress_sender_from_goroutine` | TEST843: run_with_keepalive returns Ok/Err from closure | bifaci/cartridge_runtime_test.go:3082 |
-| test844 | `Test844_progress_sender_multiple_goroutines` | TEST844: run_with_keepalive propagates errors from closure | bifaci/cartridge_runtime_test.go:3115 |
-| test845 | `Test845_progress_sender_independent_of_emitter` | TEST845: ProgressSender emits progress and log frames independently of OutputStream | bifaci/cartridge_runtime_test.go:3160 |
-| test846 | `Test846_progress_frame_roundtrip` | TEST846: Test progress LOG frame encode/decode roundtrip preserves progress float | bifaci/io_test.go:1058 |
-| test847 | `Test847_progress_double_roundtrip` | TEST847: Double roundtrip (modelcartridge → relay → candlecartridge) | bifaci/io_test.go:1111 |
-| test848 | `Test848_relay_notify_roundtrip` | TEST848: RelayNotify encode/decode roundtrip preserves manifest and limits | bifaci/io_test.go:889 |
-| test849 | `Test849_relay_state_roundtrip` | TEST849: RelayState encode/decode roundtrip preserves resource payload | bifaci/io_test.go:930 |
-| test850 | `Test850_all_format_conversion_paths_build_valid_urns` | TEST850: all_format_conversion_paths each entry builds a valid parseable CapUrn | standard/caps_test.go:111 |
-| test851 | `Test851_format_conversion_urn_specs` | TEST851: format_conversion_urn in/out specs match the input constants | standard/caps_test.go:125 |
+| test839 | `Test839_peer_response_delivers_logs_before_stream_start` | TEST839: LOG frames arriving BEFORE StreamStart are delivered immediately This tests the critical fix: during a peer call, the peer (e.g., modelcartridge) sends LOG frames for minutes during model download BEFORE sending any data (StreamStart + Chunk). The handler must receive these LOGs in real-time so it can re-emit progress and keep the engine's activity timer alive. Previously, demux_single_stream blocked on awaiting StreamStart before returning PeerResponse, which meant the handler couldn't call recv() until data arrived — causing 120s activity timeouts during long downloads. | bifaci/cartridge_runtime_test.go:2802 |
+| test840 | `Test840_peer_response_collect_bytes_discards_logs` | TEST840: PeerResponse::collect_bytes discards LOG frames | bifaci/cartridge_runtime_test.go:2870 |
+| test841 | `Test841_peer_response_collect_value_discards_logs` | TEST841: PeerResponse::collect_value discards LOG frames | bifaci/cartridge_runtime_test.go:2898 |
+| test842 | `Test842_progress_sender_emits_frames` | TEST842: run_with_keepalive returns closure result (fast operation, no keepalive frames) | bifaci/cartridge_runtime_test.go:3046 |
+| test843 | `Test843_progress_sender_from_goroutine` | TEST843: run_with_keepalive returns Ok/Err from closure | bifaci/cartridge_runtime_test.go:3092 |
+| test844 | `Test844_progress_sender_multiple_goroutines` | TEST844: run_with_keepalive propagates errors from closure | bifaci/cartridge_runtime_test.go:3125 |
+| test845 | `Test845_progress_sender_independent_of_emitter` | TEST845: ProgressSender emits progress and log frames independently of OutputStream | bifaci/cartridge_runtime_test.go:3170 |
+| test846 | `Test846_progress_frame_roundtrip` | TEST846: Test progress LOG frame encode/decode roundtrip preserves progress float | bifaci/io_test.go:1201 |
+| test847 | `Test847_progress_double_roundtrip` | TEST847: Double roundtrip (modelcartridge → relay → candlecartridge) | bifaci/io_test.go:1254 |
+| test848 | `Test848_relay_notify_roundtrip` | TEST848: RelayNotify encode/decode roundtrip preserves manifest and limits | bifaci/io_test.go:1032 |
+| test849 | `Test849_relay_state_roundtrip` | TEST849: RelayState encode/decode roundtrip preserves resource payload | bifaci/io_test.go:1073 |
+| test850 | `Test850_all_format_conversion_paths_build_valid_urns` | TEST850: all_format_conversion_paths each entry builds a valid parseable CapUrn | standard/caps_test.go:133 |
+| test851 | `Test851_format_conversion_urn_specs` | TEST851: format_conversion_urn in/out specs match the input constants | standard/caps_test.go:147 |
 | test852 | `Test852_lub_identical` | TEST852: LUB of identical URNs returns the same URN | urn/media_urn_test.go:580 |
 | test853 | `Test853_lub_no_common_tags` | TEST853: LUB of URNs with no common tags returns media: (universal) | urn/media_urn_test.go:588 |
 | test854 | `Test854_lub_partial_overlap` | TEST854: LUB keeps common tags, drops differing ones | urn/media_urn_test.go:600 |
@@ -759,7 +760,7 @@ This catalog lists all tests in the Go codebase.
 | test857 | `Test857_lub_single` | TEST857: LUB of single input returns that input | urn/media_urn_test.go:632 |
 | test858 | `Test858_lub_three_inputs` | TEST858: LUB with three+ inputs narrows correctly | urn/media_urn_test.go:640 |
 | test859 | `Test859_lub_valued_tags` | TEST859: LUB with valued tags (non-marker) that differ | urn/media_urn_test.go:654 |
-| test860 | `Test860_seq_assigner_same_rid_different_xids_independent` | TEST860: Same RID with different XIDs get independent seq counters | bifaci/frame_test.go:1008 |
+| test860 | `Test860_seq_assigner_same_rid_different_xids_independent` | TEST860: Same RID with different XIDs get independent seq counters | bifaci/frame_test.go:1029 |
 | test880 | `Test880_no_duplicates_with_unique_caps` | TEST880: Tests duplicate detection passes for caps with unique URN combinations Verifies that check_for_duplicate_caps() correctly accepts caps with different op/in/out combinations | planner/plan_builder_test.go:193 |
 | test886 | `Test886_optional_non_io_arg_with_default_has_default` | TEST886: Tests optional non-IO arguments with default values are marked as HasDefault Verifies that optional arguments with defaults behave the same as required ones with defaults | planner/plan_builder_test.go:186 |
 | test890 | `Test890_direction_semantic_matching` | TEST890: Semantic direction matching - generic provider matches specific request | urn/cap_urn_test.go:960 |
@@ -771,9 +772,9 @@ This catalog lists all tests in the Go codebase.
 | test899 | `Test899_StreamingChunksThroughRelay` | TEST899: Streaming chunks flow through relay without accumulation | bifaci/integration_test.go:2145 |
 | test900 | `Test900_TwoCartridgesRoutedIndependently` | TEST900: Two cartridges routed independently by cap_urn | bifaci/integration_test.go:2253 |
 | test901 | `Test901_ReqForUnknownCapReturnsErrFrame` | TEST901: REQ for unknown cap returns ERR frame (not fatal) | bifaci/integration_test.go:2419 |
-| test902 | `Test902_compute_checksum_empty` | TEST902: Verify FNV-1a checksum handles empty data | bifaci/frame_test.go:1993 |
-| test903 | `Test903_chunk_with_chunk_index_and_checksum` | TEST903: Verify CHUNK frame can store chunk_index and checksum fields | bifaci/frame_test.go:1999 |
-| test904 | `Test904_stream_end_with_chunk_count` | TEST904: Verify STREAM_END frame can store chunk_count field | bifaci/frame_test.go:2024 |
+| test902 | `Test902_compute_checksum_empty` | TEST902: Verify FNV-1a checksum handles empty data | bifaci/frame_test.go:2015 |
+| test903 | `Test903_chunk_with_chunk_index_and_checksum` | TEST903: Verify CHUNK frame can store chunk_index and checksum fields | bifaci/frame_test.go:2021 |
+| test904 | `Test904_stream_end_with_chunk_count` | TEST904: Verify STREAM_END frame can store chunk_count field | bifaci/frame_test.go:2046 |
 | test908 | `Test908_cached_caps_accessible_when_offline` | TEST908: cached caps remain accessible while offline. | cap/registry_test.go:230 |
 | test910 | `Test910_map_progress_monotonic` | TEST910: map_progress output is monotonic for monotonically increasing input | orchestrator/progress_test.go:29 |
 | test911 | `Test911_map_progress_bounded` | TEST911: map_progress output is bounded within [base, base+weight] | orchestrator/progress_test.go:42 |
@@ -782,7 +783,7 @@ This catalog lists all tests in the Go codebase.
 | test914 | `Test914_progress_mapper_sub_mapper` | TEST914: ProgressMapper.sub_mapper chains correctly | orchestrator/progress_test.go:120 |
 | test915 | `Test915_per_group_subdivision_monotonic_bounded` | TEST915: Per-group subdivision produces monotonic, bounded progress for N groups Uses pre-computed boundaries (same pattern as production code) to guarantee monotonicity regardless of f32 rounding. | orchestrator/progress_test.go:150 |
 | test917 | `Test917_high_frequency_progress_bounded` | TEST917: High-frequency progress emission does not violate bounds (Regression test for the deadlock scenario — verifies computation stays bounded) | orchestrator/progress_test.go:205 |
-| test919 | `Test919_parse_simple_testcartridge_graph` | TEST919: Parse simple machine notation graph with test-edge1 | orchestrator/orchestrator_test.go:686 |
+| test919 | `Test919_parse_simple_testcartridge_graph` | TEST919: Parse simple machine notation graph with test-edge1 | orchestrator/orchestrator_test.go:693 |
 | test920 | `Test920_single_cap_plan` | TEST920: Tests creation of a simple execution plan with a single capability Verifies that single_cap() generates a valid plan with input_slot, cap node, and output node | planner/plan_test.go:512 |
 | test921 | `Test921_linear_chain_plan` | TEST921: LinearChain creates a plan with correct nodes and edges in topological order. | planner/plan_test.go:522 |
 | test922 | `Test922_empty_plan` | TEST922: An empty MachinePlan is valid with zero nodes. | planner/plan_test.go:541 |
@@ -802,10 +803,10 @@ This catalog lists all tests in the Go codebase.
 | test936 | `Test936_has_foreach` | TEST936: has_foreach detects ForEach nodes | planner/plan_test.go:703 |
 | test937 | `Test937_extract_prefix_to` | TEST937: extract_prefix_to extracts input_slot -> cap_0 as a standalone plan | planner/plan_test.go:720 |
 | test939 | `Test939_cap_urn_canonical_form_drops_wildcard_in_out` | TEST939: The canonical form drops `in=media:` and `out=media:` segments. Every spelling of "the same cap with wildcard in/out" collapses to one byte-identical canonical string. This is the contract that makes registry lookups work: the cap-publisher hashes `<canonical-urn>` to compute the cache key, and every language port (Rust, Go, Python, JS, ObjC) must agree on the canonical form for cross-language lookups to land on the same key. A regression that emitted the wildcard segments would silently move the published cap to a different SHA-256 bucket, 404'ing every reader that hashes the canonical form. | urn/cap_urn_test.go:330 |
-| test947 | `Test947_cap_not_found` | TEST947: Cap not found in registry | orchestrator/orchestrator_test.go:778 |
-| test948 | `Test948_invalid_cap_urn` | TEST948: Invalid cap URN in machine notation | orchestrator/orchestrator_test.go:766 |
-| test949 | `Test949_empty_graph` | TEST949: Empty machine notation (no edges) | orchestrator/orchestrator_test.go:749 |
-| test950 | `Test950_reject_cycles` | TEST950: Validate that cycles are rejected | orchestrator/orchestrator_test.go:724 |
+| test947 | `Test947_cap_not_found` | TEST947: Cap not found in registry | orchestrator/orchestrator_test.go:785 |
+| test948 | `Test948_invalid_cap_urn` | TEST948: Invalid cap URN in machine notation | orchestrator/orchestrator_test.go:773 |
+| test949 | `Test949_empty_graph` | TEST949: Empty machine notation (no edges) | orchestrator/orchestrator_test.go:756 |
+| test950 | `Test950_reject_cycles` | TEST950: Validate that cycles are rejected | orchestrator/orchestrator_test.go:731 |
 | test953 | `Test953_linear_plan_still_works` | TEST953: Linear plans (no ForEach/Collect) still convert successfully | orchestrator/orchestrator_test.go:217 |
 | test954 | `Test954_standalone_collect_passthrough` | TEST954: Standalone Collect nodes are handled as pass-through Plan: input → cap_0 → Collect → cap_1 → output The standalone Collect is transparent — the resolved edge from Collect to cap_1 should be rewritten to go from cap_0 to cap_1 directly. | orchestrator/orchestrator_test.go:237 |
 | test955 | `Test955_split_map_array` | TEST955: split_cbor_array with nested maps | orchestrator/cbor_util_test.go:110 |
@@ -829,9 +830,10 @@ This catalog lists all tests in the Go codebase.
 | test973 | `Test973_assemble_sequence_empty` | TEST973: assemble_cbor_sequence with empty items list produces empty bytes | orchestrator/cbor_util_test.go:327 |
 | test974 | `Test974_sequence_is_not_array` | TEST974: CBOR sequence is NOT a CBOR array — split_cbor_array rejects a sequence | orchestrator/cbor_util_test.go:334 |
 | test975 | `Test975_single_value_sequence` | TEST975: split_cbor_sequence works on data that is also a valid CBOR array (single top-level value) | orchestrator/cbor_util_test.go:353 |
+| test976 | `Test976_wrap_raw_items_roundtrips_and_assemble_rejects_them` | TEST976: WrapRawItemsAsCborSequence wraps RAW (non-CBOR) item bytes — e.g. PNG frames — into a valid, self-delimiting CBOR sequence that SplitCborSequence round-trips back to the exact raw items. Regression guard for commit 99df51c4 ("full dag"), which materialised sequence node_data with AssembleCborSequence(items) on the *raw* (unwrapped) items from decode_terminal_output. Raw binary is not itself CBOR, so that path failed with a deserialize error (observed as the video extract-frames chain failure). This test asserts the wrap path succeeds AND that the assemble path genuinely rejects the same raw bytes — so the two functions are not interchangeable and the fix is load-bearing. | orchestrator/cbor_util_test.go:375 |
 | test977 | `Test977_OsFilesExcludedIntegration` | TEST977: OS files excluded in resolve_paths | input_resolver/resolver_test.go:164 |
-| test987 | `Test987_gc_secondary_pass_enforces_hard_cap` | TEST987: / Contract #3 — the secondary hard-cap pass kicks in if the / table somehow exceeds `HARD_CAP` (extreme runaway). Without / it, a single GC at the soft watermark would not be enough / to recover headroom and the table could grow without bound / between bursts. | bifaci/host_multi_test.go:1508 |
-| test988 | `Test988_gc_reduces_table_below_soft_watermark_in_one_pass` | TEST988: / Contract #1 — the GC keeps the table strictly below the / hard cap. Seed the table well above the soft watermark / (matching what a runaway producer would do mid-frame- / burst) and call the production GC entry point. The / post-state must be at most `SOFT_WATERMARK` entries / because the GC drops at least / `EVICTION_FRACTION × pre_state` entries in one pass and / the pre-state is below the hard cap (i.e. one pass is / enough; the secondary "hard cap" pass would only fire if / pre-state crossed the hard cap before insertion completed, / which production prevents by gc-ing on every insert). | bifaci/host_multi_test.go:1446 |
+| test987 | `Test987_gc_secondary_pass_enforces_hard_cap` | TEST987: / Contract #3 — the secondary hard-cap pass kicks in if the / table somehow exceeds `HARD_CAP` (extreme runaway). Without / it, a single GC at the soft watermark would not be enough / to recover headroom and the table could grow without bound / between bursts. | bifaci/host_multi_test.go:1637 |
+| test988 | `Test988_gc_reduces_table_below_soft_watermark_in_one_pass` | TEST988: / Contract #1 — the GC keeps the table strictly below the / hard cap. Seed the table well above the soft watermark / (matching what a runaway producer would do mid-frame- / burst) and call the production GC entry point. The / post-state must be at most `SOFT_WATERMARK` entries / because the GC drops at least / `EVICTION_FRACTION × pre_state` entries in one pass and / the pre-state is below the hard cap (i.e. one pass is / enough; the secondary "hard cap" pass would only fire if / pre-state crossed the hard cap before insertion completed, / which production prevents by gc-ing on every insert). | bifaci/host_multi_test.go:1575 |
 | test991 | `Test991_detects_duplicate_cap_urns` | TEST991: Tests duplicate detection identifies caps with identical URNs Verifies that check_for_duplicate_caps() returns an error when multiple caps share the same cap_urn | planner/plan_builder_test.go:207 |
 | test992 | `Test992_different_ops_same_types_not_duplicates` | TEST992: Tests caps with different operations but same input/output types are not duplicates Verifies that only the complete URN (including op) is used for duplicate detection | planner/plan_builder_test.go:221 |
 | test993 | `Test993_same_op_different_input_types_not_duplicates` | TEST993: Tests caps with same operation but different input types are not duplicates Verifies that input type differences distinguish caps with the same operation name | planner/plan_builder_test.go:233 |
@@ -891,8 +893,8 @@ This catalog lists all tests in the Go codebase.
 | test1116 | `Test1116_collect_never_synthesized` | TEST1116: Collect is never synthesized during path finding | planner/live_cap_fab_test.go:384 |
 | test1117 | `Test1117_no_foreach_when_not_sequence` | TEST1117: ForEach is NOT synthesized when is_sequence=false | planner/live_cap_fab_test.go:403 |
 | test1118 | `Test1118_no_foreach_without_cap_consumers` | TEST1118: ForEach not synthesized without cap consumers even with is_sequence=true | planner/live_cap_fab_test.go:424 |
-| test1119 | `Test1119_FromStrand_returns_single_strand_machine` | TEST1119: Strand::knit returns a single-strand Machine via the new resolver. Smoke test the registry-threaded API end-to-end. | machine/machine_test.go:714 |
-| test1120 | `Test1120_FromStrand_unknown_cap_fails_hard` | TEST1120: Strand::knit fails hard when the cap is not in the registry — the planner produces strands referencing caps that must be present in the cap registry's cache for resolution to succeed. | machine/machine_test.go:740 |
+| test1119 | `Test1119_FromStrand_returns_single_strand_machine` | TEST1119: Strand::knit returns a single-strand Machine via the new resolver. Smoke test the registry-threaded API end-to-end. | machine/machine_test.go:748 |
+| test1120 | `Test1120_FromStrand_unknown_cap_fails_hard` | TEST1120: Strand::knit fails hard when the cap is not in the registry — the planner produces strands referencing caps that must be present in the cap registry's cache for resolution to succeed. | machine/machine_test.go:774 |
 | test1122 | `Test1122_FullPathEngineReqToCartridgeResponse` | TEST1122: Full path: engine REQ → runtime → cartridge → response back through relay | bifaci/integration_test.go:1811 |
 | test1123 | `Test1123_CartridgeErrorFlowsToEngine` | TEST1123: Cartridge ERR frame flows back to engine through relay | bifaci/integration_test.go:1938 |
 | test1126 | `Test1126_map_progress_deterministic` | TEST1126: map_progress is deterministic — same inputs always produce same output | orchestrator/progress_test.go:17 |
@@ -901,60 +903,61 @@ This catalog lists all tests in the Go codebase.
 | test1129 | `Test1129_cap_documentation_parses_from_capfab_json` | TEST1129: A capfab-shaped JSON document with a documentation field must deserialize into a Cap with the body intact. | cap/definition_test.go:575 |
 | test1130 | `Test1130_cap_documentation_set_and_clear_lifecycle` | TEST1130: Documentation set/clear lifecycle must not cross-contaminate cap_description. | cap/definition_test.go:592 |
 | test1133 | `Test1133_media_def_def_documentation_lifecycle` | TEST1133: MediaDef set/clear lifecycle for documentation. Setter and clearer must not cross-contaminate the description field. | media/spec_test.go:706 |
-| test1135 | `Test1135_StrandNodeUrnReturnsMediaUrnAtNodeId` | TEST1135: MachineStrand::node_urn(id) returns the MediaUrn at that NodeId. For a single-cap strand (pdf → extract → txt), there are exactly two nodes and each returns a valid URN. | machine/machine_test.go:174 |
-| test1136 | `Test1136_ParseMachineUndefinedAliasRaisesSyntaxError` | TEST1136: parse_machine with an undefined cap alias raises MachineParseError wrapping MachineSyntaxError::UndefinedAlias. This pins the error path so an alias lookup failure is always surfaced as a syntax error (not a resolution error or a panic). | machine/machine_test.go:472 |
-| test1140 | `Test1140_write_stream_chunked_splits_data_into_protocol_v2_sequence` | TEST1140: write_stream_chunked (protocol v2) splits payload into STREAM_START → CHUNK(s) → STREAM_END → END with correct frame types, stream_id, media_urn, and data integrity. | bifaci/io_test.go:1312 |
-| test1141 | `Test1141_write_stream_chunked_exact_fit_produces_single_chunk` | TEST1141: write_stream_chunked with data exactly equal to max_chunk produces exactly one CHUNK | bifaci/io_test.go:1408 |
+| test1135 | `Test1135_StrandNodeUrnReturnsMediaUrnAtNodeId` | TEST1135: MachineStrand::node_urn(id) returns the MediaUrn at that NodeId. For a single-cap strand (pdf → extract → txt), there are exactly two nodes and each returns a valid URN. | machine/machine_test.go:197 |
+| test1136 | `Test1136_ParseMachineUndefinedAliasRaisesSyntaxError` | TEST1136: parse_machine with an undefined cap alias raises MachineParseError wrapping MachineSyntaxError::UndefinedAlias. This pins the error path so an alias lookup failure is always surfaced as a syntax error (not a resolution error or a panic). | machine/machine_test.go:506 |
+| test1138 | `Test1138_assignment_bindings_are_sorted_by_cap_arg_media_urn` | TEST1138: EdgeAssignmentBinding list is sorted by CapArgMediaUrn for canonical form. A two-source cap whose args are added in reverse-alphabetical order must still produce bindings sorted alphabetically by CapArgMediaUrn, enabling canonical comparison regardless of creation order. | machine/machine_test.go:1149 |
+| test1140 | `Test1140_write_stream_chunked_splits_data_into_protocol_v2_sequence` | TEST1140: write_stream_chunked (protocol v2) splits payload into STREAM_START → CHUNK(s) → STREAM_END → END with correct frame types, stream_id, media_urn, and data integrity. | bifaci/io_test.go:1455 |
+| test1141 | `Test1141_write_stream_chunked_exact_fit_produces_single_chunk` | TEST1141: write_stream_chunked with data exactly equal to max_chunk produces exactly one CHUNK | bifaci/io_test.go:1551 |
 | test1142 | `Test1142_resolved_graph_to_mermaid_renders_shapes_dedupes_edges_and_escapes` | TEST1142: ResolvedGraph.to_mermaid() renders node shapes, deduplicates edges, and escapes labels | orchestrator/orchestrator_test.go:68 |
 | test1143 | `Test1143_InputItemFromStringDistinguishesGlobDirectoryAndFile` | TEST1143: InputItem::from_string distinguishes glob patterns, directories, and files | input_resolver/types_test.go:11 |
 | test1144 | `Test1144_ContentStructureHelpersAndDisplay` | TEST1144: ContentStructure is_list/is_record helpers and Display implementation are correct | input_resolver/types_test.go:43 |
 | test1145 | `Test1145_ResolvedInputSetUsesEquivalentMediaAndFileCountCardinality` | TEST1145: ResolvedInputSet uses URN equivalence for common_media and file count for is_sequence | input_resolver/types_test.go:80 |
 | test1146 | `Test1146_InputResolverErrorDisplayAndSource` | TEST1146: InputResolverError Display and source() implementations produce correct messages | input_resolver/types_test.go:127 |
-| test1147 | `Test1147_machine_syntax_error_display_is_specific` | TEST1147: MachineSyntaxError.Error() includes position and detail. invalidWiringError(7) must produce a message containing "statement 7" and "invalid wiring". | machine/machine_test.go:758 |
-| test1148 | `Test1148_machine_parse_error_from_syntax_preserves_variant` | TEST1148: MachineParseError::from(MachineSyntaxError) preserves the syntax error variant | machine/machine_test.go:770 |
-| test1149 | `Test1149_machine_parse_error_from_resolution_preserves_variant` | TEST1149: MachineParseError::from(MachineAbstractionError) preserves the resolution error variant | machine/machine_test.go:786 |
+| test1147 | `Test1147_machine_syntax_error_display_is_specific` | TEST1147: MachineSyntaxError.Error() includes position and detail. invalidWiringError(7) must produce a message containing "statement 7" and "invalid wiring". | machine/machine_test.go:792 |
+| test1148 | `Test1148_machine_parse_error_from_syntax_preserves_variant` | TEST1148: MachineParseError::from(MachineSyntaxError) preserves the syntax error variant | machine/machine_test.go:804 |
+| test1149 | `Test1149_machine_parse_error_from_resolution_preserves_variant` | TEST1149: MachineParseError::from(MachineAbstractionError) preserves the resolution error variant | machine/machine_test.go:820 |
 | test1150 | `Test1150_add_cap_and_basic_traversal` | TEST1150: Adding one cap creates one edge and makes its output reachable in one step. | planner/live_cap_fab_test.go:634 |
 | test1151 | `Test1151_exact_vs_conformance_matching` | TEST1151: Exact target lookup prefers the direct singular or list-producing path over longer alternatives. | planner/live_cap_fab_test.go:662 |
 | test1152 | `Test1152_multi_step_path` | TEST1152: Path finding returns the expected two-cap chain through an intermediate media type. | planner/live_cap_fab_test.go:703 |
 | test1153 | `Test1153_deterministic_ordering` | TEST1153: Repeated path searches return the same path order for the same graph and target. | planner/live_cap_fab_test.go:724 |
 | test1154 | `Test1154_sync_from_caps` | TEST1154: Syncing from caps replaces the existing graph contents with the new cap set. | planner/live_cap_fab_test.go:752 |
-| test1155 | `Test1155_FromStrandProducesSingleStrandMachine` | TEST1155: Building a machine from one strand produces one strand with one resolved edge. | machine/machine_test.go:191 |
-| test1156 | `Test1156_FromStrandsKeepStrandsDisjoint` | TEST1156: Building from multiple strands keeps them disjoint and preserves input strand order. | machine/machine_test.go:206 |
-| test1157 | `Test1157_FromStrandsEmptyInputFailsHard` | TEST1157: Building from zero strands fails with NoCapabilitySteps. | machine/machine_test.go:231 |
-| test1158 | `Test1158_MachineIsEquivalentIsStrictPositional` | TEST1158: Machine equivalence is strict about strand order and rejects reordered strands. | machine/machine_test.go:243 |
-| test1159 | `Test1159_MachineStrandIsEquivalentWalksNodeBijection` | TEST1159: MachineStrand equivalence accepts two separately built but structurally identical strands. | machine/machine_test.go:265 |
-| test1160 | `Test1160_InputOutputAnchors` | TEST1160: Creating a MachineRun stores the canonical notation and starts in the pending state. | machine/machine_test.go:282 |
+| test1155 | `Test1155_FromStrandProducesSingleStrandMachine` | TEST1155: Building a machine from one strand produces one strand with one resolved edge. | machine/machine_test.go:214 |
+| test1156 | `Test1156_FromStrandsKeepStrandsDisjoint` | TEST1156: Building from multiple strands keeps them disjoint and preserves input strand order. | machine/machine_test.go:229 |
+| test1157 | `Test1157_FromStrandsEmptyInputFailsHard` | TEST1157: Building from zero strands fails with NoCapabilitySteps. | machine/machine_test.go:254 |
+| test1158 | `Test1158_MachineIsEquivalentIsStrictPositional` | TEST1158: Machine equivalence is strict about strand order and rejects reordered strands. | machine/machine_test.go:266 |
+| test1159 | `Test1159_MachineStrandIsEquivalentWalksNodeBijection` | TEST1159: MachineStrand equivalence accepts two separately built but structurally identical strands. | machine/machine_test.go:288 |
+| test1160 | `Test1160_InputOutputAnchors` | TEST1160: Creating a MachineRun stores the canonical notation and starts in the pending state. | machine/machine_test.go:305 |
 | test1161 | `Test1161_simple_linear_chain_conversion` | TEST1161: Converting a simple linear plan produces resolved edges for the cap-to-cap chain. | orchestrator/orchestrator_test.go:118 |
-| test1162 | `Test1162_heartbeat_frame_with_memory_meta` | TEST1162: Heartbeat frames preserve self-reported memory values stored in metadata. | bifaci/frame_test.go:1335 |
-| test1163 | `Test1163_ParseSingleStrandTwoCapsConnectedViaSharedNode` | TEST1163: Parsing one connected strand yields a single machine strand with both caps connected by the shared node. | machine/machine_test.go:388 |
-| test1164 | `Test1164_ParseTwoDisconnectedStrandsYieldsTwoMachineStrands` | TEST1164: Parsing two disconnected strand definitions yields two separate machine strands. | machine/machine_test.go:416 |
-| test1165 | `Test1165_ParseUnknownCapInRegistryReturnsAbstractionError` | TEST1165: Parsing fails hard when a referenced cap is missing from the registry cache. | machine/machine_test.go:526 |
-| test1166 | `Test1166_ParseDuplicateAliasReturnsError` | TEST1166: Duplicate header aliases are reported as syntax errors. | machine/machine_test.go:498 |
-| test1167 | `Test1167_ParseUndefinedAliasReturnsError` | TEST1167: Wiring that references an undefined alias is reported as a syntax error. | machine/machine_test.go:513 |
-| test1168 | `Test1168_ParseNodeNameCollidesWithCapAlias` | TEST1168: Parsing rejects node names that collide with declared cap aliases. | machine/machine_test.go:541 |
-| test1169 | `Test1169_ForEachSetsIsLoop` | TEST1169: Loop markers in notation set the resolved edge loop flag on the following cap step. | machine/machine_test.go:315 |
-| test1170 | `Test1170_CollectIsElided` | TEST1170: Parsing and then serializing machine notation round-trips to the canonical form. | machine/machine_test.go:350 |
-| test1171 | `Test1171_ParseEmptyInputReturnsError` | TEST1171: Empty machine notation is rejected as a syntax error. | machine/machine_test.go:460 |
-| test1172 | `Test1172_MachineStringRepr` | TEST1172: Serializing a two-step strand emits the expected aliases and node names. | machine/machine_test.go:625 |
-| test1173 | `Test1173_ToMachineNotationRoundTrips` | TEST1173: Serializing and reparsing a machine preserves strict machine equivalence. | machine/machine_test.go:560 |
-| test1174 | `Test1174_LineBasedFormatRoundTripsToSameMachine` | TEST1174: The line-based notation format round-trips back to the same machine. | machine/machine_test.go:589 |
-| test1175 | `Test1175_EmptyMachineSerializesToEmpty` | TEST1175: Serializing an empty machine produces an empty string. | machine/machine_test.go:617 |
-| test1176 | `Test1176_render_payload_json_includes_strand_with_anchors` | TEST1176: ToRenderPayloadJSON for a populated machine includes strand with nodes, edges, input_anchor_nodes, and output_anchor_nodes. | machine/machine_test.go:1109 |
-| test1177 | `Test1177_render_payload_for_empty_machine_has_empty_strands_array` | TEST1177: Rendering payload JSON for an empty machine emits an empty strands array. | machine/machine_test.go:1148 |
-| test1178 | `Test1178_match_single_source_picks_unique_arg` | TEST1178: One source is assigned to the single compatible cap argument. | machine/machine_test.go:832 |
-| test1179 | `Test1179_match_more_specific_source_assigned_to_general_arg` | TEST1179: Source-to-arg matching assigns a more specific source to a compatible general argument. | machine/machine_test.go:845 |
-| test1180 | `Test1180_match_unmatched_source_fails_hard` | TEST1180: Matching fails when a source does not conform to any cap input argument. | machine/machine_test.go:858 |
-| test1181 | `Test1181_match_two_sources_disambiguated_by_specificity` | TEST1181: matchSourcesToArgs disambiguates two sources by specificity. | machine/machine_test.go:869 |
-| test1182 | `Test1182_match_ambiguous_when_two_sources_could_swap` | TEST1182: Matching fails as ambiguous when two sources can be swapped at equal minimum cost. | machine/machine_test.go:893 |
-| test1183 | `Test1183_match_more_sources_than_args_fails_hard` | TEST1183: Matching fails when more sources are provided than the cap has input arguments. | machine/machine_test.go:904 |
-| test1184 | `Test1184_resolve_strand_single_cap_produces_one_edge` | TEST1184: Resolving a strand with one cap produces one resolved machine edge. | machine/machine_test.go:915 |
-| test1185 | `Test1185_resolve_strand_chained_caps_share_intermediate_node` | TEST1185: Resolving a chained strand reuses the intermediate node between adjacent caps. | machine/machine_test.go:946 |
-| test1186 | `Test1186_resolve_strand_foreach_marks_following_cap_as_loop` | TEST1186: Resolving a strand with ForEach marks the following cap edge as a loop. | machine/machine_test.go:974 |
-| test1187 | `Test1187_StrandNonEquivalenceDifferentCap` | TEST1187: Strand resolution fails when a referenced cap is not found in the registry. | machine/machine_test.go:689 |
-| test1188 | `Test1188_resolve_strand_no_cap_steps_fails_hard` | TEST1188: Strand resolution fails when the strand contains no capability steps. | machine/machine_test.go:1024 |
-| test1189 | `Test1189_StrandEquivalenceWithDifferentNodeAllocationOrders` | TEST1189: Strand resolution keeps canonical anchor ordering stable across equivalent inputs. | machine/machine_test.go:642 |
-| test1190 | `Test1190_resolve_strand_inverse_format_converters_no_cycle` | TEST1190: resolveStrand with inverse format converters produces 3 distinct nodes, no cycle. | machine/machine_test.go:1037 |
-| test1191 | `Test1191_resolve_strand_disbind_pdf_with_file_path_slot_identity` | TEST1191: Disbinding a PDF with a file-path slot preserves the expected identity of the slot binding. | machine/machine_test.go:1070 |
+| test1162 | `Test1162_heartbeat_frame_with_memory_meta` | TEST1162: Heartbeat frames preserve self-reported memory values stored in metadata. | bifaci/frame_test.go:1356 |
+| test1163 | `Test1163_ParseSingleStrandTwoCapsConnectedViaSharedNode` | TEST1163: Parsing one connected strand yields a single machine strand with both caps connected by the shared node. | machine/machine_test.go:422 |
+| test1164 | `Test1164_ParseTwoDisconnectedStrandsYieldsTwoMachineStrands` | TEST1164: Parsing two disconnected strand definitions yields two separate machine strands. | machine/machine_test.go:450 |
+| test1165 | `Test1165_ParseUnknownCapInRegistryReturnsAbstractionError` | TEST1165: Parsing fails hard when a referenced cap is missing from the registry cache. | machine/machine_test.go:560 |
+| test1166 | `Test1166_ParseDuplicateAliasReturnsError` | TEST1166: Duplicate header aliases are reported as syntax errors. | machine/machine_test.go:532 |
+| test1167 | `Test1167_ParseUndefinedAliasReturnsError` | TEST1167: Wiring that references an undefined alias is reported as a syntax error. | machine/machine_test.go:547 |
+| test1168 | `Test1168_ParseNodeNameCollidesWithCapAlias` | TEST1168: Parsing rejects node names that collide with declared cap aliases. | machine/machine_test.go:575 |
+| test1169 | `Test1169_SequenceIntoScalarCapDerivesIsLoop` | TEST1169: A sequence-output cap feeding a scalar-input cap makes the resolved edge a per-item map (IsLoop), derived from cardinality — the single rule cap.NeedsForeach, which replaces the retired LOOP keyword. The scalar->sequence producer edge itself does not loop. | machine/machine_test.go:341 |
+| test1170 | `Test1170_CollectIsElided` | TEST1170: Parsing and then serializing machine notation round-trips to the canonical form. | machine/machine_test.go:384 |
+| test1171 | `Test1171_ParseEmptyInputReturnsError` | TEST1171: Empty machine notation is rejected as a syntax error. | machine/machine_test.go:494 |
+| test1172 | `Test1172_MachineStringRepr` | TEST1172: Serializing a two-step strand emits the expected aliases and node names. | machine/machine_test.go:659 |
+| test1173 | `Test1173_ToMachineNotationRoundTrips` | TEST1173: Serializing and reparsing a machine preserves strict machine equivalence. | machine/machine_test.go:594 |
+| test1174 | `Test1174_LineBasedFormatRoundTripsToSameMachine` | TEST1174: The line-based notation format round-trips back to the same machine. | machine/machine_test.go:623 |
+| test1175 | `Test1175_EmptyMachineSerializesToEmpty` | TEST1175: Serializing an empty machine produces an empty string. | machine/machine_test.go:651 |
+| test1176 | `Test1176_render_payload_json_includes_strand_with_anchors` | TEST1176: ToRenderPayloadJSON for a populated machine includes strand with nodes, edges, input_anchor_nodes, and output_anchor_nodes. | machine/machine_test.go:1196 |
+| test1177 | `Test1177_render_payload_for_empty_machine_has_empty_strands_array` | TEST1177: Rendering payload JSON for an empty machine emits an empty strands array. | machine/machine_test.go:1235 |
+| test1178 | `Test1178_match_single_source_picks_unique_arg` | TEST1178: One source is assigned to the single compatible cap argument. | machine/machine_test.go:866 |
+| test1179 | `Test1179_match_more_specific_source_assigned_to_general_arg` | TEST1179: Source-to-arg matching assigns a more specific source to a compatible general argument. | machine/machine_test.go:879 |
+| test1180 | `Test1180_match_unmatched_source_fails_hard` | TEST1180: Matching fails when a source does not conform to any cap input argument. | machine/machine_test.go:892 |
+| test1181 | `Test1181_match_two_sources_disambiguated_by_specificity` | TEST1181: matchSourcesToArgs disambiguates two sources by specificity. | machine/machine_test.go:903 |
+| test1182 | `Test1182_match_ambiguous_when_two_sources_could_swap` | TEST1182: Matching fails as ambiguous when two sources can be swapped at equal minimum cost. | machine/machine_test.go:927 |
+| test1183 | `Test1183_match_more_sources_than_args_fails_hard` | TEST1183: Matching fails when more sources are provided than the cap has input arguments. | machine/machine_test.go:938 |
+| test1184 | `Test1184_resolve_strand_single_cap_produces_one_edge` | TEST1184: Resolving a strand with one cap produces one resolved machine edge. | machine/machine_test.go:949 |
+| test1185 | `Test1185_resolve_strand_chained_caps_share_intermediate_node` | TEST1185: Resolving a chained strand reuses the intermediate node between adjacent caps. | machine/machine_test.go:980 |
+| test1186 | `Test1186_resolve_strand_foreach_marks_following_cap_as_loop` | TEST1186: Resolving a strand with ForEach marks the following cap edge as a loop. IsLoop is derived from cardinality: disbind produces a SEQUENCE of pages, and make_decision consumes a scalar page, so make_decision's edge maps per item. Collect at the end is elided. | machine/machine_test.go:1011 |
+| test1187 | `Test1187_StrandNonEquivalenceDifferentCap` | TEST1187: Strand resolution fails when a referenced cap is not found in the registry. | machine/machine_test.go:723 |
+| test1188 | `Test1188_resolve_strand_no_cap_steps_fails_hard` | TEST1188: Strand resolution fails when the strand contains no capability steps. | machine/machine_test.go:1062 |
+| test1189 | `Test1189_StrandEquivalenceWithDifferentNodeAllocationOrders` | TEST1189: Strand resolution keeps canonical anchor ordering stable across equivalent inputs. | machine/machine_test.go:676 |
+| test1190 | `Test1190_resolve_strand_inverse_format_converters_no_cycle` | TEST1190: resolveStrand with inverse format converters produces 3 distinct nodes, no cycle. | machine/machine_test.go:1075 |
+| test1191 | `Test1191_resolve_strand_disbind_pdf_with_file_path_slot_identity` | TEST1191: Disbinding a PDF with a file-path slot preserves the expected identity of the slot binding. | machine/machine_test.go:1108 |
 | test1196 | `Test1196_AliasedSerializationUsesAliasAndRoundTrips` | TEST1196: ToMachineNotationAliased renders a cap by its registered display alias (shortest, then alphabetical), referencing it DIRECTLY in the wiring with NO header, while a cap with no alias keeps its synthetic edge_N header + raw URN; the result round-trips back to the same machine (the parser resolves the alias from the warm cache). Mirrors Rust serializer::test1196. | machine/alias_test.go:216 |
 | test1221 | `Test1221_RefineWithMatchingAdapter` | TEST1221: Matching value adapters refine the base media URN when the value fits. | input_resolver/value_adapter_test.go:46 |
 | test1222 | `Test1222_RefineNoMatchingAdapter` | TEST1222: Base URNs without a registered adapter are returned unchanged. | input_resolver/value_adapter_test.go:59 |
@@ -972,28 +975,28 @@ This catalog lists all tests in the Go codebase.
 | test1257 | `Test1257_parse_two_step_chain` | TEST1257: Two sequential wirings preserve the intermediate node media type. | orchestrator/orchestrator_test.go:312 |
 | test1258 | `Test1258_parse_fan_out` | TEST1258: One source node can fan out into multiple caps and target nodes. | orchestrator/orchestrator_test.go:345 |
 | test1259 | `Test1259_parse_fan_in` | TEST1259: Fan-in wiring resolves multiple upstream outputs into one multi-arg cap. | orchestrator/orchestrator_test.go:372 |
-| test1260 | `Test1260_parse_loop_wiring` | TEST1260: LOOP wiring parses as a single edge while preserving the loop marker semantics. | orchestrator/orchestrator_test.go:412 |
-| test1261 | `Test1261_cap_not_found_in_registry` | TEST1261: Parsing fails when a declared cap is absent from the registry. In Go the machine parser resolves caps before the orchestrator layer checks, so the error may be ErrMachineSyntaxParseFailed or ErrCapNotFound. | orchestrator/orchestrator_test.go:435 |
-| test1262 | `Test1262_invalid_machine_notation` | TEST1262: Non-machine text fails with a machine syntax parse error. | orchestrator/orchestrator_test.go:453 |
-| test1263 | `Test1263_cycle_detection` | TEST1263: Cyclic wirings are rejected as non-DAG orchestrations. In Go the machine parser may reject cycles at the parse layer or the orchestrator layer. | orchestrator/orchestrator_test.go:470 |
-| test1264 | `Test1264_incompatible_media_types_at_shared_node` | TEST1264: Shared nodes with incompatible upstream and downstream media fail during parsing. | orchestrator/orchestrator_test.go:494 |
-| test1265 | `Test1265_compatible_media_urns_at_shared_node` | TEST1265: Shared nodes accept compatible media URNs when one is a more specific form of the other. | orchestrator/orchestrator_test.go:516 |
-| test1266 | `Test1266_structure_mismatch_record_to_opaque` | TEST1266: Record-to-opaque structure mismatches are rejected once structure checking is enabled. Skipped, mirroring Rust's #[ignore = "structure mismatch detection between node media and cap input not yet implemented"]. The orchestrator keys node media on the strand's interned node URN (the resolver's source-to-arg assignment), so a single node carries one media URN: the produce edge's record output and the process edge's source both resolve to that same interned URN, and there is no separate opaque cap-input URN left to compare against. Detecting a record-vs-opaque mismatch between a node's media and a downstream cap's declared input requires comparing the node URN to the cap's in= spec — a check the resolver-based design does not yet perform. | orchestrator/orchestrator_test.go:544 |
-| test1267 | `Test1267_structure_match_both_record` | TEST1267: Record-shaped outputs can feed record-shaped inputs without error. | orchestrator/orchestrator_test.go:574 |
-| test1268 | `Test1268_structure_match_both_opaque` | TEST1268: Opaque outputs can feed opaque inputs without triggering structure conflicts. | orchestrator/orchestrator_test.go:592 |
-| test1269 | `Test1269_parse_multiline_machine` | TEST1269: Multi-line machine notation parses successfully with the same semantics as inline notation. | orchestrator/orchestrator_test.go:610 |
-| test1271 | `Test1271_media_adapter_selection_constant` | TEST1271: MEDIA_ADAPTER_SELECTION constant parses and has expected tags | standard/caps_test.go:134 |
-| test1272 | `Test1272_adapter_cap_constant_parses` | TEST1272: CAP_ADAPTER_SELECTION constant parses as a valid CapUrn | standard/caps_test.go:146 |
-| test1273 | `Test1273_adapter_selection_urn_builder` | TEST1273: CapAdapterSelection has correct in/out specs (in=media: out=media:adapter-selection;json;record) | standard/caps_test.go:156 |
-| test1275 | `Test1275_adapter_selection_dispatchable_by_specific_provider` | TEST1275: A cap whose output is adapter-selection can dispatch adapter-selection requests; identity (wildcard output) cannot, because wildcard output cannot satisfy a specific output requirement. | standard/caps_test.go:170 |
+| test1260 | `Test1260_loop_keyword_retired` | TEST1260: The LOOP keyword is retired from the grammar. A keyword-free wiring parses to a single edge; the old LOOP form no longer parses. ForEach is never authored — it is derived from cardinality in the resolver/realizer. | orchestrator/orchestrator_test.go:414 |
+| test1261 | `Test1261_cap_not_found_in_registry` | TEST1261: Parsing fails when a declared cap is absent from the registry. In Go the machine parser resolves caps before the orchestrator layer checks, so the error may be ErrMachineSyntaxParseFailed or ErrCapNotFound. | orchestrator/orchestrator_test.go:442 |
+| test1262 | `Test1262_invalid_machine_notation` | TEST1262: Non-machine text fails with a machine syntax parse error. | orchestrator/orchestrator_test.go:460 |
+| test1263 | `Test1263_cycle_detection` | TEST1263: Cyclic wirings are rejected as non-DAG orchestrations. In Go the machine parser may reject cycles at the parse layer or the orchestrator layer. | orchestrator/orchestrator_test.go:477 |
+| test1264 | `Test1264_incompatible_media_types_at_shared_node` | TEST1264: Shared nodes with incompatible upstream and downstream media fail during parsing. | orchestrator/orchestrator_test.go:501 |
+| test1265 | `Test1265_compatible_media_urns_at_shared_node` | TEST1265: Shared nodes accept compatible media URNs when one is a more specific form of the other. | orchestrator/orchestrator_test.go:523 |
+| test1266 | `Test1266_structure_mismatch_record_to_opaque` | TEST1266: Record-to-opaque structure mismatches are rejected once structure checking is enabled. Skipped, mirroring Rust's #[ignore = "structure mismatch detection between node media and cap input not yet implemented"]. The orchestrator keys node media on the strand's interned node URN (the resolver's source-to-arg assignment), so a single node carries one media URN: the produce edge's record output and the process edge's source both resolve to that same interned URN, and there is no separate opaque cap-input URN left to compare against. Detecting a record-vs-opaque mismatch between a node's media and a downstream cap's declared input requires comparing the node URN to the cap's in= spec — a check the resolver-based design does not yet perform. | orchestrator/orchestrator_test.go:551 |
+| test1267 | `Test1267_structure_match_both_record` | TEST1267: Record-shaped outputs can feed record-shaped inputs without error. | orchestrator/orchestrator_test.go:581 |
+| test1268 | `Test1268_structure_match_both_opaque` | TEST1268: Opaque outputs can feed opaque inputs without triggering structure conflicts. | orchestrator/orchestrator_test.go:599 |
+| test1269 | `Test1269_parse_multiline_machine` | TEST1269: Multi-line machine notation parses successfully with the same semantics as inline notation. | orchestrator/orchestrator_test.go:617 |
+| test1271 | `Test1271_media_adapter_selection_constant` | TEST1271: MEDIA_ADAPTER_SELECTION constant parses and has expected tags | standard/caps_test.go:156 |
+| test1272 | `Test1272_adapter_cap_constant_parses` | TEST1272: CAP_ADAPTER_SELECTION constant parses as a valid CapUrn | standard/caps_test.go:168 |
+| test1273 | `Test1273_adapter_selection_urn_builder` | TEST1273: CapAdapterSelection has correct in/out specs (in=media: out=media:adapter-selection;json;record) | standard/caps_test.go:178 |
+| test1275 | `Test1275_adapter_selection_dispatchable_by_specific_provider` | TEST1275: A cap whose output is adapter-selection can dispatch adapter-selection requests; identity (wildcard output) cannot, because wildcard output cannot satisfy a specific output requirement. | standard/caps_test.go:192 |
 | test1276 | `Test1276_RegisterNonConflicting` | TEST1276: Registration of a cap group with non-conflicting adapters succeeds | input_resolver/adapter_registry_test.go:30 |
 | test1277 | `Test1277_RejectConformingOverlap` | TEST1277: Registration of a cap group with an adapter that conforms_to an existing adapter is rejected | input_resolver/adapter_registry_test.go:47 |
 | test1278 | `Test1278_RejectEntireGroup` | TEST1278: Registration rejects the entire group — no partial registration | input_resolver/adapter_registry_test.go:69 |
 | test1279 | `Test1279_IntraGroupConflict` | TEST1279: Intra-group conflict (two adapters within same group overlap) is rejected | input_resolver/adapter_registry_test.go:98 |
 | test1280 | `Test1280_FindAdaptersForExtension` | TEST1280: find_adapters_for_extension returns correct cartridge IDs | input_resolver/adapter_registry_test.go:118 |
 | test1281 | `Test1281_NoAdapterForUnknown` | TEST1281: has_adapter_for_extension returns false for unregistered extension | input_resolver/adapter_registry_test.go:136 |
-| test1282 | `Test1282_adapter_selection_auto_registered` | TEST1282: AdapterSelectionOp is auto-registered by CartridgeRuntime | bifaci/cartridge_runtime_test.go:3203 |
-| test1283 | `Test1283_adapter_selection_custom_override` | TEST1283: Custom adapter selection Op overrides the default | bifaci/cartridge_runtime_test.go:3217 |
+| test1282 | `Test1282_adapter_selection_auto_registered` | TEST1282: AdapterSelectionOp is auto-registered by CartridgeRuntime | bifaci/cartridge_runtime_test.go:3213 |
+| test1283 | `Test1283_adapter_selection_custom_override` | TEST1283: Custom adapter selection Op overrides the default | bifaci/cartridge_runtime_test.go:3227 |
 | test1284 | `Test1284_cap_group_with_adapter_urns` | TEST1284: Cap group with adapter URNs serializes and deserializes correctly | bifaci/manifest_test.go:348 |
 | test1285 | `Test1285_ConfirmedNoAdaptersFails` | TEST1285: detect_file_confirmed fails when no adapters are registered for the extension | input_resolver/resolver_test.go:273 |
 | test1286 | `Test1286_ConfirmedAdapterReturnsUrns` | TEST1286: detect_file_confirmed succeeds when adapter returns URNs | input_resolver/resolver_test.go:291 |
@@ -1008,7 +1011,15 @@ This catalog lists all tests in the Go codebase.
 | test1295 | `Test1295_rule11_non_void_input_without_stdin_rejected` | TEST1295: RULE11 - non-void-input cap without stdin source rejected | cap/validation_test.go:309 |
 | test1296 | `Test1296_rule11_void_input_cli_flag_only_passes` | TEST1296: RULE11 - void-input cap with only cli_flag sources passes | cap/validation_test.go:322 |
 | test1297 | `Test1297_rule11_non_void_input_with_stdin_passes` | TEST1297: RULE11 - non-void-input cap with stdin source passes | cap/validation_test.go:334 |
-| test1308 | `Test1308_CyclicStrandFailsHard` | TEST1308: A wiring set that feeds a cap's output back into an ancestor forms a cycle and must fail hard with CyclicMachineStrand carrying the strand index. Cycle: node 0 → cap A → node 1 → cap B → node 0. | machine/machine_test.go:1157 |
+| test1300 | `Test1300_sequence_item_fragments_reassemble_into_one_item` | TEST1300: A sequence item CBOR-encoded once and split across multiple CHUNK frames (the EmitListItem/emit_list_item framing) reassembles into exactly one delivered item carrying the first fragment's per-item metadata. This is the exact bug class that broke cap→cap forwarding of rendered page images (per-frame decoding fails with a CBOR truncation error on any item larger than one fragment). (Rust: test1300_sequence_item_fragments_reassemble_into_one_item) | bifaci/live_input_model_test.go:203 |
+| test1301 | `Test1301_sequence_stream_truncated_mid_item_fails_hard` | TEST1301: A sequence stream that ENDs mid-item (trailing fragment bytes that never complete a CBOR item) surfaces a hard decode error instead of silently dropping the partial item. (Rust: test1301_sequence_stream_truncated_mid_item_fails_hard) | bifaci/live_input_model_test.go:344 |
+| test1302 | `Test1302_sequence_fragment_frames_are_credited_on_arrival` | TEST1302: Continuation fragments of a multi-frame sequence item are credited back as they arrive — one CREDIT grant per physical wire frame, not per logical item, so an item spanning more frames than the credit window can still finish arriving. This mirror's demux credits every accepted physical CHUNK (see runCBORModeIO's batched-grant bookkeeping), so this test asserts that item-granular reassembly does not collapse that per-frame accounting down to per-item. (Rust: test1302_sequence_fragment_frames_are_credited_on_arrival) | bifaci/live_input_model_test.go:414 |
+| test1308 | `Test1308_CyclicStrandFailsHard` | TEST1308: A wiring set that feeds a cap's output back into an ancestor forms a cycle and must fail hard with CyclicMachineStrand carrying the strand index. Cycle: node 0 → cap A → node 1 → cap B → node 0. | machine/machine_test.go:1244 |
+| test1312 | `Test1312_record_appends_one_json_line_per_snapshot` | TEST1312: Two snapshots recorded to a temp file produce exactly two JSONL lines, each carrying ts + segment + a round-tripped stats object (requests/drops). | bifaci/protocol_trace_test.go:80 |
+| test1313 | `Test1313_record_deduped_writes_only_on_change` | TEST1313: Dedup: recording identical protocol state twice writes ONE line; a real change (a bumped counter, a moved stream byte) writes another. This is what keeps a stalled engine's repeated live samples from spamming the trace. | bifaci/protocol_trace_test.go:121 |
+| test1314 | `Test1314_fingerprint_ignores_advancing_clocks` | TEST1314: The fingerprint EXCLUDES advancing clocks: two snapshots differing only in age_ms/idle_ms are the same transition, while a flow-counter change is a new one. If dedup keyed on the whole serialized stats, these clocks would defeat it and every sample would write. | bifaci/protocol_trace_test.go:148 |
+| test1315 | `Test1315_record_to_unwritable_path_is_a_hard_error` | TEST1315: Requested diagnostics fail HARD, never silently: a write to an unwritable sink returns an error. /dev/full opens fine but every write is ENOSPC — the Linux-standard way to exercise a write failure deterministically. | bifaci/protocol_trace_test.go:163 |
+| test1317 | `Test1317_wrap_raw_items_empty` | TEST1317: empty item list wraps to empty bytes (mirrors the scalar/empty sink case where a chain produced no items). | orchestrator/cbor_util_test.go:414 |
 | test1800 | `Test1800_kind_identity_only_for_bare_cap` | TEST1800: Identity classifier — only explicit effect=none qualifies. `cap:effect=none` is the fully generic identity on every axis; adding any tag (even one that doesn't constrain in/out) demotes the cap to Transform because the operation/metadata axis is no longer fully generic. | urn/cap_urn_test.go:1606 |
 | test1801 | `Test1801_kind_source_when_input_is_void` | TEST1801: Source classifier — in=media:void, out non-void. The y dimension may carry any tags; void on the input alone is what matters. | urn/cap_urn_test.go:1636 |
 | test1802 | `Test1802_kind_sink_when_output_is_void` | TEST1802: Sink classifier — out=media:void, in non-void. | urn/cap_urn_test.go:1651 |
@@ -1060,10 +1071,10 @@ This catalog lists all tests in the Go codebase.
 | test1894 | `Test1894_SelectDisplayAliasOrdering` | TEST1894: selectDisplayAlias picks the SHORTEST name, ties broken alphabetically. This is the deterministic ordering every aliased-display surface relies on; a regression here silently changes which alias the whole UI renders. Mirrors Rust registry::test1894. | cap/registry_test.go:317 |
 | test1895 | `Test1895_DisplayAliasForURN` | TEST1895: DisplayAliasForURN reverse-resolves a URN to its display alias. Proves: (1) the shortest-then-alphabetical winner among multiple aliases on the same target, (2) a NON-canonical query URN (different tag order) still resolves because the query is canonicalised before matching, (3) a URN with no alias returns not-found, (4) a non-URN string returns not-found. Mirrors Rust registry::test1895. | cap/registry_test.go:344 |
 | test1896 | `Test1896_CachedCapAliasesFiltersToCapTargets` | TEST1896: CachedCapAliases returns only CAP-targeted aliases as (name, target) pairs — media aliases are excluded. Drives the notation editor's registered- alias completions. Mirrors Rust registry::test1896. | cap/registry_test.go:388 |
-| test6182 | `Test6182_InputValidator_WithSchemaValidation` | TEST6182: Input validator  with schema validation | cap/schema_validation_test.go:296 |
-| test6183 | `Test6183_OutputValidator_WithSchemaValidation` | TEST6183: Output validator  with schema validation | cap/schema_validation_test.go:356 |
-| test6184 | `Test6184_CapValidationCoordinator_EndToEnd` | TEST6184: Cap validation coordinator  end to end | cap/schema_validation_test.go:415 |
-| test6185 | `Test6185_FileSchemaResolver_ErrorHandling` | TEST6185: File schema resolver  error handling | cap/schema_validation_test.go:530 |
+| test6182 | `Test6182_InputValidator_WithSchemaValidation` | TEST6182: Input validator  with schema validation | cap/schema_validation_test.go:298 |
+| test6183 | `Test6183_OutputValidator_WithSchemaValidation` | TEST6183: Output validator  with schema validation | cap/schema_validation_test.go:358 |
+| test6184 | `Test6184_CapValidationCoordinator_EndToEnd` | TEST6184: Cap validation coordinator  end to end | cap/schema_validation_test.go:417 |
+| test6185 | `Test6185_FileSchemaResolver_ErrorHandling` | TEST6185: File schema resolver reads and parses the referenced file, and fails hard (never returns a fabricated/empty schema) on a missing file or invalid JSON — mirroring the Rust FileSchemaResolver::resolve_schema. | cap/schema_validation_test.go:534 |
 | test6186 | `Test6186_RegistryGetCap` | TEST136 (deleted): exercised the private `cacheKey` method on the unified FabricRegistry. The on-disk cache filename scheme is an implementation detail of the persistence layer; equivalent observable behavior — that two equivalent URNs land in the same cache slot — is covered by Test140 (`same_cap_different_spellings_same_url`). Rust and Python dropped this; this deletion keeps the Go mirror in parity. | cap/registry_test.go:43 |
 | test6202 | `Test6202_empty_cap_urn_defaults_to_wildcard` | TEST6202: Bare top cap is illegal; identity must be explicit effect=none | urn/cap_urn_test.go:635 |
 | test6207 | `Test6207_ConcatenatedVsFinalPayloadDivergence` | Mirror-specific coverage: Test that concatenated() returns full payload while final_payload() returns only last chunk | bifaci/integration_test.go:1692 |
@@ -1080,15 +1091,15 @@ This catalog lists all tests in the Go codebase.
 | test6251 | `Test6251_cap_version_zero_round_trip` | TEST6251: Cap.Version zero value is omitted on serialize and defaults to 0 on deserialize. | cap/definition_test.go:613 |
 | test6255 | `Test6255_cap_version_nonzero_round_trip` | TEST6255: Cap.Version non-zero value round-trips through JSON serialize/deserialize. | cap/definition_test.go:630 |
 | test6259 | `Test6259_CapJSONRoundTrip` | TEST6259: Cap j s o n round trip | cap/definition_test.go:647 |
-| test6263 | `Test6263_SchemaValidator_ValidateArgumentWithSchema_NilSchema` | Additional Go-specific coverage: nil schema skips direct schema validation | cap/schema_validation_test.go:97 |
-| test6267 | `Test6267_SchemaValidator_ValidateOutputWithSchema_Failure` | TEST6267: Schema validator  validate output with schema  failure | cap/schema_validation_test.go:148 |
-| test6271 | `Test6271_SchemaValidator_ValidateArguments_Integration` | TEST6271: Schema validator  validate arguments  integration | cap/schema_validation_test.go:180 |
-| test6274 | `Test6274_SchemaValidator_ArraySchemaValidation` | TEST6274: Schema validator  array schema validation | cap/schema_validation_test.go:244 |
+| test6263 | `Test6263_SchemaValidator_ValidateArgumentWithSchema_NilSchema` | Additional Go-specific coverage: nil schema skips direct schema validation | cap/schema_validation_test.go:99 |
+| test6267 | `Test6267_SchemaValidator_ValidateOutputWithSchema_Failure` | TEST6267: Schema validator  validate output with schema  failure | cap/schema_validation_test.go:150 |
+| test6271 | `Test6271_SchemaValidator_ValidateArguments_Integration` | TEST6271: Schema validator  validate arguments  integration | cap/schema_validation_test.go:182 |
+| test6274 | `Test6274_SchemaValidator_ArraySchemaValidation` | TEST6274: Schema validator  array schema validation | cap/schema_validation_test.go:246 |
 | test6282 | `Test6282_resolve_custom_media_def` | TEST6282: Test resolving a custom media URN from a registry-seeded media def | media/spec_test.go:77 |
 | test6283 | `Test6283_resolve_custom_with_schema` | TEST6283: Test resolving a custom record media def carrying a schema from a registry-seeded media def | media/spec_test.go:96 |
-| test6314 | `Test6314_ComplexNestedSchemaValidation` | TEST6314: Complex nested schema validation | cap/schema_validation_test.go:542 |
-| test6317 | `Test6317_MediaUrnResolutionWithRegistry` | TEST6317: Media urn resolution with registry | cap/schema_validation_test.go:621 |
-| test6320 | `Test6320_CustomMediaUrnResolution` | TEST6320: Custom media urn resolution | cap/schema_validation_test.go:656 |
+| test6314 | `Test6314_ComplexNestedSchemaValidation` | TEST6314: Complex nested schema validation | cap/schema_validation_test.go:567 |
+| test6317 | `Test6317_MediaUrnResolutionWithRegistry` | TEST6317: Media urn resolution with registry | cap/schema_validation_test.go:646 |
+| test6320 | `Test6320_CustomMediaUrnResolution` | TEST6320: Custom media urn resolution | cap/schema_validation_test.go:681 |
 | test6325 | `Test6325_RegistryValidation` | TEST6325: Registry validation | cap/registry_test.go:57 |
 | test6329 | `Test6329_CacheOperations` | TEST6329: Cache operations | cap/registry_test.go:72 |
 | test6330 | `Test6330_ChunkingDataIntegrity3x` | Mirror-specific coverage: Test auto-chunking preserves data integrity across chunk boundaries for 3x max_chunk payload | bifaci/integration_test.go:1716 |
@@ -1101,13 +1112,13 @@ This catalog lists all tests in the Go codebase.
 | test6363 | `Test6363_CapManifestWithPageURL` | TEST6363: Cap manifest with page u r l | bifaci/manifest_test.go:62 |
 | test6367 | `Test6367_CapManifestValidation` | TEST6367: Cap manifest validation | bifaci/manifest_test.go:255 |
 | test6371 | `Test6371_CapManifestCompatibility` | TEST6371: Cap manifest compatibility | bifaci/manifest_test.go:285 |
-| test6374 | `Test6374_CartridgeAttachmentErrorKindMatchesProtoSnakeCase` | Test6374_CartridgeAttachmentErrorKindMatchesProtoSnakeCase pins every variant's string value against its proto snake_case name. New variants must be added here AND in the Rust / Swift / proto sides. | bifaci/relay_switch_test.go:931 |
-| test6379 | `Test6379_CartridgeAttachmentErrorJSONRoundTrips` | Test6379_CartridgeAttachmentErrorJSONRoundTrips verifies a CartridgeAttachmentError marshals to JSON and unmarshals back without changing the kind for every variant. RelayNotify wire payload is JSON; a single-variant regression breaks the entire per-master parse. | bifaci/relay_switch_test.go:959 |
+| test6374 | `Test6374_CartridgeAttachmentErrorKindMatchesProtoSnakeCase` | Test6374_CartridgeAttachmentErrorKindMatchesProtoSnakeCase pins every variant's string value against its proto snake_case name. New variants must be added here AND in the Rust / Swift / proto sides. | bifaci/relay_switch_test.go:938 |
+| test6379 | `Test6379_CartridgeAttachmentErrorJSONRoundTrips` | Test6379_CartridgeAttachmentErrorJSONRoundTrips verifies a CartridgeAttachmentError marshals to JSON and unmarshals back without changing the kind for every variant. RelayNotify wire payload is JSON; a single-variant regression breaks the entire per-master parse. | bifaci/relay_switch_test.go:966 |
 | test6382 | `Test6382_parse_registry_json` | TEST6382: Test parsing registry JSON without stdin args verifies cap structure | cap/registry_test.go:82 |
 | test6388 | `Test6388_per_cap_url_uses_sha256` | TEST6388: Per-cap URL is /caps/<sha256-hex> — no URN-grammar characters in the path, no percent-encoding gymnastics. | cap/registry_test.go:138 |
 | test6391 | `Test6391_same_cap_different_spellings_same_url` | TEST6391: Equivalent URNs (different tag order, etc.) hash to the same key. This is the property that makes cross-language lookups land at the same registry object regardless of which capdag implementation issued the request. | cap/registry_test.go:152 |
 | test6396 | `Test6396_MalformedCapUrnFailsHard` | TEST6396: A malformed cap URN must FAIL HARD, not be passed through raw (the old silent fallback) and surface later as a misleading "not in manifest" / cache-miss. The `out` value below contains an unquoted `=`, which the cap grammar rejects. Against the old `if err == nil { normalized = ... }` fallback, normalizeCapUrn returned the raw string and GetCap then reported a not-found/manifest error; this test asserts the truthful parse error and that no path panics on a bad URN. | cap/registry_test.go:284 |
-| test6423 | `Test6423_CartridgeAttachmentErrorDecodesProtoSnakeCaseStrings` | Test6423_CartridgeAttachmentErrorDecodesProtoSnakeCaseStrings is the engine→Go-host (or Swift→Go-host) decode path: incoming JSON uses the snake_case wire format, and the Go side must resolve each string into the matching variant. CartridgeAttachmentErrorKind is just `type ... string`, so this test is also a check that the JSON unmarshaller doesn't normalise/lowercase/etc the bytes behind our backs. | bifaci/relay_switch_test.go:1007 |
+| test6423 | `Test6423_CartridgeAttachmentErrorDecodesProtoSnakeCaseStrings` | Test6423_CartridgeAttachmentErrorDecodesProtoSnakeCaseStrings is the engine→Go-host (or Swift→Go-host) decode path: incoming JSON uses the snake_case wire format, and the Go side must resolve each string into the matching variant. CartridgeAttachmentErrorKind is just `type ... string`, so this test is also a check that the JSON unmarshaller doesn't normalise/lowercase/etc the bytes behind our backs. | bifaci/relay_switch_test.go:1014 |
 | test6428 | `Test6428_IntegrationVersionlessCapCreation` | Test6428_IntegrationVersionlessCapCreation verifies caps can be created without version fields | bifaci/integration_test.go:47 |
 | test6431 | `Test6431_IntegrationCaseInsensitiveUrns` | Test6431_IntegrationCaseInsensitiveUrns verifies URNs are case-insensitive | bifaci/integration_test.go:75 |
 | test6433 | `Test6433_IntegrationCapValidation` | Test6433_IntegrationCapValidation verifies cap schema validation | bifaci/integration_test.go:119 |
@@ -1122,14 +1133,14 @@ This catalog lists all tests in the Go codebase.
 | test6535 | `Test6535_ExactMaxChunkSingleEnd` | Mirror-specific coverage: Test payload exactly equal to max_chunk produces single END frame (no CHUNK frames) | bifaci/integration_test.go:1548 |
 | test6537 | `Test6537_MaxChunkPlusOneSplitsIntoTwo` | Mirror-specific coverage: Test payload of max_chunk + 1 produces exactly one CHUNK frame + one END frame | bifaci/integration_test.go:1613 |
 | test6544 | `Test6544_builder_rejects_structural_keys` | TEST6544: Builder rejects reserved structural keys on tag/marker helpers | urn/cap_urn_test.go:506 |
-| test6586 | `Test6586_FilePathArrayInvalidJSONFails` | TEST6586: A scalar file-path arg receiving a nonexistent path fails hard with a clear error that names the path. The runtime refuses to silently swallow user mistakes like typos or wrong directories. | bifaci/cartridge_runtime_test.go:1290 |
-| test6587 | `Test6587_FilePathArrayOneFileMissingFailsHard` | TEST6587: file-path-array with literal nonexistent path fails hard | bifaci/cartridge_runtime_test.go:1332 |
-| test6588 | `Test6588_FilePathArrayEmptyArray` | TEST6588: file-path arg in CBOR mode with empty Array returns empty. CBOR Array (not JSON-encoded) is the multi-input wire form for sequence args. Mirrors Rust test351_file_path_array_empty_array. | bifaci/cartridge_runtime_test.go:1642 |
+| test6586 | `Test6586_FilePathArrayInvalidJSONFails` | TEST6586: A scalar file-path arg receiving a nonexistent path fails hard with a clear error that names the path. The runtime refuses to silently swallow user mistakes like typos or wrong directories. | bifaci/cartridge_runtime_test.go:1300 |
+| test6587 | `Test6587_FilePathArrayOneFileMissingFailsHard` | TEST6587: file-path-array with literal nonexistent path fails hard | bifaci/cartridge_runtime_test.go:1342 |
+| test6588 | `Test6588_FilePathArrayEmptyArray` | TEST6588: file-path arg in CBOR mode with empty Array returns empty. CBOR Array (not JSON-encoded) is the multi-input wire form for sequence args. Mirrors Rust test351_file_path_array_empty_array. | bifaci/cartridge_runtime_test.go:1652 |
 | test6594 | `Test6594_capabilities_empty_initially` | TEST6594: capabilities() returns empty JSON initially (no running cartridges) | bifaci/host_multi_test.go:179 |
-| test6597 | `Test6597_write_chunked_chunk_index_ordering` | TEST6597: WriteResponseWithChunking splits payload into exactly N chunks per max_chunk, and chunk_index tracks ordering within the stream (0, 1, 2, ...). Note: Go assigns seq at write time (Rust assigns seq=0 and uses SeqAssigner at output stage; Go inlines the seq assignment into the write path instead). | bifaci/io_test.go:1158 |
-| test6600 | `Test6600_parse_cap_groups_rejects_manifest_without_identity` | TEST6600: parse_cap_groups_from_manifest classifies failures by kind Manifest JSON that parses but lacks CAP_IDENTITY is `Incompatible` (schema-rejected). Manifest bytes that don't parse as CapManifest are `ManifestInvalid` (JSON-level failure). The split lets the host's attachment-error reporter surface the right kind to the UI. | bifaci/host_multi_test.go:1103 |
+| test6597 | `Test6597_write_chunked_chunk_index_ordering` | TEST6597: WriteResponseWithChunking splits payload into exactly N chunks per max_chunk, and chunk_index tracks ordering within the stream (0, 1, 2, ...). Note: Go assigns seq at write time (Rust assigns seq=0 and uses SeqAssigner at output stage; Go inlines the seq assignment into the write path instead). | bifaci/io_test.go:1301 |
+| test6600 | `Test6600_parse_cap_groups_rejects_manifest_without_identity` | TEST6600: parse_cap_groups_from_manifest classifies failures by kind Manifest JSON that parses but lacks CAP_IDENTITY is `Incompatible` (schema-rejected). Manifest bytes that don't parse as CapManifest are `ManifestInvalid` (JSON-level failure). The split lets the host's attachment-error reporter surface the right kind to the UI. | bifaci/host_multi_test.go:1232 |
 | test6601 | `Test6601_attached_cartridge_identity_derived_from_manifest` | TEST6601: An attached cartridge (raw-stream, no on-disk anchor) gets a resolvable install identity derived from its HELLO manifest. Advertisement is identity-gated, so without this the attached cartridge would be silently excluded from every RelayNotify and the engine could never route to it — the deadlock that hung the rust-rust-rust interop echo test. Mirrors the reference test6601. | bifaci/host_multi_test.go:137 |
-| test6602 | `Test6602_codec_key_constants` | TEST6602: Codec key constants match protocol spec values | bifaci/frame_test.go:1538 |
+| test6602 | `Test6602_codec_key_constants` | TEST6602: Codec key constants match protocol spec values | bifaci/frame_test.go:1559 |
 | test6605 | `Test6605_insert_schema_populates_cache` | TEST6605: InsertSchema seeds the cache so subsequent validation hits a real compiled schema rather than the skip-on-unknown path. A registry that silently dropped inserts would let validation calls return nil even for inputs that violate the schema. | media/profile_test.go:72 |
 | test6609 | `Test6609_wildcard_empty_cap_defaults_to_media_wildcard` | TEST6609: bare top cap is illegal; identity must be explicit effect=none | urn/cap_urn_test.go:1205 |
 | test6610 | `Test6610_wildcard_002_in_only_defaults_out_to_media` | TEST6610: cap:in without a non-vacuous axis/tag is illegal bare top | urn/cap_urn_test.go:1529 |
@@ -1140,7 +1151,7 @@ This catalog lists all tests in the Go codebase.
 | test6615 | `Test6615_specificity_scoring` | TEST6615: Specificity - marker-only wildcard scores on y-axis only | urn/cap_urn_test.go:1227 |
 | test6618 | `Test6618_identity_forms_equivalent` | TEST6618: Long and short explicit identity forms are equivalent | urn/cap_urn_test.go:1239 |
 | test6622 | `Test6622_identity_routing_isolation` | TEST6622: Cap identity does not route as a declared-effect provider | urn/cap_urn_test.go:1265 |
-| test6623 | `Test6623_cartridge_death_keeps_caps_advertised` | TEST6623: Cartridge death keeps caps advertised for on-demand respawn. The cartridge's `cap_groups` survive process death, so the host can continue advertising the cartridge's caps and the relay can route a fresh REQ to it (which triggers an on-demand respawn). | bifaci/host_multi_test.go:1229 |
+| test6623 | `Test6623_cartridge_death_keeps_caps_advertised` | TEST6623: Cartridge death keeps caps advertised for on-demand respawn. The cartridge's `cap_groups` survive process death, so the host can continue advertising the cartridge's caps and the relay can route a fresh REQ to it (which triggers an on-demand respawn). | bifaci/host_multi_test.go:1358 |
 | test6630 | `Test6630_cardinality_string` | TEST6630: Tests InputCardinality String() representation | planner/cardinality_test.go:135 |
 | test6632 | `Test6632_pattern_string` | TEST6632: Tests CardinalityPattern String() representation | planner/cardinality_test.go:142 |
 | test6634 | `Test6634_machine_result_primary_output` | TEST6634: Tests MachineResult PrimaryOutput returns populated output and nil when empty Verifies the PrimaryOutput() accessor distinguishes populated vs empty outputs maps | planner/plan_test.go:151 |
@@ -1153,25 +1164,105 @@ This catalog lists all tests in the Go codebase.
 | test6645 | `Test6645_argument_resolution_string_representations` | TEST6645: Tests ArgumentResolution String() returns correct snake_case names ArgumentInfo.Resolution is serialized to JSON using String(). Verifies that each resolution variant maps to the correct identifier expected by API consumers. | planner/plan_builder_test.go:52 |
 | test6646 | `Test6646_analyze_path_arguments_stdin_is_from_input_file` | TEST6646: Tests AnalyzePathArguments classifies stdin arg as FromInputFile for first cap Verifies that the argument analysis correctly identifies input-file arguments when the cap's stdin arg media URN matches the cap's in_spec. | planner/plan_builder_test.go:71 |
 | test6647 | `Test6647_analyze_path_arguments_user_input_arg_appears_in_slots` | TEST6647: Tests AnalyzePathArguments puts RequiresUserInput args in slots and sets CanExecuteWithoutInput=false Verifies that caps with non-stdin, non-default arguments are identified as requiring user input, appear in slots, and the requirements reflect that execution cannot proceed without them. | planner/plan_builder_test.go:112 |
-| test6649 | `Test6649_rejects_foreach_paired_collect` | TEST6649: PlanToResolvedGraph rejects plans containing ForEach-paired Collect nodes Verifies that Collect nodes without OutputMediaUrn (ForEach-paired) are rejected | orchestrator/orchestrator_test.go:628 |
+| test6649 | `Test6649_rejects_foreach_paired_collect` | TEST6649: PlanToResolvedGraph rejects plans containing ForEach-paired Collect nodes Verifies that Collect nodes without OutputMediaUrn (ForEach-paired) are rejected | orchestrator/orchestrator_test.go:635 |
 | test6660 | `Test6660_ArgumentBindingSerializationPreviousOutput` | TEST6660: ArgumentBinding PreviousOutput serializes/deserializes correctly | planner/argument_binding_test.go:301 |
 | test6666 | `Test6666_StrandInputSingle` | TEST6666: StrandInput single constructor creates valid Single cardinality input | planner/argument_binding_test.go:425 |
 | test6667 | `Test6667_StrandInputSequence` | TEST6667: StrandInput sequence constructor creates valid Sequence cardinality input | planner/argument_binding_test.go:440 |
 | test6668 | `Test6668_CapInputFileDeserializationWithSourceMetadata` | TEST6668: CapInputFile deserializes from JSON with source metadata fields | planner/argument_binding_test.go:458 |
 | test6669 | `Test6669_CapInputFileDeserializationCompact` | TEST6669: CapInputFile deserializes from compact JSON | planner/argument_binding_test.go:473 |
 | test6670 | `Test6670_StrandInputInvalidSingle` | TEST6670: StrandInput validation detects mismatched Single cardinality with multiple files | planner/argument_binding_test.go:485 |
-| test6672 | `Test6672_cbor_rejects_stream_end_without_chunk_count` | TEST6672: CBOR decode REJECTS STREAM_END frame missing chunk_count field | bifaci/frame_test.go:2044 |
-| test6700 | `Test6700_line_based_format_round_trips` | TEST6700: Line-based notation format round-trips back to the same machine. ToMachineNotationFormatted(NotationFormatLineBased) must not contain '[', and re-parsing must yield an equivalent machine. | machine/machine_test.go:804 |
+| test6672 | `Test6672_cbor_accepts_stream_end_without_chunk_count` | TEST6672: CBOR decode ACCEPTS STREAM_END without chunk_count — unbounded streams make no length promise (v3, L16) | bifaci/frame_test.go:2066 |
+| test6700 | `Test6700_line_based_format_round_trips` | TEST6700: Line-based notation format round-trips back to the same machine. ToMachineNotationFormatted(NotationFormatLineBased) must not contain '[', and re-parsing must yield an equivalent machine. | machine/machine_test.go:838 |
 | test6726 | `Test6726_cartridge_json_fabric_manifest_version_zero_round_trip` | TEST6726: CartridgeJson with FabricManifestVersion=0 (zero value) is absent on the wire. | bifaci/cartridge_json_test.go:13 |
 | test6727 | `Test6727_cartridge_json_fabric_manifest_version_nonzero_round_trip` | TEST6727: CartridgeJson with FabricManifestVersion>0 round-trips the value correctly. | bifaci/cartridge_json_test.go:44 |
 | test6734 | `Test6734_reject_invalid_combinations` | TEST6734: Invalid qualifier combinations must be rejected. | urn/cap_urn_test.go:1923 |
 | test6735 | `Test6735_axis_weighting_out_dominates` | TEST6735: out-axis difference dominates combined in+y differences. | urn/cap_urn_test.go:1945 |
 | test6736 | `Test6736_axis_weighting_decoded_layout` | TEST6736: Decoded layout — 10000*out + 100*in + y. | urn/cap_urn_test.go:1967 |
-| test6745 | `Test6745_RelaySwitchNewRejectsDuplicateIDs` | TEST6745: RelaySwitch::new rejects duplicate ids in its cardinality list. | bifaci/relay_switch_test.go:1171 |
+| test6745 | `Test6745_RelaySwitchNewRejectsDuplicateIDs` | TEST6745: RelaySwitch::new rejects duplicate ids in its cardinality list. | bifaci/relay_switch_test.go:1178 |
 | test6748 | `Test6748_RoutesReqToHandler` | TEST6748: InProcessCartridgeHost routes REQ to matching handler and returns response | bifaci/in_process_host_test.go:57 |
 | test6749 | `Test6749_IdentityVerification` | TEST6749: InProcessCartridgeHost handles identity verification (echo nonce) | bifaci/in_process_host_test.go:146 |
 | test6750 | `Test6750_NoHandlerReturnsErr` | TEST6750: InProcessCartridgeHost returns NO_HANDLER for unregistered cap | bifaci/in_process_host_test.go:208 |
 | test6751 | `Test6751_ManifestIncludesAllCaps` | TEST6751: InProcessCartridgeHost manifest includes identity cap and handler caps | bifaci/in_process_host_test.go:243 |
+| test7000 | `Test7000_v3_handshake_negotiates_all_four_limits` | TEST7000: v3 handshake succeeds and negotiates the element-wise minimum of all four limits including initial_credit | bifaci/io_test.go:1886 |
+| test7001 | `Test7001_handshake_rejects_version_2` | TEST7001: HELLO carrying protocol version 2 is rejected at handshake with a version-mismatch error | bifaci/io_test.go:1926 |
+| test7002 | `Test7002_initial_credit_negotiated_minimum` | TEST7002: initial_credit negotiation picks the element-wise minimum of the two proposals | bifaci/io_test.go:1974 |
+| test7003 | `Test7003_decode_rejects_malformed_id_wrong_length` | TEST7003: decode_frame rejects a malformed id (wrong byte length) as a hard decode error instead of silently fabricating MessageId{}/uint(0). A fabricated zero id would misroute the frame to the wrong request/flow. | bifaci/io_test.go:611 |
+| test7004 | `Test7004_decode_rejects_malformed_id_wrong_type` | TEST7004: decode_frame rejects a malformed id (wrong CBOR type) as a hard decode error instead of silently fabricating MessageId{}/uint(0). | bifaci/io_test.go:632 |
+| test7005 | `Test7005_decode_rejects_malformed_routing_id` | TEST7005: decode_frame rejects a malformed routing_id (present but wrong-length bytes, or wrong CBOR type) as a hard decode error rather than silently dropping it and treating it as absent. Silently dropping a corrupted routing_id would strip the relay hint and let the switch treat a routed response as a fresh top-level request -- exactly the misrouting this unit guards against. A well-formed routing_id must still decode. | bifaci/io_test.go:653 |
+| test7006 | `Test7006_encode_rejects_uninitialized_id` | TEST7006: EncodeFrame refuses to ship a fabricated id=0 for an uninitialized MessageId. Rust's MessageId enum is total (always Uuid or Uint); Go's struct can be left zero-valued. Emitting id=0 for that bug would forge a routing key -- the encode mirror of the strict decode contract (7003/7004). A legitimate MessageId::Uint(0) (used by HELLO/RelayNotify) must still encode fine. | bifaci/io_test.go:705 |
+| test7007 | `Test7007_encode_rejects_uninitialized_routing_id` | TEST7007: EncodeFrame refuses to silently drop a present-but-uninitialized routing_id. A nil RoutingId pointer legitimately means "no relay hint" and encodes to an absent key; a non-nil pointer to a zero-valued MessageId is a bug that must fail hard rather than strip the relay hint and misroute. | bifaci/io_test.go:733 |
+| test7010 | `Test7010_credit_frame_roundtrip` | TEST7010: CREDIT frame round-trips encode/decode with rid, stream_id, and credit count | bifaci/frame_test.go:2085 |
+| test7011 | `Test7011_credit_is_non_flow` | TEST7011: CREDIT is a non-flow frame — no seq assigned, passes the reorder buffer untouched regardless of flow state | bifaci/frame_test.go:2132 |
+| test7012 | `Test7012_stream_start_unbounded_roundtrip` | TEST7012: STREAM_START unbounded flag round-trips through CBOR; absent flag means bounded | bifaci/frame_test.go:2163 |
+| test7013 | `Test7013_cbor_rejects_credit_without_count` | TEST7013: CBOR decode REJECTS a CREDIT frame missing its credit count | bifaci/frame_test.go:2186 |
+| test7014 | `Test7014_end_terminal_meta_roundtrip` | TEST7014: END terminal meta (progress, message) round-trips; successful END without progress reads as 1.0; failed END without progress reads as nil | bifaci/frame_test.go:2246 |
+| test7015 | `Test7015_credit_gate_acquire_and_grant` | TEST7015: CreditGate acquire succeeds immediately within the initial window and waits when exhausted until a grant arrives. | bifaci/credit_test.go:12 |
+| test7016 | `Test7016_credit_gate_close_releases_waiters` | TEST7016: CreditGate close releases blocked waiters with CreditClosed and fails all future acquires. | bifaci/credit_test.go:39 |
+| test7017 | `Test7017_credit_router_routing` | TEST7017: CreditRouter routes grants by (rid, stream_id), falls back to a request's sole gate for stream-less grants, and reports unmatched grants. | bifaci/credit_test.go:65 |
+| test7018 | `Test7018_credit_router_close_request` | TEST7018: CreditRouter close_request closes and removes every gate of the request, releasing their waiters. | bifaci/credit_test.go:95 |
+| test7019 | `Test7019_drop_counters_record_and_snapshot` | TEST7019: Drop counters record per-reason exactly once per drop, and the snapshot omits zero-count reasons while totalling all of them. | bifaci/stats_test.go:11 |
+| test7020 | `Test7020_writer_gate_drops_post_terminal_flow_frames` | TEST7020: A flow frame reaching the writer after the flow's END has been written is dropped with a counted post_terminal drop — END is the last flow frame on the wire. | bifaci/cartridge_runtime_test.go:3844 |
+| test7021 | `Test7021_writer_gate_precision` | TEST7021: The writer gate is precise — flow frames before END are written, non-flow frames (heartbeat, credit) still pass after a flow's terminal, and only that flow is gated. | bifaci/cartridge_runtime_test.go:3894 |
+| test7025 | `Test7025_unroutable_flow_frame_is_counted_drop` | TEST7025: A flow frame for a request with no routing state is a counted no_route drop — not a protocol error and not a silent loss — observable in the protocol stats snapshot. The Rust reference constructs an empty (zero-master) RelaySwitch for this test; this Go mirror's NewRelaySwitch hard-rejects an empty cardinality list (a pre-existing, unrelated divergence — see TEST432), so a single capless connected master stands in. Neither dropped frame below references the master (both fail the routing-table lookup before any master index is touched), so the substitution changes nothing about the behavior under test. | bifaci/relay_switch_test.go:2364 |
+| test7026 | `Test7026_reorder_flushes_pre_terminal_before_cleanup` | TEST7026: An out-of-order terminal is buffered until the gap fills; buffered pre-terminal frames flush ahead of it in seq order, and only then may the flow be cleaned up | bifaci/frame_test.go:2204 |
+| test7027 | `Test7027_channel_closed_sends_are_counted` | TEST7027: A frame sent through the writer whose sink is gone is a counted channel_closed drop, never a silent loss. | bifaci/cartridge_runtime_test.go:3957 |
+| test7029 | `Test7029_terminated_flows_capacity_and_eviction` | TEST7029: TerminatedFlows membership is exact up to capacity and evicts strictly oldest-first beyond it. | bifaci/stats_test.go:35 |
+| test7030 | `Test7030_register_once_terminate_once` | TEST7030: A request registers exactly once and terminates exactly once — duplicate registration and double termination are rejected, and after terminate zero state remains for the key. | bifaci/request_state_test.go:166 |
+| test7031 | `Test7031_rid_index_consistency` | TEST7031: The rid index and the entry table never disagree across register/terminate cycles, and a terminated rid is immediately reusable. | bifaci/request_state_test.go:197 |
+| test7032 | `Test7032_record_frame_stats_and_phase` | TEST7032: RecordFrame accumulates per-stream frame/byte/chunk counters by direction, flips phase Created->Streaming on the first flow frame, and tracks unbounded/ended/credit stream markers. | bifaci/request_state_test.go:222 |
+| test7033 | `Test7033_terminated_summaries_ring` | TEST7033: Terminated requests leave a bounded ring of summaries carrying kind, lifetime, and flow totals, and the ring evicts oldest-first at capacity. | bifaci/request_state_test.go:264 |
+| test7035 | `Test7035_end_terminates_and_releases_all_state` | TEST7035: After END, the switch holds zero state for the request — entry, rid index, and response channel all released atomically, with the terminal delivered and a terminated summary recorded. Uses a single capless connected master in place of the Rust reference's zero-master switch — see TEST7025's doc comment. | bifaci/relay_switch_test.go:2414 |
+| test7036 | `Test7036_err_terminates_and_releases_all_state` | TEST7036: After ERR, the same total-cleanup invariant holds as after END, with kind err. | bifaci/relay_switch_test.go:2496 |
+| test7037 | `Test7037_cancel_cascades_to_children_and_cleans_all_state` | TEST7037: Cancelling a request terminates it AND its recursively-linked peer children — Cancel frames reach the destination, waiting channels get ERR CANCELLED, and zero state remains for parent or child. | bifaci/relay_switch_test.go:2548 |
+| test7038 | `Test7038_master_death_terminates_pending_requests` | TEST7038: Master death terminates every request routed to it with kind master_died, delivering synthetic MASTER_DIED ERRs to waiting channels and leaving zero state. | bifaci/relay_switch_test.go:2658 |
+| test7050 | `Test7050_sender_stalls_at_window_and_resumes_on_grant` | TEST7050: A credited sender emits exactly its window of chunks then stalls until a CREDIT grant arrives — observed on the captured wire bytes. | bifaci/cartridge_runtime_test.go:4047 |
+| test7052 | `Test7052_input_grants_are_batched` | TEST7052: Input consumption emits batched CREDIT grants — one grant per half-window of chunks accepted, not one per chunk. This mirror's live per-request demux (see runCBORModeIO's FrameTypeChunk handling) grants on wire ACCEPTANCE, not on the handler actually reading the chunk off its live frame channel — acceptance IS consumption for crediting purposes — so grants fire deterministically as chunks arrive, with no dependency on handler scheduling. | bifaci/cartridge_runtime_test.go:4363 |
+| test7062 | `Test7062_log_flows_while_window_exhausted` | TEST7062: LOG/progress frames flow while the data window is exhausted — control frames are never credited. | bifaci/cartridge_runtime_test.go:4128 |
+| test7070 | `Test7070_unbounded_input_consumed_live` | TEST7070: An unbounded input stream is consumed live — the handler observes early items while the producer is still emitting, and the stream reports itself unbounded. (Rust: test7070_unbounded_input_consumed_live) | bifaci/live_input_model_test.go:32 |
+| test7073 | `Test7073_collect_refuses_unbounded_streams` | TEST7073: Buffering collectors refuse unbounded streams with a hard error instead of buffering without bound. (Rust: test7073_collect_refuses_unbounded_streams) | bifaci/live_input_model_test.go:140 |
+| test7085 | `Test7085_relay_notify_carries_host_protocol_stats` | TEST7085: The RelayNotify capabilities payload carries the host's protocol stats snapshot, surviving the wire round-trip. | bifaci/relay_switch_test.go:2075 |
+| test7086 | `Test7086_drop_snapshot_matches_induced_drops` | TEST7086: One runtime's drop counters aggregate every drop source — post-terminal writer drops and closed-channel sends — each counted exactly once, and the snapshot totals match the induced drops. | bifaci/cartridge_runtime_test.go:3991 |
+| test7087 | `Test7087_snapshot_field_names_are_stable` | TEST7087: Protocol stats snapshots serialize with stable field names — the snapshot shape is the mirror contract. | bifaci/request_state_test.go:72 |
+| test7088 | `Test7088_last_activity_monotonic` | TEST7088: last_activity is monotonic non-decreasing across a long-lived streaming request — idle time resets on every recorded frame and never runs backwards. | bifaci/request_state_test.go:132 |
+| test7089 | `Test7089_hello_failed_stays_in_inventory_with_error` | TEST7089: A cartridge whose HELLO permanently failed stays IN the inventory advertisement carrying a handshake_failed attachment error and no cap groups — failure is named, never silently absent; a roster-retired cartridge disappears entirely. | bifaci/host_multi_test.go:1124 |
+| test7090 | `Test7090_heartbeat_drops_total_reaches_inventory_stats` | TEST7090: The cartridge's cumulative protocol drop counter (`drops_total` heartbeat meta, L8) is ingested by the host and surfaces on the cartridge's inventory runtime stats as ProtocolDropsTotal — absent until the first reading, then tracking the running total as-is. | bifaci/host_multi_test.go:1182 |
+| test7091 | `Test7091_switch_retains_host_protocol_stats_from_relay_notify` | TEST7091: Host protocol stats carried by a master's RelayNotify are RETAINED by the switch (not parsed-and-discarded) and surface in ProtocolStats().Hosts keyed by master id; a master that has not yet advertised stats is absent from the map — never a zeroed placeholder. | bifaci/relay_switch_test.go:2266 |
+| test7092 | `Test7092_cap_urn_attribution_survives_lifecycle` | TEST7092: A request registered with its originating REQ's cap URN carries that identity through the ACTIVE snapshot and into the terminated ring — observability surfaces can always NAME a request (background chatter vs run traffic), never just show a bare rid. A request registered without one (pre-attribution mirror, unknown origin) snapshots with cap_urn null — absent, never invented. | bifaci/request_state_test.go:42 |
+| test7093 | `Test7093_dead_consumer_cancels_upstream` | TEST7093: A response frame for a LIVE request whose external consumer is gone (dropped/timed-out caller future) is a counted channel_closed drop AND cancels the request upstream — the destination receives Cancel, the entry terminates as cancelled, and the cartridge stops producing for a dead channel instead of running to completion against it. This mirror has no execute_cap-style external-caller API (see RelaySwitch.requests' doc comment), so the registration execute_cap would perform — response channel + routing registered atomically BEFORE sending, then the REQ written to the destination master — is done by hand here, mirroring what runIdentityProbeViaRelay already does for the deferred-probe's own external registration. | bifaci/relay_switch_test.go:2142 |
+| | | | |
+| unnumbered | `TestCapacityHandleQueuesRequestsBeyondLimit` | TestCapacityHandleQueuesRequestsBeyondLimit: with capacity set to 1, a second request arriving while the first is still running is queued (LOG level="queued") instead of dispatched; once the first finishes, the queued request is dequeued (LOG level="dequeued") and runs. Go-only — validates CapacityHandle / concurrency-capacity queueing, which this mirror did not have before this port (no corresponding number in the v3 diff: capacity pre-dates it in the Rust reference). | bifaci/cartridge_runtime_test.go:4468 |
+| unnumbered | `TestIsMainInput_FalseWhenStdinUrnDiffersFromInSpec` | TestIsMainInput_FalseWhenStdinUrnDiffersFromInSpec mirrors Rust is_main_input(): a Stdin source whose URN is not equivalent to in_spec does not make the arg the main input (e.g. a secondary stdin-fed arg in a distinct-URN convergence). | cap/definition_test.go:783 |
+| unnumbered | `TestIsMainInput_FalseWithoutStdinSource` | TestIsMainInput_FalseWithoutStdinSource mirrors Rust is_main_input(): an arg delivered only by position/cli_flag is never the main input, no matter how its declared media_urn compares to in_spec. | cap/definition_test.go:766 |
+| unnumbered | `TestIsMainInput_InvalidStdinUrnIsIgnoredNotFatal` | TestIsMainInput_InvalidStdinUrnIsIgnoredNotFatal mirrors Rust is_main_input(): MediaUrn::from_string failing on a malformed stdin URN is treated as non-matching (via .unwrap_or(false)), not a panic/crash — the search continues to other sources instead of failing hard, matching the reference's explicit fallback-to-false on parse failure. | cap/definition_test.go:813 |
+| unnumbered | `TestIsMainInput_NilInSpecIsFalse` | TestIsMainInput_NilInSpecIsFalse: is_main_input must FAIL HARD toward false, never panic, when handed a nil in_spec. | cap/definition_test.go:798 |
+| unnumbered | `TestIsMainInput_TrueWhenStdinUrnIsEquivalentToInSpec` | TestIsMainInput_TrueWhenStdinUrnIsEquivalentToInSpec mirrors Rust is_main_input(): the arg's Stdin source URN is compared to in_spec by tagged-URN EQUIVALENCE, not string equality — reordered tags still match. | cap/definition_test.go:727 |
+| unnumbered | `TestIsMainInput_UsesStdinUrnNotDeclaredSlotUrn` | TestIsMainInput_UsesStdinUrnNotDeclaredSlotUrn mirrors Rust is_main_input(): the DECLARED slot media_urn may differ from the stdin URN (e.g. a file-path slot whose piped content is a pdf-stream) — only the stdin URN is compared against in_spec, never the slot URN. | cap/definition_test.go:744 |
+| unnumbered | `TestOutputStreamDefaultFinalProgressIsOne` | TestOutputStreamDefaultFinalProgressIsOne: without a Finish() call, a successful END reads as final progress 1.0 (the documented default). | bifaci/cartridge_runtime_test.go:4575 |
+| unnumbered | `TestOutputStreamFinishSetsEndFinalProgress` | TestOutputStreamFinishSetsEndFinalProgress: OutputStream.Finish declares the terminal status delivered in the END frame's terminal metadata (protocol v3, L3/L5). Go-only — validates StreamEmitter.Finish / Frame.FinalProgress wiring added by this port (the shared Rust/Swift behavior these mirror is exercised structurally by TEST7020's use of EndOkWith above). | bifaci/cartridge_runtime_test.go:4546 |
+| unnumbered | `TestPeerInvokerArgStreamsAreCredited` | TestPeerInvokerArgStreamsAreCredited: a peer call's argument stream is flow-controlled by the callee's consumption exactly like a handler's response stream (protocol v3, L14 — matches Rust PeerCall::arg's with_credit / PeerInvokerImpl::credit_router). peerInvokerImpl.Invoke registers one CreditGate per argument stream and blocks writing further CHUNKs once its window is exhausted; a CREDIT frame for that (rid, stream_id) unblocks it. Go-only — this port added credit gating to PeerCall/PeerInvokerImpl, which previously sent peer-argument chunks unconditionally (no corresponding number in the v3 diff singles this gap out, since Rust/Swift never had it to begin with). | bifaci/cartridge_runtime_test.go:4177 |
+| unnumbered | `TestStreamUrn_FallsBackToSlotMediaUrnWhenNoStdinSource` | TestStreamUrn_FallsBackToSlotMediaUrnWhenNoStdinSource mirrors Rust stream_urn(): a cap need not declare any Stdin source at all — a producer-fed arg (position/cli_flag only) is delivered by its declared slot media_urn. | cap/definition_test.go:706 |
+| unnumbered | `TestStreamUrn_NoSources` | TestStreamUrn_NoSources mirrors Rust stream_urn(): with zero sources declared, the slot media_urn is still returned (never panics, never defaults to something else). | cap/definition_test.go:719 |
+| unnumbered | `TestStreamUrn_PrefersStdinSourceOverSlotMediaUrn` | TestStreamUrn_PrefersStdinSourceOverSlotMediaUrn mirrors Rust stream_urn(): when an arg declares a Stdin source, StreamUrn returns the STDIN URN, not the declared slot media_urn, even when the two differ (e.g. a file-path slot whose piped content is a pdf-stream). | cap/definition_test.go:691 |
+---
+
+## Unnumbered Tests
+
+The following tests are cataloged but do not currently participate in numeric test indexing.
+
+- `TestCapacityHandleQueuesRequestsBeyondLimit` — bifaci/cartridge_runtime_test.go:4468
+- `TestIsMainInput_FalseWhenStdinUrnDiffersFromInSpec` — cap/definition_test.go:783
+- `TestIsMainInput_FalseWithoutStdinSource` — cap/definition_test.go:766
+- `TestIsMainInput_InvalidStdinUrnIsIgnoredNotFatal` — cap/definition_test.go:813
+- `TestIsMainInput_NilInSpecIsFalse` — cap/definition_test.go:798
+- `TestIsMainInput_TrueWhenStdinUrnIsEquivalentToInSpec` — cap/definition_test.go:727
+- `TestIsMainInput_UsesStdinUrnNotDeclaredSlotUrn` — cap/definition_test.go:744
+- `TestOutputStreamDefaultFinalProgressIsOne` — bifaci/cartridge_runtime_test.go:4575
+- `TestOutputStreamFinishSetsEndFinalProgress` — bifaci/cartridge_runtime_test.go:4546
+- `TestPeerInvokerArgStreamsAreCredited` — bifaci/cartridge_runtime_test.go:4177
+- `TestStreamUrn_FallsBackToSlotMediaUrnWhenNoStdinSource` — cap/definition_test.go:706
+- `TestStreamUrn_NoSources` — cap/definition_test.go:719
+- `TestStreamUrn_PrefersStdinSourceOverSlotMediaUrn` — cap/definition_test.go:691
+
 ---
 
 ## Numbering Mismatches
@@ -1261,18 +1352,18 @@ These tests have a numbering disagreement between the function name and the auth
 - `test0126` / `test126` / `Test0126_effect_declared_uses_declared_output` — urn/cap_urn_test.go:2065
 - `test0127` / `test127` / `Test0127_invalid_effect_none_fails_hard` — urn/cap_urn_test.go:2077
 - `test0128` / `test128` / `Test0128_effect_dispatch_requires_explicit_wildcard` — urn/cap_urn_test.go:2082
-- `test0132` / `test132` / `Test0132_add_master_dynamic` — bifaci/relay_switch_test.go:1484
-- `test0136` / `test136` / `Test0136_all_masters_ready_false_when_expected_count_unset` — bifaci/relay_switch_test.go:1361
-- `test0137` / `test137` / `Test0137_all_masters_ready_false_when_partially_connected` — bifaci/relay_switch_test.go:1375
-- `test0139` / `test139` / `Test0139_all_masters_ready_true_when_masters_connected_but_capless` — bifaci/relay_switch_test.go:1388
-- `test0140` / `test140` / `Test0140_all_masters_ready_does_not_overshoot` — bifaci/relay_switch_test.go:1404
+- `test0132` / `test132` / `Test0132_add_master_dynamic` — bifaci/relay_switch_test.go:1491
+- `test0136` / `test136` / `Test0136_all_masters_ready_false_when_expected_count_unset` — bifaci/relay_switch_test.go:1368
+- `test0137` / `test137` / `Test0137_all_masters_ready_false_when_partially_connected` — bifaci/relay_switch_test.go:1382
+- `test0139` / `test139` / `Test0139_all_masters_ready_true_when_masters_connected_but_capless` — bifaci/relay_switch_test.go:1395
+- `test0140` / `test140` / `Test0140_all_masters_ready_does_not_overshoot` — bifaci/relay_switch_test.go:1411
 - `test0289` / `test289` / `Test0289_media_def_def_documentation_round_trip` — media/spec_test.go:676
 
 ---
 
 *Generated from Go source tree*
-*Total tests: 1156*
-*Total numbered tests: 1156*
-*Total unnumbered tests: 0*
+*Total tests: 1226*
+*Total numbered tests: 1213*
+*Total unnumbered tests: 13*
 *Total numbered tests missing descriptions: 0*
 *Total numbering mismatches: 89*
