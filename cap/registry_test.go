@@ -61,7 +61,7 @@ func Test6325_RegistryValidation(t *testing.T) {
 	// Create a test cap
 	capUrn, err := urn.NewCapUrnFromString(regTestUrn("test;target=fake"))
 	require.NoError(t, err)
-	cap := NewCap(capUrn, "Test Command", "test-cmd")
+	cap := NewCap(capUrn, "Test Command", []string{"test-cmd"})
 
 	// Validation should fail since this cap doesn't exist in registry
 	err = ValidateCapCanonical(registry, cap)
@@ -81,7 +81,7 @@ func Test6329_CacheOperations(t *testing.T) {
 // TEST6382: Test parsing registry JSON without stdin args verifies cap structure
 func Test6382_parse_registry_json(t *testing.T) {
 	// JSON without stdin args - means cap doesn't accept stdin
-	jsonData := `{"urn":"cap:in=\"media:listing-id\";use-grinder;out=\"media:task;id\"","command":"grinder_task","title":"Create Grinder Tool Task","cap_description":"Create a task for initial document analysis - first glance phase","metadata":{},"media_defs":[{"urn":"media:listing-id","media_type":"text/plain","title":"Listing ID","profile_uri":"https://machinefabric.com/schema/listing-id","schema":{"type":"string","pattern":"[0-9a-f-]{36}","description":"MachineFabric listing UUID"}},{"urn":"media:task;id","media_type":"application/json","title":"Task ID","profile_uri":"https://capdag.com/schema/grinder_task-output","schema":{"type":"object","additionalProperties":false,"properties":{"task_id":{"type":"string","description":"ID of the created task"},"task_type":{"type":"string","description":"Type of task created"}},"required":["task_id","task_type"]}}],"args":[{"media_urn":"media:listing-id","required":true,"sources":[{"cli_flag":"--listing-id"}],"arg_description":"ID of the listing to analyze"}],"output":{"media_urn":"media:task;id","output_description":"Created task information"},"registered_by":{"username":"joeharshamshiri","registered_at":"2026-01-15T00:44:29.851Z"}}`
+	jsonData := `{"urn":"cap:in=\"media:listing-id\";use-grinder;out=\"media:task;id\"","aliases":["grinder_task"],"title":"Create Grinder Tool Task","cap_description":"Create a task for initial document analysis - first glance phase","metadata":{},"media_defs":[{"urn":"media:listing-id","media_type":"text/plain","title":"Listing ID","profile_uri":"https://machinefabric.com/schema/listing-id","schema":{"type":"string","pattern":"[0-9a-f-]{36}","description":"MachineFabric listing UUID"}},{"urn":"media:task;id","media_type":"application/json","title":"Task ID","profile_uri":"https://capdag.com/schema/grinder_task-output","schema":{"type":"object","additionalProperties":false,"properties":{"task_id":{"type":"string","description":"ID of the created task"},"task_type":{"type":"string","description":"Type of task created"}},"required":["task_id","task_type"]}}],"args":[{"media_urn":"media:listing-id","required":true,"sources":[{"cli_flag":"--listing-id"}],"arg_description":"ID of the listing to analyze"}],"output":{"media_urn":"media:task;id","output_description":"Created task information"},"registered_by":{"username":"joeharshamshiri","registered_at":"2026-01-15T00:44:29.851Z"}}`
 
 	var registryResp RegistryCapResponse
 	err := json.Unmarshal([]byte(jsonData), &registryResp)
@@ -90,14 +90,14 @@ func Test6382_parse_registry_json(t *testing.T) {
 	cap, err := registryResp.ToCap()
 	require.NoError(t, err)
 	assert.Equal(t, "Create Grinder Tool Task", cap.Title)
-	assert.Equal(t, "grinder_task", cap.Command)
+	assert.Equal(t, "grinder_task", cap.PrimaryAlias())
 	assert.Nil(t, cap.GetStdinMediaUrn(), "No stdin source in args means no stdin support")
 }
 
 // TEST138: Test parsing registry JSON with stdin args verifies stdin media URN extraction
 func Test138_parse_registry_json_with_stdin(t *testing.T) {
 	// JSON with stdin args - means cap accepts stdin of specified media type
-	jsonData := `{"urn":"cap:in=\"media:ext=pdf\";disbind;out=\"media:enc=utf-8;page\"","command":"disbind","title":"Disbind PDF","args":[{"media_urn":"media:ext=pdf","required":true,"sources":[{"stdin":"media:ext=pdf"}]}]}`
+	jsonData := `{"urn":"cap:in=\"media:ext=pdf\";disbind;out=\"media:enc=utf-8;page\"","aliases":["disbind"],"title":"Disbind PDF","args":[{"media_urn":"media:ext=pdf","required":true,"sources":[{"stdin":"media:ext=pdf"}]}]}`
 
 	var registryResp RegistryCapResponse
 	err := json.Unmarshal([]byte(jsonData), &registryResp)
@@ -231,7 +231,7 @@ func Test908_cached_caps_accessible_when_offline(t *testing.T) {
 	registry := NewFabricRegistryForTest()
 	capUrn, err := urn.NewCapUrnFromString("cap:in=media:void;test-offline;out=media:void")
 	require.NoError(t, err)
-	c := NewCap(capUrn, "Test Cap", "test")
+	c := NewCap(capUrn, "Test Cap", []string{"test"})
 	c.SetOutput(NewCapOutput("media:void", "void"))
 	registry.AddCapsToCache([]*Cap{c})
 	registry.SetOffline(true)

@@ -277,7 +277,7 @@ func Test6367_CapManifestValidation(t *testing.T) {
 
 	all := manifest.AllCaps()
 	assert.Len(t, all, 1)
-	assert.Equal(t, "extract-metadata", all[0].Command)
+	assert.Equal(t, "extract-metadata", all[0].PrimaryAlias())
 	assert.True(t, all[0].AcceptsStdin())
 }
 

@@ -434,7 +434,13 @@ type Cap struct {
 	CapDescription *string              `json:"cap_description,omitempty"`
 	Documentation  *string              `json:"documentation,omitempty"`
 	Metadata       map[string]string    `json:"metadata,omitempty"`
-	Command        string               `json:"command"`
+	// Aliases are the globally-unique human-facing names that select this cap
+	// in both the capdag CLI and the direct cartridge CLI. Replaces the former
+	// non-unique `command`. At least one; uniqueness is enforced at publish.
+	Aliases        []string             `json:"aliases"`
+	// IsAbstract marks a generic-input dispatch umbrella cap: a valid alias
+	// target never backed by a cartridge and never a runnable graph edge.
+	IsAbstract     bool                 `json:"abstract,omitempty"`
 	Args           []CapArg             `json:"args,omitempty"`
 	Output         *CapOutput           `json:"output,omitempty"`
 	MetadataJSON        any                  `json:"metadata_json,omitempty"`
@@ -444,22 +450,22 @@ type Cap struct {
 }
 
 // NewCap creates a new cap
-func NewCap(urn *urn.CapUrn, title string, command string) *Cap {
+func NewCap(urn *urn.CapUrn, title string, aliases []string) *Cap {
 	return &Cap{
 		Urn:      urn,
 		Title:    title,
-		Command:  command,
+		Aliases:  aliases,
 		Metadata: make(map[string]string),
 		Args:     []CapArg{},
 	}
 }
 
 // NewCapWithDescription creates a new cap with description
-func NewCapWithDescription(urn *urn.CapUrn, title string, command string, description string) *Cap {
+func NewCapWithDescription(urn *urn.CapUrn, title string, aliases []string, description string) *Cap {
 	return &Cap{
 		Urn:            urn,
 		Title:          title,
-		Command:        command,
+		Aliases:        aliases,
 		CapDescription: &description,
 		Metadata:       make(map[string]string),
 		Args:           []CapArg{},
@@ -467,11 +473,11 @@ func NewCapWithDescription(urn *urn.CapUrn, title string, command string, descri
 }
 
 // NewCapWithArgs creates a new cap with arguments
-func NewCapWithArgs(u *urn.CapUrn, title string, command string, args []CapArg) *Cap {
+func NewCapWithArgs(u *urn.CapUrn, title string, aliases []string, args []CapArg) *Cap {
 	return &Cap{
 		Urn:      u,
 		Title:    title,
-		Command:  command,
+		Aliases:  aliases,
 		Metadata: make(map[string]string),
 		Args:     args,
 	}
@@ -483,7 +489,7 @@ func NewCapWithFullDefinition(
 	title string,
 	capDescription *string,
 	metadata map[string]string,
-	command string,
+	aliases []string,
 	args []CapArg,
 	output *CapOutput,
 	metadataJSON any,
@@ -499,7 +505,7 @@ func NewCapWithFullDefinition(
 		Title:          title,
 		CapDescription: capDescription,
 		Metadata:       metadata,
-		Command:        command,
+		Aliases:        aliases,
 		Args:           args,
 		Output:         output,
 		MetadataJSON:   metadataJSON,
@@ -507,14 +513,14 @@ func NewCapWithFullDefinition(
 }
 
 // NewCapWithMetadata creates a new cap with metadata
-func NewCapWithMetadata(urn *urn.CapUrn, title string, command string, metadata map[string]string) *Cap {
+func NewCapWithMetadata(urn *urn.CapUrn, title string, aliases []string, metadata map[string]string) *Cap {
 	if metadata == nil {
 		metadata = make(map[string]string)
 	}
 	return &Cap{
 		Urn:      urn,
 		Title:    title,
-		Command:  command,
+		Aliases:  aliases,
 		Metadata: metadata,
 		Args:     []CapArg{},
 	}
@@ -598,14 +604,33 @@ func (c *Cap) SetTitle(title string) {
 	c.Title = title
 }
 
-// GetCommand gets the command
-func (c *Cap) GetCommand() string {
-	return c.Command
+// GetAliases returns the cap's globally-unique selection names.
+func (c *Cap) GetAliases() []string {
+	return c.Aliases
 }
 
-// SetCommand sets the command
-func (c *Cap) SetCommand(command string) {
-	c.Command = command
+// SetAliases sets the cap's aliases.
+func (c *Cap) SetAliases(aliases []string) {
+	c.Aliases = aliases
+}
+
+// PrimaryAlias returns the first alias (single-name display). A cap always
+// has at least one alias.
+func (c *Cap) PrimaryAlias() string {
+	if len(c.Aliases) == 0 {
+		return ""
+	}
+	return c.Aliases[0]
+}
+
+// HasAlias reports whether name is one of this cap's aliases (exact match).
+func (c *Cap) HasAlias(name string) bool {
+	for _, a := range c.Aliases {
+		if a == name {
+			return true
+		}
+	}
+	return false
 }
 
 // GetOutput gets the output definition if defined
@@ -798,6 +823,25 @@ func (c *Cap) UrnString() string {
 	return c.Urn.ToString()
 }
 
+// equalStringSetsCap reports whether two string slices contain the same
+// elements regardless of order (used for order-insensitive alias comparison).
+func equalStringSetsCap(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	counts := make(map[string]int, len(a))
+	for _, s := range a {
+		counts[s]++
+	}
+	for _, s := range b {
+		counts[s]--
+		if counts[s] < 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // Equals checks if this cap is equal to another
 func (c *Cap) Equals(other *Cap) bool {
 	if other == nil {
@@ -812,7 +856,11 @@ func (c *Cap) Equals(other *Cap) bool {
 		return false
 	}
 
-	if c.Command != other.Command {
+	if !equalStringSetsCap(c.Aliases, other.Aliases) {
+		return false
+	}
+
+	if c.IsAbstract != other.IsAbstract {
 		return false
 	}
 
@@ -866,7 +914,11 @@ func (c *Cap) MarshalJSON() ([]byte, error) {
 	capData := map[string]any{
 		"urn":     c.Urn.String(),
 		"title":   c.Title,
-		"command": c.Command,
+		"aliases": c.Aliases,
+	}
+
+	if c.IsAbstract {
+		capData["abstract"] = true
 	}
 
 	if c.Version != 0 {
@@ -958,10 +1010,23 @@ func (c *Cap) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("missing required field 'title'")
 	}
 
-	if command, ok := raw["command"].(string); ok {
-		c.Command = command
-	} else {
-		return fmt.Errorf("missing required field 'command'")
+	// A cap must declare at least one alias — it is how the cap is selected in
+	// both CLIs. Absent or empty is a hard error, never silently defaulted.
+	if aliasesRaw, ok := raw["aliases"]; ok {
+		aliasesBytes, _ := json.Marshal(aliasesRaw)
+		var aliases []string
+		if err := json.Unmarshal(aliasesBytes, &aliases); err != nil {
+			return fmt.Errorf("failed to unmarshal aliases: %w", err)
+		}
+		c.Aliases = aliases
+	}
+	if len(c.Aliases) == 0 {
+		return fmt.Errorf("cap %q must declare at least one alias (the 'aliases' field is required and non-empty)", c.Urn.ToString())
+	}
+
+	// Abstract flag (optional; absent => false).
+	if abstractRaw, ok := raw["abstract"].(bool); ok {
+		c.IsAbstract = abstractRaw
 	}
 
 	if desc, ok := raw["cap_description"].(string); ok {

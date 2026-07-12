@@ -301,7 +301,7 @@ func Test247_response_chunk_clone(t *testing.T) {
 func Test462_attached_cartridge_identity_from_manifest(t *testing.T) {
 	manifest := []byte(`{"name":"TestCart","version":"1.2.3","channel":"nightly",` +
 		`"registry_url":null,"description":"d","cap_groups":[{"name":"g",` +
-		`"caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity"}]}]}`)
+		`"caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"]}]}]}`)
 
 	rec := installedCartridgeRecordFromManifest(manifest)
 	if rec == nil {

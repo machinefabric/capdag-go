@@ -24,7 +24,7 @@ func Test108_cap_creation(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(capTestUrn("transform;format=json;data_processing"))
 	require.NoError(t, err)
 
-	cap := NewCap(id, "Transform JSON Data", "test-command")
+	cap := NewCap(id, "Transform JSON Data", []string{"test-command"})
 
 	// Check that URN string contains the expected tags
 	urnStr := cap.UrnString()
@@ -48,7 +48,7 @@ func Test109_cap_with_metadata(t *testing.T) {
 		"operations": "add,subtract,multiply,divide",
 	}
 
-	cap := NewCapWithMetadata(id, "Perform Mathematical Operations", "test-command", metadata)
+	cap := NewCapWithMetadata(id, "Perform Mathematical Operations", []string{"test-command"}, metadata)
 
 	assert.Equal(t, "Perform Mathematical Operations", cap.Title)
 
@@ -70,7 +70,7 @@ func Test110_cap_matching(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(capTestUrn("transform;format=json;type=data_processing"))
 	require.NoError(t, err)
 
-	cap := NewCap(id, "Transform JSON Data", "test-command")
+	cap := NewCap(id, "Transform JSON Data", []string{"test-command"})
 
 	assert.True(t, cap.MatchesRequest(capTestUrn("transform;format=json;type=data_processing")))
 	assert.True(t, cap.MatchesRequest(capTestUrn("transform;format=*;type=data_processing")))
@@ -83,7 +83,7 @@ func Test111_cap_title(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(capTestUrn("extract;target=metadata"))
 	require.NoError(t, err)
 
-	cap := NewCap(id, "Extract Document Metadata", "extract-metadata")
+	cap := NewCap(id, "Extract Document Metadata", []string{"extract-metadata"})
 
 	assert.Equal(t, "Extract Document Metadata", cap.GetTitle())
 	assert.Equal(t, "Extract Document Metadata", cap.Title)
@@ -100,9 +100,9 @@ func Test112_cap_definition_equality(t *testing.T) {
 	id2, err := urn.NewCapUrnFromString(capTestUrn("transform;format=json"))
 	require.NoError(t, err)
 
-	cap1 := NewCap(id1, "Transform JSON Data", "transform")
-	cap2 := NewCap(id2, "Transform JSON Data", "transform")
-	cap3 := NewCap(id2, "Convert JSON Format", "transform")
+	cap1 := NewCap(id1, "Transform JSON Data", []string{"transform"})
+	cap2 := NewCap(id2, "Transform JSON Data", []string{"transform"})
+	cap3 := NewCap(id2, "Convert JSON Format", []string{"transform"})
 
 	assert.True(t, cap1.Equals(cap2))
 	assert.False(t, cap1.Equals(cap3))
@@ -114,7 +114,7 @@ func Test113_cap_stdin(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(capTestUrn("generate;target=embeddings"))
 	require.NoError(t, err)
 
-	cap := NewCap(id, "Generate Embeddings", "generate")
+	cap := NewCap(id, "Generate Embeddings", []string{"generate"})
 
 	// By default, caps should not accept stdin
 	assert.False(t, cap.AcceptsStdin())
@@ -256,15 +256,15 @@ func defTestUrn(tags string) string {
 func Test591_is_more_specific_than(t *testing.T) {
 	generalUrn, err := urn.NewCapUrnFromString(defTestUrn("transform"))
 	require.NoError(t, err)
-	general := NewCap(generalUrn, "General", "cmd")
+	general := NewCap(generalUrn, "General", []string{"cmd"})
 
 	specificUrn, err := urn.NewCapUrnFromString(defTestUrn("transform;format=json"))
 	require.NoError(t, err)
-	specific := NewCap(specificUrn, "Specific", "cmd")
+	specific := NewCap(specificUrn, "Specific", []string{"cmd"})
 
 	unrelatedUrn, err := urn.NewCapUrnFromString(defTestUrn("convert"))
 	require.NoError(t, err)
-	unrelated := NewCap(unrelatedUrn, "Unrelated", "cmd")
+	unrelated := NewCap(unrelatedUrn, "Unrelated", []string{"cmd"})
 
 	// Specific is more specific than general for the general request
 	assert.True(t, specific.IsMoreSpecificThan(general, defTestUrn("transform")),
@@ -281,7 +281,7 @@ func Test591_is_more_specific_than(t *testing.T) {
 func Test592_remove_metadata(t *testing.T) {
 	u, err := urn.NewCapUrnFromString(defTestUrn("test"))
 	require.NoError(t, err)
-	c := NewCap(u, "Test", "cmd")
+	c := NewCap(u, "Test", []string{"cmd"})
 
 	c.SetMetadata("key1", "val1")
 	c.SetMetadata("key2", "val2")
@@ -303,7 +303,7 @@ func Test592_remove_metadata(t *testing.T) {
 func Test593_registered_by_lifecycle(t *testing.T) {
 	u, err := urn.NewCapUrnFromString(defTestUrn("test"))
 	require.NoError(t, err)
-	c := NewCap(u, "Test", "cmd")
+	c := NewCap(u, "Test", []string{"cmd"})
 
 	// Initially nil
 	assert.Nil(t, c.GetRegisteredBy())
@@ -325,7 +325,7 @@ func Test593_registered_by_lifecycle(t *testing.T) {
 func Test594_metadata_json_lifecycle(t *testing.T) {
 	u, err := urn.NewCapUrnFromString(defTestUrn("test"))
 	require.NoError(t, err)
-	c := NewCap(u, "Test", "cmd")
+	c := NewCap(u, "Test", []string{"cmd"})
 
 	// Initially nil
 	assert.Nil(t, c.GetMetadataJSON())
@@ -351,7 +351,7 @@ func Test595_with_args_constructor(t *testing.T) {
 		NewCapArg("media:integer", false, []ArgSource{{CliFlag: &flag}}),
 	}
 
-	c := NewCapWithArgs(u, "Test", "cmd", args)
+	c := NewCapWithArgs(u, "Test", []string{"cmd"}, args)
 	assert.Len(t, c.GetArgs(), 2)
 	assert.Equal(t, "media:string", c.GetArgs()[0].MediaUrn)
 	assert.True(t, c.GetArgs()[0].Required)
@@ -380,7 +380,7 @@ func Test596_with_full_definition_constructor(t *testing.T) {
 	val, ok := c.GetMetadata("env")
 	assert.True(t, ok)
 	assert.Equal(t, "prod", val)
-	assert.Equal(t, "full-cmd", c.GetCommand())
+	assert.Equal(t, "full-cmd", c.PrimaryAlias())
 	assert.Len(t, c.GetArgs(), 1)
 	require.NotNil(t, c.GetOutput())
 	assert.Equal(t, "media:object", c.GetOutput().MediaUrn)
@@ -419,7 +419,7 @@ func Test597_cap_arg_with_full_definition(t *testing.T) {
 func Test598_cap_output_lifecycle(t *testing.T) {
 	u, err := urn.NewCapUrnFromString(defTestUrn("test"))
 	require.NoError(t, err)
-	c := NewCap(u, "Test", "cmd")
+	c := NewCap(u, "Test", []string{"cmd"})
 
 	// Initially no output
 	assert.Nil(t, c.GetOutput())
@@ -451,14 +451,14 @@ func Test6238_CapRequestHandling(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(capTestUrn("extract;target=metadata"))
 	require.NoError(t, err)
 
-	cap1 := NewCap(id, "Extract Metadata", "extract-cmd")
-	cap2 := NewCap(id, "Extract Metadata", "extract-cmd")
+	cap1 := NewCap(id, "Extract Metadata", []string{"extract-cmd"})
+	cap2 := NewCap(id, "Extract Metadata", []string{"extract-cmd"})
 
 	assert.True(t, cap1.AcceptsRequest(cap2.Urn))
 
 	otherId, err := urn.NewCapUrnFromString(capTestUrn("generate;image"))
 	require.NoError(t, err)
-	cap3 := NewCap(otherId, "Generate Image", "generate-cmd")
+	cap3 := NewCap(otherId, "Generate Image", []string{"generate-cmd"})
 
 	assert.False(t, cap1.AcceptsRequest(cap3.Urn))
 }
@@ -468,9 +468,9 @@ func Test6245_CapDescription(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(capTestUrn("parse;format=json;data"))
 	require.NoError(t, err)
 
-	cap1 := NewCapWithDescription(id, "Parse JSON Data", "parse-cmd", "Parse JSON data")
-	cap2 := NewCapWithDescription(id, "Parse JSON Data", "parse-cmd", "Parse JSON data v2")
-	cap3 := NewCapWithDescription(id, "Parse JSON Data", "parse-cmd", "Parse JSON data")
+	cap1 := NewCapWithDescription(id, "Parse JSON Data", []string{"parse-cmd"}, "Parse JSON data")
+	cap2 := NewCapWithDescription(id, "Parse JSON Data", []string{"parse-cmd"}, "Parse JSON data v2")
+	cap3 := NewCapWithDescription(id, "Parse JSON Data", []string{"parse-cmd"}, "Parse JSON data")
 
 	assert.False(t, cap1.Equals(cap2)) // Different descriptions
 	assert.True(t, cap1.Equals(cap3))  // Same everything
@@ -482,7 +482,7 @@ func Test6248_CapWithMediaDefs(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(`cap:in="media:string";query;out="media:result";target=structured`)
 	require.NoError(t, err)
 
-	cap := NewCap(id, "Query Structured Data", "query-cmd")
+	cap := NewCap(id, "Query Structured Data", []string{"query-cmd"})
 
 	// Get test registry and seed the specs the cap references.
 	registry := testRegistry(t)
@@ -535,7 +535,7 @@ func Test6248_CapWithMediaDefs(t *testing.T) {
 func Test1127_cap_documentation_round_trip_with_markdown_body(t *testing.T) {
 	u, err := urn.NewCapUrnFromString(defTestUrn("documented"))
 	require.NoError(t, err)
-	c := NewCap(u, "Documented Cap", "documented")
+	c := NewCap(u, "Documented Cap", []string{"documented"})
 
 	body := "# Documented Cap\r\n\nDoes the thing.\n\n```bash\necho \"hi\"\n```\n\nSee also: ★\n"
 	c.SetDocumentation(body)
@@ -557,7 +557,7 @@ func Test1127_cap_documentation_round_trip_with_markdown_body(t *testing.T) {
 func Test1128_cap_documentation_omitted_when_none(t *testing.T) {
 	u, err := urn.NewCapUrnFromString(defTestUrn("undocumented"))
 	require.NoError(t, err)
-	c := NewCap(u, "Undocumented Cap", "undocumented")
+	c := NewCap(u, "Undocumented Cap", []string{"undocumented"})
 	require.Nil(t, c.GetDocumentation())
 
 	data, err := json.Marshal(c)
@@ -576,7 +576,7 @@ func Test1129_cap_documentation_parses_from_capfab_json(t *testing.T) {
 	raw := `{
 		"urn": "cap:in=\"media:enc=utf-8\";docparse;out=\"media:enc=utf-8\"",
 		"title": "Doc Parse",
-		"command": "docparse",
+		"aliases": ["docparse"],
 		"cap_description": "short",
 		"documentation": "## Heading\n\nbody text",
 		"metadata": {}
@@ -593,7 +593,7 @@ func Test1130_cap_documentation_set_and_clear_lifecycle(t *testing.T) {
 	u, err := urn.NewCapUrnFromString(defTestUrn("lifecycle"))
 	require.NoError(t, err)
 	short := "short"
-	c := &Cap{Urn: u, Title: "Lifecycle", Command: "lifecycle", CapDescription: &short}
+	c := &Cap{Urn: u, Title: "Lifecycle", Aliases: []string{"lifecycle"}, CapDescription: &short}
 
 	assert.Equal(t, "short", *c.CapDescription)
 	assert.Nil(t, c.GetDocumentation())
@@ -613,7 +613,7 @@ func Test1130_cap_documentation_set_and_clear_lifecycle(t *testing.T) {
 func Test6251_cap_version_zero_round_trip(t *testing.T) {
 	u, err := urn.NewCapUrnFromString(defTestUrn("versioned"))
 	require.NoError(t, err)
-	c := NewCap(u, "Versioned Cap", "versioned")
+	c := NewCap(u, "Versioned Cap", []string{"versioned"})
 	require.Equal(t, uint32(0), c.Version, "new cap must have Version 0")
 
 	data, err := json.Marshal(c)
@@ -630,7 +630,7 @@ func Test6251_cap_version_zero_round_trip(t *testing.T) {
 func Test6255_cap_version_nonzero_round_trip(t *testing.T) {
 	u, err := urn.NewCapUrnFromString(defTestUrn("versioned"))
 	require.NoError(t, err)
-	c := NewCap(u, "Versioned Cap", "versioned")
+	c := NewCap(u, "Versioned Cap", []string{"versioned"})
 	c.Version = 3
 
 	data, err := json.Marshal(c)
@@ -648,7 +648,7 @@ func Test6259_CapJSONRoundTrip(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(capTestUrn("test"))
 	require.NoError(t, err)
 
-	cap := NewCap(id, "Test Cap", "test-command")
+	cap := NewCap(id, "Test Cap", []string{"test-command"})
 	cliFlag := "--input"
 	pos := 0
 	inputTextDesc2 := "Input text"
@@ -671,7 +671,7 @@ func Test6259_CapJSONRoundTrip(t *testing.T) {
 
 	// Verify key fields
 	assert.Equal(t, cap.Title, deserialized.Title)
-	assert.Equal(t, cap.Command, deserialized.Command)
+	assert.Equal(t, cap.Aliases, deserialized.Aliases)
 	assert.Equal(t, len(cap.GetArgs()), len(deserialized.GetArgs()))
 	assert.Equal(t, cap.GetArgs()[0].MediaUrn, deserialized.GetArgs()[0].MediaUrn)
 	assert.Equal(t, cap.Output.MediaUrn, deserialized.Output.MediaUrn)

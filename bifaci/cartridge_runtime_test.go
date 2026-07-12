@@ -20,7 +20,7 @@ import (
 	"github.com/machinefabric/capdag-go/urn"
 )
 
-const testManifest = `{"name":"TestCartridge","version":"1.0.0","channel":"release","registry_url":null,"description":"Test cartridge","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity"},{"urn":"cap:in=\"media:void\";test;out=\"media:void\"","title":"Test","command":"test"}]}]}`
+const testManifest = `{"name":"TestCartridge","version":"1.0.0","channel":"release","registry_url":null,"description":"Test cartridge","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"]},{"urn":"cap:in=\"media:void\";test;out=\"media:void\"","title":"Test","aliases":["test"]}]}]}`
 
 // Mock emitter that captures emitted data for testing
 type mockStreamEmitter struct {

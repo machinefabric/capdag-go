@@ -919,7 +919,7 @@ func Test301_transform_walks_both_channels_release_first(t *testing.T) {
 
 // TEST632: A registry cap with only the three required fields parses.
 func Test632_deserialize_minimal_registry_cap(t *testing.T) {
-	jsonStr := `{"urn": "cap:effect=none", "title": "Identity", "command": "identity"}`
+	jsonStr := `{"urn": "cap:effect=none", "title": "Identity", "aliases": ["identity"]}`
 	var cap RegistryCap
 	if err := json.Unmarshal([]byte(jsonStr), &cap); err != nil {
 		t.Fatalf("Failed to parse: %v", err)
@@ -930,8 +930,8 @@ func Test632_deserialize_minimal_registry_cap(t *testing.T) {
 	if cap.Title != "Identity" {
 		t.Errorf("Expected title 'Identity', got '%s'", cap.Title)
 	}
-	if cap.Command != "identity" {
-		t.Errorf("Expected command 'identity', got '%s'", cap.Command)
+	if cap.PrimaryAlias() != "identity" {
+		t.Errorf("Expected alias 'identity', got '%s'", cap.PrimaryAlias())
 	}
 	if cap.CapDescription != nil {
 		t.Error("Expected cap_description to be nil")
@@ -949,7 +949,7 @@ func Test633_deserialize_rich_registry_cap(t *testing.T) {
 	jsonStr := `{
 		"urn": "cap:in=\"media:ext=pdf\";disbind;out=\"media:enc=utf-8;page\"",
 		"title": "Disbind PDF",
-		"command": "disbind",
+		"aliases": ["disbind"],
 		"cap_description": "Extract each PDF page as plain page text.",
 		"args": [
 			{
@@ -970,8 +970,8 @@ func Test633_deserialize_rich_registry_cap(t *testing.T) {
 	if err := json.Unmarshal([]byte(jsonStr), &cap); err != nil {
 		t.Fatalf("Failed to parse: %v", err)
 	}
-	if cap.Command != "disbind" {
-		t.Errorf("Expected command 'disbind', got '%s'", cap.Command)
+	if cap.PrimaryAlias() != "disbind" {
+		t.Errorf("Expected alias 'disbind', got '%s'", cap.PrimaryAlias())
 	}
 	if cap.CapDescription == nil || *cap.CapDescription != "Extract each PDF page as plain page text." {
 		t.Errorf("Expected cap_description, got %v", cap.CapDescription)
@@ -1007,7 +1007,7 @@ func Test634_deserialize_cap_group(t *testing.T) {
 	jsonStr := `{
 		"name": "pdf-formats",
 		"caps": [
-			{"urn": "cap:effect=none", "title": "Identity", "command": "identity"}
+			{"urn": "cap:effect=none", "title": "Identity", "aliases": ["identity"]}
 		],
 		"adapter_urns": ["media:ext=pdf"]
 	}`
@@ -1042,8 +1042,8 @@ func Test635_deserialize_cartridge_info_wire_shape(t *testing.T) {
 			{
 				"name": "pdf-formats",
 				"caps": [
-					{"urn": "cap:effect=none", "title": "Identity", "command": "identity"},
-					{"urn": "cap:in=\"media:ext=pdf\";disbind;out=\"media:enc=utf-8;page\"", "title": "Disbind PDF Into Page Text", "command": "disbind"}
+					{"urn": "cap:effect=none", "title": "Identity", "aliases": ["identity"]},
+					{"urn": "cap:in=\"media:ext=pdf\";disbind;out=\"media:enc=utf-8;page\"", "title": "Disbind PDF Into Page Text", "aliases": ["disbind"]}
 				],
 				"adapter_urns": ["media:ext=pdf"]
 			}
@@ -1131,7 +1131,7 @@ func Test637_deserialize_full_registry_response(t *testing.T) {
 					{
 						"name": "pdf-formats",
 						"caps": [
-							{"urn": "cap:effect=none", "title": "Identity", "command": "identity"}
+							{"urn": "cap:effect=none", "title": "Identity", "aliases": ["identity"]}
 						],
 						"adapter_urns": ["media:ext=pdf"]
 					}
@@ -1156,7 +1156,7 @@ func Test637_deserialize_full_registry_response(t *testing.T) {
 					{
 						"name": "image-formats",
 						"caps": [
-							{"urn": "cap:in=\"media:convert-image;image;jpeg;png\";out=\"media:image\"", "title": "Convert JPEG to PNG", "command": "convert-image"}
+							{"urn": "cap:in=\"media:convert-image;image;jpeg;png\";out=\"media:image\"", "title": "Convert JPEG to PNG", "aliases": ["convert-image"]}
 						],
 						"adapter_urns": ["media:ext=bmp;image", "media:ext=jpeg;image", "media:ext=png;image", "media:ext=tiff;image", "media:ext=webp;image", "media:ext=gif;image"]
 					}

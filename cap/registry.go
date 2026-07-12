@@ -96,7 +96,8 @@ type RegistryCapResponse struct {
 	Version        string            `json:"version"`
 	CapDescription *string           `json:"cap_description,omitempty"`
 	Metadata       map[string]string `json:"metadata"`
-	Command        string            `json:"command"`
+	Aliases        []string          `json:"aliases"`
+	IsAbstract     bool              `json:"abstract,omitempty"`
 	Args           []CapArg          `json:"args,omitempty"`
 	Output         *CapOutput        `json:"output,omitempty"`
 }
@@ -115,7 +116,8 @@ func (r *RegistryCapResponse) ToCap() (*Cap, error) {
 		title = "Registry Capability"
 	}
 
-	cap := NewCap(capUrn, title, r.Command)
+	cap := NewCap(capUrn, title, r.Aliases)
+	cap.IsAbstract = r.IsAbstract
 	cap.CapDescription = r.CapDescription
 	if r.Metadata != nil {
 		cap.Metadata = r.Metadata
@@ -275,8 +277,19 @@ func (r *FabricRegistry) ValidateCap(cap *Cap) error {
 		return err
 	}
 
-	if cap.Command != canonicalCap.Command {
-		return fmt.Errorf("command mismatch. Local: %s, Canonical: %s", cap.Command, canonicalCap.Command)
+	// A cartridge responds to a SUBSET of the fabric cap's aliases (never an
+	// alias the fabric does not define).
+	canonSet := make(map[string]bool, len(canonicalCap.Aliases))
+	for _, a := range canonicalCap.Aliases {
+		canonSet[a] = true
+	}
+	for _, a := range cap.Aliases {
+		if !canonSet[a] {
+			return fmt.Errorf("alias mismatch: %q not among the fabric cap's aliases %v", a, canonicalCap.Aliases)
+		}
+	}
+	if cap.IsAbstract != canonicalCap.IsAbstract {
+		return fmt.Errorf("abstract-flag mismatch. Local: %v, Canonical: %v", cap.IsAbstract, canonicalCap.IsAbstract)
 	}
 
 	// Compare stdin (from args with stdin sources)

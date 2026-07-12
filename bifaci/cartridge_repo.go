@@ -77,12 +77,13 @@ type RegistryCapOutput struct {
 }
 
 // RegistryCap is a single capability advertised by a cartridge in the
-// registry. Urn / Title / Command are always present; the other three
-// fields appear only when the cartridge documents them.
+// registry. Urn / Title / Aliases are always present; the other fields
+// appear only when the cartridge documents them.
 type RegistryCap struct {
 	Urn            string             `json:"urn"`
 	Title          string             `json:"title"`
-	Command        string             `json:"command"`
+	Aliases        []string           `json:"aliases"`
+	IsAbstract     bool               `json:"abstract,omitempty"`
 	CapDescription *string            `json:"cap_description,omitempty"`
 	Args           []RegistryCapArg   `json:"args,omitempty"`
 	Output         *RegistryCapOutput `json:"output,omitempty"`

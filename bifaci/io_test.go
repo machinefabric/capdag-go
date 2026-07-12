@@ -1616,7 +1616,7 @@ func Test1141_write_stream_chunked_exact_fit_produces_single_chunk(t *testing.T)
 }
 
 // identityManifest is the minimum valid manifest declaring only CAP_IDENTITY.
-const identityManifest = `{"name":"Test","version":"1.0","channel":"release","description":"Test","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity","args":[]}]}]}`
+const identityManifest = `{"name":"Test","version":"1.0","channel":"release","description":"Test","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"],"args":[]}]}]}`
 
 // drainIdentityRequest reads the identity REQ and its request body
 // (STREAM_START → CHUNK(s) → STREAM_END → END), returning the REQ frame and the
@@ -1801,7 +1801,7 @@ func Test483_verify_identity_fails_on_close(t *testing.T) {
 
 // v3TestManifest is the cartridge manifest used by the v3 handshake parity
 // tests below (matches Rust V3_TEST_MANIFEST).
-const v3TestManifest = `{"name":"test","version":"1.0","channel":"release","description":"Test","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity"}]}]}`
+const v3TestManifest = `{"name":"test","version":"1.0","channel":"release","description":"Test","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"]}]}]}`
 
 // runV3Handshake runs a real host<->cartridge handshake over a bidirectional
 // net.Pipe. The cartridge side proposes cartridgeLimits in its HELLO and

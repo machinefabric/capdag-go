@@ -1459,14 +1459,14 @@ func (pr *CartridgeRuntime) runCLIMode(args []string) error {
 
 	// Handle subcommand --help
 	if len(args) == 3 && (args[2] == "--help" || args[2] == "-h") {
-		if cap := pr.findCapByCommand(subcommand); cap != nil {
+		if cap := pr.findCapByAlias(subcommand); cap != nil {
 			pr.printCapHelp(cap)
 			return nil
 		}
 	}
 
 	// Find cap by command name
-	cap := pr.findCapByCommand(subcommand)
+	cap := pr.findCapByAlias(subcommand)
 	if cap == nil {
 		return fmt.Errorf("unknown subcommand '%s'. Run with --help to see available commands", subcommand)
 	}
@@ -1583,14 +1583,15 @@ func (pr *CartridgeRuntime) dispatchCliPayload(capDef *cap.Cap, handler HandlerF
 	return nil
 }
 
-// findCapByCommand finds a cap by its command name
-func (pr *CartridgeRuntime) findCapByCommand(commandName string) *cap.Cap {
+// findCapByAlias finds a cap by one of its aliases (the CLI subcommand).
+// Aliases are globally unique, so at most one cap matches.
+func (pr *CartridgeRuntime) findCapByAlias(alias string) *cap.Cap {
 	if pr.manifest == nil {
 		return nil
 	}
 	for i := range pr.manifest.CapGroups {
 		for j := range pr.manifest.CapGroups[i].Caps {
-			if pr.manifest.CapGroups[i].Caps[j].Command == commandName {
+			if pr.manifest.CapGroups[i].Caps[j].HasAlias(alias) {
 				return &pr.manifest.CapGroups[i].Caps[j]
 			}
 		}
@@ -1616,7 +1617,7 @@ func (pr *CartridgeRuntime) printHelp() {
 		if cap.CapDescription != nil {
 			desc = *cap.CapDescription
 		}
-		fmt.Fprintf(os.Stderr, "    %-12s %s\n", cap.Command, desc)
+		fmt.Fprintf(os.Stderr, "    %-12s %s\n", cap.PrimaryAlias(), desc)
 	}
 
 	fmt.Fprintf(os.Stderr, "\nRun '%s <COMMAND> --help' for more information on a command.\n", pr.manifest.Name)
@@ -1629,7 +1630,7 @@ func (pr *CartridgeRuntime) printCapHelp(capDef *cap.Cap) {
 		fmt.Fprintf(os.Stderr, "%s\n", *capDef.CapDescription)
 	}
 	fmt.Fprintf(os.Stderr, "\nUSAGE:\n")
-	fmt.Fprintf(os.Stderr, "    cartridge %s [OPTIONS]\n\n", capDef.Command)
+	fmt.Fprintf(os.Stderr, "    cartridge %s [OPTIONS]\n\n", capDef.PrimaryAlias())
 }
 
 // extractEffectivePayload extracts the effective payload from a REQ frame.

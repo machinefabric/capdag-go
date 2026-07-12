@@ -1905,7 +1905,7 @@ func Test520_reorder_buffer_per_flow_limit(t *testing.T) {
 
 // TEST521: RelayNotify CBOR roundtrip preserves manifest and limits
 func Test521_relay_notify_cbor_roundtrip(t *testing.T) {
-	manifest := []byte(`{"name":"Test","version":"1.0","description":"Test","cap_groups":[{"name":"default","caps":[{"urn":"cap:in=\"media:void\";convert;out=\"media:image\"","title":"Convert","command":"convert"}]}]}`)
+	manifest := []byte(`{"name":"Test","version":"1.0","description":"Test","cap_groups":[{"name":"default","caps":[{"urn":"cap:in=\"media:void\";convert;out=\"media:image\"","title":"Convert","aliases":["convert"]}]}]}`)
 
 	frame := NewRelayNotify(manifest, 3_000_000, 256_000, 128, DefaultInitialCredit)
 	encoded, err := EncodeFrame(frame)
@@ -1968,9 +1968,9 @@ func Test526_relay_state_empty_payload(t *testing.T) {
 
 // TEST527: RelayNotify with large manifest roundtrips correctly
 func Test527_relay_notify_large_manifest(t *testing.T) {
-	largeManifest := `{"name":"Large","version":"1.0","description":"Large test","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","command":"identity"}`
+	largeManifest := `{"name":"Large","version":"1.0","description":"Large test","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"]}`
 	for i := 0; i < 99; i++ {
-		largeManifest += fmt.Sprintf(`,{"urn":"cap:in=\"media:void\";op%d;out=\"media:void\"","title":"Op%d","command":"op%d"}`, i, i, i)
+		largeManifest += fmt.Sprintf(`,{"urn":"cap:in=\"media:void\";op%d;out=\"media:void\"","title":"Op%d","aliases":["op%d"]}`, i, i, i)
 	}
 	largeManifest += "]}]}"
 

@@ -24,7 +24,7 @@ func makeTestCapWithArgs(t *testing.T, args []CapArg) *Cap {
 	t.Helper()
 	u, err := urn.NewCapUrnFromString(valTestUrn("test-cap;type=test"))
 	require.NoError(t, err)
-	return NewCapWithArgs(u, "Test Capability", "test-command", args)
+	return NewCapWithArgs(u, "Test Capability", []string{"test-command"}, args)
 }
 
 // Helper to create an ArgSource for stdin
@@ -47,7 +47,7 @@ func makeTestCapWithUrnAndArgs(t *testing.T, capUrnStr string, args []CapArg) *C
 	t.Helper()
 	u, err := urn.NewCapUrnFromString(capUrnStr)
 	require.NoError(t, err)
-	return NewCapWithArgs(u, "Test Capability", "test-command", args)
+	return NewCapWithArgs(u, "Test Capability", []string{"test-command"}, args)
 }
 
 // -------------------------------------------------------------------------
@@ -58,7 +58,7 @@ func makeTestCapWithUrnAndArgs(t *testing.T, capUrnStr string, args []CapArg) *C
 func Test051_input_validation_success(t *testing.T) {
 	u, err := urn.NewCapUrnFromString(valTestUrn("cap;type=test"))
 	require.NoError(t, err)
-	cap := NewCap(u, "Test Capability", "test-command")
+	cap := NewCap(u, "Test Capability", []string{"test-command"})
 	cap.AddArg(NewCapArg(standard.MediaString, true, []ArgSource{positionSource(0)}))
 
 	inputArgs := []interface{}{"/path/to/file.txt"}
@@ -83,7 +83,7 @@ func Test051_input_validation_success(t *testing.T) {
 func Test052_input_validation_missing_required(t *testing.T) {
 	u, err := urn.NewCapUrnFromString(valTestUrn("cap;type=test"))
 	require.NoError(t, err)
-	cap := NewCap(u, "Test Capability", "test-command")
+	cap := NewCap(u, "Test Capability", []string{"test-command"})
 	cap.AddArg(NewCapArg(standard.MediaString, true, []ArgSource{positionSource(0)}))
 
 	inputArgs := []interface{}{} // Missing required argument
@@ -101,7 +101,7 @@ func Test052_input_validation_missing_required(t *testing.T) {
 func Test053_input_validation_wrong_type(t *testing.T) {
 	u, err := urn.NewCapUrnFromString(valTestUrn("cap;type=test"))
 	require.NoError(t, err)
-	cap := NewCap(u, "Test Capability", "test-command")
+	cap := NewCap(u, "Test Capability", []string{"test-command"})
 
 	registry, err := media.NewFabricRegistry()
 	require.NoError(t, err)

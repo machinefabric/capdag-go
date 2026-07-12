@@ -594,7 +594,7 @@ func Test1293_roundtrip_requires_cap_steps(t *testing.T) {
 func Test789_cap_from_json_has_valid_specs(t *testing.T) {
 	jsonStr := `{
 		"urn": "cap:in=\"media:ext=pdf\";disbind;out=\"media:disbound-page;enc=utf-8\"",
-		"command": "disbind",
+		"aliases": ["disbind"],
 		"title": "Disbind PDF",
 		"args": [],
 		"output": null

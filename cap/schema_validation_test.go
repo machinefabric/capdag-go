@@ -187,7 +187,7 @@ func Test6271_SchemaValidator_ValidateArguments_Integration(t *testing.T) {
 	urn, err := urn.NewCapUrnFromString(`cap:in="media:void";query;out="media:fmt=json;record";target=structured`)
 	require.NoError(t, err)
 
-	cap := NewCap(urn, "Query Processor", "test-command")
+	cap := NewCap(urn, "Query Processor", []string{"test-command"})
 
 	// Add a custom media def with schema
 	userSchema := map[string]interface{}{
@@ -303,7 +303,7 @@ func Test6182_InputValidator_WithSchemaValidation(t *testing.T) {
 	urn, err := urn.NewCapUrnFromString(`cap:in="media:void";test;out="media:fmt=json;record"`)
 	require.NoError(t, err)
 
-	cap := NewCap(urn, "Config Validator", "test-command")
+	cap := NewCap(urn, "Config Validator", []string{"test-command"})
 
 	// Add a custom media def with schema
 	schema := map[string]interface{}{
@@ -363,7 +363,7 @@ func Test6183_OutputValidator_WithSchemaValidation(t *testing.T) {
 	urn, err := urn.NewCapUrnFromString(`cap:in="media:void";test;out="media:fmt=json;record"`)
 	require.NoError(t, err)
 
-	cap := NewCap(urn, "Output Validator", "test-command")
+	cap := NewCap(urn, "Output Validator", []string{"test-command"})
 
 	// Add a custom media def with schema for output
 	schema := map[string]interface{}{
@@ -422,7 +422,7 @@ func Test6184_CapValidationCoordinator_EndToEnd(t *testing.T) {
 	urn, err := urn.NewCapUrnFromString(`cap:in="media:void";query;out="media:fmt=json;record";target=structured`)
 	require.NoError(t, err)
 
-	cap := NewCap(urn, "Structured Query", "query-command")
+	cap := NewCap(urn, "Structured Query", []string{"query-command"})
 
 	// Add input argument with schema
 	inputSchema := map[string]interface{}{
@@ -718,7 +718,7 @@ func Test166_schema_validator_skip_validation_without_schema(t *testing.T) {
 	// Create cap with no custom media defs
 	urn, err := urn.NewCapUrnFromString(`cap:in="media:void";test;out="media:fmt=json;record"`)
 	require.NoError(t, err)
-	cap := NewCap(urn, "Test Cap", "test-command")
+	cap := NewCap(urn, "Test Cap", []string{"test-command"})
 
 	// Add argument using media.MediaString (expanded form, resolves from registry, has no schema)
 	cliFlag := "--input"
@@ -743,7 +743,7 @@ func Test167_schema_validator_unresolvable_media_urn_fails_hard(t *testing.T) {
 	// Create cap with no custom media defs
 	urn, err := urn.NewCapUrnFromString(`cap:in="media:void";test;out="media:fmt=json;record"`)
 	require.NoError(t, err)
-	cap := NewCap(urn, "Test Cap", "test-command")
+	cap := NewCap(urn, "Test Cap", []string{"test-command"})
 
 	// Add argument with completely unknown media URN (not in media_defs, not in registry)
 	cliFlag := "--input"
