@@ -51,8 +51,9 @@ func makeTestRegistryChannels(
 		nightly = map[string]CartridgeRegistryEntry{}
 	}
 	return CartridgeRegistry{
-		SchemaVersion: "5.0",
-		LastUpdated:   "2026-02-07",
+		SchemaVersion:   "5.0",
+		RegistryVersion: CartridgeRegistryVersion,
+		LastUpdated:     "2026-02-07",
 		Channels: CartridgeRegistryChannels{
 			Release: CartridgeChannelEntries{Cartridges: release},
 			Nightly: CartridgeChannelEntries{Cartridges: nightly},
@@ -198,6 +199,17 @@ func Test323_cartridge_repo_server_validate_registry(t *testing.T) {
 	}
 	if server != nil {
 		t.Error("Expected no server to be created for v4.0")
+	}
+
+	// A manifest from a different registry regime version is rejected too.
+	wrongVersion := makeTestRegistry("cart", CartridgeRegistryEntry{})
+	wrongVersion.RegistryVersion = CartridgeRegistryVersion + 1
+	server, err = NewCartridgeRepoServer(wrongVersion)
+	if err == nil {
+		t.Error("Expected error for a mismatched cartridge registry version")
+	}
+	if server != nil {
+		t.Error("Expected no server for a mismatched cartridge registry version")
 	}
 }
 

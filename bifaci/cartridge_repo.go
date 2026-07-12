@@ -263,10 +263,17 @@ type CartridgeRegistryChannels struct {
 // registry. Both `release` and `nightly` are always present (possibly
 // empty) so consumers never need conditional fallbacks.
 type CartridgeRegistry struct {
-	SchemaVersion string                    `json:"schemaVersion"`
-	LastUpdated   string                    `json:"lastUpdated"`
-	Channels      CartridgeRegistryChannels `json:"channels"`
+	SchemaVersion   string                    `json:"schemaVersion"`
+	RegistryVersion uint32                    `json:"registryVersion"`
+	LastUpdated     string                    `json:"lastUpdated"`
+	Channels        CartridgeRegistryChannels `json:"channels"`
 }
+
+// CartridgeRegistryVersion is the cartridge registry regime version this
+// implementation speaks. v0 was the pre-versioning legacy at the bare
+// /manifest path; this speaks only v>=1 at the versioned /v<version>/manifest
+// path, and rejects any manifest whose registryVersion differs.
+const CartridgeRegistryVersion uint32 = 1
 
 // CartridgeInfo represents a cartridge in the flat API response format.
 //
@@ -576,6 +583,12 @@ func NewCartridgeRepoServer(registry CartridgeRegistry) (*CartridgeRepoServer, e
 		return nil, NewParseError(fmt.Sprintf(
 			"Unsupported registry schema version: %s. Required: 5.0",
 			registry.SchemaVersion,
+		))
+	}
+	if registry.RegistryVersion != CartridgeRegistryVersion {
+		return nil, NewParseError(fmt.Sprintf(
+			"Unsupported cartridge registry version: %d. This build speaks v%d.",
+			registry.RegistryVersion, CartridgeRegistryVersion,
 		))
 	}
 	if registry.Channels.Release.Cartridges == nil {
