@@ -371,7 +371,7 @@ func inProcessIdentityCap() cap.Cap {
 	if err != nil {
 		panic("BUG: failed to parse CAP_IDENTITY URN: " + err.Error())
 	}
-	return *cap.NewCap(identityUrn, "Identity", "identity")
+	return *cap.NewCap(identityUrn, "Identity", []string{"identity"})
 }
 
 // BuildManifest builds the aggregate RelayNotify manifest payload bytes.

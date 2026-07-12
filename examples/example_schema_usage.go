@@ -13,7 +13,7 @@ func main() {
 	fmt.Println("=== Example 1: Basic Schema Validation ===")
 
 	urn, _ := capdag.NewCapUrnFromString(`cap:in="media:void";query;out="media:enc=utf-8;record";target=structured`)
-	cap := capdag.NewCap(urn, "Query Command", "query-command")
+	cap := capdag.NewCap(urn, "Query Command", []string{"query-command"})
 
 	// Define JSON schema for user data
 	userSchema := map[string]interface{}{

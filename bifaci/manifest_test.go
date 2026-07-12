@@ -24,7 +24,7 @@ func Test148_cap_manifest_creation(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(manifestTestUrn("extract;target=metadata"))
 	require.NoError(t, err)
 
-	capDef := cap.NewCap(id, "Metadata Extractor", "extract-metadata")
+	capDef := cap.NewCap(id, "Metadata Extractor", []string{"extract-metadata"})
 
 	manifest := NewCapManifest("TestComponent", "0.1.0", "release",
 		nil,
@@ -46,7 +46,7 @@ func Test149_cap_manifest_with_author(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(manifestTestUrn("extract;target=metadata"))
 	require.NoError(t, err)
 
-	capDef := cap.NewCap(id, "Metadata Extractor", "extract-metadata")
+	capDef := cap.NewCap(id, "Metadata Extractor", []string{"extract-metadata"})
 
 	manifest := NewCapManifest("TestComponent", "0.1.0", "release",
 		nil,
@@ -63,7 +63,7 @@ func Test6363_CapManifestWithPageURL(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(manifestTestUrn("extract;target=metadata"))
 	require.NoError(t, err)
 
-	capDef := cap.NewCap(id, "Metadata Extractor", "extract-metadata")
+	capDef := cap.NewCap(id, "Metadata Extractor", []string{"extract-metadata"})
 
 	manifest := NewCapManifest("TestComponent", "0.1.0", "release",
 		nil,
@@ -86,7 +86,7 @@ func Test150_cap_manifest_json_serialization(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(manifestTestUrn("extract;target=metadata"))
 	require.NoError(t, err)
 
-	capDef := cap.NewCap(id, "Metadata Extractor", "extract-metadata")
+	capDef := cap.NewCap(id, "Metadata Extractor", []string{"extract-metadata"})
 	stdinUrn := "media:ext=pdf"
 	capDef.AddArg(cap.CapArg{
 		MediaUrn: standard.MediaIdentity,
@@ -154,12 +154,12 @@ func Test151_cap_manifest_required_fields(t *testing.T) {
 func Test152_cap_manifest_with_multiple_caps(t *testing.T) {
 	id1, err := urn.NewCapUrnFromString(manifestTestUrn("extract;target=metadata"))
 	require.NoError(t, err)
-	cap1 := cap.NewCap(id1, "Metadata Extractor", "extract-metadata")
+	cap1 := cap.NewCap(id1, "Metadata Extractor", []string{"extract-metadata"})
 
 	id2, err := urn.NewCapUrnFromString(manifestTestUrn("extract;target=outline"))
 	require.NoError(t, err)
 	metadata := map[string]string{"supports_outline": "true"}
-	cap2 := cap.NewCapWithMetadata(id2, "Outline Extractor", "extract-outline", metadata)
+	cap2 := cap.NewCapWithMetadata(id2, "Outline Extractor", []string{"extract-outline"}, metadata)
 
 	manifest := NewCapManifest("MultiCapComponent", "1.0.0", "release",
 		nil,
@@ -197,7 +197,7 @@ func Test153_cap_manifest_empty_cap_groups(t *testing.T) {
 func Test154_cap_manifest_optional_fields(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(manifestTestUrn("validate;file"))
 	require.NoError(t, err)
-	capDef := cap.NewCap(id, "File Validator", "validate")
+	capDef := cap.NewCap(id, "File Validator", []string{"validate"})
 
 	manifest := NewCapManifest("ValidatorComponent", "1.0.0", "release",
 		nil,
@@ -239,7 +239,7 @@ func (tc *testComponent) Caps() []cap.Cap {
 func Test155_component_metadata_interface(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(manifestTestUrn("test;type=component"))
 	require.NoError(t, err)
-	capDef := cap.NewCap(id, "Test Component", "test")
+	capDef := cap.NewCap(id, "Test Component", []string{"test"})
 
 	component := &testComponent{
 		name:      "TestImpl",
@@ -256,7 +256,7 @@ func Test6367_CapManifestValidation(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(manifestTestUrn("extract;target=metadata"))
 	require.NoError(t, err)
 
-	capDef := cap.NewCap(id, "Metadata Extractor", "extract-metadata")
+	capDef := cap.NewCap(id, "Metadata Extractor", []string{"extract-metadata"})
 	stdinUrn := "media:ext=pdf"
 	capDef.AddArg(cap.CapArg{
 		MediaUrn: standard.MediaIdentity,
@@ -285,7 +285,7 @@ func Test6367_CapManifestValidation(t *testing.T) {
 func Test6371_CapManifestCompatibility(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(manifestTestUrn("process"))
 	require.NoError(t, err)
-	capDef := cap.NewCap(id, "Data Processor", "process")
+	capDef := cap.NewCap(id, "Data Processor", []string{"process"})
 
 	cartridgeStyleManifest := NewCapManifest("CartridgeComponent", "0.1.0", "release",
 		nil,
@@ -325,7 +325,7 @@ func Test6371_CapManifestCompatibility(t *testing.T) {
 func Test475_validate_passes_with_identity(t *testing.T) {
 	identityUrn, err := urn.NewCapUrnFromString(standard.CapIdentity)
 	require.NoError(t, err)
-	identityCap := cap.NewCap(identityUrn, "Identity", "identity")
+	identityCap := cap.NewCap(identityUrn, "Identity", []string{"identity"})
 
 	manifest := NewCapManifest("TestCartridge", "1.0.0", "release", nil, "Test", []CapGroup{DefaultGroup([]cap.Cap{*identityCap})})
 	err = manifest.Validate()
@@ -336,7 +336,7 @@ func Test475_validate_passes_with_identity(t *testing.T) {
 func Test476_validate_fails_without_identity(t *testing.T) {
 	specificUrn, err := urn.NewCapUrnFromString(manifestTestUrn("convert"))
 	require.NoError(t, err)
-	specificCap := cap.NewCap(specificUrn, "Convert", "convert")
+	specificCap := cap.NewCap(specificUrn, "Convert", []string{"convert"})
 
 	manifest := NewCapManifest("TestCartridge", "1.0.0", "release", nil, "Test", []CapGroup{DefaultGroup([]cap.Cap{*specificCap})})
 	err = manifest.Validate()
@@ -348,7 +348,7 @@ func Test476_validate_fails_without_identity(t *testing.T) {
 func Test1284_cap_group_with_adapter_urns(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(manifestTestUrn("convert"))
 	require.NoError(t, err)
-	capDef := cap.NewCap(id, "Convert", "convert")
+	capDef := cap.NewCap(id, "Convert", []string{"convert"})
 
 	group := CapGroup{
 		Name:        "data-formats",
@@ -408,7 +408,7 @@ func Test1874_registry_url_from_build_env_rejects_empty_string(t *testing.T) {
 func Test117_cap_manifest_channel_roundtrip(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(manifestTestUrn("extract;target=metadata"))
 	require.NoError(t, err)
-	capDef := cap.NewCap(id, "Extract Metadata", "extract-metadata")
+	capDef := cap.NewCap(id, "Extract Metadata", []string{"extract-metadata"})
 
 	registryURL := "https://cartridges.machinefabric.com/manifest"
 	manifest := NewCapManifest("TestComponent", "0.1.0", string(CartridgeChannelNightly),
@@ -457,7 +457,7 @@ func Test117_cap_manifest_channel_roundtrip(t *testing.T) {
 func Test118_dev_manifest_registry_url_is_explicit_null(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(manifestTestUrn("dev"))
 	require.NoError(t, err)
-	capDef := cap.NewCap(id, "Dev", "dev")
+	capDef := cap.NewCap(id, "Dev", []string{"dev"})
 
 	manifest := NewCapManifest("DevComponent", "0.1.0", string(CartridgeChannelNightly),
 		nil,

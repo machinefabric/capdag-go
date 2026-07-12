@@ -628,7 +628,7 @@ func identityCap() (*Cap, error) {
 	c := &Cap{
 		Urn:            u,
 		Title:          "Identity",
-		Command:        "identity",
+		Aliases:        []string{"identity"},
 		CapDescription: &desc,
 		Metadata:       make(map[string]string),
 		Args: []CapArg{

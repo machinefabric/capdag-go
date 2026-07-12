@@ -32,7 +32,7 @@ func buildCap(capUrnStr, title string, argMediaUrns []string, outputMediaUrn str
 	return &cap.Cap{
 		Urn:     capUrnParsed,
 		Title:   title,
-		Command: "test-fixture://" + title,
+		Aliases: []string{"test-fixture://" + title},
 		Args:    args,
 		Output:  output,
 	}
@@ -1115,7 +1115,7 @@ func Test1191_resolve_strand_disbind_pdf_with_file_path_slot_identity(t *testing
 	disbind := &cap.Cap{
 		Urn:     capUrnVal(`cap:in="media:ext=pdf";disbind;out="media:page;enc=utf-8"`),
 		Title:   "disbind",
-		Command: "disbind",
+		Aliases: []string{"disbind"},
 		Args: []cap.CapArg{
 			cap.NewCapArg(filePathSlot, true, []cap.ArgSource{{Stdin: &stdinUrn}}),
 		},

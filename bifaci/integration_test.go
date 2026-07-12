@@ -50,7 +50,7 @@ func Test6428_IntegrationVersionlessCapCreation(t *testing.T) {
 	capUrn, err := urn.NewCapUrnFromString(intTestUrn("transform;format=json;type=data_processing"))
 	require.NoError(t, err)
 
-	capDef := cap.NewCap(capUrn, "Data Transformer", "transform-command")
+	capDef := cap.NewCap(capUrn, "Data Transformer", []string{"transform-command"})
 
 	// Verify the cap has direction specs in canonical form
 	assert.Contains(t, capDef.UrnString(), `in=media:void`)
@@ -58,7 +58,7 @@ func Test6428_IntegrationVersionlessCapCreation(t *testing.T) {
 	assert.Equal(t, "transform-command", capDef.PrimaryAlias())
 
 	// Test case 2: Create cap with description but no version
-	capDef2 := cap.NewCapWithDescription(capUrn, "Data Transformer", "transform-command", "Transforms data")
+	capDef2 := cap.NewCapWithDescription(capUrn, "Data Transformer", []string{"transform-command"}, "Transforms data")
 	assert.NotNil(t, capDef2.CapDescription)
 	assert.Equal(t, "Transforms data", *capDef2.CapDescription)
 
@@ -67,7 +67,7 @@ func Test6428_IntegrationVersionlessCapCreation(t *testing.T) {
 
 	// Different caps should not be equal
 	urn2, _ := urn.NewCapUrnFromString(intTestUrn("generate;format=pdf"))
-	capDef3 := cap.NewCap(urn2, "PDF Generator", "generate-command")
+	capDef3 := cap.NewCap(urn2, "PDF Generator", []string{"generate-command"})
 	assert.False(t, capDef.Equals(capDef3))
 }
 
@@ -124,7 +124,7 @@ func Test6433_IntegrationCapValidation(t *testing.T) {
 	urn, err := urn.NewCapUrnFromString(`cap:in="media:void";process;out="media:fmt=json;record";target=data`)
 	require.NoError(t, err)
 
-	capDef := cap.NewCap(urn, "Data Processor", "process-data")
+	capDef := cap.NewCap(urn, "Data Processor", []string{"process-data"})
 
 	// Seed the registry for resolution
 	for _, def := range []media.MediaDef{

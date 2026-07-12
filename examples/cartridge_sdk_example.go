@@ -12,7 +12,7 @@ func main() {
 
 	// Create a capability
 	urn, _ := capdag.NewCapUrnFromString(`cap:in="media:void";query;out="media:enc=utf-8;record";target=structured`)
-	cap := capdag.NewCap(urn, "Query Command", "query-command")
+	cap := capdag.NewCap(urn, "Query Command", []string{"query-command"})
 
 	// Define a comprehensive schema for document query parameters
 	querySchema := map[string]interface{}{

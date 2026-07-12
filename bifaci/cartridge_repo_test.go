@@ -436,7 +436,7 @@ func Test329_cartridge_repo_server_get_by_cap(t *testing.T) {
 			{
 				Name: "pdf",
 				Caps: []RegistryCap{
-					{Urn: capUrn, Title: "Disbind PDF", Command: "disbind"},
+					{Urn: capUrn, Title: "Disbind PDF", Aliases: []string{"disbind"}},
 				},
 			},
 		},
@@ -537,7 +537,7 @@ func Test331_cartridge_repo_client_get_suggestions(t *testing.T) {
 					{
 						Name: "pdf",
 						Caps: []RegistryCap{
-							{Urn: capUrn, Title: "Disbind PDF", Command: "disbind"},
+							{Urn: capUrn, Title: "Disbind PDF", Aliases: []string{"disbind"}},
 						},
 					},
 				},
@@ -626,7 +626,7 @@ func Test333_cartridge_repo_client_get_all_caps(t *testing.T) {
 				Name:    "Cartridge 1",
 				Version: "1.0.0",
 				CapGroups: []RegistryCapGroup{
-					{Name: "g", Caps: []RegistryCap{{Urn: cap1, Title: "Cap 1", Command: "x"}}},
+					{Name: "g", Caps: []RegistryCap{{Urn: cap1, Title: "Cap 1", Aliases: []string{"x"}}}},
 				},
 				Versions: makeTestVersions("darwin-arm64"),
 				Channel:  CartridgeChannelRelease,
@@ -636,7 +636,7 @@ func Test333_cartridge_repo_client_get_all_caps(t *testing.T) {
 				Name:    "Cartridge 2",
 				Version: "1.0.0",
 				CapGroups: []RegistryCapGroup{
-					{Name: "g", Caps: []RegistryCap{{Urn: cap2, Title: "Cap 2", Command: "x"}}},
+					{Name: "g", Caps: []RegistryCap{{Urn: cap2, Title: "Cap 2", Aliases: []string{"x"}}}},
 				},
 				Versions: makeTestVersions("darwin-arm64"),
 				Channel:  CartridgeChannelRelease,
@@ -711,7 +711,7 @@ func Test335_cartridge_repo_server_client_integration(t *testing.T) {
 			{
 				Name: "test-group",
 				Caps: []RegistryCap{
-					{Urn: capUrn, Title: "Test Cap", Command: "test"},
+					{Urn: capUrn, Title: "Test Cap", Aliases: []string{"test"}},
 				},
 				AdapterUrns: []string{"media:test"},
 			},
@@ -791,7 +791,7 @@ func Test319_update_cache_rejects_malformed_cap_urn(t *testing.T) {
 					{
 						Name: "g",
 						Caps: []RegistryCap{
-							{Urn: "not a valid urn at all", Title: "Bad", Command: "x"},
+							{Urn: "not a valid urn at all", Title: "Bad", Aliases: []string{"x"}},
 						},
 					},
 				},
@@ -818,7 +818,7 @@ func buildIdentityCapGroup() []RegistryCapGroup {
 		{
 			Name: "g",
 			Caps: []RegistryCap{
-				{Urn: "cap:effect=none", Title: "Identity", Command: "identity"},
+				{Urn: "cap:effect=none", Title: "Identity", Aliases: []string{"identity"}},
 			},
 		},
 	}

@@ -38,7 +38,7 @@ func makeTestCap(t *testing.T, urnStr string) cap.Cap {
 		Urn:      capUrn,
 		Version:  1,
 		Title:    "test",
-		Command:  "",
+		Aliases:  []string{"test"},
 		Metadata: map[string]string{},
 		Args:     []cap.CapArg{},
 	}

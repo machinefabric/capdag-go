@@ -20,7 +20,7 @@ func makeTestCap(op, inSpec, outSpec, title string) (*cap.Cap, error) {
 	if err != nil {
 		return nil, err
 	}
-	return cap.NewCapWithArgs(capUrnParsed, title, "test-command", nil), nil
+	return cap.NewCapWithArgs(capUrnParsed, title, []string{"test-command"}, nil), nil
 }
 
 // checkForDuplicateCaps detects duplicate caps by (inputSpec, capUrn) pairs.
@@ -78,7 +78,7 @@ func Test6646_analyze_path_arguments_stdin_is_from_input_file(t *testing.T) {
 	stdinArg := cap.NewCapArg(inSpec, true, []cap.ArgSource{
 		{Stdin: &inSpec},
 	})
-	c := cap.NewCapWithArgs(capUrnParsed, "Extract", "test", []cap.CapArg{stdinArg})
+	c := cap.NewCapWithArgs(capUrnParsed, "Extract", []string{"test"}, []cap.CapArg{stdinArg})
 	c.Output = &cap.CapOutput{MediaUrn: capUrnParsed.OutSpec()}
 
 	registry := cap.NewFabricRegistryForTest()
@@ -122,7 +122,7 @@ func Test6647_analyze_path_arguments_user_input_arg_appears_in_slots(t *testing.
 	// user arg: target_language — no stdin source, no default → RequiresUserInput
 	userArg := cap.NewCapArg("media:string", true, []cap.ArgSource{})
 
-	c := cap.NewCapWithArgs(capUrnParsed, "Translate", "test", []cap.CapArg{stdinArg, userArg})
+	c := cap.NewCapWithArgs(capUrnParsed, "Translate", []string{"test"}, []cap.CapArg{stdinArg, userArg})
 	c.Output = &cap.CapOutput{MediaUrn: capUrnParsed.OutSpec()}
 
 	registry := cap.NewFabricRegistryForTest()

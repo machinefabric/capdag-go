@@ -15,7 +15,7 @@ func buildTestCap(t *testing.T, capUrn string, title string) *cap.Cap {
 	if err != nil {
 		t.Fatalf("parse cap urn: %v", err)
 	}
-	c := cap.NewCap(parsed, title, "test-command")
+	c := cap.NewCap(parsed, title, []string{"test-command"})
 	c.Output = &cap.CapOutput{
 		MediaUrn:          parsed.OutSpec(),
 		OutputDescription: title + " output",
@@ -33,7 +33,7 @@ func buildTestCapWithStdin(t *testing.T, capUrn string, title string) *cap.Cap {
 	}
 	inSpec := parsed.InSpec()
 	stdinArg := cap.NewCapArg(inSpec, true, []cap.ArgSource{{Stdin: &inSpec}})
-	c := cap.NewCapWithArgs(parsed, title, "test-command", []cap.CapArg{stdinArg})
+	c := cap.NewCapWithArgs(parsed, title, []string{"test-command"}, []cap.CapArg{stdinArg})
 	c.Output = &cap.CapOutput{
 		MediaUrn:          parsed.OutSpec(),
 		OutputDescription: title + " output",
@@ -383,7 +383,7 @@ func Test1259_parse_fan_in(t *testing.T) {
 	}
 	imgArgUrn := "media:ext=png;image"
 	specArgUrn := "media:enc=utf-8;model-spec"
-	describe := cap.NewCapWithArgs(describeUrn, "describe", "test-command", []cap.CapArg{
+	describe := cap.NewCapWithArgs(describeUrn, "describe", []string{"test-command"}, []cap.CapArg{
 		cap.NewCapArg(imgArgUrn, true, []cap.ArgSource{{Stdin: &imgArgUrn}}),
 		cap.NewCapArg(specArgUrn, true, []cap.ArgSource{{Stdin: &specArgUrn}}),
 	})

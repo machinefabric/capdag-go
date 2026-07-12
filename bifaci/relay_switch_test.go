@@ -56,7 +56,7 @@ func testManifestWithCaps(capURNs []string) map[string]interface{} {
 		groupCaps = append(groupCaps, map[string]interface{}{
 			"urn":     urn,
 			"title":   "test",
-			"aliases": ["test"],
+			"aliases": []interface{}{"test"},
 			"args":    []interface{}{},
 		})
 	}
@@ -1656,7 +1656,7 @@ func deferredIdentityNotify(capURNs []string) []byte {
 		groupCaps = append(groupCaps, map[string]interface{}{
 			"urn":     u,
 			"title":   "test",
-			"aliases": ["test"],
+			"aliases": []interface{}{"test"},
 			"args":    []interface{}{},
 		})
 	}

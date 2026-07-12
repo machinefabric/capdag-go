@@ -237,7 +237,7 @@ func (cm *CapManifest) EnsureIdentity() *CapManifest {
 	}
 
 	// Add identity cap in a default group
-	identityCap := cap.NewCap(identityUrn, "Identity", "identity")
+	identityCap := cap.NewCap(identityUrn, "Identity", []string{"identity"})
 	newGroups := make([]CapGroup, 0, len(cm.CapGroups)+1)
 	newGroups = append(newGroups, DefaultGroup([]cap.Cap{*identityCap}))
 	newGroups = append(newGroups, cm.CapGroups...)

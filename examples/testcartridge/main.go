@@ -61,12 +61,12 @@ func main() {
 			{
 				Urn:     mustParseCapUrn(capdag.CapIdentity),
 				Title:   "Echo",
-				Command: "echo",
+				Aliases: []string{"echo"},
 			},
 			{
 				Urn:     mustParseCapUrn(`cap:in="media:void";void-test;out="media:void"`),
 				Title:   "Void Test",
-				Command: "void",
+				Aliases: []string{"void"},
 			},
 		})},
 	)

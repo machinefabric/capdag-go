@@ -695,7 +695,7 @@ func createTestCap(urnStr, title, command string, args []cap.CapArg) *cap.Cap {
 	return &cap.Cap{
 		Urn:     urn,
 		Title:   title,
-		Command: command,
+		Aliases: []string{command},
 		Args:    args,
 	}
 }
@@ -736,7 +736,7 @@ func createTestManifest(name, version, description string, caps []*cap.Cap) *Cap
 		capSlice = append(capSlice, cap.Cap{
 			Urn:     identity,
 			Title:   "Identity",
-			Command: "identity",
+			Aliases: []string{"identity"},
 		})
 	}
 	return NewCapManifest(name, version, "release", nil, description, []CapGroup{DefaultGroup(capSlice)})

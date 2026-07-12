@@ -22,7 +22,7 @@ func capGroupsFromUrns(t *testing.T, urns []string) []CapGroup {
 	for _, u := range urns {
 		parsed, err := urn.NewCapUrnFromString(u)
 		require.NoErrorf(t, err, "invalid cap URN in test fixture %q", u)
-		caps = append(caps, *cap.NewCap(parsed, "test", "test"))
+		caps = append(caps, *cap.NewCap(parsed, "test", []string{"test"}))
 	}
 	return []CapGroup{{Name: "test", Caps: caps}}
 }

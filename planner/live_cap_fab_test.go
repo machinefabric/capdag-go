@@ -13,7 +13,7 @@ import (
 // makeTestCapForGraph creates a minimal cap for live_cap_fab tests.
 func makeTestCapForGraph(inSpec, outSpec, op, title string) *cap.Cap {
 	capUrn := urn.NewCapUrn(inSpec, outSpec, map[string]string{"op": op})
-	return cap.NewCapWithArgs(capUrn, title, "test", nil)
+	return cap.NewCapWithArgs(capUrn, title, []string{"test"}, nil)
 }
 
 // TEST772: Tests find_paths_to_exact_target() finds multi-step paths Verifies that paths through intermediate nodes are found correctly

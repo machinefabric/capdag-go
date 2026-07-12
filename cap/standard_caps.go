@@ -33,7 +33,7 @@ func LookupCapFabricCap() *Cap {
 	cap := NewCapWithDescription(
 		u,
 		"Look Up Cap Definition (Fabric)",
-		"lookup_cap",
+		[]string{"lookup_cap"},
 		"Resolve a canonical cap URN to its full registry-published cap definition by fetching from the public fabric registry.",
 	)
 	cap.Args = append(cap.Args, NewCapArgWithDescription(
@@ -66,7 +66,7 @@ func LookupMediaDefFabricCap() *Cap {
 	cap := NewCapWithDescription(
 		u,
 		"Look Up Media Definition (Fabric)",
-		"lookup_media_def",
+		[]string{"lookup_media_def"},
 		"Resolve a canonical media URN to its full registry-published media def definition by fetching from the public fabric registry.",
 	)
 	cap.Args = append(cap.Args, NewCapArgWithDescription(

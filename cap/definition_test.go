@@ -370,7 +370,7 @@ func Test596_with_full_definition_constructor(t *testing.T) {
 	desc := "Description"
 
 	c := NewCapWithFullDefinition(
-		u, "Full Cap", &desc, metadata, "full-cmd",
+		u, "Full Cap", &desc, metadata, []string{"full-cmd"},
 		args, output, jsonMeta,
 	)
 

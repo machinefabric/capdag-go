@@ -168,18 +168,18 @@ func Test6230_ResponseWrapperMatchesOutputType(t *testing.T) {
 	// Setup cap definitions with media URNs - all need in/out with proper tags
 	stringCapUrn, err := urn.NewCapUrnFromString(`cap:in="media:void";test;out="media:enc=utf-8"`)
 	require.NoError(t, err)
-	stringCap := NewCap(stringCapUrn, "String Test", "test")
+	stringCap := NewCap(stringCapUrn, "String Test", []string{"test"})
 	// Use expanded URN form matching the cap's out spec for proper resolution
 	stringCap.SetOutput(NewCapOutput("media:enc=utf-8", "String output"))
 
 	binaryCapUrn, err := urn.NewCapUrnFromString(`cap:in="media:void";test;out="media:"`)
 	require.NoError(t, err)
-	binaryCap := NewCap(binaryCapUrn, "Binary Test", "test")
+	binaryCap := NewCap(binaryCapUrn, "Binary Test", []string{"test"})
 	binaryCap.SetOutput(NewCapOutput("media:", "Binary output"))
 
 	jsonCapUrn, err := urn.NewCapUrnFromString(`cap:in="media:void";test;out="media:fmt=json;record"`)
 	require.NoError(t, err)
-	jsonCap := NewCap(jsonCapUrn, "JSON Test", "test")
+	jsonCap := NewCap(jsonCapUrn, "JSON Test", []string{"test"})
 	jsonCap.SetOutput(NewCapOutput("media:fmt=json;record", "JSON output"))
 
 	// Test text response with string output type
@@ -221,7 +221,7 @@ func Test6230_ResponseWrapperMatchesOutputType(t *testing.T) {
 	// Test cap with no output definition - MUST FAIL
 	noOutputCapUrn, err := urn.NewCapUrnFromString(respTestUrn("test"))
 	require.NoError(t, err)
-	noOutputCap := NewCap(noOutputCapUrn, "No Output Test", "test")
+	noOutputCap := NewCap(noOutputCapUrn, "No Output Test", []string{"test"})
 	_, err = textResponse.MatchesOutputType(noOutputCap, registry)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no output definition")
@@ -229,7 +229,7 @@ func Test6230_ResponseWrapperMatchesOutputType(t *testing.T) {
 	// Test cap with unresolvable media URN - MUST FAIL
 	badSpecCapUrn, err := urn.NewCapUrnFromString(respTestUrn("test"))
 	require.NoError(t, err)
-	badSpecCap := NewCap(badSpecCapUrn, "Bad Spec Test", "test")
+	badSpecCap := NewCap(badSpecCapUrn, "Bad Spec Test", []string{"test"})
 	badSpecCap.SetOutput(NewCapOutput("media:unknown", "Unknown output"))
 	_, err = textResponse.MatchesOutputType(badSpecCap, registry)
 	assert.Error(t, err)
@@ -242,7 +242,7 @@ func Test6234_ResponseWrapperValidateAgainstCap(t *testing.T) {
 	// Setup cap with output schema
 	capUrn, err := urn.NewCapUrnFromString(respTestUrn("test"))
 	require.NoError(t, err)
-	cap := NewCap(capUrn, "Test Cap", "test")
+	cap := NewCap(capUrn, "Test Cap", []string{"test"})
 
 	// Add custom spec with schema - needs map tag for JSON
 	registry.AddSpec((media.NewMediaDefWithSchema(

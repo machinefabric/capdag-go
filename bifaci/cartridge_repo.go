@@ -89,6 +89,15 @@ type RegistryCap struct {
 	Output         *RegistryCapOutput `json:"output,omitempty"`
 }
 
+// PrimaryAlias returns the cap's first alias — the canonical CLI selection
+// name — or the empty string if it declares none.
+func (c *RegistryCap) PrimaryAlias() string {
+	if len(c.Aliases) == 0 {
+		return ""
+	}
+	return c.Aliases[0]
+}
+
 // RegistryCapGroup bundles caps + adapter URNs as one atomic
 // registration unit.
 type RegistryCapGroup struct {
