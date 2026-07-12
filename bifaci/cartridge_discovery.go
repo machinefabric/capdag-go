@@ -33,6 +33,11 @@ type DiscoveryIdentity struct {
 	// scheme is allowed).
 	RegistryURL *string
 	FabricManifestVersion uint32
+	// CartridgeRegistryVersion is the registry regime version this host speaks —
+	// an on-disk PATH level: cartridges live under
+	// {slug}/v{CartridgeRegistryVersion}/{channel}/…, pinned like the channel so
+	// a v1 host never scans a v2 cartridge tree.
+	CartridgeRegistryVersion uint32
 }
 
 // Slug returns the on-disk top-level slug for THIS host's own baked registry
@@ -161,9 +166,11 @@ func DiscoverCartridges(cartridgesRoot string, identity *DiscoveryIdentity) ([]D
 			continue
 		}
 		expectedSlug := slugEntry.Name()
-		scanRoot := filepath.Join(slugDir, string(identity.Channel))
+		// {slug}/v{CartridgeRegistryVersion}/{channel}/… — the registry regime
+		// version is a path level pinned to the host's version (like channel).
+		scanRoot := filepath.Join(slugDir, fmt.Sprintf("v%d", identity.CartridgeRegistryVersion), string(identity.Channel))
 		if fi, err := os.Stat(scanRoot); err != nil || !fi.IsDir() {
-			// This slug has no subtree for the host's channel — nothing to do.
+			// This slug has no subtree for the host's (version, channel) — skip.
 			continue
 		}
 		if err := scanChannelRoot(scanRoot, expectedSlug, identity, &discovered); err != nil {

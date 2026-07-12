@@ -1,63 +1,83 @@
-// Cartridge registry slug — deterministic mapping from a registry
-// URL to a top-level folder name under the cartridges install root.
+// Cartridge registry slug — deterministic, human-readable mapping from a
+// registry URL to a top-level folder name under the cartridges install root.
 //
-// Mirrors capdag::cartridge_slug byte-for-byte: SHA-256 of the URL
-// bytes, lowercase hex, first 16 chars. The literal string "dev" is
-// reserved for dev cartridges that have no registry — by length
-// alone (3 != 16) it can never collide with a hex slug.
+// Mirrors capdag::cartridge_slug byte-for-byte: the slug is a path-safe
+// transform of the URL's AUTHORITY (host, plus ":port" if present) — the
+// substring after "://" up to the next '/', '?', or '#' — lowercased, with
+// every character outside [a-z0-9.-] replaced by '-' (so a port ':' becomes
+// '-'). The manifest path (incl. the /v<N>/manifest version segment), query,
+// and trailing slash are discarded, so the slug is version- and
+// path-independent. No hashing — domains are unique and readable. The literal
+// string "dev" is reserved for dev cartridges that have no registry.
 //
-// The mapping is one-way: folder → URL is recovered from each
-// installed cartridge's own cartridge.json:registry_url. The host
-// validates `SlugFor(cartridgeJson.RegistryURL) == folderName` at
-// parse time.
+// The mapping is one-way: folder → URL is recovered from each installed
+// cartridge's own cartridge.json:registry_url. The host validates
+// `SlugFor(cartridgeJson.RegistryURL) == folderName` at parse time.
 
 package bifaci
 
-import (
-	"crypto/sha256"
-	"encoding/hex"
-)
+import "strings"
 
-// DevSlug is the reserved folder name for cartridges with no
-// registry (developer-built cartridges installed via
-// `dx cartridge --install` without `--registry`). The four-character
-// literal can never collide with a 16-character hex slug.
+// DevSlug is the reserved folder name for cartridges with no registry
+// (developer-built cartridges installed via `dx cartridge --install` without
+// `--registry`). A real registry authority is never the literal "dev".
 const DevSlug = "dev"
 
-// SlugHexLen is the number of hex characters in a registry slug.
-// 16 chars = 64 bits = ~10^19 possible values; collision probability
-// across thousands of registries is astronomically low and the
-// literal "dev" is shorter than any possible value, so the two
-// namespaces never overlap.
-const SlugHexLen = 16
+// authorityOf returns the authority (host[:port]) of a registry URL: after
+// "://" up to the next '/', '?', or '#' (path/query/fragment discarded).
+func authorityOf(url string) string {
+	afterScheme := url
+	if i := strings.Index(url, "://"); i >= 0 {
+		afterScheme = url[i+3:]
+	}
+	end := len(afterScheme)
+	if j := strings.IndexAny(afterScheme, "/?#"); j >= 0 {
+		end = j
+	}
+	return afterScheme[:end]
+}
+
+// slugFromAuthority applies the shared path-safe transform: ASCII-lowercase,
+// with every char outside [a-z0-9.-] replaced by '-'. Shared by the cartridge
+// slug and the fabric-cache slug so the two never diverge.
+func slugFromAuthority(authority string) string {
+	var b strings.Builder
+	for _, r := range authority {
+		if r >= 'A' && r <= 'Z' {
+			r += 'a' - 'A'
+		}
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '.' || r == '-' {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune('-')
+		}
+	}
+	return b.String()
+}
 
 // SlugFor computes the on-disk slug for a registry URL.
 //
-// `nil` (i.e. a dev cartridge) → returns the literal `DevSlug`.
-// Non-nil → returns the first SlugHexLen hex characters of
-// sha256(*url) as bytes, lowercase.
-//
-// The URL is hashed verbatim. Two URLs that differ in any byte
-// (case, trailing slash, port, path, query) hash to different
-// slugs — that's intentional, because the URL is the registry's
-// identity and the installer treats it as opaque.
+// `nil` (a dev cartridge) → the literal `DevSlug`. Non-nil → a path-safe
+// transform of the URL's authority (see package doc). Depends ONLY on the
+// authority — path (incl. the version segment), query, trailing slash, and host
+// case do not change it.
 func SlugFor(registryURL *string) string {
 	if registryURL == nil {
 		return DevSlug
 	}
-	digest := sha256.Sum256([]byte(*registryURL))
-	return hex.EncodeToString(digest[:])[:SlugHexLen]
+	return slugFromAuthority(authorityOf(*registryURL))
 }
 
-// IsRegistrySlug returns true if `s` could be a valid slug for a
-// non-dev registry. Used by host scanners to distinguish dev
-// folders from registry folders before they read any cartridge.json.
+// IsRegistrySlug returns true if `s` could be a valid slug for a non-dev
+// registry: a non-empty path-safe authority string ([a-z0-9.-]+) that is not
+// the dev sentinel. Used by host scanners to distinguish dev folders from
+// registry folders before they read any cartridge.json.
 func IsRegistrySlug(s string) bool {
-	if len(s) != SlugHexLen {
+	if s == "" || s == DevSlug {
 		return false
 	}
 	for _, r := range s {
-		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f')) {
+		if !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '.' || r == '-') {
 			return false
 		}
 	}

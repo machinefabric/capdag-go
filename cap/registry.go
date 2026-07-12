@@ -2,7 +2,6 @@ package cap
 
 import (
 	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -426,17 +425,36 @@ func getCacheDir(registryBaseURL string) (string, error) {
 	return filepath.Join(cacheBase, "capdag", registrySlug(registryBaseURL)), nil
 }
 
-// registrySlug computes the on-disk slug for a registry base URL: the first 16
-// lowercase hex characters of sha256(url). This is byte-for-byte identical to
-// the cartridge-registry slug scheme (bifaci.SlugFor for a non-nil URL) so caps
-// and cartridges from the same origin live under the same per-origin folder
-// name. It is inlined here rather than imported because bifaci depends on this
-// package, and the slug is a stable on-disk format with no internal dependencies.
+// registrySlug computes the on-disk slug for a registry base URL: a path-safe
+// transform of the URL's authority (host[:port]) — lowercased, every char
+// outside [a-z0-9.-] replaced by '-'. Byte-for-byte identical to the
+// cartridge-registry slug scheme (bifaci.SlugFor for a non-nil URL) so caps and
+// cartridges from the same origin live under the same per-origin folder name.
+// Inlined here rather than imported because bifaci depends on this package, and
+// the slug is a stable on-disk format with no internal dependencies.
 //
 // Mirrors Rust's crate::bifaci::cartridge_slug::slug_for(Some(url)).
 func registrySlug(registryBaseURL string) string {
-	digest := sha256.Sum256([]byte(registryBaseURL))
-	return hex.EncodeToString(digest[:])[:16]
+	afterScheme := registryBaseURL
+	if i := strings.Index(registryBaseURL, "://"); i >= 0 {
+		afterScheme = registryBaseURL[i+3:]
+	}
+	end := len(afterScheme)
+	if j := strings.IndexAny(afterScheme, "/?#"); j >= 0 {
+		end = j
+	}
+	var b strings.Builder
+	for _, r := range afterScheme[:end] {
+		if r >= 'A' && r <= 'Z' {
+			r += 'a' - 'A'
+		}
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '.' || r == '-' {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune('-')
+		}
+	}
+	return b.String()
 }
 
 func (r *FabricRegistry) cacheKey(urn string) string {

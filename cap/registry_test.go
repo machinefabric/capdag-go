@@ -2,7 +2,6 @@ package cap
 
 import (
 	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -262,13 +261,11 @@ func Test1893_CacheRootIsNamespacedPerRegistryOrigin(t *testing.T) {
 		"the same registry origin must map to a stable cache root, or caching never hits")
 
 	// The final path component is exactly the cartridge-registry slug of the
-	// origin URL — one slug scheme across the codebase: the first 16 lowercase
-	// hex chars of sha256(url), byte-for-byte identical to bifaci.SlugFor.
-	stagingURL := "https://fabric-staging.capdag.com"
-	digest := sha256.Sum256([]byte(stagingURL))
-	slug := hex.EncodeToString(digest[:])[:16]
-	assert.Equal(t, slug, filepath.Base(staging),
-		"cache root must end in SlugFor(registry_url)")
+	// origin URL — one slug scheme across the codebase: a path-safe transform of
+	// the URL's authority (host[:port]), byte-for-byte identical to
+	// bifaci.SlugFor. For a bare host URL that is just the lowercased host.
+	assert.Equal(t, "fabric-staging.capdag.com", filepath.Base(staging),
+		"cache root must end in the registry authority slug")
 	// And the parent of that slug is the shared "capdag" cache directory.
 	assert.Equal(t, "capdag", filepath.Base(filepath.Dir(staging)),
 		"the per-origin slug must live under the capdag cache directory")

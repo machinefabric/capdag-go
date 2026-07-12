@@ -1,6 +1,7 @@
 package bifaci
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -13,19 +14,22 @@ import (
 
 func nightlyDevIdentity() *DiscoveryIdentity {
 	return &DiscoveryIdentity{
-		Channel:               CartridgeChannelNightly,
-		RegistryURL:           nil,
-		FabricManifestVersion: 1,
+		Channel:                  CartridgeChannelNightly,
+		RegistryURL:              nil,
+		FabricManifestVersion:    1,
+		CartridgeRegistryVersion: CartridgeRegistryVersion,
 	}
 }
 
-// installFixture lays down {root}/{slug}/{channelFolder}/{name}/{version}/.
-// When cartridgeJSON is non-nil, also writes it plus an executable `entry`
-// binary so ReadCartridgeJsonFromDir accepts the directory and discovery
-// reaches its own identity checks.
+// installFixture lays down
+// {root}/{slug}/v{CartridgeRegistryVersion}/{channelFolder}/{name}/{version}/ —
+// the version level pins to the host build's registry version, exactly where
+// discovery scans. When cartridgeJSON is non-nil, also writes it plus an
+// executable `entry` binary so ReadCartridgeJsonFromDir accepts the directory
+// and discovery reaches its own identity checks.
 func installFixture(t *testing.T, root, slug, channelFolder, name, version string, cartridgeJSON *string, entry string) {
 	t.Helper()
-	dir := filepath.Join(root, slug, channelFolder, name, version)
+	dir := filepath.Join(root, slug, fmt.Sprintf("v%d", CartridgeRegistryVersion), channelFolder, name, version)
 	require.NoError(t, os.MkdirAll(dir, 0o755))
 	if cartridgeJSON != nil {
 		require.NoError(t, os.WriteFile(filepath.Join(dir, "cartridge.json"), []byte(*cartridgeJSON), 0o644))
@@ -120,9 +124,10 @@ func Test1875_scan_all_reaches_both_dev_and_registry_slugs(t *testing.T) {
 	other := "https://other.example.com/manifest"
 	// Host baked for a DIFFERENT registry than the on-disk registry cartridge.
 	host := &DiscoveryIdentity{
-		Channel:               CartridgeChannelNightly,
-		RegistryURL:           &other,
-		FabricManifestVersion: 1,
+		Channel:                  CartridgeChannelNightly,
+		RegistryURL:              &other,
+		FabricManifestVersion:    1,
+		CartridgeRegistryVersion: CartridgeRegistryVersion,
 	}
 	devJSON := devCartridgeJSON("nightly", 1)
 	installFixture(t, root, "dev", "nightly", "devcart", "1.0.0", &devJSON, "cart")
