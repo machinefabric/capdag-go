@@ -51,9 +51,10 @@ func makeTestRegistryChannels(
 		nightly = map[string]CartridgeRegistryEntry{}
 	}
 	return CartridgeRegistry{
-		SchemaVersion:   "5.0",
-		RegistryVersion: CartridgeRegistryVersion,
-		LastUpdated:     "2026-02-07",
+		SchemaVersion:     "5.0",
+		RegistryVersion:   CartridgeRegistryVersion,
+		LastUpdated:       "2026-02-07",
+		FabricRegistryURL: "https://fabric.test",
 		Channels: CartridgeRegistryChannels{
 			Release: CartridgeChannelEntries{Cartridges: release},
 			Nightly: CartridgeChannelEntries{Cartridges: nightly},

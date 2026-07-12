@@ -263,10 +263,11 @@ type CartridgeRegistryChannels struct {
 // registry. Both `release` and `nightly` are always present (possibly
 // empty) so consumers never need conditional fallbacks.
 type CartridgeRegistry struct {
-	SchemaVersion   string                    `json:"schemaVersion"`
-	RegistryVersion uint32                    `json:"registryVersion"`
-	LastUpdated     string                    `json:"lastUpdated"`
-	Channels        CartridgeRegistryChannels `json:"channels"`
+	SchemaVersion     string                    `json:"schemaVersion"`
+	RegistryVersion   uint32                    `json:"registryVersion"`
+	LastUpdated       string                    `json:"lastUpdated"`
+	FabricRegistryURL string                    `json:"fabricRegistryUrl"`
+	Channels          CartridgeRegistryChannels `json:"channels"`
 }
 
 // CartridgeRegistryVersion is the cartridge registry regime version this
@@ -590,6 +591,12 @@ func NewCartridgeRepoServer(registry CartridgeRegistry) (*CartridgeRepoServer, e
 			"Unsupported cartridge registry version: %d. This build speaks v%d.",
 			registry.RegistryVersion, CartridgeRegistryVersion,
 		))
+	}
+	// A cartridge registry must declare the fabric its caps resolve against. The
+	// consuming client cross-checks this equals its own fabric (so all registries
+	// share one fabric); here we require it is at least present.
+	if registry.FabricRegistryURL == "" {
+		return nil, NewParseError("Cartridge registry manifest is missing fabricRegistryUrl (the fabric its caps resolve against)")
 	}
 	if registry.Channels.Release.Cartridges == nil {
 		registry.Channels.Release.Cartridges = map[string]CartridgeRegistryEntry{}
