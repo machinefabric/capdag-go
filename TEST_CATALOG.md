@@ -1,4 +1,4 @@
-# CapDag-Go Test Catalog
+# Go Test Catalog
 
 **Total Tests:** 1226
 
@@ -12,7 +12,7 @@
 
 All numbered test numbers are unique.
 
-This catalog lists all tests in the CapDag-Go codebase.
+This catalog lists all tests in the Go codebase.
 
 | Test # | Function Name | Description | File |
 |--------|---------------|-------------|------|
@@ -1361,7 +1361,7 @@ These tests have a numbering disagreement between the function name and the auth
 
 ---
 
-*Generated from CapDag-Go source tree*
+*Generated from Go source tree*
 *Total tests: 1226*
 *Total numbered tests: 1213*
 *Total unnumbered tests: 13*
