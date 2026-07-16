@@ -241,17 +241,12 @@ func DemuxPeerResponse(rawFrames <-chan Frame) *PeerResponse {
 				}
 				return
 			case FrameTypeErr:
-				code := "UNKNOWN"
-				message := "Unknown error"
-				if c := frame.ErrorCode(); c != "" {
-					code = c
-				}
-				if m := frame.ErrorMessage(); m != "" {
-					message = m
-				}
+				// Keep the peer's declared code/class/message structural
+				// (docs/failure-taxonomy.md) — a handler propagating this
+				// error keeps the origin's identity on its own ERR frame.
 				itemCh <- PeerResponseItem{
 					IsDataItem: true,
-					DataErr:    fmt.Errorf("remote error: [%s] %s", code, message),
+					DataErr:    remoteErrorFromErrFrame(&frame),
 				}
 				return
 			}
@@ -772,7 +767,12 @@ func runLiveHandler(qr *liveHandlerRequest, writer *syncFrameWriter, limits Limi
 	// step, no accumulate-then-dispatch.
 	err := qr.handler(qr.frames.Chan(), emitter, peerInvoker)
 	if err != nil {
-		errFrame := NewErr(requestID, "HANDLER_ERROR", err.Error())
+		// The ERR frame carries the failure's DECLARED identity
+		// (docs/failure-taxonomy.md): the code and class from the emit source
+		// when the error chain is classified, HANDLER_ERROR/Internal when the
+		// handler never declared one.
+		code, class, message := classifyHandlerError(err)
+		errFrame := NewErrClassified(requestID, code, class, message)
 		errFrame.RoutingId = qr.routingId
 		if writeErr := writer.WriteFrame(errFrame); writeErr != nil {
 			fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", writeErr)
@@ -989,7 +989,9 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 			// Find handler
 			handler := pr.FindHandler(capUrn)
 			if handler == nil {
-				errFrame := NewErr(frame.Id, "NO_HANDLER", fmt.Sprintf("No handler registered for cap: %s", capUrn))
+				// A dispatched cap this binary doesn't handle is a
+				// deployment/manifest mismatch — Environment.
+				errFrame := NewErrClassified(frame.Id, "NO_HANDLER", FailureClassEnvironment, fmt.Sprintf("No handler registered for cap: %s", capUrn))
 				errFrame.RoutingId = routingId
 				if writeErr := writer.WriteFrame(errFrame); writeErr != nil {
 					fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", writeErr)
@@ -1573,9 +1575,14 @@ func (pr *CartridgeRuntime) dispatchCliPayload(capDef *cap.Cap, handler HandlerF
 	peer := &noPeerInvoker{}
 
 	if err := handler(framesChan, emitter, peer); err != nil {
+		// CLI mode still owes the caller the real failure identity
+		// (docs/failure-taxonomy.md): the declared code/class when the error
+		// chain is classified, HANDLER_ERROR/internal otherwise.
+		code, class, message := classifyHandlerError(err)
 		errorJSON, _ := json.Marshal(map[string]string{
-			"error": err.Error(),
-			"code":  "HANDLER_ERROR",
+			"error": message,
+			"code":  code,
+			"class": class.String(),
 		})
 		fmt.Fprintln(os.Stderr, string(errorJSON))
 		return err
@@ -3331,15 +3338,9 @@ func CollectStreams(frames <-chan Frame) ([]struct {
 			return result, nil
 
 		case FrameTypeErr:
-			code := frame.ErrorCode()
-			msg := frame.ErrorMessage()
-			if code == "" {
-				code = "UNKNOWN"
-			}
-			if msg == "" {
-				msg = "Unknown error"
-			}
-			return nil, fmt.Errorf("error: [%s] %s", code, msg)
+			// Structural receipt (docs/failure-taxonomy.md): code, class,
+			// and message survive as a RemoteError, never prose.
+			return nil, remoteErrorFromErrFrame(&frame)
 		}
 	}
 

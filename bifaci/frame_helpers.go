@@ -156,9 +156,7 @@ func CollectArgsByMediaUrn(frames <-chan Frame, mediaUrnPattern string) ([]inter
 			return results, nil
 
 		case FrameTypeErr:
-			code := frame.ErrorCode()
-			message := frame.ErrorMessage()
-			return nil, fmt.Errorf("[%s] %s", code, message)
+			return nil, remoteErrorFromErrFrame(&frame)
 		}
 	}
 
@@ -207,9 +205,7 @@ func CollectFirstArg(frames <-chan Frame) ([]byte, error) {
 					if frame.FrameType == FrameTypeEnd {
 						return fullData, nil
 					} else if frame.FrameType == FrameTypeErr {
-						code := frame.ErrorCode()
-						message := frame.ErrorMessage()
-						return nil, fmt.Errorf("[%s] %s", code, message)
+						return nil, remoteErrorFromErrFrame(&frame)
 					}
 				}
 				return fullData, nil
@@ -224,9 +220,7 @@ func CollectFirstArg(frames <-chan Frame) ([]byte, error) {
 			return fullData, nil
 
 		case FrameTypeErr:
-			code := frame.ErrorCode()
-			message := frame.ErrorMessage()
-			return nil, fmt.Errorf("[%s] %s", code, message)
+			return nil, remoteErrorFromErrFrame(&frame)
 		}
 	}
 
@@ -275,9 +269,7 @@ func CollectPeerResponse(frames <-chan Frame) (map[string][]byte, error) {
 			return streams, nil
 
 		case FrameTypeErr:
-			code := frame.ErrorCode()
-			message := frame.ErrorMessage()
-			return nil, fmt.Errorf("[%s] %s", code, message)
+			return nil, remoteErrorFromErrFrame(&frame)
 		}
 	}
 
@@ -339,9 +331,7 @@ func CollectAllArgs(frames <-chan Frame) ([]cap.CapArgumentValue, error) {
 			return results, nil
 
 		case FrameTypeErr:
-			code := frame.ErrorCode()
-			message := frame.ErrorMessage()
-			return nil, fmt.Errorf("[%s] %s", code, message)
+			return nil, remoteErrorFromErrFrame(&frame)
 		}
 	}
 

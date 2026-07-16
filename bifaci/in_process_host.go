@@ -579,7 +579,9 @@ func (h *InProcessCartridgeHost) Run(localRead io.Reader, localWrite io.Writer) 
 			} else {
 				idx, ok := findHandlerForCap(capTable, capUrn)
 				if !ok {
-					errFrame := NewErr(rid, "NO_HANDLER", fmt.Sprintf("no handler for cap: %s", capUrn))
+					// No registered handler for a dispatched cap is a
+					// deployment mismatch — Environment.
+					errFrame := NewErrClassified(rid, "NO_HANDLER", FailureClassEnvironment, fmt.Sprintf("no handler for cap: %s", capUrn))
 					errFrame.RoutingId = xid
 					writeTx <- *errFrame
 					continue

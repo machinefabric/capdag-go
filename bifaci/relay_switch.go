@@ -1551,7 +1551,9 @@ func (sw *RelaySwitch) handleMasterFrame(sourceIdx int, frame *Frame) (*Frame, e
 			// receiving cartridge host runtime accepts it (path-C
 			// invariant). Mirrors Rust's handle_master_frame NO_HANDLER
 			// branch (Ok(None) + ERR to caller).
-			errFrame := NewErr(frame.Id, "NO_HANDLER", fmt.Sprintf("No handler found for cap: %s", *frame.Cap))
+			// A dispatched cap no master handles is a deployment/manifest
+			// mismatch — Environment.
+			errFrame := NewErrClassified(frame.Id, "NO_HANDLER", FailureClassEnvironment, fmt.Sprintf("No handler found for cap: %s", *frame.Cap))
 			errFrame.RoutingId = &xid
 			_ = sw.masters[sourceIdx].socketWriter.WriteFrame(errFrame)
 			return nil, nil
@@ -1812,7 +1814,9 @@ func (sw *RelaySwitch) handleMasterDeath(masterIdx int) {
 		}
 
 		xid := key.Xid
-		errFrame := NewErr(key.Rid, "MASTER_DIED", fmt.Sprintf("Relay master %d connection closed", masterIdx))
+		// A dead master connection is a runtime-environment failure —
+		// Environment (docs/failure-taxonomy.md).
+		errFrame := NewErrClassified(key.Rid, "MASTER_DIED", FailureClassEnvironment, fmt.Sprintf("Relay master %d connection closed", masterIdx))
 		errFrame.RoutingId = &xid
 
 		if state.Origin == nil {

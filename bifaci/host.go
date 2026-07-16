@@ -1140,7 +1140,9 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 
 		cartridgeIdx, found := h.findCartridgeForCapLocked(capUrn)
 		if !found {
-			errFrame := NewErr(frame.Id, "NO_HANDLER", fmt.Sprintf("no cartridge handles cap: %s", capUrn))
+			// No dispatchable cartridge for a planned cap is a
+			// deployment/manifest mismatch — Environment.
+			errFrame := NewErrClassified(frame.Id, "NO_HANDLER", FailureClassEnvironment, fmt.Sprintf("no cartridge handles cap: %s", capUrn))
 			errFrame.RoutingId = frame.RoutingId
 			relayWriter.WriteFrame(errFrame)
 			return nil
@@ -1149,13 +1151,15 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 		cartridge := h.cartridges[cartridgeIdx]
 		if !cartridge.running {
 			if cartridge.helloFailed {
-				errFrame := NewErr(frame.Id, "SPAWN_FAILED", "cartridge previously failed to start")
+				// A cartridge that cannot be started is a broken runtime
+				// deployment — Environment.
+				errFrame := NewErrClassified(frame.Id, "SPAWN_FAILED", FailureClassEnvironment, "cartridge previously failed to start")
 				errFrame.RoutingId = frame.RoutingId
 				relayWriter.WriteFrame(errFrame)
 				return nil
 			}
 			if err := h.spawnCartridgeLocked(cartridgeIdx); err != nil {
-				errFrame := NewErr(frame.Id, "SPAWN_FAILED", err.Error())
+				errFrame := NewErrClassified(frame.Id, "SPAWN_FAILED", FailureClassEnvironment, err.Error())
 				errFrame.RoutingId = frame.RoutingId
 				relayWriter.WriteFrame(errFrame)
 				return nil
@@ -1183,7 +1187,9 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 			// Mirrors Rust host_runtime.rs:1438.
 			delete(h.incomingRxids, key)
 			delete(h.incomingRxidsTouched, key)
-			errFrame := NewErr(frame.Id, "CARTRIDGE_DIED", err.Error())
+			// A dead cartridge process is a runtime-environment failure —
+			// Environment (docs/failure-taxonomy.md).
+			errFrame := NewErrClassified(frame.Id, "CARTRIDGE_DIED", FailureClassEnvironment, err.Error())
 			errFrame.RoutingId = frame.RoutingId
 			relayWriter.WriteFrame(errFrame)
 		}
@@ -1295,7 +1301,7 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 				delete(h.outgoingRids, frame.Id.ToString())
 				delete(h.outgoingRidsTouched, frame.Id.ToString())
 			}
-			errFrame := NewErr(frame.Id, "CARTRIDGE_DIED", err.Error())
+			errFrame := NewErrClassified(frame.Id, "CARTRIDGE_DIED", FailureClassEnvironment, err.Error())
 			errFrame.RoutingId = frame.RoutingId
 			relayWriter.WriteFrame(errFrame)
 			return nil
@@ -1506,7 +1512,7 @@ func (h *CartridgeHost) handleCartridgeDeath(cartridgeIdx int, relayWriter *rela
 		if route.cartridgeIdx != cartridgeIdx {
 			continue
 		}
-		errFrame := NewErr(route.rid, "CARTRIDGE_DIED", fmt.Sprintf("cartridge %d died", cartridgeIdx))
+		errFrame := NewErrClassified(route.rid, "CARTRIDGE_DIED", FailureClassEnvironment, fmt.Sprintf("cartridge %d died", cartridgeIdx))
 		xid := route.xid
 		errFrame.RoutingId = &xid
 		relayWriter.WriteFrame(errFrame)
@@ -1524,7 +1530,7 @@ func (h *CartridgeHost) handleCartridgeDeath(cartridgeIdx int, relayWriter *rela
 		if route.cartridgeIdx != cartridgeIdx {
 			continue
 		}
-		errFrame := NewErr(route.rid, "CARTRIDGE_DIED", fmt.Sprintf("cartridge %d died", cartridgeIdx))
+		errFrame := NewErrClassified(route.rid, "CARTRIDGE_DIED", FailureClassEnvironment, fmt.Sprintf("cartridge %d died", cartridgeIdx))
 		relayWriter.WriteFrame(errFrame)
 		outgoingKeys = append(outgoingKeys, key)
 	}

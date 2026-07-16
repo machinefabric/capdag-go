@@ -2286,6 +2286,44 @@ func mustEncode(t *testing.T, frame *Frame) []byte {
 	return encoded
 }
 
+// TEST1734: the ERR frame's failure identity is a wire contract
+// (docs/failure-taxonomy.md L2): NewErrClassified round-trips code + class +
+// message through encode/decode; NewErr defaults the class to internal; a
+// frame without a class entry (or with an unknown token) reads as internal —
+// the receiver's unclassified-means-ours rule.
+func Test1734_err_frame_failure_class_wire_contract(t *testing.T) {
+	rid := NewMessageIdRandom()
+
+	// Classified ERR round-trips its full declared identity.
+	classified := NewErrClassified(rid, "CONTEXT_OVERFLOW", FailureClassInput, "prompt exceeds context window")
+	decoded, err := DecodeFrame(mustEncode(t, classified))
+	require.NoError(t, err)
+	assert.Equal(t, "CONTEXT_OVERFLOW", decoded.ErrorCode())
+	assert.Equal(t, FailureClassInput, decoded.ErrorClass())
+	assert.Equal(t, "prompt exceeds context window", decoded.ErrorMessage())
+
+	// Unclassified ERR declares internal on the wire (not merely by fallback).
+	plain := NewErr(rid, "HANDLER_ERROR", "boom")
+	decodedPlain, err := DecodeFrame(mustEncode(t, plain))
+	require.NoError(t, err)
+	assert.Equal(t, "internal", decodedPlain.Meta["class"])
+	assert.Equal(t, FailureClassInternal, decodedPlain.ErrorClass())
+
+	// Missing class entry (a pre-taxonomy peer) reads as internal.
+	noClass := NewFrame(FrameTypeErr, rid)
+	noClass.Meta = map[string]interface{}{"code": "HANDLER_ERROR", "message": "boom"}
+	decodedNoClass, err := DecodeFrame(mustEncode(t, noClass))
+	require.NoError(t, err)
+	assert.Equal(t, FailureClassInternal, decodedNoClass.ErrorClass())
+
+	// Unknown token reads as internal at the receiver.
+	unknown := NewFrame(FrameTypeErr, rid)
+	unknown.Meta = map[string]interface{}{"code": "X", "class": "user-error", "message": "boom"}
+	decodedUnknown, err := DecodeFrame(mustEncode(t, unknown))
+	require.NoError(t, err)
+	assert.Equal(t, FailureClassInternal, decodedUnknown.ErrorClass())
+}
+
 // TEST502: Keys module has constants for new fields
 func Test502_keys_module_new_field_constants(t *testing.T) {
 	assert.Equal(t, 13, keyRoutingId)

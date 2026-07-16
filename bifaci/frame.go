@@ -563,12 +563,24 @@ func (f *Frame) CreditDirectionValue() *CreditDirection {
 	return &dir
 }
 
-// NewErr creates an ERR frame (matches Rust Frame::err)
-// code and message are stored in the Meta map
+// NewErr creates an ERR frame (matches Rust Frame::err). The class defaults
+// to Internal — an error that reaches the wire without a declared class is
+// the emitter's problem by definition; emitters with a classified error use
+// NewErrClassified.
 func NewErr(id MessageId, code string, message string) *Frame {
+	return NewErrClassified(id, code, FailureClassInternal, message)
+}
+
+// NewErrClassified creates an ERR frame carrying the full failure identity:
+// the emitter's machine-readable code (e.g. CONTEXT_OVERFLOW), the failure
+// CLASS (whose problem it is — declared at the error's definition site, see
+// FailureClass), and the human message. ERR meta contract (docs/12.2):
+// "code" + "class" + "message", all text. (matches Rust Frame::err_classified)
+func NewErrClassified(id MessageId, code string, class FailureClass, message string) *Frame {
 	frame := newFrame(FrameTypeErr, id)
 	frame.Meta = map[string]interface{}{
 		"code":    code,
+		"class":   class.String(),
 		"message": message,
 	}
 	return frame
@@ -669,6 +681,27 @@ func (f *Frame) ErrorCode() string {
 		return code
 	}
 	return ""
+}
+
+// ErrorClass gets the failure class from ERR frame meta. A frame without a
+// "class" entry (or with an unknown token) classifies as Internal:
+// unclassified means "the emitter's problem", never a guess about the user's
+// input. Non-ERR frames also return Internal (the degenerate value, matching
+// ErrorCode's "" sentinel — callers only read this on ERR frames).
+// (matches Rust Frame::error_class)
+func (f *Frame) ErrorClass() FailureClass {
+	if f.FrameType != FrameTypeErr || f.Meta == nil {
+		return FailureClassInternal
+	}
+	token, ok := f.Meta["class"].(string)
+	if !ok {
+		return FailureClassInternal
+	}
+	class, ok := FailureClassFromWire(token)
+	if !ok {
+		return FailureClassInternal
+	}
+	return class
 }
 
 // ErrorMessage gets error message from ERR frame meta
