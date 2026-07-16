@@ -956,7 +956,7 @@ func Test050_matching_semantics_direction_mismatch(t *testing.T) {
 	assert.False(t, cap.Accepts(request), "Test 10: Direction mismatch should not match")
 }
 
-// TEST890: Semantic direction matching - generic provider matches specific request
+// TEST890: Semantic direction matching - generic candidate matches specific request
 func Test890_direction_semantic_matching(t *testing.T) {
 	genericCap, err := NewCapUrnFromString(
 		`cap:in="media:";generate-thumbnail;out="media:ext=png;image;thumbnail"`,
@@ -967,14 +967,14 @@ func Test890_direction_semantic_matching(t *testing.T) {
 	)
 	require.NoError(t, err)
 	assert.True(t, genericCap.Accepts(pdfRequest),
-		"Generic provider must match specific pdf request")
+		"Generic candidate must match specific pdf request")
 
 	epubRequest, err := NewCapUrnFromString(
 		`cap:in="media:ext=epub";generate-thumbnail;out="media:ext=png;image;thumbnail"`,
 	)
 	require.NoError(t, err)
 	assert.True(t, genericCap.Accepts(epubRequest),
-		"Generic provider must match epub request")
+		"Generic candidate must match epub request")
 
 	pdfCap, err := NewCapUrnFromString(
 		`cap:in="media:ext=pdf";generate-thumbnail;out="media:ext=png;image;thumbnail"`,
@@ -1049,7 +1049,7 @@ func Test891_direction_semantic_specificity(t *testing.T) {
 	best := matcher.FindBestMatch(caps, pdfRequest)
 	require.NotNil(t, best)
 	assert.Equal(t, 10000*8+100*4+2, best.Specificity(),
-		"CapMatcher must prefer the more specific pdf provider")
+		"CapMatcher must prefer the more specific pdf candidate")
 }
 
 // TEST559: without_tag removes tag, rejects structural keys, case-insensitive for keys
@@ -1261,7 +1261,7 @@ func Test652_cap_identity_constant_works(t *testing.T) {
 	assert.False(t, specific.ConformsTo(identity), "Declared-effect transforms are not equivalent to cap identity")
 }
 
-// TEST6622: Cap identity does not route as a declared-effect provider
+// TEST6622: Cap identity does not route as a declared-effect candidate
 func Test6622_identity_routing_isolation(t *testing.T) {
 	identity, err := NewCapUrnFromString("cap:effect=none")
 	require.NoError(t, err)
@@ -1274,99 +1274,99 @@ func Test6622_identity_routing_isolation(t *testing.T) {
 	assert.False(t, specificRequest.Accepts(identity),
 		"Specific request must NOT accept identity (identity lacks test)")
 
-	// An identity request still only accepts explicit identity providers.
+	// An identity request still only accepts explicit identity candidates.
 	identityRequest, err := NewCapUrnFromString("cap:effect=none")
 	require.NoError(t, err)
 	assert.False(t, identityRequest.Accepts(specificRequest),
 		"Identity request must not accept declared-effect transforms")
 }
 
-// TEST823: is_dispatchable — exact match provider dispatches request
+// TEST823: is_dispatchable — exact match candidate dispatches request
 func Test823_dispatch_exact_match(t *testing.T) {
-	provider, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:record;enc=utf-8"`)
+	candidate, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
 	request, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
-	assert.True(t, provider.IsDispatchable(request))
+	assert.True(t, candidate.IsDispatchable(request))
 }
 
-// TEST824: is_dispatchable — provider with broader input handles specific request (contravariance)
+// TEST824: is_dispatchable — candidate with broader input handles specific request (contravariance)
 func Test824_dispatch_contravariant_input(t *testing.T) {
-	provider, err := NewCapUrnFromString(`cap:in="media:";analyze;out="media:record;enc=utf-8"`)
+	candidate, err := NewCapUrnFromString(`cap:in="media:";analyze;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
 	request, err := NewCapUrnFromString(`cap:in="media:ext=pdf";analyze;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
-	assert.True(t, provider.IsDispatchable(request))
+	assert.True(t, candidate.IsDispatchable(request))
 }
 
-// TEST825: is_dispatchable — request with unconstrained input dispatches to specific provider media: on the request input axis means "unconstrained" — vacuously true
+// TEST825: is_dispatchable — request with unconstrained input dispatches to specific candidate media: on the request input axis means "unconstrained" — vacuously true
 func Test825_dispatch_request_unconstrained_input(t *testing.T) {
-	provider, err := NewCapUrnFromString(`cap:in="media:ext=pdf";analyze;out="media:record;enc=utf-8"`)
+	candidate, err := NewCapUrnFromString(`cap:in="media:ext=pdf";analyze;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
 	request, err := NewCapUrnFromString(`cap:in="media:";analyze;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
-	assert.True(t, provider.IsDispatchable(request),
+	assert.True(t, candidate.IsDispatchable(request),
 		"Request in=media: is unconstrained — axis is vacuously true")
 }
 
-// TEST826: is_dispatchable — provider output must satisfy request output (covariance)
+// TEST826: is_dispatchable — candidate output must satisfy request output (covariance)
 func Test826_dispatch_covariant_output(t *testing.T) {
-	provider, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:record;enc=utf-8"`)
+	candidate, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
 	request, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:enc=utf-8"`)
 	require.NoError(t, err)
-	assert.True(t, provider.IsDispatchable(request),
-		"Provider output record;enc=utf-8 conforms to request output enc=utf-8")
+	assert.True(t, candidate.IsDispatchable(request),
+		"Candidate output record;enc=utf-8 conforms to request output enc=utf-8")
 }
 
-// TEST827: is_dispatchable — provider with generic output cannot satisfy specific request
+// TEST827: is_dispatchable — candidate with generic output cannot satisfy specific request
 func Test827_dispatch_generic_output_fails(t *testing.T) {
-	provider, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:"`)
+	candidate, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:"`)
 	require.NoError(t, err)
 	request, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
-	assert.False(t, provider.IsDispatchable(request),
-		"Provider out=media: cannot guarantee specific output")
+	assert.False(t, candidate.IsDispatchable(request),
+		"Candidate out=media: cannot guarantee specific output")
 }
 
-// TEST828: is_dispatchable — wildcard * tag in request, provider missing tag → reject
+// TEST828: is_dispatchable — wildcard * tag in request, candidate missing tag → reject
 func Test828_dispatch_wildcard_requires_tag_presence(t *testing.T) {
-	provider, err := NewCapUrnFromString(`cap:in="media:model-spec";run-inference;out="media:record;enc=utf-8"`)
+	candidate, err := NewCapUrnFromString(`cap:in="media:model-spec";run-inference;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
 	request, err := NewCapUrnFromString(`cap:candle=*;in="media:model-spec";run-inference;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
-	assert.False(t, provider.IsDispatchable(request),
-		"Wildcard * means tag must be present — provider has no candle tag")
+	assert.False(t, candidate.IsDispatchable(request),
+		"Wildcard * means tag must be present — candidate has no candle tag")
 }
 
-// TEST829: is_dispatchable — wildcard * tag in request, provider has tag → accept
+// TEST829: is_dispatchable — wildcard * tag in request, candidate has tag → accept
 func Test829_dispatch_wildcard_with_tag_present(t *testing.T) {
-	provider, err := NewCapUrnFromString(`cap:candle=metal;in="media:model-spec";run-inference;out="media:record;enc=utf-8"`)
+	candidate, err := NewCapUrnFromString(`cap:candle=metal;in="media:model-spec";run-inference;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
 	request, err := NewCapUrnFromString(`cap:candle=*;in="media:model-spec";run-inference;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
-	assert.True(t, provider.IsDispatchable(request),
-		"Provider has candle=metal, request has candle=* — tag present, any value OK")
+	assert.True(t, candidate.IsDispatchable(request),
+		"Candidate has candle=metal, request has candle=* — tag present, any value OK")
 }
 
-// TEST830: is_dispatchable — provider extra tags are refinement, always OK
-func Test830_dispatch_provider_extra_tags(t *testing.T) {
-	provider, err := NewCapUrnFromString(`cap:candle=metal;in="media:model-spec";run-inference;out="media:record;enc=utf-8"`)
+// TEST830: is_dispatchable — candidate extra tags are refinement, always OK
+func Test830_dispatch_candidate_extra_tags(t *testing.T) {
+	candidate, err := NewCapUrnFromString(`cap:candle=metal;in="media:model-spec";run-inference;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
 	request, err := NewCapUrnFromString(`cap:in="media:model-spec";run-inference;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
-	assert.True(t, provider.IsDispatchable(request),
-		"Provider extra tag candle=metal is refinement — always OK")
+	assert.True(t, candidate.IsDispatchable(request),
+		"Candidate extra tag candle=metal is refinement — always OK")
 }
 
 // TEST831: is_dispatchable — cross-backend mismatch prevented
 func Test831_dispatch_cross_backend_mismatch(t *testing.T) {
-	ggufProvider, err := NewCapUrnFromString(`cap:gguf=q4_k_m;in="media:model-spec";run-inference;out="media:record;enc=utf-8"`)
+	ggufCandidate, err := NewCapUrnFromString(`cap:gguf=q4_k_m;in="media:model-spec";run-inference;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
 	candleRequest, err := NewCapUrnFromString(`cap:candle=*;in="media:model-spec";run-inference;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
-	assert.False(t, ggufProvider.IsDispatchable(candleRequest),
-		"GGUF provider has no candle tag — cross-backend mismatch")
+	assert.False(t, ggufCandidate.IsDispatchable(candleRequest),
+		"GGUF candidate has no candle tag — cross-backend mismatch")
 }
 
 // TEST832: is_dispatchable is NOT symmetric
@@ -1421,21 +1421,21 @@ func Test836_equivalent_non_equivalent(t *testing.T) {
 
 // TEST837: is_dispatchable — op tag mismatch rejects
 func Test837_dispatch_op_mismatch(t *testing.T) {
-	provider, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:record;enc=utf-8"`)
+	candidate, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
 	request, err := NewCapUrnFromString(`cap:in="media:ext=pdf";summarize;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
-	assert.False(t, provider.IsDispatchable(request))
+	assert.False(t, candidate.IsDispatchable(request))
 }
 
-// TEST838: is_dispatchable — request with wildcard output accepts any provider output
+// TEST838: is_dispatchable — request with wildcard output accepts any candidate output
 func Test838_dispatch_request_wildcard_output(t *testing.T) {
-	provider, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:record;enc=utf-8"`)
+	candidate, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
 	request, err := NewCapUrnFromString(`cap:in="media:ext=pdf";extract;out="media:"`)
 	require.NoError(t, err)
-	assert.True(t, provider.IsDispatchable(request),
-		"Request out=media: is unconstrained — any provider output accepted")
+	assert.True(t, candidate.IsDispatchable(request),
+		"Request out=media: is unconstrained — any candidate output accepted")
 }
 
 // JSON serialization test (not numbered in Rust)
@@ -1508,7 +1508,7 @@ func Test562_canonical_option(t *testing.T) {
 
 // TEST568: is_dispatchable with different tag order in output spec
 func Test568_dispatch_output_tag_order(t *testing.T) {
-	provider, err := NewCapUrnFromString(
+	candidate, err := NewCapUrnFromString(
 		`cap:in="media:model-spec;enc=utf-8";download-model;out="media:download-result;record;enc=utf-8"`)
 	require.NoError(t, err)
 
@@ -1517,12 +1517,12 @@ func Test568_dispatch_output_tag_order(t *testing.T) {
 	require.NoError(t, err)
 
 	// After parsing, both should be normalized to same canonical form
-	assert.Equal(t, provider.OutSpec(), request.OutSpec(),
+	assert.Equal(t, candidate.OutSpec(), request.OutSpec(),
 		"Output specs should be normalized to same canonical form")
 
 	// And dispatch should work
-	assert.True(t, provider.IsDispatchable(request),
-		"Provider should dispatch request with same tags in different order")
+	assert.True(t, candidate.IsDispatchable(request),
+		"Candidate should dispatch request with same tags in different order")
 }
 
 // TEST6610: cap:in without a non-vacuous axis/tag is illegal bare top
@@ -2080,13 +2080,13 @@ func Test0127_invalid_effect_none_fails_hard(t *testing.T) {
 
 // TEST128: omitted effect means declared; unconstrained effect must be explicit
 func Test0128_effect_dispatch_requires_explicit_wildcard(t *testing.T) {
-	noneProvider, err := NewCapUrnFromString("cap:effect=none")
+	noneCandidate, err := NewCapUrnFromString("cap:effect=none")
 	require.NoError(t, err)
 	declaredRequest, err := NewCapUrnFromString("cap:raw")
 	require.NoError(t, err)
 	anyRequest, err := NewCapUrnFromString("cap:?effect")
 	require.NoError(t, err)
 
-	assert.False(t, noneProvider.IsDispatchable(declaredRequest))
-	assert.True(t, noneProvider.IsDispatchable(anyRequest))
+	assert.False(t, noneCandidate.IsDispatchable(declaredRequest))
+	assert.True(t, noneCandidate.IsDispatchable(anyRequest))
 }

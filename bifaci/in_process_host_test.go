@@ -311,7 +311,7 @@ func (failHandler) HandleRequest(_ string, input <-chan Frame, output *ResponseW
 			break
 		}
 	}
-	output.EmitError("PROVIDER_ERROR", "provider crashed")
+	output.EmitError("CARTRIDGE_ERROR", "cartridge crashed")
 }
 
 // TEST659: InProcessCartridgeHost handler error returns ERR frame
@@ -353,8 +353,8 @@ func Test659_HandlerErrorReturnsErrFrame(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, FrameTypeErr, errFrame.FrameType)
 	assert.True(t, errFrame.Id.Equals(rid))
-	assert.Equal(t, "PROVIDER_ERROR", errFrame.ErrorCode())
-	assert.Contains(t, errFrame.ErrorMessage(), "provider crashed")
+	assert.Equal(t, "CARTRIDGE_ERROR", errFrame.ErrorCode())
+	assert.Contains(t, errFrame.ErrorMessage(), "cartridge crashed")
 
 	testConn.Close()
 	require.NoError(t, <-hostDone)

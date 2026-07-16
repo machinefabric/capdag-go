@@ -355,7 +355,7 @@ type RelaySwitch struct {
 	// expectedMasterCount is the number of cardinality slots the
 	// engine intends to wire up. Set once via SetExpectedMasterCount
 	// shortly after construction (the engine knows the count only
-	// after it decides how many providers to register). Defaults to
+	// after it decides how many cartridges to register). Defaults to
 	// 0; AllMastersReady returns false until it is declared so an
 	// engine that forgets to declare it hangs at "configuring"
 	// rather than advancing to "ready" prematurely.
@@ -1142,7 +1142,7 @@ func (sw *RelaySwitch) runIdentityProbeViaRelay(masterIdx int) error {
 // advance is gated on AllMastersReady, which returns false until this
 // count is both declared (non-zero) and met. Both editions expect 2
 // masters (internal + external/XPC); set once at engine boot from the
-// same call site that registers the providers.
+// same call site that registers the cartridges.
 func (sw *RelaySwitch) SetExpectedMasterCount(expected int) {
 	sw.mu.Lock()
 	defer sw.mu.Unlock()
@@ -1434,7 +1434,7 @@ func (sw *RelaySwitch) findMasterForCap(capURN string, preferredCap *string) (in
 			continue
 		}
 
-		// Use is_dispatchable: can this provider handle this request?
+		// Use is_dispatchable: can this candidate handle this request?
 		if registeredURN.IsDispatchable(requestURN) {
 			specificity := registeredURN.Specificity()
 			signedDistance := specificity - requestSpecificity

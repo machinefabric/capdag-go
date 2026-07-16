@@ -5,7 +5,7 @@ package bifaci
 // The on-disk scan + identity validation + HELLO probe that classifies each
 // installed cartridge version directory as attachable (Directory) or
 // Incompatible. This is the single source of truth used by BOTH the engine
-// (for its bundled providers/ tree) and the daemon (for the user-installed
+// (for its bundled cartridges/ tree) and the daemon (for the user-installed
 // cartridge tree). Keeping one implementation guarantees the two hosts accept
 // exactly the same cartridges and reject the rest with byte-identical verdicts.
 //
@@ -352,7 +352,7 @@ func scanChannelRoot(scanRoot, expectedSlug string, identity *DiscoveryIdentity,
 			continue
 		}
 
-		// Bundled-provider integrity. A cartridge marked `installed_from: bundle`
+		// Bundled-cartridge integrity. A cartridge marked `installed_from: bundle`
 		// is shipped INSIDE this build, not user-installed, and has no upstream
 		// registry to verify against — so it needs its own integrity proof. The
 		// mechanism is platform-split:
@@ -363,16 +363,16 @@ func scanChannelRoot(scanRoot, expectedSlug string, identity *DiscoveryIdentity,
 		//     as an explicit, visible rule.
 		//   - Linux/Windows: binaries are unsigned, so the integrity proof is a
 		//     content hash baked into the binary at build time
-		//     (BundledProviderHashes). The on-disk directory must hash to the
+		//     (BundledCartridgeHashes). The on-disk directory must hash to the
 		//     baked value; a mismatch or an entry absent from the baked set means
-		//     the shipped provider was tampered with or the build failed to
+		//     the shipped cartridge was tampered with or the build failed to
 		//     record it — surfaced incompatible + logged, never hosted.
 		if cj.InstalledFrom != nil && *cj.InstalledFrom == CartridgeInstallSourceBundle {
 			if runtime.GOOS == "darwin" {
-				fmt.Fprintf(os.Stderr, "bundled provider integrity on macOS is the OS code-signature (notarized .app); baked-hash verification is intentionally skipped: %s %s\n", cj.Name, cj.Version)
+				fmt.Fprintf(os.Stderr, "bundled cartridge integrity on macOS is the OS code-signature (notarized .app); baked-hash verification is intentionally skipped: %s %s\n", cj.Name, cj.Version)
 			} else {
-				if reason := verifyBundledProviderHash(cj.Name, cj.Version, versionDir); reason != "" {
-					fmt.Fprintf(os.Stderr, "bundled provider hash verification failed — surfacing as incompatible: %s %s: %s\n", cj.Name, cj.Version, reason)
+				if reason := verifyBundledCartridgeHash(cj.Name, cj.Version, versionDir); reason != "" {
+					fmt.Fprintf(os.Stderr, "bundled cartridge hash verification failed — surfacing as incompatible: %s %s: %s\n", cj.Name, cj.Version, reason)
 					*discovered = append(*discovered, DiscoveredCartridge{
 						Kind:        DiscoveredCartridgeIncompatible,
 						VersionDir:  versionDir,
@@ -382,7 +382,7 @@ func scanChannelRoot(scanRoot, expectedSlug string, identity *DiscoveryIdentity,
 						Version:     cj.Version,
 						Error: &CartridgeAttachmentError{
 							Kind:                  CartridgeAttachmentErrorKindBadInstallation,
-							Message:               fmt.Sprintf("bundled provider integrity check failed: %s", reason),
+							Message:               fmt.Sprintf("bundled cartridge integrity check failed: %s", reason),
 							DetectedAtUnixSeconds: detectedAt,
 						},
 					})
@@ -426,31 +426,31 @@ func scanChannelRoot(scanRoot, expectedSlug string, identity *DiscoveryIdentity,
 	return nil
 }
 
-// verifyBundledProviderHash verifies a bundled provider's on-disk content
+// verifyBundledCartridgeHash verifies a bundled cartridge's on-disk content
 // against the hash baked into this binary at build time. Returns "" when the
 // directory hashes to the expected value for (name, version); a non-empty
 // reason string when the pair is absent from the baked set or the hash differs.
 //
-// Non-macOS only: macOS bundled-provider integrity is the OS code-signature
+// Non-macOS only: macOS bundled-cartridge integrity is the OS code-signature
 // (see the discovery call site), so the binary there neither bakes nor checks
 // these hashes.
-func verifyBundledProviderHash(name, version, versionDir string) string {
-	expected, ok := bundledProviderExpectedHash(name, version)
+func verifyBundledCartridgeHash(name, version, versionDir string) string {
+	expected, ok := bundledCartridgeExpectedHash(name, version)
 	if !ok {
 		return fmt.Sprintf(
-			"no baked hash for bundled provider %s %s — this build did not record it (MFR_BUNDLED_PROVIDER_HASHES)",
+			"no baked hash for bundled cartridge %s %s — this build did not record it (MFR_BUNDLED_CARTRIDGE_HASHES)",
 			name, version,
 		)
 	}
 	actual, err := HashCartridgeDirectory(versionDir)
 	if err != nil {
-		return fmt.Sprintf("failed to hash bundled provider directory: %v", err)
+		return fmt.Sprintf("failed to hash bundled cartridge directory: %v", err)
 	}
 	if actual == expected {
 		return ""
 	}
 	return fmt.Sprintf(
-		"content hash mismatch — baked %s, on-disk %s; the shipped provider differs from what this build was compiled to ship",
+		"content hash mismatch — baked %s, on-disk %s; the shipped cartridge differs from what this build was compiled to ship",
 		expected, actual,
 	)
 }

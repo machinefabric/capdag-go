@@ -5,7 +5,7 @@
 // in-process direct-dispatch execution model. That stack is gone: cap
 // invocation now goes through the bifaci relay (RelaySwitch.ExecuteCap) for
 // out-of-process cartridges and through in-process frame handlers for
-// engine-built providers. The remaining types below are the argument/return
+// engine-built cartridges. The remaining types below are the argument/return
 // shape both paths share.
 package cap
 

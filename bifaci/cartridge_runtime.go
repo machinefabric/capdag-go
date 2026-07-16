@@ -599,7 +599,7 @@ func (pr *CartridgeRuntime) RegisterOp(capUrn string, op CapOp) {
 
 // FindHandler finds a handler for a cap URN (exact match or is_dispatchable pattern match).
 //
-// Uses is_dispatchable(provider, request): can this registered handler dispatch
+// Uses is_dispatchable(candidate, request): can this registered handler dispatch
 // the incoming request? Mirrors Rust exactly:
 //
 //	registered_urn.is_dispatchable(&request_urn)
@@ -635,7 +635,7 @@ func (pr *CartridgeRuntime) FindHandler(capUrn string) HandlerFunc {
 		if err != nil {
 			continue
 		}
-		// Use is_dispatchable: can this provider handle this request?
+		// Use is_dispatchable: can this candidate handle this request?
 		if registeredUrn.IsDispatchable(requestUrn) {
 			specificity := registeredUrn.Specificity()
 			signedDistance := specificity - requestSpecificity

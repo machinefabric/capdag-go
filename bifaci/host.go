@@ -238,14 +238,14 @@ type ManagedCartridge struct {
 }
 
 // installedCartridgeRecord returns the cartridge's resolvable identity, or nil
-// if it has none (e.g. an attached/internal provider with no on-disk anchor).
+// if it has none (e.g. an attached/internal cartridge with no on-disk anchor).
 func (c *ManagedCartridge) installedCartridgeRecord() *InstalledCartridgeRecord {
 	return c.installedIdentity
 }
 
 // isRegisteredDir reports whether this cartridge was registered from a version
 // directory (the lazily-spawned, dir-backed kind). Distinguishes roster-managed
-// installs from attached/internal providers during a SyncRoster.
+// installs from attached/internal cartridges during a SyncRoster.
 func (c *ManagedCartridge) isRegisteredDir() bool {
 	return c.cartridgeDir != ""
 }
@@ -693,7 +693,7 @@ func (h *CartridgeHost) registerCartridgeDirLocked(spec RegisteredDirSpec) {
 			Channel:     string(spec.Channel),
 			Version:     spec.Version,
 			Sha256:      sha256,
-			// Engine-spawned external providers are operational by
+			// Engine-spawned external cartridges are operational by
 			// construction: discovery validated the install context and
 			// probed the cartridge before this registration. There is no
 			// separate inspecting/verifying phase on this path.
@@ -819,10 +819,10 @@ func (h *CartridgeHost) FindCartridgeForCap(capUrn string) (int, bool) {
 }
 
 func (h *CartridgeHost) findCartridgeForCapLocked(capUrn string) (int, bool) {
-	// URN-level matching: use is_dispatchable (provider can handle request).
-	// No exact-string-match short-circuit — provider selection is purely
+	// URN-level matching: use is_dispatchable (candidate can handle request).
+	// No exact-string-match short-circuit — candidate selection is purely
 	// order-theoretic (specificity distance), mirroring the Rust reference
-	// find_cartridge_for_cap. A conformance-equivalent provider registered
+	// find_cartridge_for_cap. A conformance-equivalent candidate registered
 	// earlier must win over a later identical-string one, which a string
 	// fast-path would wrongly override.
 	requestUrn, err := urn.NewCapUrnFromString(capUrn)
@@ -843,7 +843,7 @@ func (h *CartridgeHost) findCartridgeForCapLocked(capUrn string) (int, bool) {
 		if err != nil {
 			continue
 		}
-		// Use is_dispatchable: can this provider handle this request?
+		// Use is_dispatchable: can this candidate handle this request?
 		if registeredUrn.IsDispatchable(requestUrn) {
 			specificity := registeredUrn.Specificity()
 			signedDistance := specificity - requestSpecificity
@@ -1015,7 +1015,7 @@ func (h *CartridgeHost) Run(relayRead io.Reader, relayWrite io.Writer, resourceF
 // added/removed cartridges without reconnecting — the equivalent of the macOS
 // XPC service's syncDiscoveryOutcomes after a rescan. Running cartridges no
 // longer in the set are killed; survivors keep their live process and stats.
-// Only dir-registered cartridges are touched; attached/internal providers are
+// Only dir-registered cartridges are touched; attached/internal cartridges are
 // not part of a dir roster sync.
 func (h *CartridgeHost) syncRegisteredRoster(desired []RegisteredDirSpec, relayWriter *relayOutbound) {
 	h.mu.Lock()
@@ -1058,10 +1058,10 @@ func (h *CartridgeHost) syncRegisteredRoster(desired []RegisteredDirSpec, relayW
 		}
 		rec := cartridge.installedCartridgeRecord()
 		if rec == nil {
-			continue // no resolvable identity (e.g. internal provider) — leave it
+			continue // no resolvable identity (e.g. internal cartridge) — leave it
 		}
 		if !cartridge.isRegisteredDir() {
-			continue // attached/internal providers are not part of a dir roster sync
+			continue // attached/internal cartridges are not part of a dir roster sync
 		}
 		if _, ok := desiredKeys[recIdentity(rec)]; ok {
 			continue // still desired — keep, preserving any live process

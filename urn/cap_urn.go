@@ -1,5 +1,5 @@
 // Package capdag provides the fundamental cap URN system used across
-// all MACHFAB cartridges and providers. It defines the formal structure for cap
+// all MACHFAB cartridges and candidates. It defines the formal structure for cap
 // identifiers with flat tag-based naming, pattern matching, and graded specificity.
 //
 // Cap URN matching semantics:
@@ -844,70 +844,70 @@ func (c *CapUrn) ConformsTo(cap *CapUrn) bool {
 	return cap.Accepts(c)
 }
 
-// inputDispatchable checks if provider's input is dispatchable for request's input.
+// inputDispatchable checks if candidate's input is dispatchable for request's input.
 //
-// Input is CONTRAVARIANT: provider with looser input constraint can handle
+// Input is CONTRAVARIANT: candidate with looser input constraint can handle
 // request with stricter input. media: is the identity (top) and means
 // "unconstrained" — vacuously true on either side.
 func (c *CapUrn) inputDispatchable(request *CapUrn) bool {
-	// Request wildcard: any provider input is fine
+	// Request wildcard: any candidate input is fine
 	if request.inSpec == "media:" {
 		return true
 	}
 
-	// Provider wildcard: provider accepts any input
+	// Candidate wildcard: candidate accepts any input
 	if c.inSpec == "media:" {
 		return true
 	}
 
-	// Both specific: request input must conform to provider input requirement
+	// Both specific: request input must conform to candidate input requirement
 	reqIn, err := NewMediaUrnFromString(request.inSpec)
 	if err != nil {
 		return false
 	}
-	provIn, err := NewMediaUrnFromString(c.inSpec)
+	candIn, err := NewMediaUrnFromString(c.inSpec)
 	if err != nil {
 		return false
 	}
 
-	return reqIn.ConformsTo(provIn)
+	return reqIn.ConformsTo(candIn)
 }
 
-// outputDispatchable checks if provider's output is dispatchable for request's output.
+// outputDispatchable checks if candidate's output is dispatchable for request's output.
 //
-// Output is COVARIANT: provider must produce at least what request needs.
-// Provider out=media: + request specific: FAIL (cannot guarantee).
+// Output is COVARIANT: candidate must produce at least what request needs.
+// Candidate out=media: + request specific: FAIL (cannot guarantee).
 // This is asymmetric with input.
 func (c *CapUrn) outputDispatchable(request *CapUrn) bool {
-	// Request wildcard: any provider output is fine
+	// Request wildcard: any candidate output is fine
 	if request.outSpec == "media:" {
 		return true
 	}
 
-	// Provider wildcard: cannot guarantee specific output request needs
+	// Candidate wildcard: cannot guarantee specific output request needs
 	if c.outSpec == "media:" {
 		return false
 	}
 
-	// Both specific: provider output must conform to request output
+	// Both specific: candidate output must conform to request output
 	reqOut, err := NewMediaUrnFromString(request.outSpec)
 	if err != nil {
 		return false
 	}
-	provOut, err := NewMediaUrnFromString(c.outSpec)
+	candOut, err := NewMediaUrnFromString(c.outSpec)
 	if err != nil {
 		return false
 	}
 
-	return provOut.ConformsTo(reqOut)
+	return candOut.ConformsTo(reqOut)
 }
 
-// capTagsDispatchable checks if provider's cap-tags are dispatchable for request's cap-tags.
+// capTagsDispatchable checks if candidate's cap-tags are dispatchable for request's cap-tags.
 //
-// Every explicit request tag must be satisfied by provider.
-// Provider may have extra tags (refinement is OK).
+// Every explicit request tag must be satisfied by candidate.
+// Candidate may have extra tags (refinement is OK).
 // Wildcard (*) in request means any value acceptable.
-// Wildcard (*) in provider means provider can handle any value.
+// Wildcard (*) in candidate means candidate can handle any value.
 func (c *CapUrn) capTagsDispatchable(request *CapUrn) bool {
 	allKeys := make(map[string]struct{}, len(c.tags)+len(request.tags))
 	for key := range c.tags {
@@ -937,14 +937,14 @@ func (c *CapUrn) effectDispatchable(request *CapUrn) bool {
 	return request.effect == string(CapEffectAny) || c.effect == request.effect
 }
 
-// IsDispatchable checks if this provider can dispatch (handle) the given request.
+// IsDispatchable checks if this candidate can dispatch (handle) the given request.
 //
 // This is the PRIMARY predicate for routing/dispatch decisions.
 //
-// A provider is dispatchable for a request iff:
-// 1. Input axis: provider can handle request's input (contravariant)
-// 2. Output axis: provider meets request's output needs (covariant)
-// 3. Cap-tags: provider satisfies all explicit request tags, may add more
+// A candidate is dispatchable for a request iff:
+// 1. Input axis: candidate can handle request's input (contravariant)
+// 2. Output axis: candidate meets request's output needs (covariant)
+// 3. Cap-tags: candidate satisfies all explicit request tags, may add more
 //
 // Key insight: This is NOT symmetric.
 func (c *CapUrn) IsDispatchable(request *CapUrn) bool {

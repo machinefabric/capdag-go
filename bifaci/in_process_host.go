@@ -304,7 +304,7 @@ type inProcessCapTableEntry struct {
 // directory, so the embedding application must supply the same four-tuple
 // identity (registry_url, channel, id, version) it would have read from a
 // cartridge.json — plus a content-derived sha256 so the engine treats the
-// in-process provider indistinguishably from any other installed cartridge.
+// in-process cartridge indistinguishably from any other installed cartridge.
 type InProcessHostIdentity struct {
 	// RegistryURL the embedding binary was built for. nil ⇔ dev build.
 	RegistryURL *string
@@ -434,13 +434,13 @@ func buildCapTable(handlers []handlerEntry) []inProcessCapTableEntry {
 
 // findHandlerForCap finds the best handler for a cap URN.
 //
-// Uses IsDispatchable(provider, request) to find handlers that can legally
+// Uses IsDispatchable(candidate, request) to find handlers that can legally
 // handle the request, then ranks by specificity.
 //
 // Ranking prefers:
 //  1. Equivalent matches (distance 0)
-//  2. More specific providers (positive distance) - refinements
-//  3. More generic providers (negative distance) - fallbacks
+//  2. More specific candidates (positive distance) - refinements
+//  3. More generic candidates (negative distance) - fallbacks
 //
 // Returns the handler index and true, or 0 and false when no handler matches.
 func findHandlerForCap(capTable []inProcessCapTableEntry, capUrn string) (int, bool) {
@@ -458,7 +458,7 @@ func findHandlerForCap(capTable []inProcessCapTableEntry, capUrn string) (int, b
 		if err != nil {
 			continue
 		}
-		// Use IsDispatchable: can this provider handle this request?
+		// Use IsDispatchable: can this candidate handle this request?
 		if registeredUrn.IsDispatchable(requestUrn) {
 			specificity := registeredUrn.Specificity()
 			signedDistance := specificity - requestSpecificity

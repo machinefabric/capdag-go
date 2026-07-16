@@ -317,30 +317,30 @@ func Test1100_cap_urn_normalizes_media_urn_tag_order(t *testing.T) {
 }
 
 // TEST1103: Tests that IsDispatchable has correct directionality
-// A specific provider is dispatchable for a general request; the reverse is false.
+// A specific candidate is dispatchable for a general request; the reverse is false.
 func Test1103_is_dispatchable_uses_correct_directionality(t *testing.T) {
 	generalRequest, err := urn.NewCapUrnFromString("cap:in=\"media:ext=pdf\";extract;out=media:text")
 	require.NoError(t, err)
 
-	specificProvider, err := urn.NewCapUrnFromString("cap:in=\"media:ext=pdf\";extract;out=media:text;version=2")
+	specificCandidate, err := urn.NewCapUrnFromString("cap:in=\"media:ext=pdf\";extract;out=media:text;version=2")
 	require.NoError(t, err)
 
-	assert.True(t, specificProvider.IsDispatchable(generalRequest),
-		"Specific provider should be dispatchable for general request")
-	assert.False(t, generalRequest.IsDispatchable(specificProvider),
-		"General request should NOT be dispatchable for specific provider (missing version tag)")
+	assert.True(t, specificCandidate.IsDispatchable(generalRequest),
+		"Specific candidate should be dispatchable for general request")
+	assert.False(t, generalRequest.IsDispatchable(specificCandidate),
+		"General request should NOT be dispatchable for specific candidate (missing version tag)")
 }
 
-// TEST1104: Tests that is_dispatchable rejects when provider cannot dispatch request
+// TEST1104: Tests that is_dispatchable rejects when candidate cannot dispatch request
 func Test1104_is_dispatchable_rejects_non_dispatchable(t *testing.T) {
 	request, err := urn.NewCapUrnFromString("cap:in=\"media:ext=pdf\";extract;out=media:text;required=yes")
 	require.NoError(t, err)
 
-	provider, err := urn.NewCapUrnFromString("cap:in=\"media:ext=pdf\";extract;out=media:text")
+	candidate, err := urn.NewCapUrnFromString("cap:in=\"media:ext=pdf\";extract;out=media:text")
 	require.NoError(t, err)
 
-	assert.False(t, provider.IsDispatchable(request),
-		"Provider missing required tag should not be dispatchable for request")
+	assert.False(t, candidate.IsDispatchable(request),
+		"Candidate missing required tag should not be dispatchable for request")
 }
 
 // TEST767: Tests ArgumentInfo struct serialization to JSON Verifies that argument metadata including resolution status and validation is correctly serialized

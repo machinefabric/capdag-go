@@ -471,7 +471,7 @@ func Test329_cartridge_repo_server_get_by_cap(t *testing.T) {
 		t.Fatalf("Expected 1 result for tag-reordered request, got %d", len(reordered))
 	}
 
-	// Well-formed but no provider in the registry matches it.
+	// Well-formed but no candidate in the registry matches it.
 	noMatch, err := server.GetCartridgesByCap(`cap:in="media:bogus";nope;out="media:nonexistent"`)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)

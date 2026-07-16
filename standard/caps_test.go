@@ -189,8 +189,8 @@ func Test1273_adapter_selection_urn_builder(t *testing.T) {
 }
 
 // TEST1275: A cap whose output is adapter-selection can dispatch adapter-selection requests; identity (wildcard output) cannot, because wildcard output cannot satisfy a specific output requirement.
-func Test1275_adapter_selection_dispatchable_by_specific_provider(t *testing.T) {
-	// Specific provider: same as adapter-selection URN — out matches, can dispatch
+func Test1275_adapter_selection_dispatchable_by_specific_candidate(t *testing.T) {
+	// Specific candidate: same as adapter-selection URN — out matches, can dispatch
 	assert.True(t, strings.Contains(CapAdapterSelection, "adapter-selection"),
 		"CAP_ADAPTER_SELECTION must have adapter-selection out spec (self-dispatchable)")
 

@@ -293,28 +293,28 @@ func Test6371_CapManifestCompatibility(t *testing.T) {
 		[]CapGroup{DefaultGroup([]cap.Cap{*capDef})},
 	)
 
-	providerStyleManifest := NewCapManifest("ProviderComponent", "0.1.0", "release",
+	cartridgeStyleManifest2 := NewCapManifest("CartridgeComponent2", "0.1.0", "release",
 		nil,
-		"Provider-style component",
+		"Cartridge-style component 2",
 		[]CapGroup{DefaultGroup([]cap.Cap{*capDef})},
 	)
 
 	cartridgeJSON, err := json.Marshal(cartridgeStyleManifest)
 	require.NoError(t, err)
 
-	providerJSON, err := json.Marshal(providerStyleManifest)
+	cartridgeJSON2, err := json.Marshal(cartridgeStyleManifest2)
 	require.NoError(t, err)
 
 	var cartridgeMap map[string]interface{}
-	var providerMap map[string]interface{}
+	var cartridgeMap2 map[string]interface{}
 
 	err = json.Unmarshal(cartridgeJSON, &cartridgeMap)
 	require.NoError(t, err)
 
-	err = json.Unmarshal(providerJSON, &providerMap)
+	err = json.Unmarshal(cartridgeJSON2, &cartridgeMap2)
 	require.NoError(t, err)
 
-	assert.Equal(t, len(cartridgeMap), len(providerMap))
+	assert.Equal(t, len(cartridgeMap), len(cartridgeMap2))
 	assert.Contains(t, cartridgeMap, "name")
 	assert.Contains(t, cartridgeMap, "version")
 	assert.Contains(t, cartridgeMap, "description")

@@ -754,8 +754,8 @@ func Test435_relay_switch_urn_matching(t *testing.T) {
 	}
 
 	// More specific request SHOULD match under is_dispatchable semantics:
-	// Input (contravariant): request's media:text;utf8;normalized conforms_to provider's media:text;utf8
-	// Output (covariant): provider's media:text;utf8 conforms_to request's media:text
+	// Input (contravariant): request's media:text;utf8;normalized conforms_to candidate's media:text;utf8
+	// Output (covariant): candidate's media:text;utf8 conforms_to request's media:text
 	req2 := NewReq(
 		NewMessageIdFromUint(2),
 		`cap:in="media:text;utf8;normalized";process;out="media:text"`,
@@ -774,7 +774,7 @@ func Test435_relay_switch_urn_matching(t *testing.T) {
 	}
 }
 
-// TEST437: find_master_for_cap with preferred_cap routes to generic handler With is_dispatchable semantics: - Generic provider (in=media:) CAN dispatch specific request (in="media:ext=pdf") because media: (wildcard) accepts any input type - Preference routes to preferred among dispatchable candidates
+// TEST437: find_master_for_cap with preferred_cap routes to generic handler With is_dispatchable semantics: - Generic candidate (in=media:) CAN dispatch specific request (in="media:ext=pdf") because media: (wildcard) accepts any input type - Preference routes to preferred among dispatchable candidates
 func Test437_preferred_cap_routes_to_generic(t *testing.T) {
 	// Master 0: generic thumbnail handler
 	engineRead0, slaveWrite0 := net.Pipe()
@@ -876,8 +876,8 @@ func Test438_preferred_cap_falls_back_when_not_comparable(t *testing.T) {
 	}
 }
 
-// TEST439: Generic provider CAN dispatch specific request (but only matches if no more specific provider exists) With is_dispatchable: generic provider (in=media:) CAN handle specific request (in="media:ext=pdf") because media: accepts any input type. With preference, can route to generic even when more specific exists.
-func Test439_generic_provider_can_dispatch_specific_request(t *testing.T) {
+// TEST439: Generic candidate CAN dispatch specific request (but only matches if no more specific candidate exists) With is_dispatchable: generic candidate (in=media:) CAN handle specific request (in="media:ext=pdf") because media: accepts any input type. With preference, can route to generic even when more specific exists.
+func Test439_generic_candidate_can_dispatch_specific_request(t *testing.T) {
 	engineRead, slaveWrite := net.Pipe()
 	slaveRead, engineWrite := net.Pipe()
 
@@ -909,7 +909,7 @@ func Test439_generic_provider_can_dispatch_specific_request(t *testing.T) {
 
 	idx, err := sw.findMasterForCap(request, nil)
 	if err != nil || idx != 0 {
-		t.Errorf("Generic provider should dispatch specific request: got %d (err=%v)", idx, err)
+		t.Errorf("Generic candidate should dispatch specific request: got %d (err=%v)", idx, err)
 	}
 }
 
@@ -1382,7 +1382,7 @@ func Test0136_all_masters_ready_false_when_expected_count_unset(t *testing.T) {
 func Test0137_all_masters_ready_false_when_partially_connected(t *testing.T) {
 	// 1 master connected, 2 expected. This is the live regression we
 	// shipped: the internal master had caps from t=0 but the
-	// external-providers master was still spawning cartridges. The
+	// external-cartridges master was still spawning cartridges. The
 	// host saw ready immediately and the bidi never started.
 	sw := buildSwitchWithNMasters(t, 1)
 	sw.SetExpectedMasterCount(2)
