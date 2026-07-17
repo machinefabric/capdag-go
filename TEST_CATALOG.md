@@ -1,8 +1,8 @@
 # Go Test Catalog
 
-**Total Tests:** 1226
+**Total Tests:** 1230
 
-**Numbered Tests:** 1213
+**Numbered Tests:** 1217
 
 **Unnumbered Tests:** 13
 
@@ -445,7 +445,7 @@ This catalog lists all tests in the Go codebase.
 | test499 | `Test499_chunk_index_checksum_cbor_roundtrip` | TEST499: chunk_index and checksum roundtrip through CBOR encoding | bifaci/frame_test.go:1512 |
 | test500 | `Test500_chunk_count_cbor_roundtrip` | TEST500: chunk_count roundtrips through CBOR encoding | bifaci/frame_test.go:1532 |
 | test501 | `Test501_frame_new_initializes_optional_fields_none` | TEST501: Frame::new initializes new fields to None | bifaci/frame_test.go:1549 |
-| test502 | `Test502_keys_module_new_field_constants` | TEST502: Keys module has constants for new fields | bifaci/frame_test.go:2290 |
+| test502 | `Test502_keys_module_new_field_constants` | TEST502: Keys module has constants for new fields | bifaci/frame_test.go:2328 |
 | test503 | `Test503_compute_checksum_empty_data` | TEST503: compute_checksum handles empty data correctly | bifaci/frame_test.go:1567 |
 | test504 | `Test504_compute_checksum_large_payload` | TEST504: compute_checksum handles large payloads without overflow | bifaci/frame_test.go:1573 |
 | test505 | `Test505_chunk_with_offset_sets_chunk_index` | TEST505: chunk_with_offset sets chunk_index correctly | bifaci/frame_test.go:1586 |
@@ -1020,6 +1020,10 @@ This catalog lists all tests in the Go codebase.
 | test1314 | `Test1314_fingerprint_ignores_advancing_clocks` | TEST1314: The fingerprint EXCLUDES advancing clocks: two snapshots differing only in age_ms/idle_ms are the same transition, while a flow-counter change is a new one. If dedup keyed on the whole serialized stats, these clocks would defeat it and every sample would write. | bifaci/protocol_trace_test.go:148 |
 | test1315 | `Test1315_record_to_unwritable_path_is_a_hard_error` | TEST1315: Requested diagnostics fail HARD, never silently: a write to an unwritable sink returns an error. /dev/full opens fine but every write is ENOSPC — the Linux-standard way to exercise a write failure deterministically. | bifaci/protocol_trace_test.go:163 |
 | test1317 | `Test1317_wrap_raw_items_empty` | TEST1317: empty item list wraps to empty bytes (mirrors the scalar/empty sink case where a chain produced no items). | orchestrator/cbor_util_test.go:414 |
+| test1730 | `Test1730_failure_class_wire_tokens_round_trip` | TEST1730: the wire vocabulary round-trips exactly and rejects unknowns. (mirrors Rust ops/src/failure.rs TEST1730) | bifaci/failure_test.go:13 |
+| test1731 | `Test1731_only_input_is_permanent` | TEST1731: only Input is permanent — the retry machinery keys on this. (mirrors Rust ops/src/failure.rs TEST1731) | bifaci/failure_test.go:32 |
+| test1734 | `Test1734_err_frame_failure_class_wire_contract` | TEST1734: the ERR frame's failure identity is a wire contract (docs/failure-taxonomy.md L2): NewErrClassified round-trips code + class + message through encode/decode; NewErr defaults the class to internal; a frame without a class entry (or with an unknown token) reads as internal — the receiver's unclassified-means-ours rule. | bifaci/frame_test.go:2294 |
+| test1735 | `Test1735_classify_handler_error_reads_the_chain` | TEST1735: the handler-failure ERR emit resolves the declared identity from the error chain — ClassifiedError and a propagated peer RemoteError keep their code/class through fmt.Errorf wrapping; an undeclared error is HANDLER_ERROR/internal. (mirrors Rust RuntimeError::failure_code/ failure_class/failure_reason at the frame-emit boundary) | bifaci/failure_test.go:44 |
 | test1800 | `Test1800_kind_identity_only_for_bare_cap` | TEST1800: Identity classifier — only explicit effect=none qualifies. `cap:effect=none` is the fully generic identity on every axis; adding any tag (even one that doesn't constrain in/out) demotes the cap to Transform because the operation/metadata axis is no longer fully generic. | urn/cap_urn_test.go:1606 |
 | test1801 | `Test1801_kind_source_when_input_is_void` | TEST1801: Source classifier — in=media:void, out non-void. The y dimension may carry any tags; void on the input alone is what matters. | urn/cap_urn_test.go:1636 |
 | test1802 | `Test1802_kind_sink_when_output_is_void` | TEST1802: Sink classifier — out=media:void, in non-void. | urn/cap_urn_test.go:1651 |
@@ -1362,8 +1366,8 @@ These tests have a numbering disagreement between the function name and the auth
 ---
 
 *Generated from Go source tree*
-*Total tests: 1226*
-*Total numbered tests: 1213*
+*Total tests: 1230*
+*Total numbered tests: 1217*
 *Total unnumbered tests: 13*
 *Total numbered tests missing descriptions: 0*
 *Total numbering mismatches: 89*
