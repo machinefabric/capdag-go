@@ -2286,12 +2286,12 @@ func mustEncode(t *testing.T, frame *Frame) []byte {
 	return encoded
 }
 
-// TEST1734: the ERR frame's failure identity is a wire contract
+// TEST1900: the ERR frame's failure identity is a wire contract
 // (docs/failure-taxonomy.md L2): NewErrClassified round-trips code + class +
 // message through encode/decode; NewErr defaults the class to internal; a
 // frame without a class entry (or with an unknown token) reads as internal —
 // the receiver's unclassified-means-ours rule.
-func Test1734_err_frame_failure_class_wire_contract(t *testing.T) {
+func Test1900_err_frame_failure_class_wire_contract(t *testing.T) {
 	rid := NewMessageIdRandom()
 
 	// Classified ERR round-trips its full declared identity.

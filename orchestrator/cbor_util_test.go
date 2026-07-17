@@ -106,8 +106,8 @@ func Test786_roundtrip_split_assemble(t *testing.T) {
 	assert.Equal(t, origDecoded, reDecoded)
 }
 
-// TEST955: split_cbor_array with nested maps
-func Test955_split_map_array(t *testing.T) {
+// TEST951: split_cbor_array with nested maps
+func Test951_split_map_array(t *testing.T) {
 	map1 := map[string]string{"name": "Alice"}
 	map2 := map[string]string{"name": "Bob"}
 	data := cborEncodeVal([]interface{}{map1, map2})

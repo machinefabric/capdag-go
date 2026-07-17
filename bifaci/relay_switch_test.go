@@ -1864,12 +1864,12 @@ func Test0135_runtime_identity_probe_success_makes_caps_routable(t *testing.T) {
 	}
 }
 
-// TEST0138: the installed-cartridge INVENTORY is NOT health-filtered. A
+// TEST1897: the installed-cartridge INVENTORY is NOT health-filtered. A
 // master held unhealthy by a failed runtime identity probe still has its
 // cartridges visible in the aggregate inventory (so a transient master
 // flap does not make cartridges "disappear" from the engine's view), even
 // though its caps are excluded from ROUTING.
-func Test0138_unhealthy_master_inventory_retained_but_not_routable(t *testing.T) {
+func Test1897_unhealthy_master_inventory_retained_but_not_routable(t *testing.T) {
 	engineRead, slaveWrite := createSocketPair(t)
 	slaveRead, engineWrite := createSocketPair(t)
 
@@ -1930,12 +1930,12 @@ func Test0138_unhealthy_master_inventory_retained_but_not_routable(t *testing.T)
 	}
 }
 
-// TEST0141: the routable-capability watch (SubscribeCapabilities). A
+// TEST1898: the routable-capability watch (SubscribeCapabilities). A
 // subscriber must receive the CURRENT routable cap set on subscribe even
 // though it was rebuilt during construction — BEFORE any receiver existed
 // (the watch must persist the value, i.e. send_replace semantics). The
 // delivered snapshot must be the health-filtered routable set.
-func Test0141_subscribe_capabilities_delivers_routable_set(t *testing.T) {
+func Test1898_subscribe_capabilities_delivers_routable_set(t *testing.T) {
 	engineRead, slaveWrite := net.Pipe()
 	slaveRead, engineWrite := net.Pipe()
 
@@ -1985,13 +1985,13 @@ func Test0141_subscribe_capabilities_delivers_routable_set(t *testing.T) {
 	}
 }
 
-// TEST0142: AddMaster runs an end-to-end identity probe on reattach
+// TEST1901: AddMaster runs an end-to-end identity probe on reattach
 // whenever the host advertises caps (mirrors Rust add_master). When the
 // reattaching host FAILS the probe, the master rejoins as UNHEALTHY — its
 // installed cartridges stay visible in the inventory aggregate while its
 // caps are held out of the routing table — rather than the reattach
 // erroring out.
-func Test0142_add_master_reattach_verifies_identity(t *testing.T) {
+func Test1901_add_master_reattach_verifies_identity(t *testing.T) {
 	// Initial healthy master.
 	engineRead, slaveWrite := net.Pipe()
 	slaveRead, engineWrite := net.Pipe()
