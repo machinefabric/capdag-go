@@ -72,7 +72,13 @@ type ArgumentInfo struct {
 	IsRequired   bool               `json:"is_required"`
 	// IsSequence indicates whether this argument carries a sequence of items.
 	IsSequence bool `json:"is_sequence"`
-	Validation any  `json:"validation,omitempty"`
+	// IsMainInput reports whether this argument is the cap's MAIN input: it
+	// declares a Stdin source whose URN is tagged-URN-equivalent to the cap
+	// URN's in= spec. Populated from CapArg.IsMainInput during
+	// step-argument-requirements assembly. Mirrors Rust
+	// planner::plan_builder::ArgumentInfo::is_main_input.
+	IsMainInput bool `json:"is_main_input"`
+	Validation  any  `json:"validation,omitempty"`
 }
 
 // StepArgumentRequirements holds argument info for one step in a path.
@@ -401,6 +407,13 @@ func (b *MachinePlanBuilder) AnalyzePathArguments(
 
 		inSpec := c.Urn.InSpec()
 		outSpec := c.Urn.OutSpec()
+		// Parse the cap's in= spec once for main-input detection. A spec
+		// that fails to parse yields nil, and CapArg.IsMainInput(nil) is
+		// false — no arg can be the main input of an unparseable in=.
+		var inSpecUrn *urn.MediaUrn
+		if parsed, err := urn.NewMediaUrnFromString(inSpec); err == nil {
+			inSpecUrn = parsed
+		}
 		var arguments []*ArgumentInfo
 		var slots []*ArgumentInfo
 
@@ -420,6 +433,7 @@ func (b *MachinePlanBuilder) AnalyzePathArguments(
 				DefaultValue: arg.DefaultValue,
 				IsRequired:   arg.Required,
 				IsSequence:   arg.IsSequence,
+				IsMainInput:  arg.IsMainInput(inSpecUrn),
 			}
 
 			isIOArg := resolution == ResolutionFromInputFile || resolution == ResolutionFromPreviousOutput

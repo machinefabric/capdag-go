@@ -42,20 +42,26 @@ func Test1731_only_input_is_permanent(t *testing.T) {
 // HANDLER_ERROR/internal. (mirrors Rust RuntimeError::failure_code/
 // failure_class/failure_reason at the frame-emit boundary)
 func Test1735_classify_handler_error_reads_the_chain(t *testing.T) {
-	classified := &ClassifiedError{Code: "CONTEXT_OVERFLOW", Class: FailureClassInput, Message: "prompt exceeds context"}
-	code, class, message := classifyHandlerError(fmt.Errorf("op failed: %w", classified))
+	promptUrn := "media:prompt;str;utf8"
+	classified := &ClassifiedError{Code: "CONTEXT_OVERFLOW", Class: FailureClassInput, Message: "prompt exceeds context", ArgUrn: &promptUrn}
+	code, class, message, argUrn := classifyHandlerError(fmt.Errorf("op failed: %w", classified))
 	assert.Equal(t, "CONTEXT_OVERFLOW", code)
 	assert.Equal(t, FailureClassInput, class)
 	assert.Equal(t, "prompt exceeds context", message)
+	if assert.NotNil(t, argUrn, "a classified error's declared arg attribution must survive wrapping") {
+		assert.Equal(t, promptUrn, *argUrn)
+	}
 
 	remote := &RemoteError{Code: "OOM_KILLED", Class: FailureClassResource, Message: "peer ran out of memory"}
-	code, class, message = classifyHandlerError(fmt.Errorf("peer call failed: %w", remote))
+	code, class, message, argUrn = classifyHandlerError(fmt.Errorf("peer call failed: %w", remote))
 	assert.Equal(t, "OOM_KILLED", code)
 	assert.Equal(t, FailureClassResource, class)
 	assert.Equal(t, "peer ran out of memory", message)
+	assert.Nil(t, argUrn, "a peer frame without attribution stays unattributed")
 
-	code, class, message = classifyHandlerError(errors.New("something broke"))
+	code, class, message, argUrn = classifyHandlerError(errors.New("something broke"))
 	assert.Equal(t, "HANDLER_ERROR", code)
 	assert.Equal(t, FailureClassInternal, class)
 	assert.Equal(t, "something broke", message)
+	assert.Nil(t, argUrn)
 }

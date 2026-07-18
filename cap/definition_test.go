@@ -822,3 +822,161 @@ func TestIsMainInput_InvalidStdinUrnIsIgnoredNotFatal(t *testing.T) {
 	}
 	assert.False(t, arg.IsMainInput(inSpec))
 }
+
+// ===========================================================================
+// Shared parity tests 7100-7104: CapArg.StreamUrn / CapArg.IsMainInput.
+// Same substantive assertions in every capdag mirror (rust, go, js, objc, py).
+// ===========================================================================
+
+// TEST7100: StreamUrn returns the Stdin source's URN when it differs from the
+// declared slot media_urn — the stdin URN, not the slot URN, is what the
+// runtime demuxes the arg's input stream by.
+func Test7100_StreamUrnReturnsStdinSourceUrnWhenItDiffersFromSlotUrn(t *testing.T) {
+	stdinUrn := "media:ext=pdf;pdf-stream"
+	arg := CapArg{
+		MediaUrn: "media:enc=utf-8;file-path",
+		Required: true,
+		Sources:  []ArgSource{{Stdin: &stdinUrn}},
+	}
+	assert.Equal(t, "media:ext=pdf;pdf-stream", arg.StreamUrn())
+	assert.NotEqual(t, arg.MediaUrn, arg.StreamUrn())
+}
+
+// TEST7101: StreamUrn falls back to the declared slot media_urn when the arg
+// declares no Stdin source — a producer-fed arg may be delivered by its
+// declared URN without ever appearing on stdin.
+func Test7101_StreamUrnFallsBackToDeclaredMediaUrnWithoutStdinSource(t *testing.T) {
+	flag := "--system-prompt"
+	arg := CapArg{
+		MediaUrn: "media:enc=utf-8;system-prompt",
+		Required: true,
+		Sources:  []ArgSource{{CliFlag: &flag}},
+	}
+	assert.Equal(t, "media:enc=utf-8;system-prompt", arg.StreamUrn())
+}
+
+// TEST7102: IsMainInput is true when the Stdin URN is order-theoretically
+// EQUIVALENT to the cap's in= spec even when the two strings list their tags
+// in a different order — the comparison is the MediaUrn equivalence
+// predicate, never a string comparison.
+func Test7102_IsMainInputTrueOnTagOrderInsensitiveEquivalenceToInSpec(t *testing.T) {
+	inSpec, err := urn.NewMediaUrnFromString("media:ext=pdf;pdf-stream")
+	require.NoError(t, err)
+
+	stdinUrn := "media:pdf-stream;ext=pdf" // same tags, different order
+	arg := CapArg{
+		MediaUrn: "media:enc=utf-8;file-path",
+		Required: true,
+		Sources:  []ArgSource{{Stdin: &stdinUrn}},
+	}
+	assert.True(t, arg.IsMainInput(inSpec))
+	// The raw strings genuinely differ — proves the match is equivalence,
+	// not string equality.
+	assert.NotEqual(t, inSpec.String(), stdinUrn)
+}
+
+// TEST7103: IsMainInput is false for cli_flag-only and position-only args
+// (no Stdin source means never the main input, whatever the declared slot
+// URN says), and false when the Stdin URN is not equivalent to in=.
+func Test7103_IsMainInputFalseWithoutEquivalentStdinSource(t *testing.T) {
+	inSpec, err := urn.NewMediaUrnFromString("media:ext=pdf;pdf-stream")
+	require.NoError(t, err)
+
+	flag := "--input"
+	cliFlagOnly := CapArg{
+		MediaUrn: "media:ext=pdf;pdf-stream", // slot URN even matches in= — irrelevant
+		Required: true,
+		Sources:  []ArgSource{{CliFlag: &flag}},
+	}
+	assert.False(t, cliFlagOnly.IsMainInput(inSpec))
+
+	pos := 0
+	positionOnly := CapArg{
+		MediaUrn: "media:ext=pdf;pdf-stream",
+		Required: true,
+		Sources:  []ArgSource{{Position: &pos}},
+	}
+	assert.False(t, positionOnly.IsMainInput(inSpec))
+
+	mismatchedStdin := "media:enc=utf-8;system-prompt"
+	nonEquivalentStdin := CapArg{
+		MediaUrn: "media:enc=utf-8;system-prompt",
+		Required: false,
+		Sources:  []ArgSource{{Stdin: &mismatchedStdin}},
+	}
+	assert.False(t, nonEquivalentStdin.IsMainInput(inSpec))
+}
+
+// TEST7104: A realistic multi-arg cap (one stdin main input; one required,
+// defaultless cli_flag arg; several defaulted cli_flag args): exactly one
+// arg is the main input, and partitioning the remaining args by
+// required-without-default vs has-default yields the expected sets.
+func Test7104_MultiArgCapExactlyOneMainInputAndPartitionOfRest(t *testing.T) {
+	inSpec, err := urn.NewMediaUrnFromString("media:ext=pdf;pdf-stream")
+	require.NoError(t, err)
+
+	mainStdin := "media:pdf-stream;ext=pdf"
+	mainFlag := "--input"
+	questionFlag := "--question"
+	maxTokensFlag := "--max-tokens"
+	temperatureFlag := "--temperature"
+	systemPromptFlag := "--system-prompt"
+
+	args := []CapArg{
+		{
+			MediaUrn: "media:enc=utf-8;file-path",
+			Required: true,
+			// Main input may ALSO be delivered by cli-flag; stdin is the
+			// defining route.
+			Sources: []ArgSource{{Stdin: &mainStdin}, {CliFlag: &mainFlag}},
+		},
+		{
+			MediaUrn: "media:enc=utf-8;question",
+			Required: true,
+			Sources:  []ArgSource{{CliFlag: &questionFlag}},
+		},
+		{
+			MediaUrn:     "media:max-tokens;numeric",
+			Required:     false,
+			Sources:      []ArgSource{{CliFlag: &maxTokensFlag}},
+			DefaultValue: float64(1024),
+		},
+		{
+			MediaUrn:     "media:numeric;temperature",
+			Required:     false,
+			Sources:      []ArgSource{{CliFlag: &temperatureFlag}},
+			DefaultValue: 0.7,
+		},
+		{
+			MediaUrn:     "media:enc=utf-8;system-prompt",
+			Required:     false,
+			Sources:      []ArgSource{{CliFlag: &systemPromptFlag}},
+			DefaultValue: "You are a helpful assistant.",
+		},
+	}
+
+	var mainInputs []string
+	var requiredWithoutDefault []string
+	var withDefault []string
+	for i := range args {
+		arg := &args[i]
+		if arg.IsMainInput(inSpec) {
+			mainInputs = append(mainInputs, arg.MediaUrn)
+			continue
+		}
+		if arg.Required && arg.DefaultValue == nil {
+			requiredWithoutDefault = append(requiredWithoutDefault, arg.MediaUrn)
+		} else if arg.DefaultValue != nil {
+			withDefault = append(withDefault, arg.MediaUrn)
+		}
+	}
+
+	assert.Equal(t, []string{"media:enc=utf-8;file-path"}, mainInputs,
+		"exactly one arg must be the main input")
+	assert.Equal(t, []string{"media:enc=utf-8;question"}, requiredWithoutDefault)
+	assert.Equal(t, []string{
+		"media:max-tokens;numeric",
+		"media:numeric;temperature",
+		"media:enc=utf-8;system-prompt",
+	}, withDefault)
+}

@@ -568,20 +568,27 @@ func (f *Frame) CreditDirectionValue() *CreditDirection {
 // the emitter's problem by definition; emitters with a classified error use
 // NewErrClassified.
 func NewErr(id MessageId, code string, message string) *Frame {
-	return NewErrClassified(id, code, FailureClassInternal, message)
+	return NewErrClassified(id, code, FailureClassInternal, message, nil)
 }
 
 // NewErrClassified creates an ERR frame carrying the full failure identity:
 // the emitter's machine-readable code (e.g. CONTEXT_OVERFLOW), the failure
 // CLASS (whose problem it is — declared at the error's definition site, see
-// FailureClass), and the human message. ERR meta contract (docs/12.2):
-// "code" + "class" + "message", all text. (matches Rust Frame::err_classified)
-func NewErrClassified(id MessageId, code string, class FailureClass, message string) *Frame {
+// FailureClass), the human message, and — when the failure is attributed to
+// a specific argument at the emit source — the media URN of that argument.
+// ERR meta contract (docs/12.2 + docs/failure-taxonomy.md): "code" +
+// "class" + "message", all text, plus an OPTIONAL "arg_urn" entry that is
+// ABSENT when there is no attribution (never an empty string).
+// (matches Rust Frame::err_classified)
+func NewErrClassified(id MessageId, code string, class FailureClass, message string, argUrn *string) *Frame {
 	frame := newFrame(FrameTypeErr, id)
 	frame.Meta = map[string]interface{}{
 		"code":    code,
 		"class":   class.String(),
 		"message": message,
+	}
+	if argUrn != nil {
+		frame.Meta["arg_urn"] = *argUrn
 	}
 	return frame
 }
@@ -702,6 +709,20 @@ func (f *Frame) ErrorClass() FailureClass {
 		return FailureClassInternal
 	}
 	return class
+}
+
+// ErrorArgUrn gets the media URN of the argument the failure is attributed
+// to, when the emit source declared one (ERR meta key "arg_urn",
+// docs/failure-taxonomy.md). Returns nil when the frame carries no
+// attribution, and for non-ERR frames. (matches Rust Frame::error_arg_urn)
+func (f *Frame) ErrorArgUrn() *string {
+	if f.FrameType != FrameTypeErr || f.Meta == nil {
+		return nil
+	}
+	if urn, ok := f.Meta["arg_urn"].(string); ok {
+		return &urn
+	}
+	return nil
 }
 
 // ErrorMessage gets error message from ERR frame meta

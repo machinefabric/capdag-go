@@ -92,29 +92,48 @@ func (c FailureClass) IsPermanent() bool {
 // wrapped, extracted via errors.As) instead of folding the code into message
 // text; the terminal ERR frame then carries all three fields to the engine.
 // Failures that stay a plain error classify as Internal at the frame
-// boundary. (matches Rust RuntimeError::Classified)
+// boundary. ArgUrn is the media URN of the argument the failure is
+// attributed to, declared at the emit source alongside the class
+// (docs/failure-taxonomy.md); nil when the failure has no attribution.
+// (matches Rust RuntimeError::Classified)
 type ClassifiedError struct {
 	Code    string
 	Class   FailureClass
 	Message string
+	ArgUrn  *string
 }
 
 func (e *ClassifiedError) Error() string {
 	return fmt.Sprintf("%s: %s", e.Code, e.Message)
 }
 
+// FailureArgUrn is the media URN of the argument the failure is attributed
+// to, declared at the emit source; nil when there is no attribution.
+func (e *ClassifiedError) FailureArgUrn() *string {
+	return e.ArgUrn
+}
+
 // RemoteError is the peer's ERR frame, kept STRUCTURAL: its machine-readable
 // code, the failure class the peer's frame declared
-// (docs/failure-taxonomy.md), and its message — never folded into prose.
+// (docs/failure-taxonomy.md), its message — never folded into prose — and
+// the media URN of the argument the peer's frame attributed the failure to
+// (nil when the frame carried no attribution).
 // (matches Rust StreamError::RemoteError)
 type RemoteError struct {
 	Code    string
 	Class   FailureClass
 	Message string
+	ArgUrn  *string
 }
 
 func (e *RemoteError) Error() string {
 	return fmt.Sprintf("remote error [%s]: %s", e.Code, e.Message)
+}
+
+// FailureArgUrn is the media URN of the argument the peer's frame attributed
+// the failure to; nil when the frame carried no attribution.
+func (e *RemoteError) FailureArgUrn() *string {
+	return e.ArgUrn
 }
 
 // remoteErrorFromErrFrame reads an incoming ERR frame's declared identity
@@ -131,23 +150,24 @@ func remoteErrorFromErrFrame(f *Frame) *RemoteError {
 	if message == "" {
 		message = "Unknown error"
 	}
-	return &RemoteError{Code: code, Class: f.ErrorClass(), Message: message}
+	return &RemoteError{Code: code, Class: f.ErrorClass(), Message: message, ArgUrn: f.ErrorArgUrn()}
 }
 
 // classifyHandlerError resolves the identity a failed handler's terminal ERR
-// frame declares (docs/failure-taxonomy.md): the code and class from the
-// emit source when the error chain carries a ClassifiedError (or a peer's
-// RemoteError propagated as-is), HANDLER_ERROR/Internal when the handler
-// never declared one. (matches Rust RuntimeError's
-// failure_code()/failure_class()/failure_reason() at the frame-emit boundary)
-func classifyHandlerError(err error) (code string, class FailureClass, message string) {
+// frame declares (docs/failure-taxonomy.md): the code, class, and argument
+// attribution from the emit source when the error chain carries a
+// ClassifiedError (or a peer's RemoteError propagated as-is),
+// HANDLER_ERROR/Internal without attribution when the handler never declared
+// one. (matches Rust RuntimeError's failure_code()/failure_class()/
+// failure_reason()/failure_arg_urn() at the frame-emit boundary)
+func classifyHandlerError(err error) (code string, class FailureClass, message string, argUrn *string) {
 	var classified *ClassifiedError
 	if errors.As(err, &classified) {
-		return classified.Code, classified.Class, classified.Message
+		return classified.Code, classified.Class, classified.Message, classified.ArgUrn
 	}
 	var remote *RemoteError
 	if errors.As(err, &remote) {
-		return remote.Code, remote.Class, remote.Message
+		return remote.Code, remote.Class, remote.Message, remote.ArgUrn
 	}
-	return "HANDLER_ERROR", FailureClassInternal, err.Error()
+	return "HANDLER_ERROR", FailureClassInternal, err.Error(), nil
 }

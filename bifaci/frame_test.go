@@ -2295,7 +2295,7 @@ func Test1900_err_frame_failure_class_wire_contract(t *testing.T) {
 	rid := NewMessageIdRandom()
 
 	// Classified ERR round-trips its full declared identity.
-	classified := NewErrClassified(rid, "CONTEXT_OVERFLOW", FailureClassInput, "prompt exceeds context window")
+	classified := NewErrClassified(rid, "CONTEXT_OVERFLOW", FailureClassInput, "prompt exceeds context window", nil)
 	decoded, err := DecodeFrame(mustEncode(t, classified))
 	require.NoError(t, err)
 	assert.Equal(t, "CONTEXT_OVERFLOW", decoded.ErrorCode())
@@ -2322,6 +2322,48 @@ func Test1900_err_frame_failure_class_wire_contract(t *testing.T) {
 	decodedUnknown, err := DecodeFrame(mustEncode(t, unknown))
 	require.NoError(t, err)
 	assert.Equal(t, FailureClassInternal, decodedUnknown.ErrorClass())
+}
+
+// TEST7105: an ERR frame built WITH an argument attribution round-trips its
+// full declared identity through encode/decode — the meta map carries the
+// "arg_urn" key, ErrorArgUrn returns the URN, and code/class/message stay
+// intact (docs/failure-taxonomy.md).
+func Test7105_err_frame_arg_urn_roundtrip(t *testing.T) {
+	rid := NewMessageIdRandom()
+	argUrn := "media:prompt;str;utf8"
+
+	frame := NewErrClassified(rid, "CONTEXT_OVERFLOW", FailureClassInput, "prompt exceeds context window", &argUrn)
+	decoded, err := DecodeFrame(mustEncode(t, frame))
+	require.NoError(t, err)
+
+	assert.Equal(t, argUrn, decoded.Meta["arg_urn"],
+		"the encoded ERR meta must carry the arg_urn key verbatim")
+	got := decoded.ErrorArgUrn()
+	if assert.NotNil(t, got, "ErrorArgUrn must return the declared attribution") {
+		assert.Equal(t, argUrn, *got)
+	}
+	assert.Equal(t, "CONTEXT_OVERFLOW", decoded.ErrorCode())
+	assert.Equal(t, FailureClassInput, decoded.ErrorClass())
+	assert.Equal(t, "prompt exceeds context window", decoded.ErrorMessage())
+}
+
+// TEST7106: an ERR frame built WITHOUT attribution has NO "arg_urn" key in
+// the encoded meta — absent, never an empty string — and ErrorArgUrn returns
+// nil (docs/failure-taxonomy.md).
+func Test7106_err_frame_without_attribution_has_no_arg_urn(t *testing.T) {
+	rid := NewMessageIdRandom()
+
+	frame := NewErrClassified(rid, "OOM_KILLED", FailureClassResource, "out of memory", nil)
+	decoded, err := DecodeFrame(mustEncode(t, frame))
+	require.NoError(t, err)
+
+	_, present := decoded.Meta["arg_urn"]
+	assert.False(t, present,
+		"an ERR frame without attribution must not carry an arg_urn key at all")
+	assert.Nil(t, decoded.ErrorArgUrn())
+	assert.Equal(t, "OOM_KILLED", decoded.ErrorCode())
+	assert.Equal(t, FailureClassResource, decoded.ErrorClass())
+	assert.Equal(t, "out of memory", decoded.ErrorMessage())
 }
 
 // TEST502: Keys module has constants for new fields
