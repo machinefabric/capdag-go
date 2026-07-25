@@ -120,7 +120,7 @@ func ProbeCartridgeCapGroups(path string) ([]CapGroup, error) {
 	reader := NewFrameReader(stdout)
 	writer := NewFrameWriter(stdin)
 
-	manifest, limits, err := HandshakeInitiate(reader, writer)
+	manifest, limits, _, err := HandshakeInitiate(reader, writer)
 	if err != nil {
 		return nil, fmt.Errorf("cartridge %q HELLO failed: %w", path, err)
 	}

@@ -161,7 +161,7 @@ func (fw *FrameWriter) WriteResponseWithChunking(requestId MessageId, streamId s
 }
 
 // HandshakeAccept performs handshake from cartridge side
-func HandshakeAccept(reader *FrameReader, writer *FrameWriter, manifestData []byte) (Limits, error) {
+func HandshakeAccept(reader *FrameReader, writer *FrameWriter, manifestData []byte, handlerCapacity uint64) (Limits, error) {
 	// 1. Read HELLO from host
 	helloFrame, err := reader.ReadFrame()
 	if err != nil {
@@ -174,37 +174,22 @@ func HandshakeAccept(reader *FrameReader, writer *FrameWriter, manifestData []by
 
 	// Protocol version must match exactly (L1). No cross-version operation.
 	// (matches Rust handshake_accept)
-	theirVersion := helloVersion(helloFrame)
+	theirVersion, err := helloVersion(helloFrame)
+	if err != nil {
+		return Limits{}, err
+	}
 	if theirVersion != ProtocolVersion {
 		return Limits{}, fmt.Errorf("protocol version mismatch: ours %d, theirs %d", ProtocolVersion, theirVersion)
 	}
 
 	// 2. Decode host limits from Meta map
-	var hostLimits Limits
-	if helloFrame.Meta != nil {
-		hostLimits.MaxFrame = extractIntFromMeta(helloFrame.Meta, "max_frame")
-		hostLimits.MaxChunk = extractIntFromMeta(helloFrame.Meta, "max_chunk")
-		hostLimits.MaxReorderBuffer = extractIntFromMeta(helloFrame.Meta, "max_reorder_buffer")
-		hostLimits.InitialCredit = extractIntFromMeta(helloFrame.Meta, "initial_credit")
-	}
-	// Per-field defaulting: each absent limit falls back to its own default,
-	// exactly like Rust's hello_max_frame().unwrap_or(DEFAULT_MAX_FRAME) etc.
-	// A HELLO that carries one field but omits another keeps the carried value.
-	if hostLimits.MaxFrame == 0 {
-		hostLimits.MaxFrame = DefaultMaxFrame
-	}
-	if hostLimits.MaxChunk == 0 {
-		hostLimits.MaxChunk = DefaultMaxChunk
-	}
-	if hostLimits.MaxReorderBuffer == 0 {
-		hostLimits.MaxReorderBuffer = DefaultMaxReorderBuffer
-	}
-	if hostLimits.InitialCredit == 0 {
-		hostLimits.InitialCredit = DefaultInitialCredit
+	hostLimits, err := requiredHelloLimits(helloFrame)
+	if err != nil {
+		return Limits{}, err
 	}
 
 	// 3. Send HELLO back with manifest
-	responseFrame := NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit, manifestData)
+	responseFrame := NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit, handlerCapacity, manifestData)
 	if err := writer.WriteFrame(responseFrame); err != nil {
 		return Limits{}, fmt.Errorf("failed to write HELLO response: %w", err)
 	}
@@ -216,28 +201,31 @@ func HandshakeAccept(reader *FrameReader, writer *FrameWriter, manifestData []by
 }
 
 // HandshakeInitiate performs handshake from host side
-func HandshakeInitiate(reader *FrameReader, writer *FrameWriter) ([]byte, Limits, error) {
+func HandshakeInitiate(reader *FrameReader, writer *FrameWriter) ([]byte, Limits, uint64, error) {
 	// 1. Send HELLO with our limits
 	helloFrame := NewHello(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit)
 	if err := writer.WriteFrame(helloFrame); err != nil {
-		return nil, Limits{}, fmt.Errorf("failed to write HELLO: %w", err)
+		return nil, Limits{}, 0, fmt.Errorf("failed to write HELLO: %w", err)
 	}
 
 	// 2. Read HELLO response with manifest
 	responseFrame, err := reader.ReadFrame()
 	if err != nil {
-		return nil, Limits{}, fmt.Errorf("failed to read HELLO response: %w", err)
+		return nil, Limits{}, 0, fmt.Errorf("failed to read HELLO response: %w", err)
 	}
 
 	if responseFrame.FrameType != FrameTypeHello {
-		return nil, Limits{}, errors.New("expected HELLO response")
+		return nil, Limits{}, 0, errors.New("expected HELLO response")
 	}
 
 	// Protocol version must match exactly (L1). No cross-version operation.
 	// (matches Rust handshake)
-	theirVersion := helloVersion(responseFrame)
+	theirVersion, err := helloVersion(responseFrame)
+	if err != nil {
+		return nil, Limits{}, 0, err
+	}
 	if theirVersion != ProtocolVersion {
-		return nil, Limits{}, fmt.Errorf("protocol version mismatch: ours %d, theirs %d", ProtocolVersion, theirVersion)
+		return nil, Limits{}, 0, fmt.Errorf("protocol version mismatch: ours %d, theirs %d", ProtocolVersion, theirVersion)
 	}
 
 	// 3. Extract manifest from Meta map
@@ -247,61 +235,60 @@ func HandshakeInitiate(reader *FrameReader, writer *FrameWriter) ([]byte, Limits
 			manifestData = manifest
 		}
 	}
+	handlerCapacity, ok := extractUint64FromMeta(responseFrame.Meta, "handler_capacity")
+	if !ok {
+		return nil, Limits{}, 0, errors.New("cartridge HELLO missing required non-negative handler_capacity")
+	}
 
 	// 4. Extract cartridge limits from Meta map
-	var cartridgeLimits Limits
-	if responseFrame.Meta != nil {
-		cartridgeLimits.MaxFrame = extractIntFromMeta(responseFrame.Meta, "max_frame")
-		cartridgeLimits.MaxChunk = extractIntFromMeta(responseFrame.Meta, "max_chunk")
-		cartridgeLimits.MaxReorderBuffer = extractIntFromMeta(responseFrame.Meta, "max_reorder_buffer")
-		cartridgeLimits.InitialCredit = extractIntFromMeta(responseFrame.Meta, "initial_credit")
-	}
-	// Per-field defaulting: each absent limit falls back to its own default,
-	// exactly like Rust's hello_max_frame().unwrap_or(DEFAULT_MAX_FRAME) etc.
-	// A HELLO that carries one field but omits another keeps the carried value.
-	if cartridgeLimits.MaxFrame == 0 {
-		cartridgeLimits.MaxFrame = DefaultMaxFrame
-	}
-	if cartridgeLimits.MaxChunk == 0 {
-		cartridgeLimits.MaxChunk = DefaultMaxChunk
-	}
-	if cartridgeLimits.MaxReorderBuffer == 0 {
-		cartridgeLimits.MaxReorderBuffer = DefaultMaxReorderBuffer
-	}
-	if cartridgeLimits.InitialCredit == 0 {
-		cartridgeLimits.InitialCredit = DefaultInitialCredit
+	cartridgeLimits, err := requiredHelloLimits(responseFrame)
+	if err != nil {
+		return nil, Limits{}, 0, err
 	}
 
 	// 5. Negotiate limits
 	negotiated := NegotiateLimits(DefaultLimits(), cartridgeLimits)
 
-	return manifestData, negotiated, nil
+	return manifestData, negotiated, handlerCapacity, nil
 }
 
-// helloVersion reads the protocol version a HELLO frame is proposing: the
-// "version" meta key when present, falling back to the frame's wire-level
-// version field. Mirrors Rust Frame::hello_version().unwrap_or(frame.version),
-// which is why handshake rejection must consult it rather than the wire field
-// alone — a HELLO's meta is caller-supplied and can diverge from whatever the
-// transport happened to stamp on the envelope. (matches Rust hello_version)
-func helloVersion(f *Frame) uint8 {
-	if f.Meta != nil {
-		if v, ok := f.Meta["version"]; ok {
-			switch n := v.(type) {
-			case uint8:
-				return n
-			case int:
-				return uint8(n)
-			case int64:
-				return uint8(n)
-			case uint64:
-				return uint8(n)
-			case float64:
-				return uint8(n)
-			}
-		}
+// helloVersion reads the required protocol version declared by HELLO itself.
+// The envelope version is independently validated by DecodeFrame; it is not a
+// substitute for the v4 HELLO contract.
+func helloVersion(f *Frame) (uint8, error) {
+	if f.Meta == nil {
+		return 0, errors.New("protocol violation: HELLO missing version")
 	}
-	return f.Version
+	value := extractIntFromMeta(f.Meta, "version")
+	if value <= 0 || value > 255 {
+		return 0, errors.New("protocol violation: HELLO version must be a positive uint8")
+	}
+	return uint8(value), nil
+}
+
+func requiredHelloLimits(f *Frame) (Limits, error) {
+	if f.Meta == nil {
+		return Limits{}, errors.New("protocol violation: HELLO missing limits")
+	}
+	limits := Limits{
+		MaxFrame: extractIntFromMeta(f.Meta, "max_frame"),
+		MaxChunk: extractIntFromMeta(f.Meta, "max_chunk"),
+		MaxReorderBuffer: extractIntFromMeta(f.Meta, "max_reorder_buffer"),
+		InitialCredit: extractIntFromMeta(f.Meta, "initial_credit"),
+	}
+	if limits.MaxFrame <= 0 {
+		return Limits{}, errors.New("protocol violation: HELLO missing positive max_frame")
+	}
+	if limits.MaxChunk <= 0 {
+		return Limits{}, errors.New("protocol violation: HELLO missing positive max_chunk")
+	}
+	if limits.MaxReorderBuffer <= 0 {
+		return Limits{}, errors.New("protocol violation: HELLO missing positive max_reorder_buffer")
+	}
+	if limits.InitialCredit <= 0 {
+		return Limits{}, errors.New("protocol violation: HELLO missing positive initial_credit")
+	}
+	return limits, nil
 }
 
 // =============================================================================
@@ -429,7 +416,7 @@ func VerifyIdentity(reader *FrameReader, writer *FrameWriter) error {
 			// Control/side-channel frames are legal ANYWHERE during the
 			// probe (spec 12.4: LOG interleaves without affecting data
 			// flow; CREDIT/HEARTBEAT are the control plane the writer
-			// gate itself exempts, L4). A v3 cartridge crediting its
+			// gate itself exempts, L4). A v4 cartridge crediting its
 			// probe input as it consumes (L10) must not fail identity
 			// verification.
 		default:

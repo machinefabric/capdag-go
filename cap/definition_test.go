@@ -677,7 +677,7 @@ func Test6259_CapJSONRoundTrip(t *testing.T) {
 	assert.Equal(t, cap.Output.MediaUrn, deserialized.Output.MediaUrn)
 }
 
-// Bifaci v3: CapArg.StreamUrn / CapArg.IsMainInput.
+// Bifaci v4: CapArg.StreamUrn / CapArg.IsMainInput.
 // No numbered Rust test exists for these two pure accessors as of the v3
 // diff (src/cap/definition.rs) — they are exercised indirectly by consumers
 // in other subsystems (machine::resolve, machine::realize,

@@ -1,7 +1,7 @@
 package bifaci
 
 // =============================================================================
-// Unified per-request state for routing runtimes (protocol v3, L7/L8).
+// Unified per-request state for routing runtimes (protocol v4, L7/L8).
 //
 // One RequestState per in-flight request replaces the parallel routing maps
 // (routing entry, origin, peer markers, parent->child links, response
@@ -48,7 +48,7 @@ func (k RequestKey) mapKey() string {
 // RequestRoutingEntry is where a request came from and where it is going, as
 // master indices. Named RequestRoutingEntry (not RoutingEntry) because the
 // bifaci Go package is a single flat namespace and relay_switch.go already
-// declares an unrelated (pre-v3) RoutingEntry for its own request routing
+// declares an unrelated retired RoutingEntry for its own request routing
 // map; Rust's module system lets request_state::RoutingEntry and
 // relay_switch::RoutingEntry coexist, Go's flat package cannot.
 // (matches Rust request_state::RoutingEntry)

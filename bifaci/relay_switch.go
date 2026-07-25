@@ -144,6 +144,7 @@ const (
 
 // CartridgeRuntimeStats holds live statistics for a managed cartridge.
 type CartridgeRuntimeStats struct {
+	HandlerCapacity          uint64  `json:"handler_capacity"`
 	Running                  bool    `json:"running"`
 	PID                      *uint32 `json:"pid,omitempty"`
 	ActiveRequestCount       uint64  `json:"active_request_count"`
@@ -160,9 +161,28 @@ type CartridgeRuntimeStats struct {
 	ProtocolDropsTotal *uint64 `json:"protocol_drops_total,omitempty"`
 }
 
+// UnmarshalJSON enforces the protocol-v4 handler-capacity field. A missing
+// field must not decode as the meaningful value zero (unlimited).
+func (s *CartridgeRuntimeStats) UnmarshalJSON(data []byte) error {
+	type alias CartridgeRuntimeStats
+	var raw struct {
+		*alias
+		HandlerCapacity *uint64 `json:"handler_capacity"`
+	}
+	raw.alias = (*alias)(s)
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if raw.HandlerCapacity == nil {
+		return errors.New("runtime_stats.handler_capacity is required")
+	}
+	s.HandlerCapacity = *raw.HandlerCapacity
+	return nil
+}
+
 // NotRunning returns a CartridgeRuntimeStats representing a stopped cartridge.
 func NotRunning() CartridgeRuntimeStats {
-	return CartridgeRuntimeStats{Running: false}
+	return CartridgeRuntimeStats{Running: false, HandlerCapacity: 0}
 }
 
 // InstalledCartridgeRecord represents the identity of an installed
@@ -339,7 +359,7 @@ type RelaySwitch struct {
 	// the deferred runtime identity probe — this mirror has no execute_cap-
 	// style external caller API), per-stream flow stats, and the rid→xid
 	// index — one entry, one registration, one termination. Replaces the
-	// pre-v3 requestRouting/peerRequests/peerCallParents/
+	// retired requestRouting/peerRequests/peerCallParents/
 	// externalResponseChannels maps. Guarded by mu (the table itself is
 	// unsynchronized, mirroring the Rust reference's RwLock<RequestTable>
 	// and the Swift mirror's lock-guarded RequestTable).
@@ -1113,7 +1133,7 @@ func (sw *RelaySwitch) runIdentityProbeViaRelay(masterIdx int) error {
 					// Control/side-channel frames are legal ANYWHERE during
 					// the probe (spec 12.4: LOG interleaves without affecting
 					// data flow; CREDIT/HEARTBEAT are the control plane the
-					// writer gate itself exempts, L4). A v3 cartridge
+					// writer gate itself exempts, L4). A v4 cartridge
 					// crediting its probe input as it consumes (L10) must
 					// not fail identity verification.
 				default:
@@ -1249,7 +1269,7 @@ func (sw *RelaySwitch) cancelRequestLocked(rid MessageId, forceKill bool) {
 	// here is not itself counted as a drop — mirrors Rust's `let _ =
 	// tx.send(err_frame)` and Swift's `_ = channel(errFrame)`.
 	if state.ExternalChannel != nil {
-		errFrame := NewErr(rid, "CANCELLED", "Request cancelled")
+		errFrame := NewErr(rid, "CANCELLED", AttributionClassInternal, "Request cancelled", nil)
 		errFrame.RoutingId = &xid
 		deliverExternal(state.ExternalChannel, *errFrame)
 	}
@@ -1553,7 +1573,7 @@ func (sw *RelaySwitch) handleMasterFrame(sourceIdx int, frame *Frame) (*Frame, e
 			// branch (Ok(None) + ERR to caller).
 			// A dispatched cap no master handles is a deployment/manifest
 			// mismatch — Environment.
-			errFrame := NewErrClassified(frame.Id, "NO_HANDLER", FailureClassEnvironment, fmt.Sprintf("No handler found for cap: %s", *frame.Cap), nil)
+			errFrame := NewErr(frame.Id, "NO_HANDLER", AttributionClassEnvironment, fmt.Sprintf("No handler found for cap: %s", *frame.Cap), nil)
 			errFrame.RoutingId = &xid
 			_ = sw.masters[sourceIdx].socketWriter.WriteFrame(errFrame)
 			return nil, nil
@@ -1816,7 +1836,7 @@ func (sw *RelaySwitch) handleMasterDeath(masterIdx int) {
 		xid := key.Xid
 		// A dead master connection is a runtime-environment failure —
 		// Environment (docs/failure-taxonomy.md).
-		errFrame := NewErrClassified(key.Rid, "MASTER_DIED", FailureClassEnvironment, fmt.Sprintf("Relay master %d connection closed", masterIdx), nil)
+		errFrame := NewErr(key.Rid, "MASTER_DIED", AttributionClassEnvironment, fmt.Sprintf("Relay master %d connection closed", masterIdx), nil)
 		errFrame.RoutingId = &xid
 
 		if state.Origin == nil {

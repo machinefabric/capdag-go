@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"sort"
@@ -217,6 +218,7 @@ type ManagedCartridge struct {
 	// counter. Survives across readings (each heartbeat carries the
 	// cartridge's running total). Mirrors Rust protocol_drops_total.
 	protocolDropsTotal *uint64
+	handlerCapacity uint64
 	// pendingHeartbeats tracks health probes this host has sent to the
 	// cartridge (id string → sent time), so a later HEARTBEAT frame from
 	// the cartridge can be told apart from a cartridge-initiated
@@ -319,10 +321,10 @@ type CartridgeHost struct {
 
 	// incomingBodyDone marks keys in incomingRxids whose REQUEST BODY has
 	// completed (body END routed to the handler) but whose RESPONSE has
-	// not yet terminated. Protocol v3 keeps the incomingRxids entry alive
+	// not yet terminated. The current protocol keeps the incomingRxids entry alive
 	// through this phase — engine→cartridge CREDIT grants for the
 	// handler's OUTPUT arrive throughout it (removing the entry at body
-	// END, as the pre-v3 code did, silently kills every output grant and
+	// END, as earlier code did, silently kills every output grant and
 	// deadlocks any response larger than the initial window). Data
 	// frames arriving from the relay during this phase are self-loop
 	// peer responses and fall through to outgoingRids as before. Cleared
@@ -748,7 +750,7 @@ func (h *CartridgeHost) AttachCartridge(cartridgeRead io.Reader, cartridgeWrite 
 	reader := NewFrameReader(cartridgeRead)
 	writer := NewFrameWriter(cartridgeWrite)
 
-	manifest, limits, err := HandshakeInitiate(reader, writer)
+	manifest, limits, handlerCapacity, err := HandshakeInitiate(reader, writer)
 	if err != nil {
 		return -1, fmt.Errorf("handshake failed: %w", err)
 	}
@@ -782,6 +784,7 @@ func (h *CartridgeHost) AttachCartridge(cartridgeRead io.Reader, cartridgeWrite 
 		caps:      caps,
 		capGroups: capGroups,
 		running:   true,
+		handlerCapacity: handlerCapacity,
 		// Derive the install identity from the HELLO manifest. Advertisement
 		// is identity-gated, so without this the attached cartridge is
 		// silently excluded from every RelayNotify and the engine can never
@@ -1142,7 +1145,7 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 		if !found {
 			// No dispatchable cartridge for a planned cap is a
 			// deployment/manifest mismatch — Environment.
-			errFrame := NewErrClassified(frame.Id, "NO_HANDLER", FailureClassEnvironment, fmt.Sprintf("no cartridge handles cap: %s", capUrn), nil)
+			errFrame := NewErr(frame.Id, "NO_HANDLER", AttributionClassEnvironment, fmt.Sprintf("no cartridge handles cap: %s", capUrn), nil)
 			errFrame.RoutingId = frame.RoutingId
 			relayWriter.WriteFrame(errFrame)
 			return nil
@@ -1153,13 +1156,13 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 			if cartridge.helloFailed {
 				// A cartridge that cannot be started is a broken runtime
 				// deployment — Environment.
-				errFrame := NewErrClassified(frame.Id, "SPAWN_FAILED", FailureClassEnvironment, "cartridge previously failed to start", nil)
+				errFrame := NewErr(frame.Id, "SPAWN_FAILED", AttributionClassEnvironment, "cartridge previously failed to start", nil)
 				errFrame.RoutingId = frame.RoutingId
 				relayWriter.WriteFrame(errFrame)
 				return nil
 			}
 			if err := h.spawnCartridgeLocked(cartridgeIdx); err != nil {
-				errFrame := NewErrClassified(frame.Id, "SPAWN_FAILED", FailureClassEnvironment, err.Error(), nil)
+				errFrame := NewErr(frame.Id, "SPAWN_FAILED", AttributionClassEnvironment, err.Error(), nil)
 				errFrame.RoutingId = frame.RoutingId
 				relayWriter.WriteFrame(errFrame)
 				return nil
@@ -1189,21 +1192,21 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 			delete(h.incomingRxidsTouched, key)
 			// A dead cartridge process is a runtime-environment failure —
 			// Environment (docs/failure-taxonomy.md).
-			errFrame := NewErrClassified(frame.Id, "CARTRIDGE_DIED", FailureClassEnvironment, err.Error(), nil)
+			errFrame := NewErr(frame.Id, "CARTRIDGE_DIED", AttributionClassEnvironment, err.Error(), nil)
 			errFrame.RoutingId = frame.RoutingId
 			relayWriter.WriteFrame(errFrame)
 		}
 
 	case FrameTypeStreamStart, FrameTypeChunk, FrameTypeStreamEnd, FrameTypeEnd, FrameTypeErr, FrameTypeCredit:
 		// Continuation frame from the relay. CREDIT rides the same route
-		// as data continuations (protocol v3, L11): it targets whichever
+		// as data continuations (protocol v4, L11): it targets whichever
 		// cartridge is sending the credited stream — the handler
 		// cartridge for a normal request (via incomingRxids) or the
 		// requester cartridge for a peer call's argument streams (via
 		// outgoingRids). Two possibilities for data/terminal frames:
 		//   1. Body phase — `incomingRxids[(xid, rid)]` says which
 		//      cartridge is handling the original request. Body END no
-		//      longer drops the entry (v3) — see incomingBodyDone below.
+		//      longer drops the entry (v4) — see incomingBodyDone below.
 		//   2. Response phase — `outgoingRids[rid]` says which
 		//      cartridge sent the peer REQ; the relay is now
 		//      delivering the response back. END/ERR here marks
@@ -1230,7 +1233,7 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 		if frame.FrameType == FrameTypeCredit {
 			dir := frame.CreditDirectionValue()
 			if dir == nil {
-				// Dropped: v3 requires credit_dir on every CREDIT frame —
+				// Dropped: v4 requires credit_dir on every CREDIT frame —
 				// never a silent loss (no_route, L6/L8).
 				h.drops.Record(DropReasonNoRoute)
 				return nil
@@ -1301,7 +1304,7 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 				delete(h.outgoingRids, frame.Id.ToString())
 				delete(h.outgoingRidsTouched, frame.Id.ToString())
 			}
-			errFrame := NewErrClassified(frame.Id, "CARTRIDGE_DIED", FailureClassEnvironment, err.Error(), nil)
+			errFrame := NewErr(frame.Id, "CARTRIDGE_DIED", AttributionClassEnvironment, err.Error(), nil)
 			errFrame.RoutingId = frame.RoutingId
 			relayWriter.WriteFrame(errFrame)
 			return nil
@@ -1310,7 +1313,7 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 		// Terminal bookkeeping.
 		//   - Via incomingRxids: the REQUEST BODY completed. The entry
 		//     STAYS — the handler's response is still flowing and its
-		//     output CREDIT grants route through it (v3). It is removed
+		//     output CREDIT grants route through it (v4). It is removed
 		//     when the handler's response terminal passes outbound
 		//     (handleCartridgeFrame) or on cartridge death.
 		//   - Via outgoingRids: a peer RESPONSE completed — clean up.
@@ -1395,6 +1398,16 @@ func (h *CartridgeHost) handleCartridgeFrame(cartridgeIdx int, frame *Frame, rel
 					cartridge.protocolDropsTotal = &v
 				}
 			}
+			capacity, ok := extractUint64FromMeta(frame.Meta, "handler_capacity")
+			if !ok {
+				cartridge.running = false
+				if cartridge.cmd != nil && cartridge.cmd.Process != nil {
+					_ = cartridge.cmd.Process.Kill()
+				}
+				fmt.Fprintln(os.Stderr, "[CartridgeHost] protocol violation: heartbeat missing handler_capacity")
+				return
+			}
+			cartridge.handlerCapacity = capacity
 			// Stamp the round-trip completion timestamp so the
 			// runtime-stats snapshot can surface heartbeat age to the UI.
 			now := unixSecondsNow()
@@ -1436,7 +1449,7 @@ func (h *CartridgeHost) handleCartridgeFrame(cartridgeIdx int, frame *Frame, rel
 		isTerminal := frame.FrameType == FrameTypeEnd || frame.FrameType == FrameTypeErr
 		if isTerminal && frame.RoutingId != nil {
 			// The handler's RESPONSE terminal is the request's true end
-			// at this host (v3): once the body has completed too,
+			// at this host (v4): once the body has completed too,
 			// release the incoming routing entry and its body-done
 			// marker. If the response terminates BEFORE the body END
 			// arrives (response-first race), remember it so the body
@@ -1454,12 +1467,10 @@ func (h *CartridgeHost) handleCartridgeFrame(cartridgeIdx int, frame *Frame, rel
 	}
 }
 
-// extractUint64FromMeta reads an unsigned integer from a frame meta map,
-// handling CBOR type variance (int, int64, uint64, float64). Returns
-// (0, false) if the key is absent — the caller MUST treat absence as "no
-// reading", never a fabricated zero (mirrors extractIntFromMeta's type
-// handling, but preserves presence so callers can distinguish "not yet
-// measured" from "measured as zero").
+// extractUint64FromMeta reads a non-negative integer from a frame meta map.
+// CBOR decoders may surface integers through signed, unsigned, or float64
+// representations, but negative, fractional, and out-of-range values are
+// protocol-invalid rather than candidates for truncation or wrapping.
 func extractUint64FromMeta(meta map[string]interface{}, key string) (uint64, bool) {
 	v, ok := meta[key]
 	if !ok {
@@ -1467,12 +1478,22 @@ func extractUint64FromMeta(meta map[string]interface{}, key string) (uint64, boo
 	}
 	switch n := v.(type) {
 	case int:
+		if n < 0 {
+			return 0, false
+		}
 		return uint64(n), true
 	case int64:
+		if n < 0 {
+			return 0, false
+		}
 		return uint64(n), true
 	case uint64:
 		return n, true
 	case float64:
+		const maxUint64Exclusive = 18446744073709551616.0
+		if n < 0 || n >= maxUint64Exclusive || math.Trunc(n) != n {
+			return 0, false
+		}
 		return uint64(n), true
 	default:
 		return 0, false
@@ -1512,7 +1533,7 @@ func (h *CartridgeHost) handleCartridgeDeath(cartridgeIdx int, relayWriter *rela
 		if route.cartridgeIdx != cartridgeIdx {
 			continue
 		}
-		errFrame := NewErrClassified(route.rid, "CARTRIDGE_DIED", FailureClassEnvironment, fmt.Sprintf("cartridge %d died", cartridgeIdx), nil)
+		errFrame := NewErr(route.rid, "CARTRIDGE_DIED", AttributionClassEnvironment, fmt.Sprintf("cartridge %d died", cartridgeIdx), nil)
 		xid := route.xid
 		errFrame.RoutingId = &xid
 		relayWriter.WriteFrame(errFrame)
@@ -1530,7 +1551,7 @@ func (h *CartridgeHost) handleCartridgeDeath(cartridgeIdx int, relayWriter *rela
 		if route.cartridgeIdx != cartridgeIdx {
 			continue
 		}
-		errFrame := NewErrClassified(route.rid, "CARTRIDGE_DIED", FailureClassEnvironment, fmt.Sprintf("cartridge %d died", cartridgeIdx), nil)
+		errFrame := NewErr(route.rid, "CARTRIDGE_DIED", AttributionClassEnvironment, fmt.Sprintf("cartridge %d died", cartridgeIdx), nil)
 		relayWriter.WriteFrame(errFrame)
 		outgoingKeys = append(outgoingKeys, key)
 	}
@@ -1618,7 +1639,7 @@ func (h *CartridgeHost) spawnCartridgeLocked(cartridgeIdx int) error {
 	reader := NewFrameReader(stdout)
 	writer := NewFrameWriter(stdin)
 
-	manifest, limits, err := HandshakeInitiate(reader, writer)
+	manifest, limits, handlerCapacity, err := HandshakeInitiate(reader, writer)
 	if err != nil {
 		cartridge.helloFailed = true
 		cmd.Process.Kill()
@@ -1637,6 +1658,7 @@ func (h *CartridgeHost) spawnCartridgeLocked(cartridgeIdx int) error {
 
 	cartridge.manifest = manifest
 	cartridge.limits = limits
+	cartridge.handlerCapacity = handlerCapacity
 	cartridge.capGroups = capGroups
 	cartridge.caps = flattenCapURNs(capGroups)
 	cartridge.running = true
@@ -1701,6 +1723,7 @@ func (h *CartridgeHost) buildInstalledCartridgeIdentities() []InstalledCartridge
 		capGroups := cartridge.capGroups
 
 		stats := &CartridgeRuntimeStats{
+			HandlerCapacity:          cartridge.handlerCapacity,
 			Running:                  cartridge.running,
 			ActiveRequestCount:       activeCounts[idx],
 			PeerRequestCount:         peerCounts[idx],
@@ -1729,7 +1752,7 @@ func (h *CartridgeHost) buildInstalledCartridgeIdentities() []InstalledCartridge
 		out := *rec
 		out.RuntimeStats = stats
 
-		// A cartridge whose HELLO permanently failed (e.g. a pre-v3 binary
+		// A cartridge whose HELLO permanently failed (e.g. a pre-v4 binary
 		// hard-rejected by the version check) stays IN the inventory with
 		// an attachment error — never silently absent. It carries no
 		// cap_groups, so it is never routable. Mirrors the reference

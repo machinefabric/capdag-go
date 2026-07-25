@@ -8,12 +8,12 @@ import (
 )
 
 // =============================================================================
-// Credit-based per-stream flow control (protocol v3).
+// Credit-based per-stream flow control (protocol v4).
 //
 // One credit = permission to send one CHUNK frame. A sender starts each stream
 // with the negotiated initial_credit window and must wait when the window is
 // exhausted; the receiving endpoint replenishes it with CREDIT frames as it
-// consumes chunks (L9/L10 in docs/capdag-improvement/03-protocol-v3-design.md).
+// consumes chunks (L9/L10 in the normative bifaci protocol documentation).
 //
 // CreditGate is deliberately built on a mutex + broadcast channel rather than
 // a buffered "token channel" with a fixed capacity, because the window is

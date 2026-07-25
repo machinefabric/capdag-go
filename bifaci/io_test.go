@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"strings"
 	"sync"
@@ -90,7 +91,7 @@ func Test207_err_frame_roundtrip(t *testing.T) {
 	code := "HANDLER_ERROR"
 	message := "Something failed"
 
-	original := NewErr(id, code, message)
+	original := NewErr(id, code, AttributionClassInternal, message, nil)
 	encoded, err := EncodeFrame(original)
 	if err != nil {
 		t.Fatalf("Encode failed: %v", err)
@@ -115,7 +116,7 @@ func Test208_log_frame_roundtrip(t *testing.T) {
 	level := "info"
 	message := "Log entry"
 
-	original := NewLog(id, level, message)
+	original := NewLog(id, level, AttributionClassInternal, message, nil)
 	encoded, err := EncodeFrame(original)
 	if err != nil {
 		t.Fatalf("Encode failed: %v", err)
@@ -166,7 +167,7 @@ func Test210_end_frame_roundtrip(t *testing.T) {
 // TEST211: Test HELLO with manifest encode/decode roundtrip preserves manifest bytes and limits
 func Test211_hello_with_manifest_roundtrip(t *testing.T) {
 	manifest := []byte(`{"name":"test","version":"1.0.0"}`)
-	original := NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit, manifest)
+	original := NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit, 0, manifest)
 
 	encoded, err := EncodeFrame(original)
 	if err != nil {
@@ -804,7 +805,7 @@ func Test230_sync_handshake(t *testing.T) {
 	}
 
 	// Cartridge sends HELLO with manifest
-	responseFrame := NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit, manifest)
+	responseFrame := NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit, 0, manifest)
 	if err := cartridgeWriter.WriteFrame(responseFrame); err != nil {
 		t.Fatalf("Failed to write cartridge HELLO: %v", err)
 	}
@@ -1660,7 +1661,7 @@ func Test481_verify_identity_succeeds(t *testing.T) {
 		defer wg.Done()
 		reader := NewFrameReader(cartridgeRead)
 		writer := NewFrameWriter(cartridgeWrite)
-		limits, err := HandshakeAccept(reader, writer, []byte(identityManifest))
+		limits, err := HandshakeAccept(reader, writer, []byte(identityManifest), 0)
 		if err != nil {
 			t.Errorf("HandshakeAccept failed: %v", err)
 			return
@@ -1693,7 +1694,7 @@ func Test481_verify_identity_succeeds(t *testing.T) {
 
 	reader := NewFrameReader(hostRead)
 	writer := NewFrameWriter(hostWrite)
-	if _, _, err := HandshakeInitiate(reader, writer); err != nil {
+	if _, _, _, err := HandshakeInitiate(reader, writer); err != nil {
 		t.Fatalf("HandshakeInitiate failed: %v", err)
 	}
 
@@ -1719,7 +1720,7 @@ func Test482_verify_identity_fails_on_err(t *testing.T) {
 		defer wg.Done()
 		reader := NewFrameReader(cartridgeRead)
 		writer := NewFrameWriter(cartridgeWrite)
-		limits, err := HandshakeAccept(reader, writer, []byte(identityManifest))
+		limits, err := HandshakeAccept(reader, writer, []byte(identityManifest), 0)
 		if err != nil {
 			t.Errorf("HandshakeAccept failed: %v", err)
 			return
@@ -1729,14 +1730,14 @@ func Test482_verify_identity_fails_on_err(t *testing.T) {
 
 		// Drain the identity REQ (and its body), then respond with ERR.
 		req, _ := drainIdentityRequest(t, reader)
-		if err := writer.WriteFrame(NewErr(req.Id, "BROKEN", "identity handler broken")); err != nil {
+		if err := writer.WriteFrame(NewErr(req.Id, "BROKEN", AttributionClassInternal, "identity handler broken", nil)); err != nil {
 			t.Errorf("write ERR: %v", err)
 		}
 	}()
 
 	reader := NewFrameReader(hostRead)
 	writer := NewFrameWriter(hostWrite)
-	if _, _, err := HandshakeInitiate(reader, writer); err != nil {
+	if _, _, _, err := HandshakeInitiate(reader, writer); err != nil {
 		t.Fatalf("HandshakeInitiate failed: %v", err)
 	}
 
@@ -1766,7 +1767,7 @@ func Test483_verify_identity_fails_on_close(t *testing.T) {
 		defer wg.Done()
 		reader := NewFrameReader(cartridgeRead)
 		writer := NewFrameWriter(cartridgeWrite)
-		limits, err := HandshakeAccept(reader, writer, []byte(identityManifest))
+		limits, err := HandshakeAccept(reader, writer, []byte(identityManifest), 0)
 		if err != nil {
 			t.Errorf("HandshakeAccept failed: %v", err)
 			return
@@ -1782,7 +1783,7 @@ func Test483_verify_identity_fails_on_close(t *testing.T) {
 
 	reader := NewFrameReader(hostRead)
 	writer := NewFrameWriter(hostWrite)
-	if _, _, err := HandshakeInitiate(reader, writer); err != nil {
+	if _, _, _, err := HandshakeInitiate(reader, writer); err != nil {
 		t.Fatalf("HandshakeInitiate failed: %v", err)
 	}
 
@@ -1796,21 +1797,20 @@ func Test483_verify_identity_fails_on_close(t *testing.T) {
 }
 
 // =============================================================================
-// PROTOCOL v3 HANDSHAKE — version enforcement + initial_credit negotiation
+// PROTOCOL v4 HANDSHAKE — required fields, capacity, and credit negotiation
 // =============================================================================
 
-// v3TestManifest is the cartridge manifest used by the v3 handshake parity
-// tests below (matches Rust V3_TEST_MANIFEST).
-const v3TestManifest = `{"name":"test","version":"1.0","channel":"release","description":"Test","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"]}]}]}`
+// v4TestManifest is the cartridge manifest used by the v4 handshake parity tests.
+const v4TestManifest = `{"name":"test","version":"1.0","channel":"release","description":"Test","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"]}]}]}`
 
-// runV3Handshake runs a real host<->cartridge handshake over a bidirectional
+// runV4Handshake runs a real host<->cartridge handshake over a bidirectional
 // net.Pipe. The cartridge side proposes cartridgeLimits in its HELLO and
 // negotiates the element-wise minimum itself — the same steps HandshakeAccept
 // performs, but with a configurable proposal instead of the process-wide
 // defaults, so tests can assert against a non-default cartridge window.
 // Returns the host's HandshakeInitiate results and the cartridge side's
-// negotiated Limits/error. (matches Rust run_v3_handshake)
-func runV3Handshake(t *testing.T, cartridgeLimits Limits) (hostManifest []byte, hostLimits Limits, hostErr error, cartLimits Limits, cartErr error) {
+// negotiated Limits/error.
+func runV4Handshake(t *testing.T, cartridgeLimits Limits) (hostManifest []byte, hostLimits Limits, hostErr error, cartLimits Limits, cartErr error) {
 	t.Helper()
 	hostRead, cartridgeWrite := net.Pipe()
 	cartridgeRead, hostWrite := net.Pipe()
@@ -1827,52 +1827,46 @@ func runV3Handshake(t *testing.T, cartridgeLimits Limits) (hostManifest []byte, 
 			cartErr = err
 			return
 		}
-		theirVersion := helloVersion(theirFrame)
+		theirVersion, err := helloVersion(theirFrame)
+		if err != nil {
+			cartErr = err
+			return
+		}
 		if theirVersion != ProtocolVersion {
 			cartErr = fmt.Errorf("protocol version mismatch: ours %d, theirs %d", ProtocolVersion, theirVersion)
 			return
 		}
 
-		hello := NewHelloWithManifest(
+			hello := NewHelloWithManifest(
 			cartridgeLimits.MaxFrame,
 			cartridgeLimits.MaxChunk,
 			cartridgeLimits.MaxReorderBuffer,
 			cartridgeLimits.InitialCredit,
-			[]byte(v3TestManifest),
+			0,
+			[]byte(v4TestManifest),
 		)
 		if err := writer.WriteFrame(hello); err != nil {
 			cartErr = err
 			return
 		}
 
-		theirMaxFrame := extractIntFromMeta(theirFrame.Meta, "max_frame")
-		if theirMaxFrame == 0 {
-			theirMaxFrame = DefaultMaxFrame
-		}
-		theirMaxChunk := extractIntFromMeta(theirFrame.Meta, "max_chunk")
-		if theirMaxChunk == 0 {
-			theirMaxChunk = DefaultMaxChunk
-		}
-		theirMaxReorderBuffer := extractIntFromMeta(theirFrame.Meta, "max_reorder_buffer")
-		if theirMaxReorderBuffer == 0 {
-			theirMaxReorderBuffer = DefaultMaxReorderBuffer
-		}
-		theirInitialCredit := extractIntFromMeta(theirFrame.Meta, "initial_credit")
-		if theirInitialCredit == 0 {
-			theirInitialCredit = DefaultInitialCredit
+		theirLimits, err := requiredHelloLimits(theirFrame)
+		if err != nil {
+			cartErr = err
+			return
 		}
 
 		cartLimits = Limits{
-			MaxFrame:         min(cartridgeLimits.MaxFrame, theirMaxFrame),
-			MaxChunk:         min(cartridgeLimits.MaxChunk, theirMaxChunk),
-			MaxReorderBuffer: min(cartridgeLimits.MaxReorderBuffer, theirMaxReorderBuffer),
-			InitialCredit:    min(cartridgeLimits.InitialCredit, theirInitialCredit),
+			MaxFrame:         min(cartridgeLimits.MaxFrame, theirLimits.MaxFrame),
+			MaxChunk:         min(cartridgeLimits.MaxChunk, theirLimits.MaxChunk),
+			MaxReorderBuffer: min(cartridgeLimits.MaxReorderBuffer, theirLimits.MaxReorderBuffer),
+			InitialCredit:    min(cartridgeLimits.InitialCredit, theirLimits.InitialCredit),
 		}
 	}()
 
 	reader := NewFrameReader(hostRead)
 	writer := NewFrameWriter(hostWrite)
-	hostManifest, hostLimits, hostErr = HandshakeInitiate(reader, writer)
+		hostManifest, hostLimits, _, hostErr = HandshakeInitiate(reader, writer)
 
 	wg.Wait()
 	hostRead.Close()
@@ -1882,18 +1876,18 @@ func runV3Handshake(t *testing.T, cartridgeLimits Limits) (hostManifest []byte, 
 	return
 }
 
-// TEST7000: v3 handshake succeeds and negotiates the element-wise minimum of all four limits including initial_credit
-func Test7000_v3_handshake_negotiates_all_four_limits(t *testing.T) {
+// TEST7000: v4 handshake succeeds and negotiates all four required limits.
+func Test7000_v4_handshake_negotiates_all_four_limits(t *testing.T) {
 	cartridgeLimits := Limits{
 		MaxFrame:         2_000_000,
 		MaxChunk:         128_000,
 		MaxReorderBuffer: 32,
 		InitialCredit:    16,
 	}
-	hostManifest, hostLimits, hostErr, cartLimits, cartErr := runV3Handshake(t, cartridgeLimits)
+	hostManifest, hostLimits, hostErr, cartLimits, cartErr := runV4Handshake(t, cartridgeLimits)
 
 	if hostErr != nil {
-		t.Fatalf("v3 handshake must succeed: %v", hostErr)
+		t.Fatalf("v4 handshake must succeed: %v", hostErr)
 	}
 	if hostLimits.MaxFrame != 2_000_000 {
 		t.Errorf("min(3.5MB, 2MB): expected max_frame 2000000, got %d", hostLimits.MaxFrame)
@@ -1939,7 +1933,7 @@ func Test7001_handshake_rejects_version_2(t *testing.T) {
 			t.Errorf("cartridge failed to read host HELLO: %v", err)
 			return
 		}
-		hello := NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit, []byte(v3TestManifest))
+		hello := NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit, 0, []byte(v4TestManifest))
 		hello.Version = 2
 		hello.Meta["version"] = 2
 		if err := writer.WriteFrame(hello); err != nil {
@@ -1950,7 +1944,7 @@ func Test7001_handshake_rejects_version_2(t *testing.T) {
 
 	reader := NewFrameReader(hostRead)
 	writer := NewFrameWriter(hostWrite)
-	_, _, err := HandshakeInitiate(reader, writer)
+	_, _, _, err := HandshakeInitiate(reader, writer)
 
 	wg.Wait()
 	hostRead.Close()
@@ -1965,7 +1959,7 @@ func Test7001_handshake_rejects_version_2(t *testing.T) {
 	if !strings.Contains(msg, "version") {
 		t.Errorf("error must name the version mismatch: %s", msg)
 	}
-	if !strings.Contains(msg, "2") || !strings.Contains(msg, "3") {
+	if !strings.Contains(msg, "2") || !strings.Contains(msg, "4") {
 		t.Errorf("error must state both versions: %s", msg)
 	}
 }
@@ -1975,9 +1969,9 @@ func Test7002_initial_credit_negotiated_minimum(t *testing.T) {
 	// Cartridge proposes a smaller window than the host default (32) → 8 wins.
 	smaller := DefaultLimits()
 	smaller.InitialCredit = 8
-	_, hostLimits, hostErr, cartLimits, cartErr := runV3Handshake(t, smaller)
+	_, hostLimits, hostErr, cartLimits, cartErr := runV4Handshake(t, smaller)
 	if hostErr != nil {
-		t.Fatalf("v3 handshake must succeed: %v", hostErr)
+		t.Fatalf("v4 handshake must succeed: %v", hostErr)
 	}
 	if hostLimits.InitialCredit != 8 {
 		t.Errorf("expected host initial_credit 8, got %d", hostLimits.InitialCredit)
@@ -1992,9 +1986,9 @@ func Test7002_initial_credit_negotiated_minimum(t *testing.T) {
 	// Cartridge proposes a larger window (128) → the host default 32 wins.
 	larger := DefaultLimits()
 	larger.InitialCredit = 128
-	_, hostLimits2, hostErr2, cartLimits2, cartErr2 := runV3Handshake(t, larger)
+	_, hostLimits2, hostErr2, cartLimits2, cartErr2 := runV4Handshake(t, larger)
 	if hostErr2 != nil {
-		t.Fatalf("v3 handshake must succeed: %v", hostErr2)
+		t.Fatalf("v4 handshake must succeed: %v", hostErr2)
 	}
 	if hostLimits2.InitialCredit != DefaultInitialCredit {
 		t.Errorf("expected host initial_credit %d, got %d", DefaultInitialCredit, hostLimits2.InitialCredit)
@@ -2004,5 +1998,21 @@ func Test7002_initial_credit_negotiated_minimum(t *testing.T) {
 	}
 	if cartLimits2.InitialCredit != DefaultInitialCredit {
 		t.Errorf("expected cartridge initial_credit %d, got %d", DefaultInitialCredit, cartLimits2.InitialCredit)
+	}
+}
+
+// TEST7008: v4 unsigned metadata rejects values that are not non-negative integers.
+func Test7008_extractUint64FromMeta_rejects_invalid_numeric_values(t *testing.T) {
+	invalid := []interface{}{-1, int64(-1), -1.0, 1.5, math.Inf(1), math.NaN()}
+	for _, value := range invalid {
+		if decoded, ok := extractUint64FromMeta(map[string]interface{}{"handler_capacity": value}, "handler_capacity"); ok {
+			t.Fatalf("invalid handler_capacity %v decoded as %d", value, decoded)
+		}
+	}
+
+	for _, value := range []interface{}{0, int64(1), uint64(2), float64(3)} {
+		if _, ok := extractUint64FromMeta(map[string]interface{}{"handler_capacity": value}, "handler_capacity"); !ok {
+			t.Fatalf("valid handler_capacity %v was rejected", value)
+		}
 	}
 }

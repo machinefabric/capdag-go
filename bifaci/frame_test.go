@@ -51,7 +51,7 @@ func Test172_frame_type_valid_range(t *testing.T) {
 		10: true,  // RELAY_NOTIFY
 		11: true,  // RELAY_STATE
 		12: true,  // CANCEL
-		13: true,  // CREDIT (protocol v3)
+		13: true,  // CREDIT (protocol v4)
 	}
 
 	for i := uint8(0); i <= 13; i++ {
@@ -214,7 +214,7 @@ func Test180_frame_hello_without_manifest(t *testing.T) {
 // TEST181: Test Frame::hello_with_manifest produces HELLO with manifest bytes for cartridge side
 func Test181_frame_hello_with_manifest(t *testing.T) {
 	manifest := []byte(`{"name":"test"}`)
-	frame := NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit, manifest)
+	frame := NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit, 0, manifest)
 	if frame.FrameType != FrameTypeHello {
 		t.Errorf("Expected HELLO frame type, got %v", frame.FrameType)
 	}
@@ -283,7 +283,7 @@ func Test185_frame_err(t *testing.T) {
 	code := "HANDLER_ERROR"
 	message := "Something went wrong"
 
-	frame := NewErr(id, code, message)
+	frame := NewErr(id, code, AttributionClassInternal, message, nil)
 
 	if frame.FrameType != FrameTypeErr {
 		t.Errorf("Expected ERR frame type, got %v", frame.FrameType)
@@ -302,7 +302,7 @@ func Test186_frame_log(t *testing.T) {
 	level := "info"
 	message := "Log message"
 
-	frame := NewLog(id, level, message)
+	frame := NewLog(id, level, AttributionClassInternal, message, nil)
 
 	if frame.FrameType != FrameTypeLog {
 		t.Errorf("Expected LOG frame type, got %v", frame.FrameType)
@@ -444,7 +444,7 @@ func Test192_log_accessors_on_non_log_frame(t *testing.T) {
 
 // TEST193: Test hello_max_frame and hello_max_chunk return None for non-Hello frame types
 func Test193_hello_accessors_on_non_hello_frame(t *testing.T) {
-	err := NewErr(NewMessageIdRandom(), "E", "m")
+	err := NewErr(NewMessageIdRandom(), "E", AttributionClassInternal, "m", nil)
 	// ERR frames have no Meta with hello limits
 	if err.Meta != nil {
 		if _, hasMaxFrame := err.Meta["max_frame"]; hasMaxFrame {
@@ -543,10 +543,10 @@ func Test198_limits_default(t *testing.T) {
 	}
 }
 
-// TEST199: Test PROTOCOL_VERSION is 3
+// TEST199: Test PROTOCOL_VERSION is 4
 func Test199_protocol_version_constant(t *testing.T) {
-	if ProtocolVersion != 3 {
-		t.Errorf("PROTOCOL_VERSION must be 3, got %d", ProtocolVersion)
+	if ProtocolVersion != 4 {
+		t.Errorf("PROTOCOL_VERSION must be 4, got %d", ProtocolVersion)
 	}
 }
 
@@ -590,7 +590,7 @@ func Test200_key_constants(t *testing.T) {
 // TEST201: Test hello_with_manifest preserves binary manifest data (not just JSON text)
 func Test201_hello_manifest_binary_data(t *testing.T) {
 	binaryManifest := []byte{0x00, 0x01, 0xFF, 0xFE, 0x80}
-	frame := NewHelloWithManifest(1000, 500, DefaultMaxReorderBuffer, DefaultInitialCredit, binaryManifest)
+	frame := NewHelloWithManifest(1000, 500, DefaultMaxReorderBuffer, DefaultInitialCredit, 0, binaryManifest)
 
 	// Extract manifest from meta
 	if frame.Meta == nil {
@@ -1067,7 +1067,7 @@ func Test446_seq_assigner_mixed_types(t *testing.T) {
 	rid := NewMessageIdRandom()
 
 	req := NewReq(rid, "cap:test", nil, "")
-	log := NewLog(rid, "progress", "test")
+	log := NewProgress(rid, 0.5, "test")
 	chunk := NewChunk(rid, "", 0, []byte("data"), 0, 0)
 	end := NewEnd(rid, nil)
 
@@ -1359,8 +1359,9 @@ func Test1162_heartbeat_frame_with_memory_meta(t *testing.T) {
 
 	// Simulate cartridge attaching memory info to heartbeat response
 	frame.Meta = map[string]interface{}{
-		"footprint_mb": int64(4096),
-		"rss_mb":       int64(5120),
+		"footprint_mb":    int64(4096),
+		"rss_mb":          int64(5120),
+		"handler_capacity": uint64(0),
 	}
 
 	assert.Equal(t, FrameTypeHeartbeat, frame.FrameType)
@@ -1758,7 +1759,7 @@ func Test513_reorder_buffer_mixed_types_same_flow(t *testing.T) {
 
 	req := NewReq(rid, "cap:test", nil, "")
 	req.Seq = 1
-	log := NewLog(rid, "info", "test log")
+	log := NewLog(rid, "info", AttributionClassInternal, "test log", nil)
 	log.Seq = 2
 	chunk := &Frame{FrameType: FrameTypeChunk, Id: rid}
 	chunk.Seq = 0
@@ -2002,7 +2003,7 @@ func Test460_reorder_buffer_err_frame(t *testing.T) {
 	f0.Seq = 0
 	rb.Accept(f0)
 
-	errFrame := NewErr(rid, "ERR_TEST", "test error")
+	errFrame := NewErr(rid, "ERR_TEST", AttributionClassInternal, "test error", nil)
 	errFrame.Seq = 1
 	r, err := rb.Accept(errFrame)
 	require.NoError(t, err)
@@ -2286,42 +2287,47 @@ func mustEncode(t *testing.T, frame *Frame) []byte {
 	return encoded
 }
 
-// TEST1900: the ERR frame's failure identity is a wire contract
-// (docs/failure-taxonomy.md L2): NewErrClassified round-trips code + class +
-// message through encode/decode; NewErr defaults the class to internal; a
-// frame without a class entry (or with an unknown token) reads as internal —
-// the receiver's unclassified-means-ours rule.
-func Test1900_err_frame_failure_class_wire_contract(t *testing.T) {
+// TEST1900: ERR and non-progress LOG attribution is a strict wire contract.
+func Test1900_err_frame_attribution_class_wire_contract(t *testing.T) {
 	rid := NewMessageIdRandom()
 
-	// Classified ERR round-trips its full declared identity.
-	classified := NewErrClassified(rid, "CONTEXT_OVERFLOW", FailureClassInput, "prompt exceeds context window", nil)
+	classified := NewErr(rid, "CONTEXT_OVERFLOW", AttributionClassInput, "prompt exceeds context window", nil)
 	decoded, err := DecodeFrame(mustEncode(t, classified))
 	require.NoError(t, err)
 	assert.Equal(t, "CONTEXT_OVERFLOW", decoded.ErrorCode())
-	assert.Equal(t, FailureClassInput, decoded.ErrorClass())
+	class, err := decoded.AttributionClass()
+	require.NoError(t, err)
+	assert.Equal(t, AttributionClassInput, class)
 	assert.Equal(t, "prompt exceeds context window", decoded.ErrorMessage())
 
-	// Unclassified ERR declares internal on the wire (not merely by fallback).
-	plain := NewErr(rid, "HANDLER_ERROR", "boom")
-	decodedPlain, err := DecodeFrame(mustEncode(t, plain))
+	logFrame := NewLog(rid, "warn", AttributionClassResource, "memory pressure", nil)
+	decodedLog, err := DecodeFrame(mustEncode(t, logFrame))
 	require.NoError(t, err)
-	assert.Equal(t, "internal", decodedPlain.Meta["class"])
-	assert.Equal(t, FailureClassInternal, decodedPlain.ErrorClass())
+	logClass, err := decodedLog.AttributionClass()
+	require.NoError(t, err)
+	assert.Equal(t, AttributionClassResource, logClass)
 
-	// Missing class entry (a pre-taxonomy peer) reads as internal.
 	noClass := NewFrame(FrameTypeErr, rid)
 	noClass.Meta = map[string]interface{}{"code": "HANDLER_ERROR", "message": "boom"}
 	decodedNoClass, err := DecodeFrame(mustEncode(t, noClass))
 	require.NoError(t, err)
-	assert.Equal(t, FailureClassInternal, decodedNoClass.ErrorClass())
+	_, err = decodedNoClass.AttributionClass()
+	require.Error(t, err)
 
-	// Unknown token reads as internal at the receiver.
 	unknown := NewFrame(FrameTypeErr, rid)
-	unknown.Meta = map[string]interface{}{"code": "X", "class": "user-error", "message": "boom"}
+	unknown.Meta = map[string]interface{}{"code": "X", "attribution_class": "user-error", "message": "boom"}
 	decodedUnknown, err := DecodeFrame(mustEncode(t, unknown))
 	require.NoError(t, err)
-	assert.Equal(t, FailureClassInternal, decodedUnknown.ErrorClass())
+	_, err = decodedUnknown.AttributionClass()
+	require.Error(t, err)
+
+	malformedArg := NewErr(rid, "X", AttributionClassInternal, "boom", nil)
+	malformedArg.Meta["arg_urn"] = 7
+	_, err = malformedArg.AttributionArgUrn()
+	require.ErrorContains(t, err, "arg_urn must be text")
+	malformedArg.Meta["arg_urn"] = ""
+	_, err = malformedArg.AttributionArgUrn()
+	require.ErrorContains(t, err, "arg_urn must not be empty")
 }
 
 // TEST7105: an ERR frame built WITH an argument attribution round-trips its
@@ -2332,19 +2338,42 @@ func Test7105_err_frame_arg_urn_roundtrip(t *testing.T) {
 	rid := NewMessageIdRandom()
 	argUrn := "media:prompt;str;utf8"
 
-	frame := NewErrClassified(rid, "CONTEXT_OVERFLOW", FailureClassInput, "prompt exceeds context window", &argUrn)
+	frame := NewErr(rid, "CONTEXT_OVERFLOW", AttributionClassInput, "prompt exceeds context window", &argUrn)
 	decoded, err := DecodeFrame(mustEncode(t, frame))
 	require.NoError(t, err)
 
 	assert.Equal(t, argUrn, decoded.Meta["arg_urn"],
 		"the encoded ERR meta must carry the arg_urn key verbatim")
-	got := decoded.ErrorArgUrn()
-	if assert.NotNil(t, got, "ErrorArgUrn must return the declared attribution") {
+	got, err := decoded.AttributionArgUrn()
+	require.NoError(t, err)
+	if assert.NotNil(t, got, "AttributionArgUrn must return the declared attribution") {
 		assert.Equal(t, argUrn, *got)
 	}
 	assert.Equal(t, "CONTEXT_OVERFLOW", decoded.ErrorCode())
-	assert.Equal(t, FailureClassInput, decoded.ErrorClass())
+	class, err := decoded.AttributionClass()
+	require.NoError(t, err)
+	assert.Equal(t, AttributionClassInput, class)
 	assert.Equal(t, "prompt exceeds context window", decoded.ErrorMessage())
+}
+
+// TEST7117: non-progress LOG carries the same source attribution tuple as ERR,
+// including an optional argument URN, through the actual wire codec.
+func Test7117_log_frame_arg_urn_roundtrip(t *testing.T) {
+	rid := NewMessageIdRandom()
+	argUrn := "media:model-spec"
+	frame := NewLog(rid, "warn", AttributionClassResource, "model cache is under memory pressure", &argUrn)
+	decoded, err := DecodeFrame(mustEncode(t, frame))
+	require.NoError(t, err)
+	assert.Equal(t, FrameTypeLog, decoded.FrameType)
+	assert.Equal(t, "warn", decoded.LogLevel())
+	class, err := decoded.AttributionClass()
+	require.NoError(t, err)
+	assert.Equal(t, AttributionClassResource, class)
+	got, err := decoded.AttributionArgUrn()
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, argUrn, *got)
+	assert.Equal(t, "model cache is under memory pressure", decoded.LogMessage())
 }
 
 // TEST7106: an ERR frame built WITHOUT attribution has NO "arg_urn" key in
@@ -2353,16 +2382,20 @@ func Test7105_err_frame_arg_urn_roundtrip(t *testing.T) {
 func Test7106_err_frame_without_attribution_has_no_arg_urn(t *testing.T) {
 	rid := NewMessageIdRandom()
 
-	frame := NewErrClassified(rid, "OOM_KILLED", FailureClassResource, "out of memory", nil)
+	frame := NewErr(rid, "OOM_KILLED", AttributionClassResource, "out of memory", nil)
 	decoded, err := DecodeFrame(mustEncode(t, frame))
 	require.NoError(t, err)
 
 	_, present := decoded.Meta["arg_urn"]
 	assert.False(t, present,
 		"an ERR frame without attribution must not carry an arg_urn key at all")
-	assert.Nil(t, decoded.ErrorArgUrn())
+	got, err := decoded.AttributionArgUrn()
+	require.NoError(t, err)
+	assert.Nil(t, got)
 	assert.Equal(t, "OOM_KILLED", decoded.ErrorCode())
-	assert.Equal(t, FailureClassResource, decoded.ErrorClass())
+	class, err := decoded.AttributionClass()
+	require.NoError(t, err)
+	assert.Equal(t, AttributionClassResource, class)
 	assert.Equal(t, "out of memory", decoded.ErrorMessage())
 }
 

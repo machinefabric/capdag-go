@@ -6,83 +6,77 @@ import (
 )
 
 // =============================================================================
-// FAILURE TAXONOMY — whose problem a failure is (docs/failure-taxonomy.md)
+// DIAGNOSTIC ATTRIBUTION — whose domain a diagnostic belongs to
 // =============================================================================
 
-// FailureClass is whose problem a failure is. Declared at the error's
-// DEFINITION site and carried structurally through every hop — no layer ever
-// infers another layer's class from message text. The bifaci ERR frame
-// carries the class over the wire (meta key "class"); all four language
-// runtimes share the same token vocabulary. An error that reaches a boundary
-// without a declared class is FailureClassInternal — unclassified means
-// "ours", never a guess. (matches Rust capdag::FailureClass, re-exported
-// from ops::failure)
-type FailureClass uint8
+// AttributionClass is declared at the diagnostic definition or emit site and
+// carried structurally through every hop. Bifaci ERR and non-progress LOG
+// frames carry it in the mandatory "attribution_class" metadata key. Receivers
+// never infer it from prose or manufacture a value for malformed frames.
+type AttributionClass uint8
 
 const (
-	// FailureClassInternal: everything else — a defect in the engine or a
+	// AttributionClassInternal: everything else — a defect in the engine or a
 	// cartridge. Ours, said plainly. Retryable (races un-race), but never
 	// blamed on the user. The zero value, mirroring Rust's Default: an error
 	// constructed without a declared class is unclassified, and unclassified
 	// means "ours".
-	FailureClassInternal FailureClass = iota
-	// FailureClassInput: deterministic on the INPUT (context overflow,
+	AttributionClassInternal AttributionClass = iota
+	// AttributionClassInput: deterministic on the INPUT (context overflow,
 	// invalid request, unsupported format). The user's to fix; retrying can
 	// never succeed — tasks failing with this class are marked permanently
 	// failed.
-	FailureClassInput
-	// FailureClassResource: a compute resource was exhausted (GPU VRAM, host
+	AttributionClassInput
+	// AttributionClassResource: a compute resource was exhausted (GPU VRAM, host
 	// memory). Often transient (another process holding memory) — retryable.
-	FailureClassResource
-	// FailureClassEnvironment: the environment failed (network, registry,
+	AttributionClassResource
+	// AttributionClassEnvironment: the environment failed (network, registry,
 	// model download/integrity, cartridge process death). Transient by
 	// nature — retryable.
-	FailureClassEnvironment
+	AttributionClassEnvironment
 )
 
 // String returns the wire token — used in the ERR frame meta, the
 // machine_runs columns, the gRPC proto, and the loom. One vocabulary
-// everywhere. (matches Rust FailureClass::as_str)
-func (c FailureClass) String() string {
+// everywhere. (matches Rust AttributionClass::as_str)
+func (c AttributionClass) String() string {
 	switch c {
-	case FailureClassInput:
+	case AttributionClassInput:
 		return "input"
-	case FailureClassResource:
+	case AttributionClassResource:
 		return "resource"
-	case FailureClassEnvironment:
+	case AttributionClassEnvironment:
 		return "environment"
-	case FailureClassInternal:
+	case AttributionClassInternal:
 		return "internal"
 	default:
-		panic(fmt.Sprintf("BUG: FailureClass %d not covered by String", uint8(c)))
+		panic(fmt.Sprintf("BUG: AttributionClass %d not covered by String", uint8(c)))
 	}
 }
 
-// FailureClassFromWire parses a wire token. Returns false for unknown tokens
-// — a PROTOCOL error, not a fallback case: the caller decides whether to
-// fail hard or treat the frame as unclassified (Frame.ErrorClass applies the
-// receiver's Internal fallback). (matches Rust FailureClass::from_wire)
-func FailureClassFromWire(token string) (FailureClass, bool) {
+// AttributionClassFromWire parses a wire token. False means the frame is a
+// protocol violation; callers must reject it rather than substitute Internal.
+func AttributionClassFromWire(token string) (AttributionClass, bool) {
 	switch token {
 	case "input":
-		return FailureClassInput, true
+		return AttributionClassInput, true
 	case "resource":
-		return FailureClassResource, true
+		return AttributionClassResource, true
 	case "environment":
-		return FailureClassEnvironment, true
+		return AttributionClassEnvironment, true
 	case "internal":
-		return FailureClassInternal, true
+		return AttributionClassInternal, true
 	default:
-		return FailureClassInternal, false
+		return AttributionClassInternal, false
 	}
 }
 
 // IsPermanent reports whether retrying can NEVER succeed: the failure is a
 // deterministic function of the input. Resource/environment/internal stay
 // retryable (memory frees up, networks recover, races un-race).
-// (matches Rust FailureClass::is_permanent)
-func (c FailureClass) IsPermanent() bool {
-	return c == FailureClassInput
+// (matches Rust AttributionClass::is_permanent)
+func (c AttributionClass) IsPermanent() bool {
+	return c == AttributionClassInput
 }
 
 // ClassifiedError is a handler failure carrying its FULL identity: the
@@ -98,7 +92,7 @@ func (c FailureClass) IsPermanent() bool {
 // (matches Rust RuntimeError::Classified)
 type ClassifiedError struct {
 	Code    string
-	Class   FailureClass
+	Class   AttributionClass
 	Message string
 	ArgUrn  *string
 }
@@ -121,7 +115,7 @@ func (e *ClassifiedError) FailureArgUrn() *string {
 // (matches Rust StreamError::RemoteError)
 type RemoteError struct {
 	Code    string
-	Class   FailureClass
+	Class   AttributionClass
 	Message string
 	ArgUrn  *string
 }
@@ -136,21 +130,27 @@ func (e *RemoteError) FailureArgUrn() *string {
 	return e.ArgUrn
 }
 
-// remoteErrorFromErrFrame reads an incoming ERR frame's declared identity
-// into a RemoteError: code (missing → "UNKNOWN"), class (missing or unknown
-// token → Internal, the taxonomy's receiver rule), and message (missing →
-// "Unknown error"). (matches the Rust demux paths' error_code/error_class/
-// error_message receipt)
-func remoteErrorFromErrFrame(f *Frame) *RemoteError {
+// errorFromErrFrame reads an incoming ERR frame's complete declared identity.
+// Missing fields are protocol violations; receivers never manufacture an
+// identity for malformed frames.
+func errorFromErrFrame(f *Frame) error {
 	code := f.ErrorCode()
 	if code == "" {
-		code = "UNKNOWN"
+		return errors.New("invalid ERR frame: missing required text code")
 	}
 	message := f.ErrorMessage()
 	if message == "" {
-		message = "Unknown error"
+		return errors.New("invalid ERR frame: missing required text message")
 	}
-	return &RemoteError{Code: code, Class: f.ErrorClass(), Message: message, ArgUrn: f.ErrorArgUrn()}
+	class, err := f.AttributionClass()
+	if err != nil {
+		return fmt.Errorf("invalid ERR frame: %w", err)
+	}
+	argUrn, err := f.AttributionArgUrn()
+	if err != nil {
+		return fmt.Errorf("invalid ERR frame: %w", err)
+	}
+	return &RemoteError{Code: code, Class: class, Message: message, ArgUrn: argUrn}
 }
 
 // classifyHandlerError resolves the identity a failed handler's terminal ERR
@@ -158,9 +158,9 @@ func remoteErrorFromErrFrame(f *Frame) *RemoteError {
 // attribution from the emit source when the error chain carries a
 // ClassifiedError (or a peer's RemoteError propagated as-is),
 // HANDLER_ERROR/Internal without attribution when the handler never declared
-// one. (matches Rust RuntimeError's failure_code()/failure_class()/
+// one. (matches Rust RuntimeError's failure_code()/attribution_class()/
 // failure_reason()/failure_arg_urn() at the frame-emit boundary)
-func classifyHandlerError(err error) (code string, class FailureClass, message string, argUrn *string) {
+func classifyHandlerError(err error) (code string, class AttributionClass, message string, argUrn *string) {
 	var classified *ClassifiedError
 	if errors.As(err, &classified) {
 		return classified.Code, classified.Class, classified.Message, classified.ArgUrn
@@ -169,5 +169,5 @@ func classifyHandlerError(err error) (code string, class FailureClass, message s
 	if errors.As(err, &remote) {
 		return remote.Code, remote.Class, remote.Message, remote.ArgUrn
 	}
-	return "HANDLER_ERROR", FailureClassInternal, err.Error(), nil
+	return "HANDLER_ERROR", AttributionClassInternal, err.Error(), nil
 }

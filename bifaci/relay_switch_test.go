@@ -677,7 +677,12 @@ func Test434_relay_switch_limits_negotiation_minimum(t *testing.T) {
 		writer := NewFrameWriter(slaveWrite1)
 		manifest := testManifestWithCaps([]string{})
 		manifestJSON, _ := json.Marshal(manifest)
-		limits1 := Limits{MaxFrame: 1_000_000, MaxChunk: 100_000}
+		limits1 := Limits{
+			MaxFrame:         1_000_000,
+			MaxChunk:         100_000,
+			MaxReorderBuffer: DefaultMaxReorderBuffer,
+			InitialCredit:    DefaultInitialCredit,
+		}
 		SendNotify(writer, manifestJSON, limits1)
 		for {
 			if _, err := reader.ReadFrame(); err != nil {
@@ -691,7 +696,12 @@ func Test434_relay_switch_limits_negotiation_minimum(t *testing.T) {
 		writer := NewFrameWriter(slaveWrite2)
 		manifest := testManifestWithCaps([]string{})
 		manifestJSON, _ := json.Marshal(manifest)
-		limits2 := Limits{MaxFrame: 2_000_000, MaxChunk: 50_000}
+		limits2 := Limits{
+			MaxFrame:         2_000_000,
+			MaxChunk:         50_000,
+			MaxReorderBuffer: DefaultMaxReorderBuffer,
+			InitialCredit:    DefaultInitialCredit,
+		}
 		SendNotify(writer, manifestJSON, limits2)
 		for {
 			if _, err := reader.ReadFrame(); err != nil {
@@ -700,10 +710,13 @@ func Test434_relay_switch_limits_negotiation_minimum(t *testing.T) {
 		}
 	}()
 
-	sw, _ := NewRelaySwitch([]SocketPair{
+	sw, err := NewRelaySwitch([]SocketPair{
 		{ID: "test-master-11", Read: engineRead1, Write: engineWrite1},
 		{ID: "test-master-12", Read: engineRead2, Write: engineWrite2},
 	})
+	if err != nil {
+		t.Fatalf("failed to construct relay switch: %v", err)
+	}
 
 	limits := sw.Limits()
 	if limits.MaxFrame != 1_000_000 {
@@ -1263,7 +1276,7 @@ func Test488_relay_switch_identity_verification_fails(t *testing.T) {
 		// response, so replying mid-request would deadlock the synchronous
 		// transport. Then respond with ERR to model a broken identity handler.
 		req, _ := drainIdentityRequest(t, reader)
-		errFrame := NewErr(req.Id, "BROKEN", "identity verification broken")
+		errFrame := NewErr(req.Id, "BROKEN", AttributionClassInternal, "identity verification broken", nil)
 		_ = writer.WriteFrame(errFrame)
 	}()
 
@@ -1721,7 +1734,7 @@ func serveDeferredIdentity(t *testing.T, reader *FrameReader, writer *FrameWrite
 			probeRid = &rid
 			probeXid = f.RoutingId
 			if !succeed {
-				errFrame := NewErr(f.Id, "BROKEN", "test cartridge")
+				errFrame := NewErr(f.Id, "BROKEN", AttributionClassInternal, "test cartridge", nil)
 				errFrame.RoutingId = f.RoutingId
 				_ = writer.WriteFrame(errFrame)
 				return
@@ -2032,7 +2045,7 @@ func Test1901_add_master_reattach_verifies_identity(t *testing.T) {
 		}
 		// Answer the probe with ERR after draining the full request.
 		req, _ := drainIdentityRequest(t, reader)
-		errFrame := NewErr(req.Id, "BROKEN", "identity verification broken")
+		errFrame := NewErr(req.Id, "BROKEN", AttributionClassInternal, "identity verification broken", nil)
 		errFrame.RoutingId = req.RoutingId
 		_ = writer.WriteFrame(errFrame)
 		_, _ = reader.ReadFrame()
@@ -2066,7 +2079,7 @@ func Test1901_add_master_reattach_verifies_identity(t *testing.T) {
 }
 
 // =============================================================================
-// Protocol v3: unified RequestTable, credit forwarding, counted no_route
+// Protocol v4: unified RequestTable, credit forwarding, counted no_route
 // drops, protocol_stats(), and host protocol stats retention.
 // =============================================================================
 
@@ -2174,7 +2187,7 @@ func Test7093_dead_consumer_cancels_upstream(t *testing.T) {
 				break
 			}
 		}
-		logFrame := NewLog(req.Id, "info", "first result row")
+		logFrame := NewLog(req.Id, "info", AttributionClassInternal, "first result row", nil)
 		logFrame.RoutingId = req.RoutingId
 		if err := writer.WriteFrame(logFrame); err != nil {
 			resultCh <- slaveOutcome{err: fmt.Errorf("write log: %v", err)}
@@ -2512,7 +2525,7 @@ func Test7036_err_terminates_and_releases_all_state(t *testing.T) {
 	}
 	sw.mu.Unlock()
 
-	errFrame := NewErr(rid, "HANDLER_ERROR", "boom")
+	errFrame := NewErr(rid, "HANDLER_ERROR", AttributionClassInternal, "boom", nil)
 	errFrame.RoutingId = &xid
 	sw.mu.Lock()
 	_, err := sw.handleMasterFrame(0, errFrame)

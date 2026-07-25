@@ -81,7 +81,7 @@ func simulateCartridge(t *testing.T, cartridgeRead, cartridgeWrite net.Conn, man
 	reader := NewFrameReader(cartridgeRead)
 	writer := NewFrameWriter(cartridgeWrite)
 
-	limits, err := HandshakeAccept(reader, writer, []byte(manifest))
+	limits, err := HandshakeAccept(reader, writer, []byte(manifest), 0)
 	require.NoError(t, err)
 	reader.SetLimits(limits)
 	writer.SetLimits(limits)
@@ -495,7 +495,7 @@ func Test419_heartbeat_local_handling(t *testing.T) {
 
 			// Now send a LOG to give engine something to read
 			logId := NewMessageIdRandom()
-			w.WriteFrame(NewLog(logId, "info", "heartbeat was answered"))
+			w.WriteFrame(NewLog(logId, "info", AttributionClassInternal, "heartbeat was answered", nil))
 		})
 		cartridgeReadP.Close()
 		cartridgeWriteP.Close()
@@ -575,7 +575,7 @@ func Test420_cartridge_frames_forwarded_to_relay(t *testing.T) {
 			r.ReadFrame()
 
 			// Send diverse frame types
-			w.WriteFrame(NewLog(reqId, "info", "processing"))
+			w.WriteFrame(NewLog(reqId, "info", AttributionClassInternal, "processing", nil))
 			w.WriteFrame(NewStreamStart(reqId, "output", "media:", nil))
 			payload := []byte("data")
 			checksum := ComputeChecksum(payload)
@@ -1202,7 +1202,10 @@ func Test7090_heartbeat_drops_total_reaches_inventory_stats(t *testing.T) {
 	host.cartridges[0].pendingHeartbeats[hbID.ToString()] = time.Now()
 	host.mu.Unlock()
 	response := NewHeartbeat(hbID)
-	response.Meta = map[string]interface{}{"drops_total": uint64(42)}
+	response.Meta = map[string]interface{}{
+		"drops_total":       uint64(42),
+		"handler_capacity": uint64(0),
+	}
 	host.handleCartridgeFrame(0, response, relayOut)
 
 	host.mu.Lock()
@@ -1218,7 +1221,10 @@ func Test7090_heartbeat_drops_total_reaches_inventory_stats(t *testing.T) {
 	host.cartridges[0].pendingHeartbeats[hbID2.ToString()] = time.Now()
 	host.mu.Unlock()
 	response2 := NewHeartbeat(hbID2)
-	response2.Meta = map[string]interface{}{"drops_total": uint64(45)}
+	response2.Meta = map[string]interface{}{
+		"drops_total":       uint64(45),
+		"handler_capacity": uint64(0),
+	}
 	host.handleCartridgeFrame(0, response2, relayOut)
 
 	host.mu.Lock()
@@ -1320,7 +1326,7 @@ func Test486_attach_cartridge_identity_verification_fails(t *testing.T) {
 		defer wg.Done()
 		reader := NewFrameReader(cartridgeRead)
 		writer := NewFrameWriter(cartridgeWrite)
-		limits, err := HandshakeAccept(reader, writer, []byte(manifest))
+		limits, err := HandshakeAccept(reader, writer, []byte(manifest), 0)
 		require.NoError(t, err)
 		reader.SetLimits(limits)
 		writer.SetLimits(limits)
@@ -1333,7 +1339,7 @@ func Test486_attach_cartridge_identity_verification_fails(t *testing.T) {
 		// transport (and is not how any real cartridge behaves). Then respond
 		// with ERR to model a broken identity handler.
 		req, _ := drainIdentityRequest(t, reader)
-		require.NoError(t, writer.WriteFrame(NewErr(req.Id, "BROKEN", "identity handler is broken")))
+		require.NoError(t, writer.WriteFrame(NewErr(req.Id, "BROKEN", AttributionClassInternal, "identity handler is broken", nil)))
 		cartridgeRead.Close()
 		cartridgeWrite.Close()
 	}()

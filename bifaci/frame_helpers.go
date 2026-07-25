@@ -92,7 +92,7 @@ func CollectArgsByMediaUrn(frames <-chan Frame, mediaUrnPattern string) ([]inter
 			if frame.StreamId == nil || frame.MediaUrn == nil {
 				continue
 			}
-			// Refuse buffering an unbounded stream (protocol v3, L16) — no
+			// Refuse buffering an unbounded stream (protocol v4, L16) — no
 			// length promise means no finite buffer for it. Check as soon as
 			// the pattern match is knowable (media_urn is on STREAM_START),
 			// BEFORE accumulating any of its chunks — a stream that never
@@ -156,7 +156,7 @@ func CollectArgsByMediaUrn(frames <-chan Frame, mediaUrnPattern string) ([]inter
 			return results, nil
 
 		case FrameTypeErr:
-			return nil, remoteErrorFromErrFrame(&frame)
+			return nil, errorFromErrFrame(&frame)
 		}
 	}
 
@@ -176,7 +176,7 @@ func CollectFirstArg(frames <-chan Frame) ([]byte, error) {
 		switch frame.FrameType {
 		case FrameTypeStreamStart:
 			if !foundFirst && frame.StreamId != nil {
-				// Refuse buffering an unbounded first stream (protocol v3,
+				// Refuse buffering an unbounded first stream (protocol v4,
 				// L16) BEFORE accumulating any of its chunks.
 				if frame.IsUnbounded() {
 					return nil, errStreamUnbounded("CollectFirstArg")
@@ -205,7 +205,7 @@ func CollectFirstArg(frames <-chan Frame) ([]byte, error) {
 					if frame.FrameType == FrameTypeEnd {
 						return fullData, nil
 					} else if frame.FrameType == FrameTypeErr {
-						return nil, remoteErrorFromErrFrame(&frame)
+						return nil, errorFromErrFrame(&frame)
 					}
 				}
 				return fullData, nil
@@ -220,7 +220,7 @@ func CollectFirstArg(frames <-chan Frame) ([]byte, error) {
 			return fullData, nil
 
 		case FrameTypeErr:
-			return nil, remoteErrorFromErrFrame(&frame)
+			return nil, errorFromErrFrame(&frame)
 		}
 	}
 
@@ -269,7 +269,7 @@ func CollectPeerResponse(frames <-chan Frame) (map[string][]byte, error) {
 			return streams, nil
 
 		case FrameTypeErr:
-			return nil, remoteErrorFromErrFrame(&frame)
+			return nil, errorFromErrFrame(&frame)
 		}
 	}
 
@@ -292,7 +292,7 @@ func CollectAllArgs(frames <-chan Frame) ([]cap.CapArgumentValue, error) {
 			if frame.StreamId == nil || frame.MediaUrn == nil {
 				continue
 			}
-			// Refuse buffering an unbounded stream (protocol v3, L16) BEFORE
+			// Refuse buffering an unbounded stream (protocol v4, L16) BEFORE
 			// accumulating any of its chunks.
 			if frame.IsUnbounded() {
 				return nil, errStreamUnbounded("CollectAllArgs")
@@ -331,7 +331,7 @@ func CollectAllArgs(frames <-chan Frame) ([]cap.CapArgumentValue, error) {
 			return results, nil
 
 		case FrameTypeErr:
-			return nil, remoteErrorFromErrFrame(&frame)
+			return nil, errorFromErrFrame(&frame)
 		}
 	}
 

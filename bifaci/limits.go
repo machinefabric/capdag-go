@@ -14,7 +14,7 @@ type Limits struct {
 	MaxFrame         int `cbor:"max_frame"`
 	MaxChunk         int `cbor:"max_chunk"`
 	MaxReorderBuffer int `cbor:"max_reorder_buffer"`
-	// InitialCredit is the initial per-stream credit window in CHUNK frames (protocol v3).
+	// InitialCredit is the initial per-stream credit window in CHUNK frames (protocol v4).
 	InitialCredit int `cbor:"initial_credit"`
 }
 

@@ -10,7 +10,7 @@ import (
 // CBOR map keys (MUST match Rust implementation exactly)
 // From capdag/src/cbor_frame.rs lines 10-22:
 const (
-	keyVersion     = 0  // version (u8, always PROTOCOL_VERSION = 3)
+	keyVersion     = 0  // version (u8, always ProtocolVersion = 4)
 	keyFrameType   = 1  // frame_type (u8)
 	keyId          = 2  // id (bytes[16] or uint)
 	keySeq         = 3  // seq (u64)
@@ -195,7 +195,7 @@ func DecodeFrame(data []byte) (*Frame, error) {
 		}
 		// Reject old RES frame type (2) - permanently retired
 		if frameType == 2 {
-			return nil, fmt.Errorf("frame_type 2 (RES) is permanently retired, not supported in protocol v3")
+			return nil, fmt.Errorf("frame_type 2 (RES) is permanently retired, not supported in protocol v4")
 		}
 		frame.FrameType = frameType
 	} else {
@@ -426,7 +426,7 @@ func DecodeFrame(data []byte) (*Frame, error) {
 		}
 	}
 	// STREAM_END: chunk_count is optional on the wire — unbounded streams make
-	// no length promise (protocol v3, L16). Bounded-stream receivers that want
+	// no length promise (protocol v4, L16). Bounded-stream receivers that want
 	// to verify completeness check chunk_count when present.
 	if frame.FrameType == FrameTypeCredit {
 		if frame.Credit == nil {

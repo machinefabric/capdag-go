@@ -70,7 +70,9 @@ func Test404_slave_sends_relay_notify_on_connect(t *testing.T) {
 // TEST405: Master reads RelayNotify and extracts manifest + limits
 func Test405_master_reads_relay_notify(t *testing.T) {
 	manifest := []byte(`{"caps":["cap:convert"]}`)
-	limits := Limits{MaxFrame: 1_000_000, MaxChunk: 64_000}
+	limits := DefaultLimits()
+	limits.MaxFrame = 1_000_000
+	limits.MaxChunk = 64_000
 
 	masterRead, slaveWrite := relayPipe()
 
@@ -450,7 +452,9 @@ func Test409_slave_injects_relay_notify_midstream(t *testing.T) {
 func Test410_master_receives_updated_relay_notify(t *testing.T) {
 	masterSocketRead, slaveSocketWrite := relayPipe()
 
-	limits := Limits{MaxFrame: 2_000_000, MaxChunk: 100_000}
+	limits := DefaultLimits()
+	limits.MaxFrame = 2_000_000
+	limits.MaxChunk = 100_000
 
 	var wg sync.WaitGroup
 
@@ -472,7 +476,9 @@ func Test410_master_receives_updated_relay_notify(t *testing.T) {
 		}
 
 		// Updated RelayNotify with new limits
-		updatedLimits := Limits{MaxFrame: 3_000_000, MaxChunk: 200_000, MaxReorderBuffer: DefaultMaxReorderBuffer}
+		updatedLimits := DefaultLimits()
+		updatedLimits.MaxFrame = 3_000_000
+		updatedLimits.MaxChunk = 200_000
 		updated := NewRelayNotify([]byte(`{"caps":["cap:a","cap:b"]}`), updatedLimits.MaxFrame, updatedLimits.MaxChunk, updatedLimits.MaxReorderBuffer, updatedLimits.InitialCredit)
 		if err := writer.WriteFrame(updated); err != nil {
 			t.Errorf("WriteFrame updated notify failed: %v", err)

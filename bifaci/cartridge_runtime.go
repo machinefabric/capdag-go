@@ -31,7 +31,7 @@ const MediaFilePath = "media:enc=utf-8;file-path"
 // No double-encoding: one CBOR layer from handler to consumer.
 type StreamEmitter interface {
 	// StartUnbounded declares this response stream unbounded — no length
-	// promise (protocol v3, L16). Must be called, if at all, before the
+	// promise (protocol v4, L16). Must be called, if at all, before the
 	// first EmitCbor/Write/EmitListItem call; returns an error if the stream
 	// has already started (implicitly, via a prior emit, or explicitly).
 	// close()/Finalize() on an unbounded stream sends STREAM_END without a
@@ -51,12 +51,12 @@ type StreamEmitter interface {
 	EmitListItem(value interface{}) error
 	// EmitLog emits a log message at the given level.
 	// Sends a LOG frame (side-channel, does not affect response stream).
-	EmitLog(level, message string)
+	EmitLog(level string, class AttributionClass, message string, argUrn *string)
 	// Progress emits a progress update (0.0-1.0) with a human-readable status message.
 	Progress(progress float32, message string)
 	// Finish declares the request's terminal status (final progress + message),
 	// delivered in the END frame's terminal metadata when the handler completes
-	// successfully (protocol v3, L3/L5). Optional — without a call, a successful
+	// successfully (protocol v4, L3/L5). Optional — without a call, a successful
 	// END carries progress 1.0. The last call before the handler returns wins.
 	// Do NOT emit a trailing 100% progress LOG frame; the END terminal metadata
 	// IS the final progress event and cannot race END. (matches Rust
@@ -91,8 +91,8 @@ type PeerResponseItem struct {
 // PeerResponse yields both data items and LOG frames from a peer call.
 //
 // LOG frames are delivered in real-time as they arrive (not buffered until data starts).
-// For callers that don't care about LOG frames, CollectBytes() and CollectValue()
-// silently discard them and return only data.
+// Collection helpers reject LOG frames so source diagnostics cannot be
+// silently discarded. Callers that accept diagnostics must drain Recv().
 type PeerResponse struct {
 	ch <-chan PeerResponseItem
 }
@@ -104,12 +104,13 @@ func (pr *PeerResponse) Recv() (PeerResponseItem, bool) {
 	return item, ok
 }
 
-// CollectBytes collects all data chunks into a single byte slice, discarding LOG frames.
+// CollectBytes collects all data chunks into a single byte slice and rejects
+// unhandled LOG frames.
 func (pr *PeerResponse) CollectBytes() ([]byte, error) {
 	var result []byte
 	for item := range pr.ch {
 		if item.LogFrame != nil {
-			continue // Discard LOG frames
+			return nil, errors.New("peer response emitted a LOG frame; collect with explicit diagnostic forwarding")
 		}
 		if item.DataErr != nil {
 			return nil, item.DataErr
@@ -130,18 +131,28 @@ func (pr *PeerResponse) CollectBytes() ([]byte, error) {
 	return result, nil
 }
 
-// CollectValue collects a single CBOR data value (expects exactly one data chunk), discarding LOG frames.
+// CollectValue requires exactly one data item and rejects LOG frames anywhere
+// in the response.
 func (pr *PeerResponse) CollectValue() (interface{}, error) {
+	var value interface{}
+	hasValue := false
 	for item := range pr.ch {
 		if item.LogFrame != nil {
-			continue // Discard LOG frames
+			return nil, errors.New("peer response emitted a LOG frame; collect with explicit diagnostic forwarding")
 		}
 		if item.DataErr != nil {
 			return nil, item.DataErr
 		}
-		return item.DataValue, nil
+		if hasValue {
+			return nil, errors.New("peer response contained more than one value")
+		}
+		value = item.DataValue
+		hasValue = true
 	}
-	return nil, errors.New("peer response ended without data")
+	if !hasValue {
+		return nil, errors.New("peer response ended without data")
+	}
+	return value, nil
 }
 
 // DemuxPeerResponse converts a raw Frame channel into a PeerResponse that yields
@@ -246,7 +257,7 @@ func DemuxPeerResponse(rawFrames <-chan Frame) *PeerResponse {
 				// error keeps the origin's identity on its own ERR frame.
 				itemCh <- PeerResponseItem{
 					IsDataItem: true,
-					DataErr:    remoteErrorFromErrFrame(&frame),
+					DataErr:    errorFromErrFrame(&frame),
 				}
 				return
 			}
@@ -274,8 +285,8 @@ func (ps *ProgressSender) Progress(progress float32, message string) {
 }
 
 // Log emits a log message.
-func (ps *ProgressSender) Log(level, message string) {
-	frame := NewLog(ps.requestID, level, message)
+func (ps *ProgressSender) Log(level string, class AttributionClass, message string, argUrn *string) {
+	frame := NewLog(ps.requestID, level, class, message, argUrn)
 	frame.RoutingId = ps.routingId
 	ps.writer.WriteFrame(frame)
 }
@@ -689,12 +700,12 @@ func (pr *CartridgeRuntime) Run() error {
 }
 
 // incomingStream is the live demux state for one input stream of an incoming
-// request (protocol v2/v3 wire framing: STREAM_START → CHUNK(s) →
+// request (protocol v4 wire framing: STREAM_START → CHUNK(s) →
 // STREAM_END). Unlike this mirror's former buffer-then-dispatch design,
 // CHUNK payloads are never accumulated here — each validated CHUNK is
 // forwarded immediately to the request's live frame channel (see
 // pendingIncomingRequest.frames), so the handler observes items as they
-// arrive rather than only after STREAM_END/END (protocol v3, L16).
+// arrive rather than only after STREAM_END/END (protocol v4, L16).
 type incomingStream struct {
 	mediaUrn string
 	complete bool
@@ -708,7 +719,7 @@ type incomingStream struct {
 	// unchanged.
 	seq *seqReassembly
 
-	// window is this stream's remaining input credit window (protocol v3,
+	// window is this stream's remaining input credit window (protocol v4,
 	// L10/L12): it starts at the negotiated initial_credit and is extended by
 	// the batched CREDIT grants this runtime sends back as chunks arrive. A
 	// CHUNK arriving with the window at zero is a fatal CREDIT_VIOLATION — the
@@ -731,7 +742,7 @@ type incomingStream struct {
 // goroutine is either started immediately or held in the capacity-bounded
 // queue until a slot opens. Queueing only defers STARTING the handler
 // goroutine — it never defers or buffers-to-completion the arrival of frames
-// (protocol v3, L16): frames keep flowing into `frames` regardless of queue
+// (protocol v4, L16): frames keep flowing into `frames` regardless of queue
 // status. (matches Rust QueuedRequest, adapted to this mirror's live demux)
 type liveHandlerRequest struct {
 	requestID MessageId
@@ -755,7 +766,7 @@ func runLiveHandler(qr *liveHandlerRequest, writer *syncFrameWriter, limits Limi
 
 	// Create emitter with stream multiplexing (preserve routing_id for
 	// response routing), flow-controlled by the host's consumption (protocol
-	// v3, L9).
+	// v4, L9).
 	emitter := newThreadSafeEmitter(writer, requestID, qr.routingId, streamID, mediaUrn, limits.MaxChunk, creditRouter, uint64(limits.InitialCredit))
 	peerInvoker := newPeerInvokerImpl(writer, pendingPeerRequests, limits.MaxChunk, creditRouter, uint64(limits.InitialCredit))
 
@@ -773,7 +784,7 @@ func runLiveHandler(qr *liveHandlerRequest, writer *syncFrameWriter, limits Limi
 		// classified, HANDLER_ERROR/Internal when the handler never declared
 		// one.
 		code, class, message, argUrn := classifyHandlerError(err)
-		errFrame := NewErrClassified(requestID, code, class, message, argUrn)
+		errFrame := NewErr(requestID, code, class, message, argUrn)
 		errFrame.RoutingId = qr.routingId
 		if writeErr := writer.WriteFrame(errFrame); writeErr != nil {
 			fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", writeErr)
@@ -800,7 +811,9 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 
 	// Perform handshake - send our manifest in the HELLO response
 	// Handshake is single-threaded so raw writer is safe here
-	negotiatedLimits, err := HandshakeAccept(reader, rawWriter, pr.manifestData)
+	negotiatedLimits, err := HandshakeAccept(
+		reader, rawWriter, pr.manifestData, pr.capacity.Get(),
+	)
 	if err != nil {
 		return fmt.Errorf("handshake failed: %w", err)
 	}
@@ -825,7 +838,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 	// + credit-window state; frames is the same unboundedFrameChan the
 	// dispatched (or queued) handler goroutine reads from — CHUNK/STREAM_START/
 	// STREAM_END/END are forwarded into it as they are validated below,
-	// never accumulated to replay later (protocol v3, L16).
+	// never accumulated to replay later (protocol v4, L16).
 	type pendingIncomingRequest struct {
 		capUrn    string
 		routingId *MessageId                 // XID from the REQ frame (preserved for response routing)
@@ -846,7 +859,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 	// dispatch — see FrameTypeStreamEnd's mid-item truncation check).
 	abortRequest := func(rid MessageId, routingId *MessageId, req *pendingIncomingRequest, code, message string) {
 		delete(pendingIncoming, rid.ToString())
-		errFrame := NewErr(rid, code, message)
+		errFrame := NewErr(rid, code, AttributionClassInternal, message, nil)
 		errFrame.RoutingId = routingId
 		if err := writer.WriteFrame(errFrame); err != nil {
 			fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", err)
@@ -857,7 +870,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 	}
 
 	// creditBatch is how many input chunks this runtime accepts before
-	// emitting a batched CREDIT grant back to the host (protocol v3, L10):
+	// emitting a batched CREDIT grant back to the host (protocol v4, L10):
 	// half the negotiated window, at least 1. (matches Rust
 	// InputGrantEmitter::batch = initial_credit/2, min 1)
 	creditBatch := uint64(negotiatedLimits.InitialCredit / 2)
@@ -868,7 +881,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 	// creditRouter routes inbound CREDIT frames (grants from the host for our
 	// OUTGOING response/peer-argument streams) to the CreditGate registered
 	// for that stream. Gates register when an emitter starts a credited
-	// stream (protocol v3, L9); closeRequest below releases waiters once a
+	// stream (protocol v4, L9); closeRequest below releases waiters once a
 	// handler finishes so a credit-blocked sender never hangs (L13).
 	creditRouter := NewCreditRouter()
 
@@ -876,7 +889,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 	var activeHandlers sync.WaitGroup
 
 	// queueMu guards the capacity-bounded handler dispatch queue below
-	// (protocol v3 concurrency capacity: CapacityHandle).
+	// (protocol v4 concurrency capacity: CapacityHandle).
 	var queueMu sync.Mutex
 	var requestQueue []*liveHandlerRequest
 	runningHandlerCount := 0
@@ -906,12 +919,12 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 					runningHandlerCount++
 				}
 				queueMu.Unlock()
-				// Release this request's credit waiters (protocol v3, L13) —
+				// Release this request's credit waiters (protocol v4, L13) —
 				// a sender blocked on this request's response/peer-arg credit
 				// gate must not hang once the handler is done.
 				creditRouter.CloseRequest(qr.requestID, "END")
 				if next != nil {
-					dequeuedLog := NewLog(next.requestID, "dequeued", "Request dequeued, handler starting")
+					dequeuedLog := NewLog(next.requestID, "dequeued", AttributionClassInternal, "Request dequeued, handler starting", nil)
 					dequeuedLog.RoutingId = next.routingId
 					if err := writer.WriteFrame(dequeuedLog); err != nil {
 						fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write dequeued LOG: %v\n", err)
@@ -923,7 +936,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 		}()
 	}
 
-	// dispatchOrQueue is the capacity gate (protocol v3, CapacityHandle): under
+	// dispatchOrQueue is the capacity gate (protocol v4, CapacityHandle): under
 	// capacity a request's handler goroutine starts immediately; at capacity
 	// it is queued and the caller is told via a LOG frame with level="queued"
 	// so the pipeline knows the request is alive but waiting — frames keep
@@ -938,7 +951,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 			active := runningHandlerCount
 			requestQueue = append(requestQueue, qr)
 			queueMu.Unlock()
-			logFrame := NewLog(qr.requestID, "queued", fmt.Sprintf("Request queued (position %d, %d active)", queuePos, active))
+			logFrame := NewLog(qr.requestID, "queued", AttributionClassInternal, fmt.Sprintf("Request queued (position %d, %d active)", queuePos, active), nil)
 			logFrame.RoutingId = qr.routingId
 			if err := writer.WriteFrame(logFrame); err != nil {
 				fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write queued LOG: %v\n", err)
@@ -966,7 +979,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 			routingId := frame.RoutingId
 
 			if frame.Cap == nil || *frame.Cap == "" {
-				errFrame := NewErr(frame.Id, "INVALID_REQUEST", "Request missing cap URN")
+				errFrame := NewErr(frame.Id, "INVALID_REQUEST", AttributionClassInternal, "Request missing cap URN", nil)
 				errFrame.RoutingId = routingId
 				if writeErr := writer.WriteFrame(errFrame); writeErr != nil {
 					fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", writeErr)
@@ -979,7 +992,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 
 			// Protocol v2: REQ must have empty payload - arguments come as streams
 			if len(rawPayload) > 0 {
-				errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", "REQ frame must have empty payload - use STREAM_START for arguments")
+				errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", AttributionClassInternal, "REQ frame must have empty payload - use STREAM_START for arguments", nil)
 				errFrame.RoutingId = routingId
 				if err := writer.WriteFrame(errFrame); err != nil {
 					fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write PROTOCOL_ERROR: %v\n", err)
@@ -992,7 +1005,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 			if handler == nil {
 				// A dispatched cap this binary doesn't handle is a
 				// deployment/manifest mismatch — Environment.
-				errFrame := NewErrClassified(frame.Id, "NO_HANDLER", FailureClassEnvironment, fmt.Sprintf("No handler registered for cap: %s", capUrn), nil)
+				errFrame := NewErr(frame.Id, "NO_HANDLER", AttributionClassEnvironment, fmt.Sprintf("No handler registered for cap: %s", capUrn), nil)
 				errFrame.RoutingId = routingId
 				if writeErr := writer.WriteFrame(errFrame); writeErr != nil {
 					fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", writeErr)
@@ -1004,7 +1017,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 			// immediately (subject to capacity) — the live frame channel
 			// below is fed as STREAM_START/CHUNK/STREAM_END/END arrive, so
 			// the handler observes items as they stream in rather than only
-			// after the whole request has been received (protocol v3, L16).
+			// after the whole request has been received (protocol v4, L16).
 			// Under capacity pressure the handler goroutine's START is
 			// deferred by dispatchOrQueue, but frames still flow into
 			// liveFrames without blocking this read loop (unboundedFrameChan
@@ -1032,13 +1045,17 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 		case FrameTypeHeartbeat:
 			// Respond to heartbeat immediately - never blocked by handlers
 			response := NewHeartbeat(frame.Id)
+			response.Meta = map[string]interface{}{
+				"drops_total":       pr.dropCounters.Total(),
+				"handler_capacity": pr.capacity.Get(),
+			}
 			if err := writer.WriteFrame(response); err != nil {
 				return fmt.Errorf("failed to write heartbeat response: %w", err)
 			}
 
 		case FrameTypeHello:
 			// Unexpected HELLO after handshake - protocol error
-			errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", "Unexpected HELLO after handshake")
+			errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", AttributionClassInternal, "Unexpected HELLO after handshake", nil)
 			if err := writer.WriteFrame(errFrame); err != nil {
 				return fmt.Errorf("failed to write error: %w", err)
 			}
@@ -1046,7 +1063,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 		case FrameTypeChunk:
 			// Protocol v2: CHUNK must have stream_id
 			if frame.StreamId == nil {
-				errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", "CHUNK frame missing stream_id")
+				errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", AttributionClassInternal, "CHUNK frame missing stream_id", nil)
 				if err := writer.WriteFrame(errFrame); err != nil {
 					fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", err)
 				}
@@ -1055,7 +1072,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 
 			// Verify checksum (protocol v2 integrity check)
 			if err := VerifyChunkChecksum(frame); err != nil {
-				errFrame := NewErr(frame.Id, "CORRUPTED_DATA", err.Error())
+				errFrame := NewErr(frame.Id, "CORRUPTED_DATA", AttributionClassInternal, err.Error(), nil)
 				if err := writer.WriteFrame(errFrame); err != nil {
 					fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", err)
 				}
@@ -1071,7 +1088,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 				if pendingReq.ended {
 					delete(pendingIncoming, frame.Id.ToString())
 					pendingIncomingMu.Unlock()
-					errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", "CHUNK after request END")
+					errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", AttributionClassInternal, "CHUNK after request END", nil)
 					if err := writer.WriteFrame(errFrame); err != nil {
 						fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", err)
 					}
@@ -1084,7 +1101,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 				if foundStream == nil {
 					delete(pendingIncoming, frame.Id.ToString())
 					pendingIncomingMu.Unlock()
-					errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", fmt.Sprintf("CHUNK for unknown stream_id: %s", streamID))
+					errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", AttributionClassInternal, fmt.Sprintf("CHUNK for unknown stream_id: %s", streamID), nil)
 					if err := writer.WriteFrame(errFrame); err != nil {
 						fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", err)
 					}
@@ -1094,14 +1111,14 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 				if foundStream.complete {
 					delete(pendingIncoming, frame.Id.ToString())
 					pendingIncomingMu.Unlock()
-					errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", fmt.Sprintf("CHUNK for ended stream: %s", streamID))
+					errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", AttributionClassInternal, fmt.Sprintf("CHUNK for ended stream: %s", streamID), nil)
 					if err := writer.WriteFrame(errFrame); err != nil {
 						fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", err)
 					}
 					continue
 				}
 
-				// Credit-violation check (protocol v3, L12): a chunk beyond
+				// Credit-violation check (protocol v4, L12): a chunk beyond
 				// the granted window is a fatal protocol error for this
 				// request — the demux itself never blocks, so this
 				// accounting is the only thing keeping a misbehaving sender
@@ -1111,8 +1128,13 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 					delete(pendingIncoming, frame.Id.ToString())
 					pendingIncomingMu.Unlock()
 					total := pr.dropCounters.Record(DropReasonCreditViolation)
-					errFrame := NewErr(frame.Id, "CREDIT_VIOLATION", fmt.Sprintf(
-						"chunk received beyond the granted window on stream %s (L12)", streamID))
+					errFrame := NewErr(
+						frame.Id,
+						"CREDIT_VIOLATION",
+						AttributionClassInternal,
+						fmt.Sprintf("chunk received beyond the granted window on stream %s (L12)", streamID),
+						nil,
+					)
 					fmt.Fprintf(os.Stderr, "[CartridgeRuntime] CREDIT_VIOLATION on stream %s (credit_violation_total=%d)\n", streamID, total)
 					if err := writer.WriteFrame(errFrame); err != nil {
 						fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", err)
@@ -1121,7 +1143,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 				}
 
 				// ✅ Valid chunk for active stream — forward live (protocol
-				// v3, L16). Sequence-mode streams reassemble RFC 8742
+				// v4, L16). Sequence-mode streams reassemble RFC 8742
 				// fragments into item-granular synthetic CHUNK frames (see
 				// seqReassembly / TEST1300); other streams forward the frame
 				// unchanged.
@@ -1147,7 +1169,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 					}
 				}
 
-				// Batched CREDIT grant (protocol v3, L10): every creditBatch
+				// Batched CREDIT grant (protocol v4, L10): every creditBatch
 				// physical chunks accepted, extend the sender's window by
 				// exactly what was consumed. This counts wire frames (including
 				// sequence continuation fragments), independent of how many
@@ -1180,7 +1202,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 				pendingReq := pending.(*pendingPeerRequest)
 				pendingReq.sender <- *frame
 
-				// Peer-response consumption grants (protocol v3, L10/L14):
+				// Peer-response consumption grants (protocol v4, L10/L14):
 				// as this cartridge consumes the responding peer's OUTPUT
 				// stream, replenish the peer's output window with batched
 				// Response-direction CREDIT grants — otherwise a responder
@@ -1209,7 +1231,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 		case FrameTypeEnd:
 			// Protocol v2: END frame marks the end of all streams for this
 			// request. The handler was already dispatched (or queued) live
-			// at REQ time (protocol v3, L16) — forward END into its frame
+			// at REQ time (protocol v4, L16) — forward END into its frame
 			// channel and close it so a drain-style handler (`for range
 			// frames`) terminates.
 			pendingIncomingMu.Lock()
@@ -1234,7 +1256,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 				close(pendingReq.sender)
 			}
 			// Release any credit waiters still parked on this peer request's
-			// arg-stream gates (protocol v3, L13) — a peer call that ended
+			// arg-stream gates (protocol v4, L13) — a peer call that ended
 			// must not leave a credit-blocked arg sender hanging.
 			creditRouter.CloseRequest(frame.Id, "END")
 
@@ -1251,7 +1273,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 				close(pendingReq.sender)
 			}
 			// Release any credit waiters still parked on this peer request's
-			// arg-stream gates (protocol v3, L13) — an errored peer call must
+			// arg-stream gates (protocol v4, L13) — an errored peer call must
 			// not leave a credit-blocked arg sender hanging.
 			creditRouter.CloseRequest(frame.Id, "ERR")
 
@@ -1269,7 +1291,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 		case FrameTypeStreamStart:
 			// Protocol v2: A new stream is starting for a request
 			if frame.StreamId == nil {
-				errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", "STREAM_START missing stream_id")
+				errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", AttributionClassInternal, "STREAM_START missing stream_id", nil)
 				if err := writer.WriteFrame(errFrame); err != nil {
 					fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", err)
 				}
@@ -1277,7 +1299,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 			}
 
 			if frame.MediaUrn == nil {
-				errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", "STREAM_START missing media_urn")
+				errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", AttributionClassInternal, "STREAM_START missing media_urn", nil)
 				if err := writer.WriteFrame(errFrame); err != nil {
 					fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", err)
 				}
@@ -1297,7 +1319,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 				if pendingReq.ended {
 					delete(pendingIncoming, frame.Id.ToString())
 					pendingIncomingMu.Unlock()
-					errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", "STREAM_START after request END")
+					errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", AttributionClassInternal, "STREAM_START after request END", nil)
 					if err := writer.WriteFrame(errFrame); err != nil {
 						fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", err)
 					}
@@ -1308,7 +1330,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 				if _, dup := pendingReq.streams[streamID]; dup {
 					delete(pendingIncoming, frame.Id.ToString())
 					pendingIncomingMu.Unlock()
-					errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", fmt.Sprintf("Duplicate stream_id: %s", streamID))
+					errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", AttributionClassInternal, fmt.Sprintf("Duplicate stream_id: %s", streamID), nil)
 					if err := writer.WriteFrame(errFrame); err != nil {
 						fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", err)
 					}
@@ -1316,7 +1338,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 				}
 
 				// ✅ Add new stream. window starts at the negotiated
-				// initial_credit (protocol v3, L10/L12). A sequence-mode
+				// initial_credit (protocol v4, L10/L12). A sequence-mode
 				// stream (is_sequence=true) gets reassembly state so its
 				// CHUNK fragments deliver item-granular to the handler (see
 				// seqReassembly / TEST1300).
@@ -1355,7 +1377,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 		case FrameTypeStreamEnd:
 			// Protocol v2: A stream has ended for a request
 			if frame.StreamId == nil {
-				errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", "STREAM_END missing stream_id")
+				errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", AttributionClassInternal, "STREAM_END missing stream_id", nil)
 				if err := writer.WriteFrame(errFrame); err != nil {
 					fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", err)
 				}
@@ -1374,7 +1396,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 					// FAIL HARD: STREAM_END for unknown stream
 					delete(pendingIncoming, frame.Id.ToString())
 					pendingIncomingMu.Unlock()
-					errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", fmt.Sprintf("STREAM_END for unknown stream_id: %s", streamID))
+					errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", AttributionClassInternal, fmt.Sprintf("STREAM_END for unknown stream_id: %s", streamID), nil)
 					if err := writer.WriteFrame(errFrame); err != nil {
 						fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", err)
 					}
@@ -1386,7 +1408,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 
 				// A sequence stream ending mid-item is a truncation — surface
 				// it as a hard decode error, never silently drop the partial
-				// item (protocol v3; see seqReassembly.atEnd / TEST1301).
+				// item (protocol v4; see seqReassembly.atEnd / TEST1301).
 				// Live dispatch means the handler may already be running, so
 				// this aborts the whole request rather than merely refusing
 				// to build it.
@@ -1417,7 +1439,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 
 		case FrameTypeCredit:
 			// Flow-control grant for one of OUR outgoing streams (response or
-			// peer-argument, protocol v3 L9/L14). Routes to the matching
+			// peer-argument, protocol v4 L9/L14). Routes to the matching
 			// CreditGate; an unmatched grant (request already finished, or
 			// the stream is not credit-registered) is a correct no-op, since
 			// grants only ever unblock a credit-waiting sender.
@@ -1577,13 +1599,13 @@ func (pr *CartridgeRuntime) dispatchCliPayload(capDef *cap.Cap, handler HandlerF
 
 	if err := handler(framesChan, emitter, peer); err != nil {
 		// CLI mode still owes the caller the real failure identity
-		// (docs/failure-taxonomy.md): the declared code/class when the error
+		// (docs/failure-taxonomy.md): the declared code/attribution when the error
 		// chain is classified, HANDLER_ERROR/internal otherwise.
 		code, class, message, argUrn := classifyHandlerError(err)
 		errorFields := map[string]string{
-			"error": message,
-			"code":  code,
-			"class": class.String(),
+			"error":             message,
+			"code":              code,
+			"attribution_class": class.String(),
 		}
 		if argUrn != nil {
 			errorFields["arg_urn"] = *argUrn
@@ -2145,7 +2167,7 @@ func buildCliForeachIterations(rawPayload []byte, capDef *cap.Cap) ([][]byte, er
 }
 
 // syncFrameWriter wraps FrameWriter with a mutex for concurrent access,
-// centralized seq assignment, and the protocol v3 writer-thread terminal gate
+// centralized seq assignment, and the protocol v4 writer-thread terminal gate
 // (L4). This is the runtime's single output serialization point — the Go
 // counterpart of the Rust writer thread / Swift ChannelFrameSender. All
 // frames pass through the SeqAssigner before writing, ensuring monotonically
@@ -2237,7 +2259,7 @@ type threadSafeEmitter struct {
 	// seqMu.
 	isSequence bool
 	// unbounded is set by StartUnbounded before the stream is started
-	// (protocol v3, L16): the STREAM_START carries no length promise and
+	// (protocol v4, L16): the STREAM_START carries no length promise and
 	// Finalize's STREAM_END omits chunk_count. Guarded by seqMu.
 	unbounded  bool
 	seq        uint64
@@ -2245,7 +2267,7 @@ type threadSafeEmitter struct {
 	seqMu      sync.Mutex
 	maxChunk   int
 
-	// creditGate is this response stream's flow-control window (protocol v3,
+	// creditGate is this response stream's flow-control window (protocol v4,
 	// L9). One credit is acquired per CHUNK before it is sent; the host
 	// replenishes it with CREDIT frames routed through creditRouter. nil =
 	// uncredited context (CLI mode, tests, in-process host) — writes never
@@ -2259,7 +2281,7 @@ type threadSafeEmitter struct {
 	// inbound CREDIT frames can find it. Present iff creditGate is.
 	creditRouter *CreditRouter
 
-	// finalMu guards the handler-declared terminal status (protocol v3,
+	// finalMu guards the handler-declared terminal status (protocol v4,
 	// L3/L5), set via Finish and read by Finalize when stamping the END
 	// frame's terminal metadata.
 	finalMu       sync.Mutex
@@ -2269,7 +2291,7 @@ type threadSafeEmitter struct {
 
 // newThreadSafeEmitter constructs a response-stream emitter. Pass a non-nil
 // creditRouter to flow-control this stream's CHUNK sends against initialCredit
-// (protocol v3, L9); pass nil for an uncredited emitter (CLI mode, tests)
+// (protocol v4, L9); pass nil for an uncredited emitter (CLI mode, tests)
 // whose writes never wait.
 func newThreadSafeEmitter(writer *syncFrameWriter, requestID MessageId, routingId *MessageId, streamID string, mediaUrn string, maxChunk int, creditRouter *CreditRouter, initialCredit uint64) *threadSafeEmitter {
 	e := &threadSafeEmitter{
@@ -2308,7 +2330,7 @@ func (e *threadSafeEmitter) acquireCredit() error {
 // true = sequence mode (EmitListItem). A stream already started in one mode
 // cannot switch (matches Rust OutputStream::check_mode). If StartUnbounded
 // was called first (e.unbounded), the STREAM_START carries no length promise
-// (protocol v3, L16). Must be called while holding seqMu.
+// (protocol v4, L16). Must be called while holding seqMu.
 func (e *threadSafeEmitter) ensureStreamStarted(isSequence bool) error {
 	if e.streamStarted {
 		if e.isSequence != isSequence {
@@ -2344,7 +2366,7 @@ func modeName(isSequence bool) string {
 }
 
 // StartUnbounded declares this response stream unbounded — no length promise
-// (protocol v3, L16). Must be called before the first
+// (protocol v4, L16). Must be called before the first
 // EmitCbor/Write/EmitListItem call. close()/Finalize() on an unbounded
 // stream sends STREAM_END without a chunk_count. (matches Rust
 // OutputStream::start_unbounded)
@@ -2532,7 +2554,7 @@ func (e *threadSafeEmitter) EmitCbor(value interface{}) error {
 }
 
 // Finalize sends STREAM_END + END frames to complete the response. The END
-// frame carries the terminal metadata (protocol v3, L3/L5): the handler's
+// frame carries the terminal metadata (protocol v4, L3/L5): the handler's
 // declared final status from Finish(), or the 1.0 default when Finish was
 // never called.
 func (e *threadSafeEmitter) Finalize() {
@@ -2548,7 +2570,7 @@ func (e *threadSafeEmitter) Finalize() {
 	}
 
 	// STREAM_END: Close this stream. An unbounded stream (StartUnbounded was
-	// called, protocol v3, L16) made no length promise, so its STREAM_END
+	// called, protocol v4, L16) made no length promise, so its STREAM_END
 	// carries no chunk_count.
 	var streamEndFrame *Frame
 	if e.unbounded {
@@ -2664,8 +2686,8 @@ func (e *threadSafeEmitter) EmitListItem(value interface{}) error {
 	return nil
 }
 
-func (e *threadSafeEmitter) EmitLog(level, message string) {
-	frame := NewLog(e.requestID, level, message)
+func (e *threadSafeEmitter) EmitLog(level string, class AttributionClass, message string, argUrn *string) {
+	frame := NewLog(e.requestID, level, class, message, argUrn)
 	frame.RoutingId = e.routingId
 	if err := e.writer.WriteFrame(frame); err != nil {
 		fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write log: %v\n", err)
@@ -2752,7 +2774,7 @@ func (e *cliStreamEmitter) EmitListItem(value interface{}) error {
 	return e.EmitCbor(value)
 }
 
-func (e *cliStreamEmitter) EmitLog(level, message string) {
+func (e *cliStreamEmitter) EmitLog(level string, _ AttributionClass, message string, _ *string) {
 	fmt.Fprintf(os.Stderr, "[%s] %s\n", level, message)
 }
 
@@ -2773,7 +2795,7 @@ type pendingPeerRequest struct {
 
 	// responseConsumed counts peer-response CHUNK frames this cartridge has
 	// consumed since the last Response-direction CREDIT grant it emitted back
-	// to the responder (protocol v3, L10/L14). A batched grant (creditBatch =
+	// to the responder (protocol v4, L10/L14). A batched grant (creditBatch =
 	// initial_credit/2, min 1) replenishes the responder's output window so a
 	// large peer response cannot stall the responding cartridge on credit.
 	// Only touched from the single-threaded main read loop. (matches Rust
@@ -2787,7 +2809,7 @@ type peerInvokerImpl struct {
 	pendingRequests *sync.Map
 	maxChunk        int
 	// creditRouter/initialCredit flow-control this cartridge's outgoing
-	// peer-argument streams (protocol v3, L14 — peer args are credited too,
+	// peer-argument streams (protocol v4, L14 — peer args are credited too,
 	// exactly like a handler's response stream). nil creditRouter = uncredited
 	// context (CLI mode, tests) — arg writes never wait. (matches Rust
 	// PeerInvokerImpl::credit_router / initial_credit)
@@ -2831,7 +2853,7 @@ func (p *peerInvokerImpl) Invoke(capUrn string, arguments []cap.CapArgumentValue
 	}
 
 	// 2. Each argument as an independent stream, flow-controlled by the
-	// callee's consumption (protocol v3, L14) exactly like a handler's
+	// callee's consumption (protocol v4, L14) exactly like a handler's
 	// response stream.
 	for _, arg := range arguments {
 		streamID := fmt.Sprintf("peer-%s", NewMessageIdRandom().ToString()[:8])
@@ -2874,7 +2896,7 @@ func (p *peerInvokerImpl) Invoke(capUrn string, arguments []cap.CapArgumentValue
 
 			checksum := ComputeChecksum(cborPayload)
 			chunkFrame := NewChunk(requestID, streamID, seq, cborPayload, chunkIndex, checksum)
-			// Blocking credit acquisition (protocol v3, L9/L14) — waits if the
+			// Blocking credit acquisition (protocol v4, L9/L14) — waits if the
 			// callee's granted window is exhausted; a closed gate (peer call
 			// ended/errored) fails the send, the producer must stop (L13).
 			if gate != nil {
@@ -3301,7 +3323,7 @@ func CollectStreams(frames <-chan Frame) ([]struct {
 		switch frame.FrameType {
 		case FrameTypeStreamStart:
 			if frame.StreamId != nil && frame.MediaUrn != nil {
-				// Refuse buffering an unbounded stream (protocol v3, L16)
+				// Refuse buffering an unbounded stream (protocol v4, L16)
 				// BEFORE accumulating any of its chunks.
 				if frame.IsUnbounded() {
 					return nil, errStreamUnbounded("CollectStreams")
@@ -3345,7 +3367,7 @@ func CollectStreams(frames <-chan Frame) ([]struct {
 		case FrameTypeErr:
 			// Structural receipt (docs/failure-taxonomy.md): code, class,
 			// and message survive as a RemoteError, never prose.
-			return nil, remoteErrorFromErrFrame(&frame)
+			return nil, errorFromErrFrame(&frame)
 		}
 	}
 

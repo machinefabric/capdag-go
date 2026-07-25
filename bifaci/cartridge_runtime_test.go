@@ -56,7 +56,7 @@ func (m *mockStreamEmitter) EmitListItem(value interface{}) error {
 	return nil
 }
 
-func (m *mockStreamEmitter) EmitLog(level, message string) {
+func (m *mockStreamEmitter) EmitLog(level string, class AttributionClass, message string, argUrn *string) {
 	// No-op for tests
 }
 
@@ -2806,7 +2806,7 @@ func Test839_peer_response_delivers_logs_before_stream_start(t *testing.T) {
 	// Send LOG frames BEFORE any StreamStart
 	rawCh <- *NewProgress(reqId, 0.1, "downloading file 1/10")
 	rawCh <- *NewProgress(reqId, 0.5, "downloading file 5/10")
-	rawCh <- *NewLog(reqId, "status", "large file in progress")
+	rawCh <- *NewLog(reqId, "status", AttributionClassInternal, "large file in progress", nil)
 
 	// Now send the actual data
 	rawCh <- *NewStreamStart(reqId, "s1", "media:binary", nil)
@@ -2866,8 +2866,8 @@ func Test839_peer_response_delivers_logs_before_stream_start(t *testing.T) {
 	}
 }
 
-// TEST840: PeerResponse::collect_bytes discards LOG frames
-func Test840_peer_response_collect_bytes_discards_logs(t *testing.T) {
+// TEST840: PeerResponse::collect_bytes rejects unhandled LOG frames.
+func Test840_peer_response_collect_bytes_rejects_unhandled_logs(t *testing.T) {
 	reqId := NewMessageIdRandom()
 	rawCh := make(chan Frame, 20)
 
@@ -2880,28 +2880,25 @@ func Test840_peer_response_collect_bytes_discards_logs(t *testing.T) {
 	checksum := ComputeChecksum(cborPayload)
 	rawCh <- *NewChunk(reqId, "s1", 0, cborPayload, 0, checksum)
 
-	rawCh <- *NewLog(reqId, "info", "done")
+	rawCh <- *NewLog(reqId, "info", AttributionClassInternal, "done", nil)
 	rawCh <- *NewStreamEnd(reqId, "s1", 1)
 	close(rawCh)
 
 	response := DemuxPeerResponse(rawCh)
-	result, err := response.CollectBytes()
-	if err != nil {
-		t.Fatalf("CollectBytes failed: %v", err)
-	}
-	if !bytes.Equal(result, []byte("hello")) {
-		t.Fatalf("Expected 'hello', got %q (LOG frames must be discarded)", result)
+	_, err := response.CollectBytes()
+	if err == nil || !strings.Contains(err.Error(), "explicit diagnostic forwarding") {
+		t.Fatalf("CollectBytes must reject unhandled diagnostics, got %v", err)
 	}
 }
 
-// TEST841: PeerResponse::collect_value discards LOG frames
-func Test841_peer_response_collect_value_discards_logs(t *testing.T) {
+// TEST841: PeerResponse::collect_value rejects unhandled LOG frames.
+func Test841_peer_response_collect_value_rejects_unhandled_logs(t *testing.T) {
 	reqId := NewMessageIdRandom()
 	rawCh := make(chan Frame, 20)
 
 	rawCh <- *NewStreamStart(reqId, "s1", "media:binary", nil)
 	rawCh <- *NewProgress(reqId, 0.5, "half")
-	rawCh <- *NewLog(reqId, "debug", "processing")
+	rawCh <- *NewLog(reqId, "debug", AttributionClassInternal, "processing", nil)
 
 	cborPayload, _ := cborlib.Marshal(42)
 	checksum := ComputeChecksum(cborPayload)
@@ -2911,13 +2908,9 @@ func Test841_peer_response_collect_value_discards_logs(t *testing.T) {
 	close(rawCh)
 
 	response := DemuxPeerResponse(rawCh)
-	value, err := response.CollectValue()
-	if err != nil {
-		t.Fatalf("CollectValue failed: %v", err)
-	}
-	// CBOR unsigned integers decode as uint64 in Go
-	if value != uint64(42) {
-		t.Fatalf("Expected 42, got %v (type %T)", value, value)
+	_, err := response.CollectValue()
+	if err == nil || !strings.Contains(err.Error(), "explicit diagnostic forwarding") {
+		t.Fatalf("CollectValue must reject unhandled diagnostics, got %v", err)
 	}
 }
 
@@ -3055,7 +3048,7 @@ func Test842_progress_sender_emits_frames(t *testing.T) {
 	}
 
 	ps.Progress(0.5, "halfway there")
-	ps.Log("info", "loading complete")
+	ps.Log("info", AttributionClassInternal, "loading complete", nil)
 
 	// Read the frames back from the buffer
 	reader := NewFrameReader(bytes.NewReader(buf.Bytes()))
@@ -3179,7 +3172,7 @@ func Test845_progress_sender_independent_of_emitter(t *testing.T) {
 	}
 
 	ps.Progress(0.5, "halfway there")
-	ps.Log("info", "loading complete")
+	ps.Log("info", AttributionClassInternal, "loading complete", nil)
 
 	reader := NewFrameReader(bytes.NewReader(buf.Bytes()))
 	var logFrames []*Frame
@@ -3811,7 +3804,7 @@ func Test542_output_stream_empty(t *testing.T) {
 }
 
 // =============================================================================
-// Protocol v3 parity: credit-based output, input demux credit window, writer
+// Protocol v4 parity: credit-based output, input demux credit window, writer
 // terminal gate, counted drops, END-carried final progress, concurrency
 // capacity. Ported from the Rust reference's cartridge_runtime.rs `#[cfg(test)]`
 // module and the Swift/ObjC mirror's CartridgeRuntimeTests — numbered tests
@@ -3922,7 +3915,7 @@ func Test7021_writer_gate_precision(t *testing.T) {
 	}
 
 	// But a flow frame for A is gated.
-	if err := w.WriteFrame(NewLog(ridA, "info", "late")); err != nil {
+	if err := w.WriteFrame(NewLog(ridA, "info", AttributionClassInternal, "late", nil)); err != nil {
 		t.Fatalf("post-terminal drop must not surface as a write error: %v", err)
 	}
 
@@ -4007,7 +4000,7 @@ func Test7086_drop_snapshot_matches_induced_drops(t *testing.T) {
 	// Source 2: closed-sink send (one drop).
 	fw := &failingWriter{fail: true}
 	w2 := newSyncFrameWriter(NewFrameWriter(fw), drops)
-	_ = w2.WriteFrame(NewLog(rid, "info", "dead sink"))
+	_ = w2.WriteFrame(NewLog(rid, "info", AttributionClassInternal, "dead sink", nil))
 
 	snap := drops.Snapshot()
 	if snap.Total != 3 {
@@ -4166,7 +4159,7 @@ func Test7062_log_flows_while_window_exhausted(t *testing.T) {
 
 // TestPeerInvokerArgStreamsAreCredited: a peer call's argument stream is
 // flow-controlled by the callee's consumption exactly like a handler's
-// response stream (protocol v3, L14 — matches Rust PeerCall::arg's
+// response stream (protocol v4, L14 — matches Rust PeerCall::arg's
 // with_credit / PeerInvokerImpl::credit_router). peerInvokerImpl.Invoke
 // registers one CreditGate per argument stream and blocks writing further
 // CHUNKs once its window is exhausted; a CREDIT frame for that (rid,

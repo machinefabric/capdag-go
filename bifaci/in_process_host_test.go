@@ -268,6 +268,9 @@ func Test6751_ManifestIncludesAllCaps(t *testing.T) {
 	assert.Len(t, payload.InstalledCartridges, 1)
 	assert.Equal(t, "thumb-host", payload.InstalledCartridges[0].Id)
 	assert.Len(t, payload.InstalledCartridges[0].CapGroups, 1)
+	require.NotNil(t, payload.InstalledCartridges[0].RuntimeStats)
+	assert.True(t, payload.InstalledCartridges[0].RuntimeStats.Running)
+	assert.Equal(t, uint64(0), payload.InstalledCartridges[0].RuntimeStats.HandlerCapacity)
 }
 
 // TEST658: InProcessCartridgeHost handles heartbeat by echoing same ID
@@ -296,6 +299,9 @@ func Test658_HeartbeatResponse(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, FrameTypeHeartbeat, resp.FrameType)
 	assert.True(t, resp.Id.Equals(hbId))
+	capacity, ok := extractUint64FromMeta(resp.Meta, "handler_capacity")
+	require.True(t, ok)
+	assert.Equal(t, uint64(0), capacity)
 
 	testConn.Close()
 	require.NoError(t, <-hostDone)

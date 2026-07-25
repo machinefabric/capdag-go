@@ -770,18 +770,48 @@ type BodyOutcome struct {
 	Success bool `json:"success"`
 	// CapUrns are the cap URNs in the body's execution pathway (in execution order).
 	CapUrns []string `json:"cap_urns"`
-	// FailedCap is the cap URN that was executing when the body failed. Nil if succeeded.
-	FailedCap *string `json:"failed_cap,omitempty"`
+	// FailedTokenID is the immutable StrandStep token that failed. Nil if no
+	// single step is attributable or the body succeeded.
+	FailedTokenID *string `json:"failed_token_id"`
 	// Error is the error message if the body failed.
-	Error *string `json:"error,omitempty"`
+	Error *string `json:"error"`
+	// FailedArgURN is the argument media URN attributed by the emit source.
+	FailedArgURN *string `json:"failed_arg_urn"`
 	// Title is the human-readable title for this body, from stream metadata.
-	Title *string `json:"title,omitempty"`
+	Title *string `json:"title"`
 	// SavedPaths are the file paths saved by this body's IncrementalWriter.
 	SavedPaths []string `json:"saved_paths"`
 	// TotalBytes is the total bytes written by this body.
 	TotalBytes uint64 `json:"total_bytes"`
 	// DurationMs is the execution duration in milliseconds.
 	DurationMs uint64 `json:"duration_ms"`
+	// ItemPreviewText is the bounded UTF-8 preview captured at a ForEach split.
+	ItemPreviewText *string `json:"item_preview_text"`
+	// ItemByteCount is the byte size of the body input at the split.
+	ItemByteCount uint64 `json:"item_byte_count"`
+}
+
+// UnmarshalJSON keeps the v4 required-but-nullable failure-coordinate shape.
+// A missing key is an obsolete payload; an explicit JSON null means the emit
+// source did not attribute the outcome to a step or argument.
+func (b *BodyOutcome) UnmarshalJSON(data []byte) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	for _, field := range []string{"failed_token_id", "failed_arg_urn"} {
+		if _, present := fields[field]; !present {
+			return fmt.Errorf("body outcome missing required nullable field %q", field)
+		}
+	}
+
+	type bodyOutcome BodyOutcome
+	var decoded bodyOutcome
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*b = BodyOutcome(decoded)
+	return nil
 }
 
 // MachineResult holds the result of executing a complete plan.
@@ -793,7 +823,7 @@ type MachineResult struct {
 	TotalDurationMs uint64                          `json:"total_duration_ms"`
 	// BodyOutcomes holds per-body outcomes for ForEach pipelines, or a single entry for linear plans.
 	// Populated by the pipeline executor; empty for the standalone executor.
-	BodyOutcomes []BodyOutcome `json:"body_outcomes,omitempty"`
+	BodyOutcomes []BodyOutcome `json:"body_outcomes"`
 }
 
 // PrimaryOutput returns the first output value (non-deterministic).

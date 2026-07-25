@@ -25,6 +25,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"sync"
 
 	cborlib "github.com/fxamacker/cbor/v2"
@@ -149,7 +150,7 @@ func (w *ResponseWriter) EmitResponse(mediaUrn string, data []byte) {
 
 // EmitError sends an error response.
 func (w *ResponseWriter) EmitError(code, message string) {
-	w.Send(*NewErr(NewMessageIdFromUint(0), code, message))
+	w.Send(*NewErr(NewMessageIdFromUint(0), code, AttributionClassInternal, message, nil))
 }
 
 // =============================================================================
@@ -393,6 +394,7 @@ func (h *InProcessCartridgeHost) BuildManifest() []byte {
 		}
 	}
 
+	pid := uint32(os.Getpid())
 	cartridge := InstalledCartridgeRecord{
 		RegistryURL: h.identity.RegistryURL,
 		Channel:     string(h.identity.Channel),
@@ -404,6 +406,16 @@ func (h *InProcessCartridgeHost) BuildManifest() []byte {
 			Caps:        caps,
 			AdapterUrns: []string{},
 		}},
+		RuntimeStats: &CartridgeRuntimeStats{
+			Running:            true,
+			HandlerCapacity:    0,
+			PID:                &pid,
+			ActiveRequestCount: 0,
+			PeerRequestCount:   0,
+			MemoryFootprintMB:  0,
+			MemoryRSSMB:        0,
+			RestartCount:       0,
+		},
 		// In-process cartridges have no on-disk presence to inspect and no
 		// registry to verify against — the embedder constructed them directly.
 		// They are operational from the moment the host advertises them.
@@ -562,7 +574,7 @@ func (h *InProcessCartridgeHost) Run(localRead io.Reader, localWrite io.Writer) 
 			rid := frame.Id
 			xid := frame.RoutingId
 			if frame.Cap == nil {
-				errFrame := NewErr(rid, "PROTOCOL_ERROR", "REQ missing cap URN")
+				errFrame := NewErr(rid, "PROTOCOL_ERROR", AttributionClassInternal, "REQ missing cap URN", nil)
 				errFrame.RoutingId = xid
 				writeTx <- *errFrame
 				continue
@@ -581,7 +593,7 @@ func (h *InProcessCartridgeHost) Run(localRead io.Reader, localWrite io.Writer) 
 				if !ok {
 					// No registered handler for a dispatched cap is a
 					// deployment mismatch — Environment.
-					errFrame := NewErrClassified(rid, "NO_HANDLER", FailureClassEnvironment, fmt.Sprintf("no handler for cap: %s", capUrn), nil)
+					errFrame := NewErr(rid, "NO_HANDLER", AttributionClassEnvironment, fmt.Sprintf("no handler for cap: %s", capUrn), nil)
 					errFrame.RoutingId = xid
 					writeTx <- *errFrame
 					continue
@@ -629,12 +641,14 @@ func (h *InProcessCartridgeHost) Run(localRead io.Reader, localWrite io.Writer) 
 				close(tx)
 				delete(active, key)
 			}
-			errFrame := NewErr(targetRid, "CANCELLED", "Request cancelled")
+			errFrame := NewErr(targetRid, "CANCELLED", AttributionClassInternal, "Request cancelled", nil)
 			errFrame.RoutingId = xid
 			writeTx <- *errFrame
 
 		case FrameTypeHeartbeat:
-			writeTx <- *NewHeartbeat(frame.Id)
+			response := NewHeartbeat(frame.Id)
+			response.Meta = map[string]interface{}{"handler_capacity": uint64(0)}
+			writeTx <- *response
 
 		default:
 			// RelayNotify, RelayState, etc. — not expected from relay side.

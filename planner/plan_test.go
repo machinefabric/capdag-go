@@ -846,3 +846,35 @@ func Test764_extract_prefix_to_input_slot(t *testing.T) {
 	assert.Equal(t, 2, len(prefix.Nodes))
 	assert.NoError(t, prefix.Validate())
 }
+
+// TEST6525: Body outcomes preserve explicit null attribution coordinates and preview fields in JSON.
+func Test6525_body_outcome_serialization_preserves_attribution_shape(t *testing.T) {
+	outcome := BodyOutcome{BodyIndex: 0, Success: true, CapUrns: []string{}, SavedPaths: []string{}}
+	data, err := json.Marshal(outcome)
+	require.NoError(t, err)
+
+	var encoded map[string]any
+	require.NoError(t, json.Unmarshal(data, &encoded))
+	require.Contains(t, encoded, "failed_token_id")
+	assert.Nil(t, encoded["failed_token_id"])
+	require.Contains(t, encoded, "failed_arg_urn")
+	assert.Nil(t, encoded["failed_arg_urn"])
+	require.Contains(t, encoded, "item_preview_text")
+	assert.Nil(t, encoded["item_preview_text"])
+	assert.Equal(t, float64(0), encoded["item_byte_count"])
+
+	var decoded BodyOutcome
+	require.NoError(t, json.Unmarshal(data, &decoded))
+	delete(encoded, "failed_token_id")
+	missing, err := json.Marshal(encoded)
+	require.NoError(t, err)
+	require.ErrorContains(t, json.Unmarshal(missing, &decoded), "failed_token_id")
+
+	data, err = json.Marshal(outcome)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(data, &encoded))
+	delete(encoded, "failed_arg_urn")
+	missing, err = json.Marshal(encoded)
+	require.NoError(t, err)
+	require.ErrorContains(t, json.Unmarshal(missing, &decoded), "failed_arg_urn")
+}

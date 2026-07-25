@@ -4,14 +4,15 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 )
 
-// Protocol version. Version 3: credit-based per-stream flow control, unbounded
-// streams, terminal metadata on END (final progress rides in the terminal frame),
-// counted drops, handshake version enforcement. Version 2 handshakes are rejected.
-const ProtocolVersion uint8 = 3
+// Protocol version 4 requires explicit handler capacity and strict diagnostic
+// attribution in addition to credit-based flow control and terminal metadata.
+// Every other version is rejected during handshake.
+const ProtocolVersion uint8 = 4
 
 // Default maximum frame size (3.5 MB) - safe margin below 3.75MB limit
 // Larger payloads automatically use CHUNK frames
@@ -40,10 +41,10 @@ const (
 	FrameTypeRelayNotify FrameType = 10 // Relay capability advertisement (slave → master)
 	FrameTypeRelayState  FrameType = 11 // Relay host system resources + cap demands (master → slave)
 	FrameTypeCancel      FrameType = 12 // Cancel a running request
-	// FrameTypeCredit grants per-stream flow-control credit (protocol v3, L9/L10).
+	// FrameTypeCredit grants per-stream flow-control credit (protocol v4, L9/L10).
 	// Non-flow (see IsFlowFrame): bypasses seq assignment and the reorder buffer.
 	// NOTE: wire-level CBOR encode/decode support (including HELLO's negotiated
-	// initial_credit and the protocol v3 version bump) is ported by the frame/codec
+	// initial_credit and the protocol v4 version bump) is ported by the frame/codec
 	// subsystem task, not here; this credit-subsystem port only needs the
 	// in-memory discriminant, the credit_dir/credit accessors, and the constructor
 	// that the CreditRouter and its parity tests exercise directly on Frame values.
@@ -248,11 +249,11 @@ type Frame struct {
 	Checksum    *uint64                // Payload checksum (FNV-1a hash, REQUIRED for CHUNK frames)
 	IsSequence  *bool                  // Whether producer used emit_list_item (true) or write (false)
 	ForceKill   *bool                  // Whether Cancel should force-kill the cartridge process
-	Credit      *uint64                // Flow-control credit grant in CHUNK units (CREDIT frames only, protocol v3)
+	Credit      *uint64                // Flow-control credit grant in CHUNK units (CREDIT frames only, protocol v4)
 	// Unbounded marks a STREAM_START whose stream makes no length promise: its
 	// STREAM_END may omit chunk_count and receivers must consume it
 	// incrementally, never buffering to completion. Present on STREAM_START
-	// frames only (protocol v3, L16). NOTE: wire-level CBOR encode/decode
+	// frames only (protocol v4, L16). NOTE: wire-level CBOR encode/decode
 	// support for this field (key 20) is ported by the frame/codec subsystem
 	// task, not here; the request-state subsystem only needs the in-memory
 	// flag and the constructors/accessor its parity tests exercise directly
@@ -516,7 +517,7 @@ func NewCancelFrame(targetRid MessageId, forceKill bool) *Frame {
 }
 
 // NewCredit creates a CREDIT frame granting per-stream flow-control credit to
-// the sender of a stream (protocol v3).
+// the sender of a stream (protocol v4).
 //
 // Arguments:
 //   - targetRid: The request whose stream is being credited
@@ -563,28 +564,26 @@ func (f *Frame) CreditDirectionValue() *CreditDirection {
 	return &dir
 }
 
-// NewErr creates an ERR frame (matches Rust Frame::err). The class defaults
-// to Internal — an error that reaches the wire without a declared class is
-// the emitter's problem by definition; emitters with a classified error use
-// NewErrClassified.
-func NewErr(id MessageId, code string, message string) *Frame {
-	return NewErrClassified(id, code, FailureClassInternal, message, nil)
-}
-
-// NewErrClassified creates an ERR frame carrying the full failure identity:
+// NewErr creates an ERR frame carrying the full failure identity:
 // the emitter's machine-readable code (e.g. CONTEXT_OVERFLOW), the failure
 // CLASS (whose problem it is — declared at the error's definition site, see
-// FailureClass), the human message, and — when the failure is attributed to
+// AttributionClass), the human message, and — when the failure is attributed to
 // a specific argument at the emit source — the media URN of that argument.
 // ERR meta contract (docs/12.2 + docs/failure-taxonomy.md): "code" +
-// "class" + "message", all text, plus an OPTIONAL "arg_urn" entry that is
+// "attribution_class" + "message", all text, plus an OPTIONAL "arg_urn" entry that is
 // ABSENT when there is no attribution (never an empty string).
-// (matches Rust Frame::err_classified)
-func NewErrClassified(id MessageId, code string, class FailureClass, message string, argUrn *string) *Frame {
+// (matches Rust Frame::err)
+func NewErr(id MessageId, code string, class AttributionClass, message string, argUrn *string) *Frame {
+	if strings.TrimSpace(code) == "" || strings.TrimSpace(message) == "" {
+		panic("NewErr requires non-empty code and message")
+	}
+	if argUrn != nil && *argUrn == "" {
+		panic("NewErr arg_urn must be non-empty when present")
+	}
 	frame := newFrame(FrameTypeErr, id)
 	frame.Meta = map[string]interface{}{
 		"code":    code,
-		"class":   class.String(),
+		"attribution_class": class.String(),
 		"message": message,
 	}
 	if argUrn != nil {
@@ -595,11 +594,24 @@ func NewErrClassified(id MessageId, code string, class FailureClass, message str
 
 // NewLog creates a LOG frame (matches Rust Frame::log)
 // level and message are stored in the Meta map
-func NewLog(id MessageId, level string, message string) *Frame {
+func NewLog(id MessageId, level string, class AttributionClass, message string, argUrn *string) *Frame {
+	if strings.TrimSpace(level) == "" || strings.TrimSpace(message) == "" {
+		panic("NewLog requires non-empty level and message")
+	}
+	if level == "progress" {
+		panic("NewLog cannot create progress frames; use NewProgress")
+	}
+	if argUrn != nil && *argUrn == "" {
+		panic("NewLog arg_urn must be non-empty when present")
+	}
 	frame := newFrame(FrameTypeLog, id)
 	frame.Meta = map[string]interface{}{
-		"level":   level,
-		"message": message,
+		"level":             level,
+		"attribution_class": class.String(),
+		"message":           message,
+	}
+	if argUrn != nil {
+		frame.Meta["arg_urn"] = *argUrn
 	}
 	return frame
 }
@@ -622,7 +634,7 @@ func NewHeartbeat(id MessageId) *Frame {
 }
 
 // NewHello creates a HELLO frame for handshake (host side - no manifest).
-// initialCredit is the proposed initial per-stream credit window (protocol v3);
+// initialCredit is the proposed initial per-stream credit window (protocol v4);
 // it is negotiated by the peer to the element-wise minimum, same as the other
 // three limits. Matches Rust Frame::hello.
 func NewHello(maxFrame, maxChunk, maxReorderBuffer, initialCredit int) *Frame {
@@ -633,15 +645,16 @@ func NewHello(maxFrame, maxChunk, maxReorderBuffer, initialCredit int) *Frame {
 		"max_reorder_buffer": maxReorderBuffer,
 		"initial_credit":     initialCredit,
 		"version":            ProtocolVersion,
+		"handler_capacity":   0,
 	}
 	return frame
 }
 
 // NewHelloWithManifest creates a HELLO frame with manifest (cartridge side).
-// initialCredit is the proposed initial per-stream credit window (protocol v3);
+// initialCredit is the proposed initial per-stream credit window (protocol v4);
 // it is negotiated by the peer to the element-wise minimum, same as the other
 // three limits. Matches Rust Frame::hello_with_manifest.
-func NewHelloWithManifest(maxFrame, maxChunk, maxReorderBuffer, initialCredit int, manifest []byte) *Frame {
+func NewHelloWithManifest(maxFrame, maxChunk, maxReorderBuffer, initialCredit int, handlerCapacity uint64, manifest []byte) *Frame {
 	frame := newFrame(FrameTypeHello, MessageId{uintValue: new(uint64)})
 	frame.Meta = map[string]interface{}{
 		"max_frame":          maxFrame,
@@ -650,13 +663,14 @@ func NewHelloWithManifest(maxFrame, maxChunk, maxReorderBuffer, initialCredit in
 		"initial_credit":     initialCredit,
 		"version":            ProtocolVersion,
 		"manifest":           manifest,
+		"handler_capacity":   handlerCapacity,
 	}
 	return frame
 }
 
 // NewRelayNotify creates a RELAY_NOTIFY frame for capability advertisement (slave → master).
 // Carries aggregate manifest + negotiated limits (including the per-stream
-// initial_credit window, protocol v3). (matches Rust Frame::relay_notify)
+// initial_credit window, protocol v4). (matches Rust Frame::relay_notify)
 func NewRelayNotify(manifest []byte, maxFrame, maxChunk, maxReorderBuffer, initialCredit int) *Frame {
 	frame := newFrame(FrameTypeRelayNotify, MessageId{uintValue: new(uint64)})
 	frame.Meta = map[string]interface{}{
@@ -690,39 +704,50 @@ func (f *Frame) ErrorCode() string {
 	return ""
 }
 
-// ErrorClass gets the failure class from ERR frame meta. A frame without a
-// "class" entry (or with an unknown token) classifies as Internal:
-// unclassified means "the emitter's problem", never a guess about the user's
-// input. Non-ERR frames also return Internal (the degenerate value, matching
-// ErrorCode's "" sentinel — callers only read this on ERR frames).
-// (matches Rust Frame::error_class)
-func (f *Frame) ErrorClass() FailureClass {
-	if f.FrameType != FrameTypeErr || f.Meta == nil {
-		return FailureClassInternal
+// AttributionClass parses the mandatory attribution on ERR and non-progress
+// LOG frames. Missing and unknown values are protocol errors.
+func (f *Frame) AttributionClass() (AttributionClass, error) {
+	attributedLog := f.FrameType == FrameTypeLog && f.LogLevel() != "progress"
+	if f.FrameType != FrameTypeErr && !attributedLog {
+		return AttributionClassInternal, fmt.Errorf("%s frames do not carry attribution", f.FrameType)
 	}
-	token, ok := f.Meta["class"].(string)
+	if f.Meta == nil {
+		return AttributionClassInternal, errors.New("frame missing required text attribution_class")
+	}
+	token, ok := f.Meta["attribution_class"].(string)
 	if !ok {
-		return FailureClassInternal
+		return AttributionClassInternal, errors.New("frame missing required text attribution_class")
 	}
-	class, ok := FailureClassFromWire(token)
+	class, ok := AttributionClassFromWire(token)
 	if !ok {
-		return FailureClassInternal
+		return AttributionClassInternal, fmt.Errorf("unknown attribution_class %q", token)
 	}
-	return class
+	return class, nil
 }
 
-// ErrorArgUrn gets the media URN of the argument the failure is attributed
-// to, when the emit source declared one (ERR meta key "arg_urn",
-// docs/failure-taxonomy.md). Returns nil when the frame carries no
-// attribution, and for non-ERR frames. (matches Rust Frame::error_arg_urn)
-func (f *Frame) ErrorArgUrn() *string {
-	if f.FrameType != FrameTypeErr || f.Meta == nil {
-		return nil
+// AttributionArgUrn gets the media URN of the argument an ERR or non-progress
+// LOG frame is attributed to. The emit source alone decides whether to include
+// the optional arg_urn key.
+func (f *Frame) AttributionArgUrn() (*string, error) {
+	attributedLog := f.FrameType == FrameTypeLog && f.LogLevel() != "progress"
+	if f.FrameType != FrameTypeErr && !attributedLog {
+		return nil, fmt.Errorf("%s frames do not carry diagnostic argument attribution", f.FrameType)
 	}
-	if urn, ok := f.Meta["arg_urn"].(string); ok {
-		return &urn
+	if f.Meta == nil {
+		return nil, nil
 	}
-	return nil
+	value, present := f.Meta["arg_urn"]
+	if !present {
+		return nil, nil
+	}
+	urn, ok := value.(string)
+	if !ok {
+		return nil, errors.New("diagnostic arg_urn must be text when present")
+	}
+	if strings.TrimSpace(urn) == "" {
+		return nil, errors.New("diagnostic arg_urn must not be empty")
+	}
+	return &urn, nil
 }
 
 // ErrorMessage gets error message from ERR frame meta
@@ -806,12 +831,9 @@ func (f *Frame) RelayNotifyLimits() *Limits {
 		return nil
 	}
 	maxReorderBuffer := extractIntFromMeta(f.Meta, "max_reorder_buffer")
-	if maxReorderBuffer <= 0 {
-		maxReorderBuffer = DefaultMaxReorderBuffer
-	}
 	initialCredit := extractIntFromMeta(f.Meta, "initial_credit")
-	if initialCredit <= 0 {
-		initialCredit = DefaultInitialCredit
+	if maxReorderBuffer <= 0 || initialCredit <= 0 {
+		return nil
 	}
 	return &Limits{MaxFrame: maxFrame, MaxChunk: maxChunk, MaxReorderBuffer: maxReorderBuffer, InitialCredit: initialCredit}
 }
