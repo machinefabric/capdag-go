@@ -1203,7 +1203,7 @@ func Test7090_heartbeat_drops_total_reaches_inventory_stats(t *testing.T) {
 	host.mu.Unlock()
 	response := NewHeartbeat(hbID)
 	response.Meta = map[string]interface{}{
-		"drops_total":       uint64(42),
+		"drops_total":      uint64(42),
 		"handler_capacity": uint64(0),
 	}
 	host.handleCartridgeFrame(0, response, relayOut)
@@ -1222,7 +1222,7 @@ func Test7090_heartbeat_drops_total_reaches_inventory_stats(t *testing.T) {
 	host.mu.Unlock()
 	response2 := NewHeartbeat(hbID2)
 	response2.Meta = map[string]interface{}{
-		"drops_total":       uint64(45),
+		"drops_total":      uint64(45),
 		"handler_capacity": uint64(0),
 	}
 	host.handleCartridgeFrame(0, response2, relayOut)
@@ -1663,4 +1663,26 @@ func Test987_gc_secondary_pass_enforces_hard_cap(t *testing.T) {
 	assert.Greater(t, host.routingGcEvictedTotal, singlePassMax,
 		"Total evicted %d should exceed single-pass max %d (the secondary pass must have evicted additional entries)",
 		host.routingGcEvictedTotal, singlePassMax)
+}
+
+// TEST8067: a delayed reader death from a retired process generation must not
+// tear down the replacement occupying the same cartridge slot. The current
+// generation still performs the real death transition.
+func Test8067_stale_reader_death_cannot_kill_replacement_generation(t *testing.T) {
+	host := NewCartridgeHost()
+	host.cartridges = append(host.cartridges, &ManagedCartridge{
+		running:           true,
+		generation:        7,
+		pendingHeartbeats: make(map[string]time.Time),
+	})
+	out := &relayOutbound{ch: make(chan *Frame, 8)}
+
+	host.handleCartridgeDeath(0, 6, out)
+	assert.True(t, host.cartridges[0].running)
+	assert.Equal(t, uint64(7), host.cartridges[0].generation)
+	assert.Empty(t, out.ch)
+
+	host.handleCartridgeDeath(0, 7, out)
+	assert.False(t, host.cartridges[0].running)
+	assert.Equal(t, uint64(8), host.cartridges[0].generation)
 }

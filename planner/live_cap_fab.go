@@ -384,27 +384,7 @@ func (g *LiveCapFab) AddCap(c *cap.Cap) {
 	toCanonical := toSpec.String()
 	capCanonical := c.Urn.String()
 
-	// Determine InputIsSequence from the stdin arg's IsSequence field.
-	inputIsSequence := false
-	for _, arg := range c.Args {
-		isStdin := false
-		for _, src := range arg.Sources {
-			if src.Stdin != nil {
-				isStdin = true
-				break
-			}
-		}
-		if isStdin {
-			inputIsSequence = arg.IsSequence
-			break
-		}
-	}
-
-	// Determine OutputIsSequence from the cap's Output field.
-	outputIsSequence := false
-	if c.Output != nil {
-		outputIsSequence = c.Output.IsSequence
-	}
+	inputIsSequence, outputIsSequence := c.SequenceShape()
 
 	edgeIdx := len(g.edges)
 	edge := &LiveMachinePlanEdge{
@@ -474,13 +454,15 @@ func (g *LiveCapFab) getOutgoingEdges(source *urn.MediaUrn, isSequence bool) ([]
 // GetReachableTargets performs BFS from source and returns reachable targets.
 func (g *LiveCapFab) GetReachableTargets(source *urn.MediaUrn, isSequence bool, maxDepth int) []ReachableTargetInfo {
 	type visitKey struct {
-		canonical  string
-		isSequence bool
+		canonical      string
+		isSequence     bool
+		pendingForEach bool
 	}
 	type queueItem struct {
-		urn        *urn.MediaUrn
-		isSequence bool
-		depth      int
+		urn            *urn.MediaUrn
+		isSequence     bool
+		pendingForEach bool
+		depth          int
 	}
 
 	visited := make(map[string]*ReachableTargetInfo)
@@ -490,7 +472,12 @@ func (g *LiveCapFab) GetReachableTargets(source *urn.MediaUrn, isSequence bool, 
 	// Seed
 	edges, outSeqs := g.getOutgoingEdges(source, isSequence)
 	for i, edge := range edges {
-		queue = append(queue, queueItem{urn: edge.ToSpec, isSequence: outSeqs[i], depth: 1})
+		queue = append(queue, queueItem{
+			urn:            edge.ToSpec,
+			isSequence:     outSeqs[i],
+			pendingForEach: edge.Type == EdgeTypeForEach,
+			depth:          1,
+		})
 	}
 
 	for len(queue) > 0 {
@@ -501,38 +488,54 @@ func (g *LiveCapFab) GetReachableTargets(source *urn.MediaUrn, isSequence bool, 
 			continue
 		}
 
-		vk := visitKey{canonical: item.urn.String(), isSequence: item.isSequence}
+		vk := visitKey{
+			canonical:      item.urn.String(),
+			isSequence:     item.isSequence,
+			pendingForEach: item.pendingForEach,
+		}
 		if visitedNodes[vk] {
-			// Already visited this (urn, isSequence) pair; still update path count.
-			key := item.urn.String()
-			if info, ok := visited[key]; ok {
-				info.PathCount++
-				if item.depth < info.MinPathLength {
-					info.MinPathLength = item.depth
+			if !item.pendingForEach {
+				// Complete cap paths still contribute to the target's path count.
+				key := item.urn.String()
+				if info, ok := visited[key]; ok {
+					info.PathCount++
+					if item.depth < info.MinPathLength {
+						info.MinPathLength = item.depth
+					}
 				}
 			}
 			continue
 		}
 		visitedNodes[vk] = true
 
-		key := item.urn.String()
-		if info, ok := visited[key]; ok {
-			info.PathCount++
-			if item.depth < info.MinPathLength {
-				info.MinPathLength = item.depth
-			}
-		} else {
-			visited[key] = &ReachableTargetInfo{
-				MediaDef:      item.urn,
-				DisplayName:   key,
-				MinPathLength: item.depth,
-				PathCount:     1,
+		if !item.pendingForEach {
+			key := item.urn.String()
+			if info, ok := visited[key]; ok {
+				info.PathCount++
+				if item.depth < info.MinPathLength {
+					info.MinPathLength = item.depth
+				}
+			} else {
+				visited[key] = &ReachableTargetInfo{
+					MediaDef:      item.urn,
+					DisplayName:   key,
+					MinPathLength: item.depth,
+					PathCount:     1,
+				}
 			}
 		}
 
 		nextEdges, nextOutSeqs := g.getOutgoingEdges(item.urn, item.isSequence)
 		for i, edge := range nextEdges {
-			queue = append(queue, queueItem{urn: edge.ToSpec, isSequence: nextOutSeqs[i], depth: item.depth + 1})
+			if item.pendingForEach && !canFollowForEach(edge) {
+				continue
+			}
+			queue = append(queue, queueItem{
+				urn:            edge.ToSpec,
+				isSequence:     nextOutSeqs[i],
+				pendingForEach: edge.Type == EdgeTypeForEach,
+				depth:          item.depth + 1,
+			})
 		}
 	}
 
@@ -677,6 +680,7 @@ func (g *LiveCapFab) iddfsFind(
 	if len(*results) >= maxPaths {
 		return
 	}
+	pendingForEach := len(path) > 0 && path[len(path)-1].Type == EdgeTypeForEach
 
 	// Check if we've reached the EXACT target.
 	// Skip this check at the starting node (empty path) — when source==target,
@@ -686,7 +690,7 @@ func (g *LiveCapFab) iddfsFind(
 		// iteration (depthLimit == 0). This mirrors Rust's `current_path.len() == depth_limit`
 		// check and ensures each path is found exactly once — at the shallowest depth that
 		// reaches it — preventing duplicates across outer loop iterations.
-		if depthLimit == 0 {
+		if depthLimit == 0 && !pendingForEach {
 			var steps []*StrandStep
 			capCount := 0
 			for _, edge := range path {
@@ -715,7 +719,7 @@ func (g *LiveCapFab) iddfsFind(
 		}
 		// For round-trip paths (source==target), don't return early —
 		// continue exploring edges to find longer paths through this node.
-		if !originalSource.IsEquivalent(target) {
+		if !pendingForEach && !originalSource.IsEquivalent(target) {
 			return
 		}
 	}
@@ -739,6 +743,9 @@ func (g *LiveCapFab) iddfsFind(
 
 	edges, outSeqs := g.getOutgoingEdges(current, isSequence)
 	for i, edge := range edges {
+		if pendingForEach && !canFollowForEach(edge) {
+			continue
+		}
 		// Make a fresh slice to avoid aliasing between recursive branches.
 		newPath := make([]*LiveMachinePlanEdge, len(path)+1)
 		copy(newPath, path)
@@ -748,6 +755,10 @@ func (g *LiveCapFab) iddfsFind(
 			return
 		}
 	}
+}
+
+func canFollowForEach(edge *LiveMachinePlanEdge) bool {
+	return edge.Type == EdgeTypeCap && !edge.InputIsSequence
 }
 
 func edgeToStep(edge *LiveMachinePlanEdge) *StrandStep {

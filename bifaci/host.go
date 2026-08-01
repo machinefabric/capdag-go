@@ -134,6 +134,7 @@ func (e *HostError) Error() string {
 // cartridgeEvent is an internal event from a cartridge reader goroutine.
 type cartridgeEvent struct {
 	cartridgeIdx int
+	generation   uint64
 	frame        *Frame
 	isDeath      bool
 }
@@ -198,8 +199,12 @@ type ManagedCartridge struct {
 	// HELLO time. This is the source of truth on the wire; the engine
 	// reads `installed_cartridges[*].cap_groups` and computes its own
 	// flat list.
-	capGroups   []CapGroup
-	running     bool
+	capGroups []CapGroup
+	running   bool
+	// generation identifies the process currently occupying this cartridge
+	// slot. Reader events are rejected unless they match, so a delayed EOF
+	// from a retired process cannot tear down its replacement.
+	generation  uint64
 	helloFailed bool
 	// removed marks a cartridge retired by a roster sync (the install was
 	// removed/replaced on disk). A removed cartridge disappears from the
@@ -218,7 +223,7 @@ type ManagedCartridge struct {
 	// counter. Survives across readings (each heartbeat carries the
 	// cartridge's running total). Mirrors Rust protocol_drops_total.
 	protocolDropsTotal *uint64
-	handlerCapacity uint64
+	handlerCapacity    uint64
 	// pendingHeartbeats tracks health probes this host has sent to the
 	// cartridge (id string → sent time), so a later HEARTBEAT frame from
 	// the cartridge can be told apart from a cartridge-initiated
@@ -778,12 +783,13 @@ func (h *CartridgeHost) AttachCartridge(cartridgeRead io.Reader, cartridgeWrite 
 
 	writerCh := make(chan *Frame, 64)
 	cartridge := &ManagedCartridge{
-		writerCh:  writerCh,
-		manifest:  manifest,
-		limits:    limits,
-		caps:      caps,
-		capGroups: capGroups,
-		running:   true,
+		writerCh:        writerCh,
+		manifest:        manifest,
+		limits:          limits,
+		caps:            caps,
+		capGroups:       capGroups,
+		running:         true,
+		generation:      1,
 		handlerCapacity: handlerCapacity,
 		// Derive the install identity from the HELLO manifest. Advertisement
 		// is identity-gated, so without this the attached cartridge is
@@ -801,7 +807,7 @@ func (h *CartridgeHost) AttachCartridge(cartridgeRead io.Reader, cartridgeWrite 
 	h.mu.Unlock()
 
 	go h.writerLoop(writer, writerCh)
-	go h.readerLoop(cartridgeIdx, reader)
+	go h.readerLoop(cartridgeIdx, cartridge.generation, reader)
 
 	return cartridgeIdx, nil
 }
@@ -985,8 +991,15 @@ func (h *CartridgeHost) Run(relayRead io.Reader, relayWrite io.Writer, resourceF
 			}
 
 		case event := <-h.eventCh:
+			h.mu.Lock()
+			isCurrent := event.cartridgeIdx >= 0 && event.cartridgeIdx < len(h.cartridges) &&
+				h.cartridges[event.cartridgeIdx].generation == event.generation
+			h.mu.Unlock()
+			if !isCurrent {
+				continue
+			}
 			if event.isDeath {
-				h.handleCartridgeDeath(event.cartridgeIdx, out)
+				h.handleCartridgeDeath(event.cartridgeIdx, event.generation, out)
 			} else if event.frame != nil {
 				h.handleCartridgeFrame(event.cartridgeIdx, event.frame, out)
 			}
@@ -1501,12 +1514,21 @@ func extractUint64FromMeta(meta map[string]interface{}, key string) (uint64, boo
 }
 
 // handleCartridgeDeath processes a cartridge death event.
-func (h *CartridgeHost) handleCartridgeDeath(cartridgeIdx int, relayWriter *relayOutbound) {
+func (h *CartridgeHost) handleCartridgeDeath(cartridgeIdx int, generation uint64, relayWriter *relayOutbound) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
+	if cartridgeIdx < 0 || cartridgeIdx >= len(h.cartridges) ||
+		h.cartridges[cartridgeIdx].generation != generation {
+		return
+	}
 	cartridge := h.cartridges[cartridgeIdx]
+	if cartridge.generation == math.MaxUint64 {
+		panic("cartridge process generation exhausted")
+	}
+	cartridge.generation++
 	cartridge.running = false
+	clear(cartridge.pendingHeartbeats)
 
 	if cartridge.writerCh != nil {
 		close(cartridge.writerCh)
@@ -1599,14 +1621,14 @@ func (h *CartridgeHost) writerLoop(writer *FrameWriter, ch chan *Frame) {
 }
 
 // readerLoop reads frames from a cartridge and sends events to the event channel.
-func (h *CartridgeHost) readerLoop(cartridgeIdx int, reader *FrameReader) {
+func (h *CartridgeHost) readerLoop(cartridgeIdx int, generation uint64, reader *FrameReader) {
 	for {
 		frame, err := reader.ReadFrame()
 		if err != nil {
-			h.eventCh <- cartridgeEvent{cartridgeIdx: cartridgeIdx, isDeath: true}
+			h.eventCh <- cartridgeEvent{cartridgeIdx: cartridgeIdx, generation: generation, isDeath: true}
 			return
 		}
-		h.eventCh <- cartridgeEvent{cartridgeIdx: cartridgeIdx, frame: frame}
+		h.eventCh <- cartridgeEvent{cartridgeIdx: cartridgeIdx, generation: generation, frame: frame}
 	}
 }
 
@@ -1617,6 +1639,10 @@ func (h *CartridgeHost) spawnCartridgeLocked(cartridgeIdx int) error {
 		cartridge.helloFailed = true
 		return fmt.Errorf("cartridge has no path")
 	}
+	if cartridge.generation == math.MaxUint64 {
+		return fmt.Errorf("cartridge process generation exhausted")
+	}
+	generation := cartridge.generation + 1
 
 	cmd := exec.Command(cartridge.path)
 	stdin, err := cmd.StdinPipe()
@@ -1662,6 +1688,7 @@ func (h *CartridgeHost) spawnCartridgeLocked(cartridgeIdx int) error {
 	cartridge.capGroups = capGroups
 	cartridge.caps = flattenCapURNs(capGroups)
 	cartridge.running = true
+	cartridge.generation = generation
 
 	writerCh := make(chan *Frame, 64)
 	cartridge.writerCh = writerCh
@@ -1670,7 +1697,7 @@ func (h *CartridgeHost) spawnCartridgeLocked(cartridgeIdx int) error {
 	h.rebuildCapabilities()
 
 	go h.writerLoop(writer, writerCh)
-	go h.readerLoop(cartridgeIdx, reader)
+	go h.readerLoop(cartridgeIdx, generation, reader)
 
 	return nil
 }

@@ -764,6 +764,9 @@ type NodeExecutionResult struct {
 // For linear (non-ForEach) pipelines, a single BodyOutcome with BodyIndex=0
 // represents the entire execution.
 type BodyOutcome struct {
+	// ForEachTokenID is the immutable ForEach StrandStep token that scopes
+	// BodyIndex. Nil only for the single linear whole-run outcome.
+	ForEachTokenID *string `json:"foreach_token_id"`
 	// BodyIndex is the index of this body within the ForEach (0-based). 0 for linear pipelines.
 	BodyIndex int `json:"body_index"`
 	// Success indicates whether this body completed successfully.
@@ -791,15 +794,45 @@ type BodyOutcome struct {
 	ItemByteCount uint64 `json:"item_byte_count"`
 }
 
-// UnmarshalJSON keeps the v4 required-but-nullable failure-coordinate shape.
-// A missing key is an obsolete payload; an explicit JSON null means the emit
-// source did not attribute the outcome to a step or argument.
+func (b BodyOutcome) validate() error {
+	if b.BodyIndex < 0 {
+		return fmt.Errorf("body outcome body_index must be non-negative")
+	}
+	if b.ForEachTokenID == nil && b.BodyIndex != 0 {
+		return fmt.Errorf("linear body outcome must use body_index 0")
+	}
+	if b.ForEachTokenID != nil && *b.ForEachTokenID == "" {
+		return fmt.Errorf("body outcome foreach_token_id must be null or non-empty")
+	}
+	if b.FailedTokenID != nil && *b.FailedTokenID == "" {
+		return fmt.Errorf("body outcome failed_token_id must be null or non-empty")
+	}
+	if b.FailedArgUrn != nil && *b.FailedArgUrn == "" {
+		return fmt.Errorf("body outcome failed_arg_urn must be null or non-empty")
+	}
+	return nil
+}
+
+// MarshalJSON prevents locally constructed outcomes from emitting an invalid
+// execution coordinate. The wire always includes all nullable coordinate keys.
+func (b BodyOutcome) MarshalJSON() ([]byte, error) {
+	if err := b.validate(); err != nil {
+		return nil, err
+	}
+	type bodyOutcome BodyOutcome
+	return json.Marshal(bodyOutcome(b))
+}
+
+// UnmarshalJSON keeps the required-but-nullable execution-coordinate shape.
+// A missing key is invalid. An explicit null ForEach token identifies the sole
+// linear whole-run coordinate; null failure fields mean the emit source did not
+// attribute the failure to a step or argument.
 func (b *BodyOutcome) UnmarshalJSON(data []byte) error {
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(data, &fields); err != nil {
 		return err
 	}
-	for _, field := range []string{"failed_token_id", "failed_arg_urn"} {
+	for _, field := range []string{"foreach_token_id", "failed_token_id", "failed_arg_urn"} {
 		if _, present := fields[field]; !present {
 			return fmt.Errorf("body outcome missing required nullable field %q", field)
 		}
@@ -808,6 +841,9 @@ func (b *BodyOutcome) UnmarshalJSON(data []byte) error {
 	type bodyOutcome BodyOutcome
 	var decoded bodyOutcome
 	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	if err := BodyOutcome(decoded).validate(); err != nil {
 		return err
 	}
 	*b = BodyOutcome(decoded)

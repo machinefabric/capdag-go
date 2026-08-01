@@ -5,6 +5,7 @@ import (
 
 	"github.com/machinefabric/capdag-go/cap"
 	"github.com/machinefabric/capdag-go/planner"
+	"github.com/machinefabric/capdag-go/standard"
 	"github.com/machinefabric/capdag-go/urn"
 )
 
@@ -143,6 +144,26 @@ func resolvePreInterned(
 		if !ok {
 			return nil, unknownCapError(wiring.capUrn.String())
 		}
+		capInSpec, err := urn.NewMediaUrnFromString(capDef.Urn.InSpec())
+		if err != nil {
+			panic("cap registry invariant: cap in= is a valid MediaUrn: " + err.Error())
+		}
+		voidMedia, err := urn.NewMediaUrnFromString(standard.MediaVoid)
+		if err != nil {
+			panic("standard.MediaVoid is a valid MediaUrn: " + err.Error())
+		}
+		primaryArgIndex := -1
+		if !capInSpec.IsEquivalent(voidMedia) {
+			for i := range capDef.Args {
+				if capDef.Args[i].IsMainInput(capInSpec) {
+					primaryArgIndex = i
+					break
+				}
+			}
+			if primaryArgIndex < 0 {
+				panic("cap registry invariant: every non-void cap declares its main input")
+			}
+		}
 
 		// Wiring sources are matched against EVERY arg by its stream URN (its
 		// Stdin source URN if it declares one, else its declared URN — a cap may
@@ -228,14 +249,15 @@ func resolvePreInterned(
 		})
 
 		// Derive IsLoop from cardinality — the single ForEach rule
-		// (cap.NeedsForeach): the primary data input (the first stdin arg)
+		// (cap.NeedsForeach): the primary data input (the arg whose stdin
+		// matches in=)
 		// carries a sequence but this cap consumes it as a scalar, so it maps
 		// per-item. The primary stdin source node is the binding feeding the
-		// first stdin arg's slot. A cap with no stdin arg (config-only) never
+		// main arg's slot. A void-input cap has no main arg and never
 		// loops.
 		primaryStdinSourceIsSequence := false
-		if len(stdinArgSlotUrns) > 0 {
-			primarySlot := stdinArgSlotUrns[0]
+		if primaryArgIndex >= 0 {
+			primarySlot := stdinArgSlotUrns[primaryArgIndex]
 			for _, b := range bindings {
 				if b.CapArgMediaUrn.IsEquivalent(primarySlot) {
 					primaryStdinSourceIsSequence = nodeIsSequence[b.Source]

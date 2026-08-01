@@ -980,3 +980,46 @@ func Test7104_MultiArgCapExactlyOneMainInputAndPartitionOfRest(t *testing.T) {
 		"media:enc=utf-8;system-prompt",
 	}, withDefault)
 }
+
+// TEST8065: cardinality follows the declared main input even when another
+// stdin-capable argument appears first.
+func Test8065_SequenceShapeUsesMainInputIdentityNotArgumentOrder(t *testing.T) {
+	capUrn := urn.NewCapUrn(
+		"media:enc=utf-8",
+		"media:enc=utf-8;result",
+		map[string]string{"op": "ordered"},
+	)
+	secondaryStdin := "media:enc=utf-8;context"
+	mainStdin := "media:enc=utf-8"
+	capDef := NewCapWithArgs(capUrn, "Ordered args", []string{"ordered"}, []CapArg{
+		{
+			MediaUrn: "media:enc=utf-8;context",
+			Required: false,
+			Sources:  []ArgSource{{Stdin: &secondaryStdin}},
+		},
+		{
+			MediaUrn:   "media:enc=utf-8",
+			Required:   true,
+			IsSequence: true,
+			Sources:    []ArgSource{{Stdin: &mainStdin}},
+		},
+	})
+
+	inputIsSequence, outputIsSequence := capDef.SequenceShape()
+	assert.True(t, inputIsSequence)
+	assert.False(t, outputIsSequence)
+}
+
+// TEST8066: a void-input cap has scalar input cardinality without inventing an arg.
+func Test8066_VoidInputSequenceShapeIsScalarWithoutArguments(t *testing.T) {
+	capUrn := urn.NewCapUrn(
+		standard.MediaVoid,
+		"media:time",
+		map[string]string{"op": "clock"},
+	)
+	capDef := NewCap(capUrn, "Clock", []string{"clock"})
+
+	inputIsSequence, outputIsSequence := capDef.SequenceShape()
+	assert.False(t, inputIsSequence)
+	assert.False(t, outputIsSequence)
+}

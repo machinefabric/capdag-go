@@ -855,6 +855,8 @@ func Test6525_body_outcome_serialization_preserves_attribution_shape(t *testing.
 
 	var encoded map[string]any
 	require.NoError(t, json.Unmarshal(data, &encoded))
+	require.Contains(t, encoded, "foreach_token_id")
+	assert.Nil(t, encoded["foreach_token_id"])
 	require.Contains(t, encoded, "failed_token_id")
 	assert.Nil(t, encoded["failed_token_id"])
 	require.Contains(t, encoded, "failed_arg_urn")
@@ -865,8 +867,16 @@ func Test6525_body_outcome_serialization_preserves_attribution_shape(t *testing.
 
 	var decoded BodyOutcome
 	require.NoError(t, json.Unmarshal(data, &decoded))
-	delete(encoded, "failed_token_id")
+	delete(encoded, "foreach_token_id")
 	missing, err := json.Marshal(encoded)
+	require.NoError(t, err)
+	require.ErrorContains(t, json.Unmarshal(missing, &decoded), "foreach_token_id")
+
+	data, err = json.Marshal(outcome)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(data, &encoded))
+	delete(encoded, "failed_token_id")
+	missing, err = json.Marshal(encoded)
 	require.NoError(t, err)
 	require.ErrorContains(t, json.Unmarshal(missing, &decoded), "failed_token_id")
 
@@ -877,4 +887,24 @@ func Test6525_body_outcome_serialization_preserves_attribution_shape(t *testing.
 	missing, err = json.Marshal(encoded)
 	require.NoError(t, err)
 	require.ErrorContains(t, json.Unmarshal(missing, &decoded), "failed_arg_urn")
+
+	nonzeroLinear := []byte(`{"body_index":1,"foreach_token_id":null,"success":true,"cap_urns":[],"failed_token_id":null,"failed_arg_urn":null,"saved_paths":[],"total_bytes":0,"duration_ms":0,"item_preview_text":null,"item_byte_count":0}`)
+	require.ErrorContains(t, json.Unmarshal(nonzeroLinear, &decoded), "linear body outcome must use body_index 0")
+	_, err = json.Marshal(BodyOutcome{BodyIndex: 1, Success: true})
+	require.ErrorContains(t, err, "linear body outcome must use body_index 0")
+
+	foreachToken := "tok-foreach"
+	foreachOutcome := BodyOutcome{
+		ForEachTokenID: &foreachToken,
+		BodyIndex:      3,
+		Success:        true,
+		CapUrns:        []string{},
+		SavedPaths:     []string{},
+	}
+	foreachData, err := json.Marshal(foreachOutcome)
+	require.NoError(t, err)
+	require.NoError(t, json.Unmarshal(foreachData, &decoded))
+	assert.Equal(t, 3, decoded.BodyIndex)
+	require.NotNil(t, decoded.ForEachTokenID)
+	assert.Equal(t, foreachToken, *decoded.ForEachTokenID)
 }

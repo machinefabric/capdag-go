@@ -13,7 +13,9 @@ import (
 // makeTestCapForGraph creates a minimal cap for live_cap_fab tests.
 func makeTestCapForGraph(inSpec, outSpec, op, title string) *cap.Cap {
 	capUrn := urn.NewCapUrn(inSpec, outSpec, map[string]string{"op": op})
-	return cap.NewCapWithArgs(capUrn, title, []string{"test"}, nil)
+	stdin := inSpec
+	mainArg := cap.NewCapArg(inSpec, true, []cap.ArgSource{{Stdin: &stdin}})
+	return cap.NewCapWithArgs(capUrn, title, []string{"test"}, []cap.CapArg{mainArg})
 }
 
 // TEST772: Tests find_paths_to_exact_target() finds multi-step paths Verifies that paths through intermediate nodes are found correctly
@@ -240,6 +242,39 @@ func Test788_foreach_only_with_sequence_input(t *testing.T) {
 	// Sequence input: ForEach should appear
 	seqPaths := graph.FindPathsToExactTarget(source, target, true, 10, 20)
 	assert.True(t, hasForEach(seqPaths), "Sequence input should produce ForEach step")
+}
+
+// TEST8064: a sequence-consuming cap is reached directly from sequence data,
+// never through a dangling ForEach boundary.
+func Test8064_sequence_consumer_never_follows_foreach_directly(t *testing.T) {
+	graph := NewLiveCapFab()
+	concat := makeTestCapForGraph(
+		"media:enc=utf-8",
+		"media:enc=utf-8;ext=txt",
+		"concat",
+		"Concat Text",
+	)
+	concat.Args[0].IsSequence = true
+	graph.AddCap(concat)
+	graph.AddCap(makeTestCapForGraph(
+		"media:enc=utf-8",
+		"media:enc=utf-8;summary",
+		"summarize",
+		"Summarize Text",
+	))
+
+	source, err := urn.NewMediaUrnFromString("media:enc=utf-8;page")
+	require.NoError(t, err)
+	target, err := urn.NewMediaUrnFromString("media:enc=utf-8;ext=txt")
+	require.NoError(t, err)
+	paths := graph.FindPathsToExactTarget(source, target, true, 4, 20)
+
+	require.NotEmpty(t, paths, "the direct sequence -> concat path must exist")
+	for _, path := range paths {
+		for _, step := range path.Steps {
+			assert.NotEqual(t, StepTypeForEach, step.StepType)
+		}
+	}
 }
 
 // TEST1111: ForEach works for user-provided list sources not in the graph.

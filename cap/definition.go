@@ -7,6 +7,7 @@ import (
 	"reflect"
 
 	"github.com/machinefabric/capdag-go/media"
+	"github.com/machinefabric/capdag-go/standard"
 	"github.com/machinefabric/capdag-go/urn"
 )
 
@@ -428,25 +429,25 @@ func NewMediaValidationAllowedValues(values []string) *media.MediaValidation {
 // Caps do not carry inline media defs; every media URN is resolved
 // through the unified FabricRegistry.
 type Cap struct {
-	Urn            *urn.CapUrn          `json:"urn"`
-	Version        uint32               `json:"version,omitempty"`
-	Title          string               `json:"title"`
-	CapDescription *string              `json:"cap_description,omitempty"`
-	Documentation  *string              `json:"documentation,omitempty"`
-	Metadata       map[string]string    `json:"metadata,omitempty"`
+	Urn            *urn.CapUrn       `json:"urn"`
+	Version        uint32            `json:"version,omitempty"`
+	Title          string            `json:"title"`
+	CapDescription *string           `json:"cap_description,omitempty"`
+	Documentation  *string           `json:"documentation,omitempty"`
+	Metadata       map[string]string `json:"metadata,omitempty"`
 	// Aliases are the globally-unique human-facing names that select this cap
 	// in both the capdag CLI and the direct cartridge CLI. Replaces the former
 	// non-unique `command`. At least one; uniqueness is enforced at publish.
-	Aliases        []string             `json:"aliases"`
+	Aliases []string `json:"aliases"`
 	// IsAbstract marks a generic-input dispatch umbrella cap: a valid alias
 	// target never backed by a cartridge and never a runnable graph edge.
-	IsAbstract     bool                 `json:"abstract,omitempty"`
-	Args           []CapArg             `json:"args,omitempty"`
-	Output         *CapOutput           `json:"output,omitempty"`
-	MetadataJSON        any                  `json:"metadata_json,omitempty"`
-	RegisteredBy        *RegisteredBy        `json:"registered_by,omitempty"`
-	SupportedModelTypes []string             `json:"supported_model_types,omitempty"`
-	DefaultModelSpec    *string              `json:"default_model_spec,omitempty"`
+	IsAbstract          bool          `json:"abstract,omitempty"`
+	Args                []CapArg      `json:"args,omitempty"`
+	Output              *CapOutput    `json:"output,omitempty"`
+	MetadataJSON        any           `json:"metadata_json,omitempty"`
+	RegisteredBy        *RegisteredBy `json:"registered_by,omitempty"`
+	SupportedModelTypes []string      `json:"supported_model_types,omitempty"`
+	DefaultModelSpec    *string       `json:"default_model_spec,omitempty"`
 }
 
 // NewCap creates a new cap
@@ -706,9 +707,9 @@ func (c *Cap) AcceptsStdin() bool {
 // SequenceShape returns the cardinality shape of this cap's primary data path:
 // (inputIsSequence, outputIsSequence).
 //
-// inputIsSequence is the IsSequence flag of the first arg that carries a Stdin
-// source — the primary data input the wire delivers. outputIsSequence is the
-// output's IsSequence flag.
+// inputIsSequence is the IsSequence flag of the arg whose Stdin source matches
+// the cap URN's in= spec. Argument declaration order has no semantics.
+// outputIsSequence is the output's IsSequence flag.
 //
 // This is THE single definition of cap cardinality. Path search
 // (planner.LiveCapFab path search), editor realization (machine.realizeStrand),
@@ -718,10 +719,25 @@ func (c *Cap) AcceptsStdin() bool {
 // Matches Rust: pub fn sequence_shape(&self) -> (bool, bool)
 func (c *Cap) SequenceShape() (bool, bool) {
 	inputIsSequence := false
-	for _, arg := range c.Args {
-		if arg.HasStdinSource() {
-			inputIsSequence = arg.IsSequence
-			break
+	inSpec, err := urn.NewMediaUrnFromString(c.Urn.InSpec())
+	if err != nil {
+		panic("cap registry invariant: cap in= is a valid MediaUrn: " + err.Error())
+	}
+	voidMedia, err := urn.NewMediaUrnFromString(standard.MediaVoid)
+	if err != nil {
+		panic("standard.MediaVoid is a valid MediaUrn: " + err.Error())
+	}
+	if !inSpec.IsEquivalent(voidMedia) {
+		foundMain := false
+		for i := range c.Args {
+			if c.Args[i].IsMainInput(inSpec) {
+				inputIsSequence = c.Args[i].IsSequence
+				foundMain = true
+				break
+			}
+		}
+		if !foundMain {
+			panic("cap registry invariant: every non-void cap declares its main input")
 		}
 	}
 	outputIsSequence := false
