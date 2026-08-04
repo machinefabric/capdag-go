@@ -807,7 +807,7 @@ func (b BodyOutcome) validate() error {
 	if b.FailedTokenID != nil && *b.FailedTokenID == "" {
 		return fmt.Errorf("body outcome failed_token_id must be null or non-empty")
 	}
-	if b.FailedArgUrn != nil && *b.FailedArgUrn == "" {
+	if b.FailedArgURN != nil && *b.FailedArgURN == "" {
 		return fmt.Errorf("body outcome failed_arg_urn must be null or non-empty")
 	}
 	return nil

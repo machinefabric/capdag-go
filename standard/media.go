@@ -294,7 +294,7 @@ const MediaImageDescription = "media:enc=utf-8;ext=txt;image-description;plain-t
 
 // MediaPlainText is the media URN for finalised plain text — the canonical
 // input/output of cap:save-as-txt. Producers of user-facing prose
-// (LLM text-generation, OCR's extracted text, summarisation) declare this
+// (LLM text-generation, OCR's digitized text, summarisation) declare this
 // URN as their `out` so the planner restricts the .txt persistence path
 // to those caps. See fabric/media/plain-text.toml.
 const MediaPlainText = "media:enc=utf-8;ext=txt;plain-text"

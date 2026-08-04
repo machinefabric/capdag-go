@@ -245,7 +245,9 @@ func Test788_foreach_only_with_sequence_input(t *testing.T) {
 }
 
 // TEST8064: a sequence-consuming cap is reached directly from sequence data,
-// never through a dangling ForEach boundary.
+// never through a dangling ForEach boundary. A ForEach followed by a SCALAR cap
+// stays legal — that is the map half of the ordinary map-then-fold plan — so the
+// invariant is about what may follow the boundary, not about ForEach appearing.
 func Test8064_sequence_consumer_never_follows_foreach_directly(t *testing.T) {
 	graph := NewLiveCapFab()
 	concat := makeTestCapForGraph(
@@ -270,9 +272,24 @@ func Test8064_sequence_consumer_never_follows_foreach_directly(t *testing.T) {
 	paths := graph.FindPathsToExactTarget(source, target, true, 4, 20)
 
 	require.NotEmpty(t, paths, "the direct sequence -> concat path must exist")
+
+	direct := false
 	for _, path := range paths {
-		for _, step := range path.Steps {
-			assert.NotEqual(t, StepTypeForEach, step.StepType)
+		if len(path.Steps) == 1 && path.Steps[0].StepType == StepTypeCap && path.Steps[0].InputIsSequence {
+			direct = true
+		}
+	}
+	assert.True(t, direct, "sequence data must reach the sequence consumer directly, with no boundary")
+
+	for _, path := range paths {
+		for i, step := range path.Steps {
+			if step.StepType != StepTypeForEach {
+				continue
+			}
+			require.Less(t, i+1, len(path.Steps), "a ForEach boundary must be followed by a cap")
+			next := path.Steps[i+1]
+			assert.Equal(t, StepTypeCap, next.StepType, "a ForEach boundary must qualify a cap")
+			assert.False(t, next.InputIsSequence, "a ForEach boundary must qualify a SCALAR-input cap")
 		}
 	}
 }
@@ -668,7 +685,7 @@ func Test790_identity_urn_is_specific(t *testing.T) {
 // TEST1150: Adding one cap creates one edge and makes its output reachable in one step.
 func Test1150_add_cap_and_basic_traversal(t *testing.T) {
 	graph := NewLiveCapFab()
-	c := makeTestCapForGraph("media:ext=pdf", "media:extracted-text", "extract_text", "Extract Text")
+	c := makeTestCapForGraph("media:ext=pdf", "media:digitized-text", "extract_text", "Extract Text")
 	graph.AddCap(c)
 
 	nodeCount, edgeCount := graph.Stats()
@@ -679,17 +696,17 @@ func Test1150_add_cap_and_basic_traversal(t *testing.T) {
 	require.NoError(t, err)
 	targets := graph.GetReachableTargets(source, false, 5)
 
-	extractedText, err := urn.NewMediaUrnFromString("media:extracted-text")
+	digitizedText, err := urn.NewMediaUrnFromString("media:digitized-text")
 	require.NoError(t, err)
 
 	var found *ReachableTargetInfo
 	for i := range targets {
-		if targets[i].MediaDef.IsEquivalent(extractedText) {
+		if targets[i].MediaDef.IsEquivalent(digitizedText) {
 			found = &targets[i]
 			break
 		}
 	}
-	require.NotNil(t, found, "extracted-text should be reachable")
+	require.NotNil(t, found, "digitized-text should be reachable")
 	assert.Equal(t, 1, found.MinPathLength)
 }
 
@@ -738,8 +755,8 @@ func Test1151_exact_vs_conformance_matching(t *testing.T) {
 func Test1152_multi_step_path(t *testing.T) {
 	graph := NewLiveCapFab()
 
-	cap1 := makeTestCapForGraph("media:ext=pdf", "media:extracted-text", "extract", "Extract")
-	cap2 := makeTestCapForGraph("media:extracted-text", "media:summary-text", "summarize", "Summarize")
+	cap1 := makeTestCapForGraph("media:ext=pdf", "media:digitized-text", "extract", "Extract")
+	cap2 := makeTestCapForGraph("media:digitized-text", "media:summary-text", "summarize", "Summarize")
 	graph.AddCap(cap1)
 	graph.AddCap(cap2)
 
@@ -759,14 +776,14 @@ func Test1152_multi_step_path(t *testing.T) {
 func Test1153_deterministic_ordering(t *testing.T) {
 	graph := NewLiveCapFab()
 
-	cap1 := makeTestCapForGraph("media:ext=pdf", "media:extracted-text", "extract_a", "Extract A")
-	cap2 := makeTestCapForGraph("media:ext=pdf", "media:extracted-text", "extract_b", "Extract B")
+	cap1 := makeTestCapForGraph("media:ext=pdf", "media:digitized-text", "extract_a", "Extract A")
+	cap2 := makeTestCapForGraph("media:ext=pdf", "media:digitized-text", "extract_b", "Extract B")
 	graph.AddCap(cap1)
 	graph.AddCap(cap2)
 
 	source, err := urn.NewMediaUrnFromString("media:ext=pdf")
 	require.NoError(t, err)
-	target, err := urn.NewMediaUrnFromString("media:extracted-text")
+	target, err := urn.NewMediaUrnFromString("media:digitized-text")
 	require.NoError(t, err)
 
 	paths1 := graph.FindPathsToExactTarget(source, target, false, 5, 10)
@@ -788,8 +805,8 @@ func Test1154_sync_from_caps(t *testing.T) {
 	graph := NewLiveCapFab()
 
 	caps := []*cap.Cap{
-		makeTestCapForGraph("media:ext=pdf", "media:extracted-text", "op1", "Op1"),
-		makeTestCapForGraph("media:extracted-text", "media:summary-text", "op2", "Op2"),
+		makeTestCapForGraph("media:ext=pdf", "media:digitized-text", "op1", "Op1"),
+		makeTestCapForGraph("media:digitized-text", "media:summary-text", "op2", "Op2"),
 	}
 	graph.SyncFromCaps(caps)
 
@@ -799,7 +816,7 @@ func Test1154_sync_from_caps(t *testing.T) {
 
 	// Sync again with different caps — should replace
 	newCaps := []*cap.Cap{
-		makeTestCapForGraph("media:image", "media:extracted-text", "ocr", "OCR"),
+		makeTestCapForGraph("media:image", "media:digitized-text", "ocr", "OCR"),
 	}
 	graph.SyncFromCaps(newCaps)
 
