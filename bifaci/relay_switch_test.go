@@ -47,6 +47,13 @@ func testManifestWithCaps(capURNs []string) map[string]interface{} {
 					"version":      "0.0.0",
 					"sha256":       "0000000000000000000000000000000000000000000000000000000000000000",
 					"cap_groups":   []interface{}{},
+					// v4: an advertised installed cartridge always carries its
+					// runtime stats — the switch resolves admission capacity
+					// from handler_capacity.
+					"runtime_stats": map[string]interface{}{
+						"running":          false,
+						"handler_capacity": 0,
+					},
 				},
 			},
 		}
@@ -68,6 +75,10 @@ func testManifestWithCaps(capURNs []string) map[string]interface{} {
 				"id":           fmt.Sprintf("test-cartridge-%d", id),
 				"version":      "0.0.0",
 				"sha256":       "0000000000000000000000000000000000000000000000000000000000000000",
+				"runtime_stats": map[string]interface{}{
+					"running":          true,
+					"handler_capacity": 0,
+				},
 				"cap_groups": []interface{}{
 					map[string]interface{}{
 						"name":         "test",
@@ -1681,6 +1692,13 @@ func deferredIdentityNotify(capURNs []string) []byte {
 				"id":           "test-cartridge",
 				"version":      "0.0.0",
 				"sha256":       "0000000000000000000000000000000000000000000000000000000000000000",
+				// v4: an advertised installed cartridge always carries its
+				// runtime stats — the switch resolves admission capacity from
+				// handler_capacity.
+				"runtime_stats": map[string]interface{}{
+					"running":          true,
+					"handler_capacity": 0,
+				},
 				"cap_groups": []interface{}{
 					map[string]interface{}{
 						"name":         "test",

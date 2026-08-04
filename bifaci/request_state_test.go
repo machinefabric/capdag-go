@@ -287,3 +287,195 @@ func Test7033_terminated_summaries_ring(t *testing.T) {
 func boolPtr(b bool) *bool {
 	return &b
 }
+
+
+// =============================================================================
+// Admission control (mirrors Rust src/bifaci/request_state.rs tests)
+// =============================================================================
+
+func admissionTestKey() AdmissionKey {
+	return AdmissionKey{
+		MasterIdx:   0,
+		RegistryURL: "",
+		HasRegistry: false,
+		Channel:     "release",
+		Id:          "cartridge",
+		Version:     "1.0.0",
+		Sha256:      "sha",
+	}
+}
+
+// TEST7110: admission is strict FIFO and a terminal request releases exactly one waiter.
+func Test7110_admission_fifo_releases_one_waiter(t *testing.T) {
+	controller := NewAdmissionController()
+	key := admissionTestKey()
+	controller.Configure(key, 1)
+
+	first, err := controller.Acquire(key, nil)
+	require.NoError(t, err)
+
+	secondCh := make(chan *AdmissionPermit, 1)
+	thirdCh := make(chan *AdmissionPermit, 1)
+	go func() { p, _ := controller.Acquire(key, nil); secondCh <- p }()
+	// Give the second waiter time to take its ticket before the third queues,
+	// so the FIFO order under test is deterministic.
+	time.Sleep(50 * time.Millisecond)
+	go func() { p, _ := controller.Acquire(key, nil); thirdCh <- p }()
+	time.Sleep(50 * time.Millisecond)
+
+	select {
+	case <-secondCh:
+		t.Fatal("a waiter must not be admitted while the slot is held")
+	case <-thirdCh:
+		t.Fatal("a waiter must not be admitted while the slot is held")
+	default:
+	}
+
+	first.Release()
+	var second *AdmissionPermit
+	select {
+	case second = <-secondCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("second FIFO waiter must be admitted")
+	}
+	select {
+	case <-thirdCh:
+		t.Fatal("one release admits only one waiter")
+	default:
+	}
+	second.Release()
+	select {
+	case <-thirdCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("third FIFO waiter must be admitted next")
+	}
+}
+
+// TEST7111: cancelling a queued body removes its ticket; it cannot strand later ForEach bodies behind a dead queue head.
+func Test7111_cancelled_admission_waiter_cannot_block_queue(t *testing.T) {
+	controller := NewAdmissionController()
+	key := admissionTestKey()
+	controller.Configure(key, 1)
+	active, err := controller.Acquire(key, nil)
+	require.NoError(t, err)
+
+	cancel := make(chan struct{})
+	cancelled := make(chan error, 1)
+	go func() { _, err := controller.Acquire(key, cancel); cancelled <- err }()
+	time.Sleep(50 * time.Millisecond)
+	close(cancel)
+	select {
+	case err := <-cancelled:
+		require.Error(t, err, "a cancelled waiter must report why it stopped waiting")
+	case <-time.After(2 * time.Second):
+		t.Fatal("a cancelled waiter must return")
+	}
+
+	nextCh := make(chan *AdmissionPermit, 1)
+	go func() { p, _ := controller.Acquire(key, nil); nextCh <- p }()
+	time.Sleep(50 * time.Millisecond)
+	active.Release()
+	select {
+	case p := <-nextCh:
+		require.NotNil(t, p, "the next body must be admitted, not stranded behind the cancelled ticket")
+	case <-time.After(2 * time.Second):
+		t.Fatal("the cancelled ticket stranded the queue")
+	}
+}
+
+// TEST7112: the post-HELLO capacity update wakes already queued work. This is what changes an unstarted cartridge's one bootstrap slot to its authoritative runtime capacity without waiting for the first body to end.
+func Test7112_capacity_reconfiguration_wakes_existing_waiters(t *testing.T) {
+	controller := NewAdmissionController()
+	key := admissionTestKey()
+	controller.Configure(key, 1)
+	active, err := controller.Acquire(key, nil)
+	require.NoError(t, err)
+
+	waitingCh := make(chan *AdmissionPermit, 1)
+	go func() { p, _ := controller.Acquire(key, nil); waitingCh <- p }()
+	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-waitingCh:
+		t.Fatal("a waiter must not be admitted at capacity 1 while the slot is held")
+	default:
+	}
+
+	controller.Configure(key, 0) // unlimited
+	select {
+	case p := <-waitingCh:
+		require.NotNil(t, p, "unlimited HELLO capacity must wake queued work")
+	case <-time.After(2 * time.Second):
+		t.Fatal("unlimited HELLO capacity must wake queued work")
+	}
+	active.Release()
+}
+
+// TEST7114: a cartridge that disappears and comes back does NOT terminally fail the work queued behind it. This is 17.2's "queued bodies are not assigned terminal failure from another body's process loss; once a replacement instance advertises capacity, subsequent queued work is admitted to that live instance". The regression this pins: a single failed registry-manifest fetch retired three live cartridges for ~24s, and every queued ForEach body was failed with "became unavailable while waiting for capacity" — 195 bodies lost to an outage that had already healed.
+func Test7114_transient_unavailability_does_not_fail_queued_work(t *testing.T) {
+	controller := NewAdmissionController()
+	key := admissionTestKey()
+	controller.Configure(key, 1)
+	active, err := controller.Acquire(key, nil)
+	require.NoError(t, err)
+
+	waitingCh := make(chan *AdmissionPermit, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		p, err := controller.Acquire(key, nil)
+		waitingCh <- p
+		errCh <- err
+	}()
+	time.Sleep(50 * time.Millisecond)
+
+	// The target vanishes from its host's inventory...
+	controller.DisableMaster(key.MasterIdx)
+	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-waitingCh:
+		t.Fatal("an outage inside the grace window must not fail queued work")
+	default:
+	}
+
+	// ...and comes back, which is what must release the queue.
+	controller.Configure(key, 1)
+	active.Release()
+	select {
+	case p := <-waitingCh:
+		require.NoError(t, <-errCh)
+		require.NotNil(t, p, "queued work must acquire the restored target")
+	case <-time.After(2 * time.Second):
+		t.Fatal("a restored admission target must admit the work queued on it")
+	}
+}
+
+// TEST1943: the grace window is a BOUND, not a hang. A target that stays gone fails its queued work once the window expires, so a cartridge that is genuinely retired surfaces as a failure instead of stalling the run forever.
+func Test1943_outage_outliving_the_grace_window_fails_queued_work(t *testing.T) {
+	controller := NewAdmissionController()
+	// Shorten the window so the expiry path is exercised without sleeping
+	// through a real minute. Production uses AdmissionUnavailableGrace.
+	controller.grace = 150 * time.Millisecond
+	key := admissionTestKey()
+	controller.Configure(key, 1)
+	active, err := controller.Acquire(key, nil)
+	require.NoError(t, err)
+
+	errCh := make(chan error, 1)
+	go func() { _, err := controller.Acquire(key, nil); errCh <- err }()
+	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-errCh:
+		t.Fatal("the window must not expire early")
+	default:
+	}
+
+	controller.DisableMaster(key.MasterIdx)
+	select {
+	case err := <-errCh:
+		require.Error(t, err, "queued work must not acquire a target that never came back")
+		assert.Contains(t, err.Error(), "unavailable for longer than",
+			"the failure must name the outage, not a generic routing error")
+	case <-time.After(3 * time.Second):
+		t.Fatal("an expired grace window must wake queued work")
+	}
+	active.Release()
+}

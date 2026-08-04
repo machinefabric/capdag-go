@@ -31,12 +31,20 @@ const (
 	RelaySwitchErrorTypeUnknownRequest
 	RelaySwitchErrorTypeProtocol
 	RelaySwitchErrorTypeAllMastersUnhealthy
+	// RelaySwitchErrorTypeCartridgeUnavailable: the cartridge that would serve
+	// this request left its host's inventory and did not come back within the
+	// admission grace window. Distinct from Protocol because nothing violated
+	// the protocol — the deployment changed under a valid request, which is an
+	// `environment` failure, not an engine defect (docs/failure-taxonomy.md).
+	RelaySwitchErrorTypeCartridgeUnavailable
 )
 
 func (e *RelaySwitchError) Error() string {
 	switch e.Type {
 	case RelaySwitchErrorTypeCbor:
 		return fmt.Sprintf("relay switch CBOR error: %s", e.Message)
+	case RelaySwitchErrorTypeCartridgeUnavailable:
+		return fmt.Sprintf("cartridge unavailable: %s", e.Message)
 	case RelaySwitchErrorTypeIO:
 		return fmt.Sprintf("relay switch I/O error: %s", e.Message)
 	case RelaySwitchErrorTypeNoHandler:
@@ -354,6 +362,10 @@ type MasterConnection struct {
 type RelaySwitch struct {
 	masters  []*MasterConnection
 	capTable []CapTableEntry
+	// admission is the FIFO switch-side admission gate. Mirrors Rust
+	// RelaySwitch.admission: a positive handler_capacity bounds how many
+	// requests the switch dispatches to one cartridge install at a time.
+	admission *AdmissionController
 	// requests is the unified per-request state (L7): routing, origin, peer
 	// markers, cancel-cascade children, external response channel (used by
 	// the deferred runtime identity probe — this mirror has no execute_cap-
@@ -636,6 +648,15 @@ func NewRelaySwitch(sockets []SocketPair) (*RelaySwitch, error) {
 		frameRx:                      frameRx,
 		pendingProbes:                make(chan int, 256),
 		capWatch:                     newCapWatch(),
+		admission:                    NewAdmissionController(),
+	}
+
+	// Seed admission from every master's initial inventory, so the very first
+	// dispatch is gated exactly like every later one.
+	for idx := range sw.masters {
+		if err := sw.configureMasterAdmissionLocked(idx, sw.masters[idx].installedCartridges); err != nil {
+			return nil, err
+		}
 	}
 
 	sw.rebuildCapTable()
@@ -836,6 +857,10 @@ func (sw *RelaySwitch) AddMaster(sockPair SocketPair) (int, error) {
 		slot.hostProtocolStats = payload.HostProtocolStats
 		slot.healthy = healthyAtRegister
 		slot.lastError = identityFailure
+	}
+
+	if err := sw.configureMasterAdmissionLocked(masterIdx, payload.InstalledCartridges); err != nil {
+		return 0, err
 	}
 
 	sw.rebuildCapTable()
@@ -1302,18 +1327,39 @@ func (sw *RelaySwitch) CancelAllRequests(forceKill bool) []MessageId {
 // the master whose registered cap is equivalent to this URN.
 // When nil, uses standard accepts + closest-specificity routing.
 func (sw *RelaySwitch) SendToMaster(frame *Frame, preferredCap *string) error {
-	sw.mu.Lock()
-	defer sw.mu.Unlock()
-
-	switch frame.FrameType {
-	case FrameTypeReq:
+	// A REQ takes an admission permit BEFORE the switch lock: acquiring can
+	// block waiting for a slot, and blocking under sw.mu would deadlock every
+	// path that must run for a slot to be released. Route resolution needs the
+	// lock, so the sequence is resolve → unlock → acquire → relock → register,
+	// exactly as the reference orders it.
+	var permit *AdmissionPermit
+	if frame.FrameType == FrameTypeReq {
 		if frame.Cap == nil {
 			return &RelaySwitchError{
 				Type:    RelaySwitchErrorTypeProtocol,
 				Message: "REQ frame missing cap URN",
 			}
 		}
+		acquired, err := sw.acquireCapAdmission(*frame.Cap, preferredCap)
+		if err != nil {
+			return err
+		}
+		permit = acquired
+	}
+	// Any early return past this point must give the slot back, or a bounded
+	// cartridge loses capacity permanently.
+	admitted := false
+	defer func() {
+		if permit != nil && !admitted {
+			permit.Release()
+		}
+	}()
 
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+
+	switch frame.FrameType {
+	case FrameTypeReq:
 		destIdx, err := sw.findMasterForCap(*frame.Cap, preferredCap)
 		if err != nil {
 			return err
@@ -1334,9 +1380,13 @@ func (sw *RelaySwitch) SendToMaster(frame *Frame, preferredCap *string) error {
 			nil,
 			false,
 		).WithCapUrn(frame.Cap)
+		state = state.WithAdmissionPermit(permit)
 		if regErr := sw.requests.Register(key, state); regErr != nil {
 			return &RelaySwitchError{Type: RelaySwitchErrorTypeProtocol, Message: regErr.Error()}
 		}
+		// The request table owns the permit now: it is released when the
+		// request terminates (End | Err | Cancelled | MasterDied).
+		admitted = true
 
 		return sw.masters[destIdx].socketWriter.WriteFrame(frame)
 
@@ -1420,6 +1470,197 @@ func (sw *RelaySwitch) ReadFromMasters() (*Frame, error) {
 // preferredCap: when non-nil, uses comparable matching (broader) and prefers
 // masters whose registered cap is equivalent to this URN.
 // When nil, uses standard accepts + closest-specificity routing.
+// acquireCapAdmission resolves the cartridge that will serve capURN and takes
+// its admission slot, waiting for capacity. Called WITHOUT sw.mu held.
+// Mirrors Rust acquire_cap_admission.
+func (sw *RelaySwitch) acquireCapAdmission(capURN string, preferredCap *string) (*AdmissionPermit, error) {
+	sw.mu.Lock()
+	destIdx, err := sw.findMasterForCap(capURN, preferredCap)
+	if err != nil {
+		sw.mu.Unlock()
+		return nil, err
+	}
+	registeredCap, err := sw.registeredCapForLocked(destIdx, capURN)
+	if err != nil {
+		sw.mu.Unlock()
+		return nil, err
+	}
+	key, capacity, err := sw.capAdmissionTargetLocked(destIdx, registeredCap)
+	if err != nil {
+		sw.mu.Unlock()
+		return nil, err
+	}
+	sw.admission.Configure(key, capacity)
+	sw.mu.Unlock()
+
+	permit, err := sw.admission.Acquire(key, nil)
+	if err != nil {
+		return nil, &RelaySwitchError{
+			Type:    RelaySwitchErrorTypeCartridgeUnavailable,
+			Message: err.Error(),
+		}
+	}
+	return permit, nil
+}
+
+// admissionKeyFor builds the stable admission identity for one installed
+// cartridge behind one master. Mirrors Rust RelaySwitch::admission_key.
+func admissionKeyFor(masterIdx int, record *InstalledCartridgeRecord) AdmissionKey {
+	key := AdmissionKey{
+		MasterIdx: masterIdx,
+		Channel:   record.Channel,
+		Id:        record.Id,
+		Version:   record.Version,
+		Sha256:    record.Sha256,
+	}
+	if record.RegistryURL != nil {
+		key.RegistryURL = *record.RegistryURL
+		key.HasRegistry = true
+	}
+	return key
+}
+
+// configureMasterAdmissionLocked refreshes every admission slot this master
+// advertises and marks the rest of its slots unavailable. Caller must hold
+// sw.mu. Mirrors Rust configure_master_admission.
+func (sw *RelaySwitch) configureMasterAdmissionLocked(masterIdx int, cartridges []InstalledCartridgeRecord) error {
+	available := make(map[AdmissionKey]struct{}, len(cartridges))
+	for i := range cartridges {
+		record := &cartridges[i]
+		if record.RuntimeStats == nil {
+			return &RelaySwitchError{
+				Type: RelaySwitchErrorTypeProtocol,
+				Message: fmt.Sprintf(
+					"cartridge '%s' on master %d is missing mandatory v4 runtime_stats",
+					record.Id, masterIdx),
+			}
+		}
+		capacity := uint64(1)
+		if record.RuntimeStats.Running {
+			capacity = record.RuntimeStats.HandlerCapacity
+		}
+		key := admissionKeyFor(masterIdx, record)
+		// A host may expose several process instances of the same logical
+		// install. They share one admission identity: preserve the first
+		// host-ordered record, matching host dispatch, rather than letting a
+		// later duplicate overwrite its effective capacity.
+		if _, seen := available[key]; !seen {
+			available[key] = struct{}{}
+			sw.admission.Configure(key, capacity)
+		}
+	}
+	sw.admission.ReconcileMaster(masterIdx, available)
+	return nil
+}
+
+// capAdmissionTargetLocked resolves the admission identity and capacity of the
+// cartridge that owns registeredCap on this master. Caller must hold sw.mu.
+// Mirrors Rust cap_admission_target.
+func (sw *RelaySwitch) capAdmissionTargetLocked(masterIdx int, registeredCap string) (AdmissionKey, uint64, error) {
+	if masterIdx < 0 || masterIdx >= len(sw.masters) {
+		return AdmissionKey{}, 0, &RelaySwitchError{
+			Type:    RelaySwitchErrorTypeProtocol,
+			Message: fmt.Sprintf("selected master index %d no longer exists", masterIdx),
+		}
+	}
+	var owner *InstalledCartridgeRecord
+	var ownerKey AdmissionKey
+	cartridges := sw.masters[masterIdx].installedCartridges
+	for i := range cartridges {
+		record := &cartridges[i]
+		if record.AttachmentError != nil {
+			continue
+		}
+		owns := false
+		for _, u := range record.CapURNs() {
+			if u == registeredCap {
+				owns = true
+				break
+			}
+		}
+		if !owns {
+			continue
+		}
+		key := admissionKeyFor(masterIdx, record)
+		if owner == nil {
+			owner = record
+			ownerKey = key
+			continue
+		}
+		if key != ownerKey {
+			return AdmissionKey{}, 0, &RelaySwitchError{
+				Type: RelaySwitchErrorTypeProtocol,
+				Message: fmt.Sprintf(
+					"master %d has multiple distinct installed cartridges claiming cap '%s'; routing is ambiguous",
+					masterIdx, registeredCap),
+			}
+		}
+	}
+	if owner == nil {
+		return AdmissionKey{}, 0, &RelaySwitchError{
+			Type: RelaySwitchErrorTypeProtocol,
+			Message: fmt.Sprintf(
+				"master %d advertises cap '%s' without an installed-cartridge owner",
+				masterIdx, registeredCap),
+		}
+	}
+	if owner.RuntimeStats == nil {
+		return AdmissionKey{}, 0, &RelaySwitchError{
+			Type: RelaySwitchErrorTypeProtocol,
+			Message: fmt.Sprintf(
+				"cartridge '%s' on master %d is missing mandatory v4 runtime_stats",
+				owner.Id, masterIdx),
+		}
+	}
+	capacity := uint64(1)
+	if owner.RuntimeStats.Running {
+		capacity = owner.RuntimeStats.HandlerCapacity
+	}
+	return ownerKey, capacity, nil
+}
+
+// AdmissionCapacityForCap returns the authoritative handler capacity for the
+// cartridge selected by normal cap dispatch. A positive capacity is an
+// execution boundary: callers must not pre-acquire that request as part of a
+// multi-cap live pipeline, because the permit represents an actively owned
+// process slot. Zero means unlimited. Mirrors Rust admission_capacity_for_cap.
+func (sw *RelaySwitch) AdmissionCapacityForCap(capURN string) (uint64, error) {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	destIdx, err := sw.findMasterForCap(capURN, nil)
+	if err != nil {
+		return 0, err
+	}
+	registeredCap, err := sw.registeredCapForLocked(destIdx, capURN)
+	if err != nil {
+		return 0, err
+	}
+	_, capacity, err := sw.capAdmissionTargetLocked(destIdx, registeredCap)
+	return capacity, err
+}
+
+// registeredCapForLocked returns the cap-table entry on this master that the
+// request URN dispatches to. Caller must hold sw.mu.
+func (sw *RelaySwitch) registeredCapForLocked(masterIdx int, capURN string) (string, error) {
+	requestURN, err := urn.NewCapUrnFromString(capURN)
+	if err != nil {
+		return "", &RelaySwitchError{Type: RelaySwitchErrorTypeNoHandler, Message: capURN}
+	}
+	for _, entry := range sw.capTable {
+		if entry.MasterIdx != masterIdx {
+			continue
+		}
+		registeredURN, err := urn.NewCapUrnFromString(entry.CapURN)
+		if err != nil {
+			continue
+		}
+		if registeredURN.IsDispatchable(requestURN) {
+			return entry.CapURN, nil
+		}
+	}
+	return "", &RelaySwitchError{Type: RelaySwitchErrorTypeNoHandler, Message: capURN}
+}
+
 func (sw *RelaySwitch) findMasterForCap(capURN string, preferredCap *string) (int, error) {
 	requestURN, err := urn.NewCapUrnFromString(capURN)
 	if err != nil {
@@ -1770,6 +2011,12 @@ func (sw *RelaySwitch) handleMasterFrame(sourceIdx int, frame *Frame) (*Frame, e
 		// cap_table rebuild excludes its caps.
 		sw.masters[sourceIdx].caps = newCaps
 		sw.masters[sourceIdx].installedCartridges = payload.InstalledCartridges
+		// Refresh admission from the fresh inventory: a cartridge that left it
+		// goes unavailable (starting its grace window), one that returned is
+		// configured again, which releases anything queued on it.
+		if err := sw.configureMasterAdmissionLocked(sourceIdx, payload.InstalledCartridges); err != nil {
+			return nil, err
+		}
 		sw.masters[sourceIdx].hostProtocolStats = payload.HostProtocolStats
 		sw.masters[sourceIdx].manifest = manifest
 		if limits := frame.RelayNotifyLimits(); limits != nil {
@@ -1812,6 +2059,11 @@ func (sw *RelaySwitch) handleMasterFrame(sourceIdx int, frame *Frame) (*Frame, e
 // every pending request routed to it (MasterDied) with a synthetic ERR
 // delivered to whoever was waiting, and rebuilds the health-filtered tables.
 func (sw *RelaySwitch) handleMasterDeath(masterIdx int) {
+	// Every slot behind this master goes unavailable. Queued work is NOT
+	// failed here: it rides the admission grace window in case the master
+	// reconnects. Mirrors Rust's admission.disable_master on master death.
+	sw.admission.DisableMaster(masterIdx)
+
 	if !sw.masters[masterIdx].healthy {
 		return
 	}

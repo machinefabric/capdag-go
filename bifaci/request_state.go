@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 )
 
@@ -223,6 +224,11 @@ type StreamFlowStats struct {
 // RequestState is everything a routing runtime knows about one in-flight
 // request. (matches Rust RequestState)
 type RequestState struct {
+	// admissionPermit is the process slot this request owns, released exactly
+	// once when the request terminates. nil for requests that took no permit
+	// (peer calls and relay-internal probes).
+	admissionPermit *AdmissionPermit
+
 	Routing RequestRoutingEntry
 	// Origin is the master index the response must return to (nil = external caller).
 	Origin *int
@@ -263,6 +269,15 @@ func NewRequestState(routing RequestRoutingEntry, origin *int, externalChannel c
 // WithCapUrn attaches the originating REQ's cap URN — the request's nameable
 // identity in observability surfaces. Returns the receiver for chaining
 // (matches Rust RequestState::with_cap_urn's builder style).
+// WithAdmissionPermit attaches the admission permit this request owns. The
+// request table releases it on Terminate, so a slot is returned exactly once —
+// on End, Err, Cancel, or master death. Mirrors Rust
+// RequestState::with_admission_permit.
+func (s *RequestState) WithAdmissionPermit(permit *AdmissionPermit) *RequestState {
+	s.admissionPermit = permit
+	return s
+}
+
 func (s *RequestState) WithCapUrn(capUrn *string) *RequestState {
 	s.CapUrn = capUrn
 	return s
@@ -444,6 +459,10 @@ func (t *RequestTable) Terminate(key RequestKey, kind TerminalKind) *RequestStat
 	}
 
 	state := e.state
+	// Terminal state reached: give the cartridge its slot back. Exactly once —
+	// Terminate removes the entry before this point, so no other path can
+	// double-release.
+	state.admissionPermit.Release()
 	var framesIn, framesOut, bytesIn, bytesOut uint64
 	for _, s := range state.Streams {
 		framesIn += s.FramesIn
@@ -684,4 +703,275 @@ func (t *RequestTable) String() string {
 		"RequestTable{entries: %d, recent_terminated: %d, total_registered: %d}",
 		len(t.entries), len(t.recentTerminated), t.totalRegistered,
 	)
+}
+
+// =============================================================================
+// Admission control (mirrors Rust src/bifaci/request_state.rs).
+//
+// FIFO admission per cartridge install identity behind one relay master. The
+// cartridge-side `handler_capacity` gate (cartridge_runtime.go) bounds what one
+// process runs at a time; THIS gate bounds what the switch dispatches to it, so
+// work queues in the switch instead of piling up unacknowledged on the wire.
+// =============================================================================
+
+// AdmissionUnavailableGrace is how long a queued request waits for an admission
+// target that has gone unavailable before it is failed.
+//
+// A cartridge disappearing from its host's inventory is not, by itself, a reason
+// to fail work that has not started: the process may be respawning, the host may
+// be re-publishing its roster, or a transient registry outage may have briefly
+// retired and then restored the install. 17.2 requires that queued bodies are
+// NOT assigned terminal failure from another body's process loss and that "once
+// a replacement instance advertises capacity, subsequent queued work is admitted
+// to that live instance" — this window is how long the queue is held open for
+// that replacement to appear.
+//
+// It is a bound, not a retry: when it expires the wait fails hard and the
+// failure is classified `environment`, so a target that is genuinely gone
+// surfaces promptly instead of hanging the run.
+const AdmissionUnavailableGrace = 60 * time.Second
+
+// AdmissionKey is the stable admission identity for one cartridge behind one
+// relay master.
+type AdmissionKey struct {
+	MasterIdx   int
+	RegistryURL string
+	HasRegistry bool
+	Channel     string
+	Id          string
+	Version     string
+	Sha256      string
+}
+
+type admissionSlot struct {
+	// unavailableSince is nil while the target is available, and set from the
+	// moment it went unavailable. Kept as an instant rather than a bool so the
+	// grace window measures the OUTAGE, not the arrival time of each waiter — a
+	// request that queues late into an outage does not get a fresh window.
+	unavailableSince *time.Time
+	capacity         uint64
+	active           uint64
+	queue            []uint64
+}
+
+func (s *admissionSlot) available() bool { return s.unavailableSince == nil }
+
+// markUnavailable marks the slot unavailable, preserving the start of an outage
+// already in progress.
+func (s *admissionSlot) markUnavailable(now time.Time) {
+	if s.unavailableSince == nil {
+		t := now
+		s.unavailableSince = &t
+	}
+}
+
+// graceRemaining returns the remaining grace for an outage and true, or false
+// when the slot is available. A zero duration means the window has expired.
+func (s *admissionSlot) graceRemaining(now time.Time, grace time.Duration) (time.Duration, bool) {
+	if s.unavailableSince == nil {
+		return 0, false
+	}
+	remaining := grace - now.Sub(*s.unavailableSince)
+	if remaining < 0 {
+		remaining = 0
+	}
+	return remaining, true
+}
+
+// AdmissionController is the FIFO admission shared by every request path in a
+// RelaySwitch.
+type AdmissionController struct {
+	mu      sync.Mutex
+	slots   map[AdmissionKey]*admissionSlot
+	tickets uint64
+	// notify is closed and replaced whenever slot state changes, which is how
+	// waiters are woken (the Go analog of Rust's tokio Notify).
+	notify chan struct{}
+	// grace is AdmissionUnavailableGrace in production. Tests shorten it to
+	// drive the expiry path without sleeping through a real minute.
+	grace time.Duration
+}
+
+// NewAdmissionController builds an empty controller with the production grace
+// window.
+func NewAdmissionController() *AdmissionController {
+	return &AdmissionController{
+		slots:  make(map[AdmissionKey]*admissionSlot),
+		notify: make(chan struct{}),
+		grace:  AdmissionUnavailableGrace,
+	}
+}
+
+// notifyAllLocked wakes every waiter. Caller must hold c.mu.
+func (c *AdmissionController) notifyAllLocked() {
+	close(c.notify)
+	c.notify = make(chan struct{})
+}
+
+// Configure registers or updates a target's capacity. A configure is the target
+// advertising itself: it ENDS any outage, which is what releases waiters queued
+// through a respawn or a roster round-trip.
+func (c *AdmissionController) Configure(key AdmissionKey, capacity uint64) {
+	c.mu.Lock()
+	slot, ok := c.slots[key]
+	if !ok {
+		slot = &admissionSlot{}
+		c.slots[key] = slot
+	}
+	slot.unavailableSince = nil
+	slot.capacity = capacity
+	c.notifyAllLocked()
+	c.mu.Unlock()
+}
+
+// ReconcileMaster marks every slot of this master that is absent from the
+// advertised set unavailable.
+func (c *AdmissionController) ReconcileMaster(masterIdx int, available map[AdmissionKey]struct{}) {
+	now := time.Now()
+	c.mu.Lock()
+	for key, slot := range c.slots {
+		if key.MasterIdx != masterIdx {
+			continue
+		}
+		if _, ok := available[key]; !ok {
+			slot.markUnavailable(now)
+		}
+	}
+	c.notifyAllLocked()
+	c.mu.Unlock()
+}
+
+// DisableMaster marks every slot of this master unavailable (the master died or
+// disconnected).
+func (c *AdmissionController) DisableMaster(masterIdx int) {
+	now := time.Now()
+	c.mu.Lock()
+	for key, slot := range c.slots {
+		if key.MasterIdx == masterIdx {
+			slot.markUnavailable(now)
+		}
+	}
+	c.notifyAllLocked()
+	c.mu.Unlock()
+}
+
+// AdmissionPermit is an actively owned process slot. Release exactly once.
+type AdmissionPermit struct {
+	controller *AdmissionController
+	key        AdmissionKey
+	released   bool
+}
+
+// Release returns the slot. Idempotent.
+func (p *AdmissionPermit) Release() {
+	if p == nil || p.released {
+		return
+	}
+	p.released = true
+	c := p.controller
+	c.mu.Lock()
+	if slot, ok := c.slots[p.key]; ok && slot.active > 0 {
+		slot.active--
+	}
+	c.notifyAllLocked()
+	c.mu.Unlock()
+}
+
+// Acquire takes a FIFO admission slot for key, waiting for capacity.
+//
+// An UNAVAILABLE target does not fail the caller immediately. The request stays
+// queued for AdmissionUnavailableGrace measured from the start of the outage, so
+// a cartridge that is respawning — or that a transient registry outage briefly
+// retired — resumes serving its queue instead of terminally failing every body
+// waiting on it (17.2: one body's process loss must not terminate unrelated
+// queued bodies). Only when the window expires does the wait fail, and it fails
+// hard.
+//
+// `cancel`, when non-nil, abandons the wait when closed (the caller gave up);
+// the ticket is removed so it cannot strand the queue behind a dead head.
+func (c *AdmissionController) Acquire(key AdmissionKey, cancel <-chan struct{}) (*AdmissionPermit, error) {
+	c.mu.Lock()
+	slot, ok := c.slots[key]
+	if !ok {
+		c.mu.Unlock()
+		return nil, fmt.Errorf("cartridge '%s' has no configured admission target", key.Id)
+	}
+	ticket := c.tickets
+	c.tickets++
+	// Queue even while unavailable: the loop below owns the grace window, so a
+	// request arriving mid-outage gets the same treatment as one that was
+	// already waiting when the outage began.
+	slot.queue = append(slot.queue, ticket)
+	c.mu.Unlock()
+
+	for {
+		c.mu.Lock()
+		slot, ok := c.slots[key]
+		if !ok {
+			c.mu.Unlock()
+			return nil, fmt.Errorf("admission slot for '%s' disappeared while queued", key.Id)
+		}
+		hasCapacity := slot.capacity == 0 || slot.active < slot.capacity
+		if slot.available() && hasCapacity && len(slot.queue) > 0 && slot.queue[0] == ticket {
+			slot.queue = slot.queue[1:]
+			slot.active++
+			c.notifyAllLocked()
+			c.mu.Unlock()
+			return &AdmissionPermit{controller: c, key: key}, nil
+		}
+		remaining, unavailable := slot.graceRemaining(time.Now(), c.grace)
+		if unavailable && remaining == 0 {
+			c.removeTicketLocked(key, ticket)
+			c.mu.Unlock()
+			return nil, fmt.Errorf(
+				"cartridge '%s' was unavailable for longer than %ds while this request waited for capacity",
+				key.Id, int(c.grace/time.Second),
+			)
+		}
+		wake := c.notify
+		c.mu.Unlock()
+
+		if unavailable {
+			// Outage still inside its window: wait, but no longer than what is
+			// left of it. A timer expiry is not an error — the next iteration
+			// re-reads the slot and decides.
+			timer := time.NewTimer(remaining)
+			select {
+			case <-wake:
+				timer.Stop()
+			case <-timer.C:
+			case <-cancel:
+				timer.Stop()
+				c.mu.Lock()
+				c.removeTicketLocked(key, ticket)
+				c.mu.Unlock()
+				return nil, fmt.Errorf("admission wait for '%s' was cancelled", key.Id)
+			}
+			continue
+		}
+		select {
+		case <-wake:
+		case <-cancel:
+			c.mu.Lock()
+			c.removeTicketLocked(key, ticket)
+			c.mu.Unlock()
+			return nil, fmt.Errorf("admission wait for '%s' was cancelled", key.Id)
+		}
+	}
+}
+
+// removeTicketLocked drops a ticket from its queue so an abandoned waiter cannot
+// strand the requests behind it. Caller must hold c.mu.
+func (c *AdmissionController) removeTicketLocked(key AdmissionKey, ticket uint64) {
+	slot, ok := c.slots[key]
+	if !ok {
+		return
+	}
+	for i, queued := range slot.queue {
+		if queued == ticket {
+			slot.queue = append(slot.queue[:i], slot.queue[i+1:]...)
+			break
+		}
+	}
+	c.notifyAllLocked()
 }
