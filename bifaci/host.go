@@ -169,6 +169,17 @@ func makeRxidKey(xid, rid MessageId) rxidKey {
 	return rxidKey{xid: xid.ToString(), rid: rid.ToString()}
 }
 
+// retireDrainTimeout bounds how long a retired cartridge may keep running to
+// finish the requests it is already serving.
+//
+// Retirement means "stop giving this install NEW work", not "destroy the work
+// it is doing". The cartridge is dropped from the cap table immediately (so
+// nothing new routes to it) and killed only once its in-flight requests have
+// terminated. This bound is a backstop for a cartridge that never finishes;
+// heartbeat monitoring still applies during the drain. Mirrors Rust
+// RETIRE_DRAIN_TIMEOUT.
+const retireDrainTimeout = 600 * time.Second
+
 // incomingRoute is the value stored in `incomingRxids`: which cartridge
 // is handling the request, plus the original typed XID/RID needed to
 // synthesize a terminal ERR frame on cartridge death.
@@ -223,6 +234,16 @@ type ManagedCartridge struct {
 	// counter. Survives across readings (each heartbeat carries the
 	// cartridge's running total). Mirrors Rust protocol_drops_total.
 	protocolDropsTotal *uint64
+	// retiringSince is set when a roster sync retired this cartridge while it
+	// still had work in flight. It is already out of the cap table and the
+	// inventory, so nothing new routes to it; the process stays alive until
+	// its in-flight requests terminate or retireDrainTimeout expires.
+	// Mirrors Rust ManagedCartridge::retiring_since.
+	retiringSince *time.Time
+	// retired is set before killing a retired cartridge so the death handler
+	// attributes its pending work to the retirement rather than reporting an
+	// unexpected crash. Mirrors Rust ShutdownReason::RosterRetired.
+	retired bool
 	handlerCapacity    uint64
 	// pendingHeartbeats tracks health probes this host has sent to the
 	// cartridge (id string → sent time), so a later HEARTBEAT frame from
@@ -1011,6 +1032,10 @@ func (h *CartridgeHost) Run(relayRead io.Reader, relayWrite io.Writer, resourceF
 
 		case <-statsTicker.C:
 			h.mu.Lock()
+			// Retired-but-draining cartridges are reaped here: the tick is the
+			// host's regular opportunity to notice that the last in-flight
+			// request of a retired install has terminated.
+			h.reapDrainedCartridgesLocked()
 			anyRunning := false
 			for _, c := range h.cartridges {
 				if c.running {
@@ -1033,6 +1058,65 @@ func (h *CartridgeHost) Run(relayRead io.Reader, relayWrite io.Writer, resourceF
 // longer in the set are killed; survivors keep their live process and stats.
 // Only dir-registered cartridges are touched; attached/internal cartridges are
 // not part of a dir roster sync.
+// inFlightCountLocked reports how many requests this cartridge is currently
+// serving or awaiting a peer response for. Both directions count: killing
+// mid-peer-call strands the caller just as surely as killing mid-request.
+// Caller must hold h.mu. Mirrors Rust in_flight_count.
+func (h *CartridgeHost) inFlightCountLocked(cartridgeIdx int) int {
+	n := 0
+	for _, route := range h.incomingRxids {
+		if route.cartridgeIdx == cartridgeIdx {
+			n++
+		}
+	}
+	for _, route := range h.outgoingRids {
+		if route.cartridgeIdx == cartridgeIdx {
+			n++
+		}
+	}
+	return n
+}
+
+// retireKillLocked kills a retired cartridge. Caller must hold h.mu.
+// Mirrors Rust retire_kill.
+func (h *CartridgeHost) retireKillLocked(cartridgeIdx int) {
+	cartridge := h.cartridges[cartridgeIdx]
+	cartridge.retiringSince = nil
+	cartridge.retired = true
+	if cartridge.writerCh != nil {
+		close(cartridge.writerCh)
+		cartridge.writerCh = nil
+	}
+	if cartridge.cmd != nil && cartridge.cmd.Process != nil {
+		cartridge.cmd.Process.Kill()
+		cartridge.cmd = nil
+	}
+	cartridge.running = false
+}
+
+// reapDrainedCartridgesLocked kills retired cartridges that have finished
+// draining, and any whose drain outlived retireDrainTimeout. Called on the
+// host's periodic tick. Caller must hold h.mu. Mirrors Rust
+// reap_drained_cartridges.
+func (h *CartridgeHost) reapDrainedCartridgesLocked() {
+	now := time.Now()
+	for idx := range h.cartridges {
+		cartridge := h.cartridges[idx]
+		if cartridge.retiringSince == nil {
+			continue
+		}
+		if !cartridge.running {
+			cartridge.retiringSince = nil
+			continue
+		}
+		drained := h.inFlightCountLocked(idx) == 0
+		expired := now.Sub(*cartridge.retiringSince) >= retireDrainTimeout
+		if drained || expired {
+			h.retireKillLocked(idx)
+		}
+	}
+}
+
 func (h *CartridgeHost) syncRegisteredRoster(desired []RegisteredDirSpec, relayWriter *relayOutbound) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -1082,19 +1166,46 @@ func (h *CartridgeHost) syncRegisteredRoster(desired []RegisteredDirSpec, relayW
 		if _, ok := desiredKeys[recIdentity(rec)]; ok {
 			continue // still desired — keep, preserving any live process
 		}
-		if cartridge.running {
-			if cartridge.writerCh != nil {
-				close(cartridge.writerCh)
-				cartridge.writerCh = nil
-			}
-			if cartridge.cmd != nil && cartridge.cmd.Process != nil {
-				cartridge.cmd.Process.Kill()
-				cartridge.cmd = nil
-			}
-			cartridge.running = false
-		}
+		// Retire = stop giving it NEW work. Dropping it from the cap table
+		// and the inventory does that immediately; whether the process dies
+		// now depends on whether it is mid-request.
 		cartridge.removed = true     // retire: drop from cap table + inventory
 		cartridge.helloFailed = true // keep out of dispatch/spawn paths
+		if !cartridge.running {
+			continue
+		}
+		if h.inFlightCountLocked(idx) == 0 {
+			h.retireKillLocked(idx)
+			continue
+		}
+		// DRAIN. Killing here would ERR every in-flight request of a
+		// cartridge that is healthy and doing exactly what it was asked to
+		// do. It finishes, then dies (see reapDrainedCartridgesLocked).
+		now := time.Now()
+		cartridge.retiringSince = &now
+	}
+
+	// A roster that flaps — retire, then restore the same identity moments
+	// later, exactly what a transient registry outage produces — must find the
+	// DRAINING process again rather than leave it to die and spawn a second one
+	// beside it. Un-retiring keeps the live process, its warm model, and its
+	// queue. Mirrors the reference's retirement-cancel pass.
+	for idx := range h.cartridges {
+		cartridge := h.cartridges[idx]
+		if cartridge.retiringSince == nil {
+			continue
+		}
+		rec := cartridge.installedCartridgeRecord()
+		if rec == nil {
+			continue
+		}
+		if _, ok := desiredKeys[recIdentity(rec)]; !ok {
+			continue
+		}
+		cartridge.retiringSince = nil
+		cartridge.retired = false
+		cartridge.removed = false
+		cartridge.helloFailed = false
 	}
 
 	// Add newly-desired specs not already registered.
@@ -1550,12 +1661,24 @@ func (h *CartridgeHost) handleCartridgeDeath(cartridgeIdx int, generation uint64
 	// re-parsing the lookup key — re-parsing would lose the uint
 	// variant and silently drop the request, leaving the engine
 	// blocked forever on a frame that never arrives.
+	// A retirement is not a crash: the deployment said this install is no
+	// longer wanted. Reporting it as CARTRIDGE_DIED would tell the operator a
+	// healthy process crashed. Both are Environment — the cause is outside the
+	// engine either way. Mirrors Rust ShutdownReason::RosterRetired.
+	deathCode := "CARTRIDGE_DIED"
+	deathReason := fmt.Sprintf("cartridge %d died", cartridgeIdx)
+	if h.cartridges[cartridgeIdx].retired {
+		deathCode = "CARTRIDGE_RETIRED"
+		deathReason = fmt.Sprintf(
+			"cartridge %d retired: it is no longer in the host's desired roster", cartridgeIdx)
+	}
+
 	var incomingKeys []rxidKey
 	for key, route := range h.incomingRxids {
 		if route.cartridgeIdx != cartridgeIdx {
 			continue
 		}
-		errFrame := NewErr(route.rid, "CARTRIDGE_DIED", AttributionClassEnvironment, fmt.Sprintf("cartridge %d died", cartridgeIdx), nil)
+		errFrame := NewErr(route.rid, deathCode, AttributionClassEnvironment, deathReason, nil)
 		xid := route.xid
 		errFrame.RoutingId = &xid
 		relayWriter.WriteFrame(errFrame)
@@ -1573,7 +1696,7 @@ func (h *CartridgeHost) handleCartridgeDeath(cartridgeIdx int, generation uint64
 		if route.cartridgeIdx != cartridgeIdx {
 			continue
 		}
-		errFrame := NewErr(route.rid, "CARTRIDGE_DIED", AttributionClassEnvironment, fmt.Sprintf("cartridge %d died", cartridgeIdx), nil)
+		errFrame := NewErr(route.rid, deathCode, AttributionClassEnvironment, deathReason, nil)
 		relayWriter.WriteFrame(errFrame)
 		outgoingKeys = append(outgoingKeys, key)
 	}

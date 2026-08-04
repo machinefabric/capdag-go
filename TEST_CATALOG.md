@@ -1,8 +1,8 @@
 # CapDag-Go Test Catalog
 
-**Total Tests:** 1244
+**Total Tests:** 1247
 
-**Numbered Tests:** 1231
+**Numbered Tests:** 1234
 
 **Unnumbered Tests:** 13
 
@@ -1075,6 +1075,9 @@ This catalog lists all tests in the CapDag-Go codebase.
 | test1899 | `Test1899_MediaDefResolvesToVersionedObjectPathUnderManifest` | TEST1899: a media def published under a manifest (v >= 1) resolves to the VERSIONED object path `/media/<sha>/<defver>.json`, never the legacy flat path `/media/<sha>`. The flat path is the pre-manifest (v0) layout; a registry that silently runs in v0 mode fetches it and 404s every lookup against a versioned registry — the exact regression where a fabric-registry mirror defaulted its manifest version to 0. This pins both the URL rule and the manifest-driven defver resolution. Mirrors the Rust reference's test0144_media_def_resolves_to_versioned_object_path_under_manifest. | media/registry_test.go:20 |
 | test1900 | `Test1900_err_frame_attribution_class_wire_contract` | TEST1900: ERR and non-progress LOG attribution is a strict wire contract. | bifaci/frame_test.go:2291 |
 | test1901 | `Test1901_add_master_reattach_verifies_identity` | TEST1901: AddMaster runs an end-to-end identity probe on reattach whenever the host advertises caps (mirrors Rust add_master). When the reattaching host FAILS the probe, the master rejoins as UNHEALTHY — its installed cartridges stay visible in the inventory aggregate while its caps are held out of the routing table — rather than the reattach erroring out. | bifaci/relay_switch_test.go:2007 |
+| test1945 | `Test1945_roster_retire_drains_a_busy_cartridge_before_killing_it` | TEST1945: a roster retire DRAINS a busy cartridge instead of killing it. The incident this pins: a transient registry outage shrank the roster and the host killed three cartridges outright, ERRing every request they were serving. Retirement means "no NEW work" — the process must survive until the requests it is already handling terminate. | bifaci/host_roster_test.go:169 |
+| test1946 | `Test1946_roster_retire_kills_an_idle_cartridge_as_retired` | TEST1946: an IDLE cartridge is retired immediately (no reason to keep a process nothing routes to). | bifaci/host_roster_test.go:207 |
+| test1947 | `Test1947_roster_flap_cancels_retirement_instead_of_respawning` | TEST1947: a roster that flaps — retire then restore the same identity — keeps the SAME live process. This is the incident's shape end to end: the registry became unreachable, the roster shrank, and 26 seconds later it came back. Nothing about that sequence should cost a running cartridge, its warm model, or the work queued on it. | bifaci/host_roster_test.go:223 |
 | test6182 | `Test6182_InputValidator_WithSchemaValidation` | TEST6182: Input validator  with schema validation | cap/schema_validation_test.go:298 |
 | test6183 | `Test6183_OutputValidator_WithSchemaValidation` | TEST6183: Output validator  with schema validation | cap/schema_validation_test.go:358 |
 | test6184 | `Test6184_CapValidationCoordinator_EndToEnd` | TEST6184: Cap validation coordinator  end to end | cap/schema_validation_test.go:417 |
@@ -1380,8 +1383,8 @@ These tests have a numbering disagreement between the function name and the auth
 ---
 
 *Generated from CapDag-Go source tree*
-*Total tests: 1244*
-*Total numbered tests: 1231*
+*Total tests: 1247*
+*Total numbered tests: 1234*
 *Total unnumbered tests: 13*
 *Total numbered tests missing descriptions: 0*
 *Total numbering mismatches: 89*
