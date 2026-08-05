@@ -1,6 +1,7 @@
 package bifaci
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"testing"
@@ -2406,4 +2407,60 @@ func Test502_keys_module_new_field_constants(t *testing.T) {
 	assert.Equal(t, 15, keyChunkCount)
 	assert.Equal(t, 16, keyChecksum)
 	assert.Equal(t, 17, keyIsSequence)
+}
+
+// TEST8111: DecodeFrame reads narrow-width wire floats into the single in-memory
+// float representation, matching the reference decoder (ciborium yields f64 for
+// every CBOR float width). The reference ENCODER shrinks lossless floats to
+// half-precision on the wire (0.5 travels as 0xf9), so a mirror must read a
+// half- or single-precision progress and still expose it numerically.
+func Test8111_decode_frame_normalizes_narrow_float_widths(t *testing.T) {
+	frame := NewProgress(NewMessageIdFromUint(7), 0.5, "halfway")
+	encoded, err := EncodeFrame(frame)
+	require.NoError(t, err)
+
+	doubleHalfPoint := []byte{0xfb, 0x3f, 0xe0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+	halfHalfPoint := []byte{0xf9, 0x38, 0x00}
+	singleHalfPoint := []byte{0xfa, 0x3f, 0x00, 0x00, 0x00}
+	require.True(t, bytes.Contains(encoded, doubleHalfPoint), "fixture must contain double-encoded 0.5")
+
+	fromHalf, err := DecodeFrame(bytes.Replace(encoded, doubleHalfPoint, halfHalfPoint, 1))
+	require.NoError(t, err)
+	p, ok := fromHalf.LogProgress()
+	require.True(t, ok, "half-precision wire progress must be readable")
+	assert.Equal(t, float32(0.5), p)
+
+	fromSingle, err := DecodeFrame(bytes.Replace(encoded, doubleHalfPoint, singleHalfPoint, 1))
+	require.NoError(t, err)
+	p, ok = fromSingle.LogProgress()
+	require.True(t, ok, "single-precision wire progress must be readable")
+	assert.Equal(t, float32(0.5), p)
+}
+
+// TEST8112: the relay forwarding hop — decode a cartridge frame whose progress
+// rode the wire as half-precision, re-encode it, and decode again: the value
+// must survive as a number and the re-encoded bytes must never contain CBOR
+// undefined (0xf7). In the Swift mirror this exact hop corrupted progress to
+// undefined (read as null by the engine), failing every ForEach body on macOS.
+func Test8112_half_precision_progress_survives_decode_encode_relay_hop(t *testing.T) {
+	encoded, err := EncodeFrame(NewProgress(NewMessageIdFromUint(7), 0.5, "halfway"))
+	require.NoError(t, err)
+
+	doubleHalfPoint := []byte{0xfb, 0x3f, 0xe0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
+	halfHalfPoint := []byte{0xf9, 0x38, 0x00}
+	require.True(t, bytes.Contains(encoded, doubleHalfPoint), "fixture must contain double-encoded 0.5")
+	cartridgeWire := bytes.Replace(encoded, doubleHalfPoint, halfHalfPoint, 1)
+
+	received, err := DecodeFrame(cartridgeWire)
+	require.NoError(t, err)
+	forwarded, err := EncodeFrame(received)
+	require.NoError(t, err)
+	assert.False(t, bytes.Contains(forwarded, []byte{0xf7}), "re-encoded frame must not contain CBOR undefined")
+
+	atEngine, err := DecodeFrame(forwarded)
+	require.NoError(t, err)
+	require.Equal(t, "progress", atEngine.LogLevel())
+	p, ok := atEngine.LogProgress()
+	require.True(t, ok, "progress must reach the engine as a number")
+	assert.Equal(t, float32(0.5), p)
 }

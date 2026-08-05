@@ -416,3 +416,29 @@ func Test1317_wrap_raw_items_empty(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, seq, "empty item list must wrap to empty bytes")
 }
+
+// TEST8113: SplitCborArray / AssembleCborArray decode-then-re-encode arbitrary
+// CBOR values. The reference encoder shrinks lossless floats to half-precision
+// on the wire, so a ciborium-authored array holding 0.5 arrives as 0xf9 — both
+// directions must carry the value through as a number, never CBOR undefined
+// (the corruption the Swift mirror hit when its CBOR library could not
+// re-encode half-precision).
+func Test8113_array_split_assemble_normalize_half_precision_floats(t *testing.T) {
+	// [0.5] with 0.5 as half-precision, exactly as ciborium encodes it.
+	ciboriumArray := []byte{0x81, 0xf9, 0x38, 0x00}
+
+	items, err := SplitCborArray(ciboriumArray)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	var itemValue interface{}
+	require.NoError(t, cborlib.Unmarshal(items[0], &itemValue))
+	assert.Equal(t, 0.5, itemValue, "split item must carry the half-precision float as a number")
+
+	halfItem := []byte{0xf9, 0x38, 0x00}
+	assembled, err := AssembleCborArray([][]byte{halfItem})
+	require.NoError(t, err)
+	assert.NotContains(t, assembled, byte(0xf7), "assembled array must not contain CBOR undefined")
+	var arrayValue interface{}
+	require.NoError(t, cborlib.Unmarshal(assembled, &arrayValue))
+	assert.Equal(t, []interface{}{0.5}, arrayValue, "assembled array must carry the value as a number")
+}
