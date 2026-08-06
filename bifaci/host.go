@@ -243,8 +243,8 @@ type ManagedCartridge struct {
 	// retired is set before killing a retired cartridge so the death handler
 	// attributes its pending work to the retirement rather than reporting an
 	// unexpected crash. Mirrors Rust ShutdownReason::RosterRetired.
-	retired bool
-	handlerCapacity    uint64
+	retired         bool
+	handlerCapacity uint64
 	// pendingHeartbeats tracks health probes this host has sent to the
 	// cartridge (id string → sent time), so a later HEARTBEAT frame from
 	// the cartridge can be told apart from a cartridge-initiated

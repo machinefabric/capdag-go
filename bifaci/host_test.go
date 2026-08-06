@@ -419,4 +419,3 @@ func Test8117_unroutable_continuation_classified_by_release_ring(t *testing.T) {
 		t.Fatalf("unknown-rid LOG is no_route, got %d", got)
 	}
 }
-

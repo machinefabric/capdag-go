@@ -327,7 +327,6 @@ func boolPtr(b bool) *bool {
 	return &b
 }
 
-
 // =============================================================================
 // Admission control (mirrors Rust src/bifaci/request_state.rs tests)
 // =============================================================================

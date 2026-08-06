@@ -1046,7 +1046,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 			// Respond to heartbeat immediately - never blocked by handlers
 			response := NewHeartbeat(frame.Id)
 			response.Meta = map[string]interface{}{
-				"drops_total":       pr.dropCounters.Total(),
+				"drops_total":      pr.dropCounters.Total(),
 				"handler_capacity": pr.capacity.Get(),
 			}
 			if err := writer.WriteFrame(response); err != nil {
