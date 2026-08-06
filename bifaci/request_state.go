@@ -211,8 +211,12 @@ type StreamFlowStats struct {
 	BytesOut  uint64 `json:"bytes_out"`
 	ChunksIn  uint64 `json:"chunks_in"`
 	ChunksOut uint64 `json:"chunks_out"`
-	// CreditOutstanding is credits granted through this runtime minus chunks
-	// that consumed them. Diagnostic — the endpoints hold the authoritative
+	// CreditOutstanding is the stream's REMAINING credit window as observed
+	// by this runtime: the negotiated initial window, plus credits granted
+	// through this runtime, minus chunks that consumed them (in either
+	// direction — a stream's chunks flow one way and its grants the other).
+	// Non-negative in healthy operation; a negative value means the producer
+	// overran its window. Diagnostic — the endpoints hold the authoritative
 	// windows.
 	CreditOutstanding int64 `json:"credit_outstanding"`
 	// Unbounded: stream announced with unbounded=true (no length promise).
@@ -246,13 +250,17 @@ type RequestState struct {
 	Children []RequestKey
 	Phase    RequestPhase
 	// Streams: per-stream flow stats (StreamKey{Present:false} = non-stream frames).
-	Streams      map[StreamKey]*StreamFlowStats
-	CreatedAt    time.Time
-	LastActivity time.Time
+	Streams map[StreamKey]*StreamFlowStats
+	// InitialCredit is the NEGOTIATED initial credit window of this request's
+	// destination — the ledger seed for every stream (see
+	// StreamFlowStats.CreditOutstanding).
+	InitialCredit uint64
+	CreatedAt     time.Time
+	LastActivity  time.Time
 }
 
 // NewRequestState creates a RequestState. (matches Rust RequestState::new)
-func NewRequestState(routing RequestRoutingEntry, origin *int, externalChannel chan<- Frame, isPeer bool) *RequestState {
+func NewRequestState(routing RequestRoutingEntry, origin *int, externalChannel chan<- Frame, isPeer bool, initialCredit uint64) *RequestState {
 	now := time.Now()
 	return &RequestState{
 		Routing:         routing,
@@ -261,6 +269,7 @@ func NewRequestState(routing RequestRoutingEntry, origin *int, externalChannel c
 		IsPeer:          isPeer,
 		Phase:           RequestPhaseCreated,
 		Streams:         make(map[StreamKey]*StreamFlowStats),
+		InitialCredit:   initialCredit,
 		CreatedAt:       now,
 		LastActivity:    now,
 	}
@@ -292,7 +301,11 @@ func (s *RequestState) record(direction FrameDirection, frame *Frame) {
 	key := streamKeyFromPtr(frame.StreamId)
 	stats, ok := s.Streams[key]
 	if !ok {
-		stats = &StreamFlowStats{}
+		// A fresh stream starts with the NEGOTIATED initial window (L10):
+		// the producer may send that many chunks before any CREDIT frame
+		// arrives, so a ledger that starts at zero reads every healthy
+		// stream as negative by exactly the initial window.
+		stats = &StreamFlowStats{CreditOutstanding: int64(s.InitialCredit)}
 		s.Streams[key] = stats
 	}
 	bytes := uint64(len(frame.Payload))
@@ -302,7 +315,6 @@ func (s *RequestState) record(direction FrameDirection, frame *Frame) {
 		stats.BytesIn += bytes
 		if frame.FrameType == FrameTypeChunk {
 			stats.ChunksIn++
-			stats.CreditOutstanding--
 		}
 	case FrameDirectionOutbound:
 		stats.FramesOut++
@@ -310,6 +322,12 @@ func (s *RequestState) record(direction FrameDirection, frame *Frame) {
 		if frame.FrameType == FrameTypeChunk {
 			stats.ChunksOut++
 		}
+	}
+	// A chunk consumes one credit from ITS stream's window regardless of
+	// which way it flows past this runtime — a stream's chunks all flow one
+	// direction, and its grants flow the other.
+	if frame.FrameType == FrameTypeChunk {
+		stats.CreditOutstanding--
 	}
 	switch frame.FrameType {
 	case FrameTypeStreamStart:
@@ -507,6 +525,29 @@ func (t *RequestTable) SetTerminateObserver(observer TerminateObserver) {
 // Unknown keys are ignored — the caller decides whether that is a counted
 // drop (it is, at the routing layer) — recording is accounting, not routing.
 // (matches Rust RequestTable::record_frame)
+// RecentlyTerminatedRid reports whether this RID belongs to a recently
+// terminated request (the bounded recentTerminated ring).
+//
+// This is the discriminator between the two ways a frame can arrive with no
+// routing state. A hit here means the frame CROSSED its request's terminal in
+// flight — the ordinary teardown race of credit-based flow control (a grant
+// or straggler emitted before the sender observed END/ERR) — which receivers
+// count as post_terminal. A miss means the table has never known the RID
+// within the ring's horizon: a genuine no_route anomaly worth alarming on.
+// The ring holds the last RecentTerminatedCap terminations; the race window
+// is milliseconds, so eviction cannot misclassify a real race, only age a
+// pathologically late frame back into no_route — where something that stale
+// belongs.
+func (t *RequestTable) RecentlyTerminatedRid(rid MessageId) bool {
+	ridStr := rid.ToString()
+	for i := range t.recentTerminated {
+		if t.recentTerminated[i].Rid == ridStr {
+			return true
+		}
+	}
+	return false
+}
+
 func (t *RequestTable) RecordFrame(key RequestKey, direction FrameDirection, frame *Frame) {
 	if e, ok := t.entries[key.mapKey()]; ok {
 		e.state.record(direction, frame)

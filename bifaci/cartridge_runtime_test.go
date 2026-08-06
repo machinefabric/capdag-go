@@ -3729,24 +3729,136 @@ func Test539_output_stream_sends_stream_start(t *testing.T) {
 
 // TEST540: OutputStream::close sends STREAM_END with correct chunk_count
 func Test540_output_stream_close_sends_stream_end(t *testing.T) {
+	// Three small rapid emissions COALESCE into one CHUNK (scalar-stream
+	// chunk boundaries are non-semantic), flushed by Finalize BEFORE the
+	// STREAM_END that promises the count — coalescing must be lossless and
+	// order-preserving, and the count must match what actually shipped.
 	frames := outputEmitterCapture(t, "stream-1", "media:test", 256000, func(e *threadSafeEmitter) {
 		_ = e.EmitCbor([]byte("chunk1"))
 		_ = e.EmitCbor([]byte("chunk2"))
 		_ = e.EmitCbor([]byte("chunk3"))
 	})
 
+	var chunks []*Frame
 	var streamEnd *Frame
+	streamEndIdx, lastChunkIdx := -1, -1
 	for i := range frames {
-		if frames[i].FrameType == FrameTypeStreamEnd {
-			streamEnd = &frames[i]
-			break
+		switch frames[i].FrameType {
+		case FrameTypeChunk:
+			chunks = append(chunks, &frames[i])
+			lastChunkIdx = i
+		case FrameTypeStreamEnd:
+			if streamEnd == nil {
+				streamEnd = &frames[i]
+				streamEndIdx = i
+			}
 		}
+	}
+	if len(chunks) != 1 {
+		t.Fatalf("small rapid emissions coalesce into one chunk, got %d", len(chunks))
+	}
+	var decoded []byte
+	if err := cborlib.Unmarshal(chunks[0].Payload, &decoded); err != nil {
+		t.Fatalf("coalesced chunk must be one CBOR Bytes value: %v", err)
+	}
+	if string(decoded) != "chunk1chunk2chunk3" {
+		t.Fatalf("coalescing is lossless and order-preserving, got %q", decoded)
 	}
 	if streamEnd == nil {
 		t.Fatal("must have STREAM_END")
 	}
-	if streamEnd.ChunkCount == nil || *streamEnd.ChunkCount != 3 {
-		t.Errorf("chunk_count must be 3, got %v", streamEnd.ChunkCount)
+	if streamEnd.ChunkCount == nil || *streamEnd.ChunkCount != 1 {
+		t.Errorf("STREAM_END promises the COALESCED chunk count (1), got %v", streamEnd.ChunkCount)
+	}
+	if lastChunkIdx > streamEndIdx {
+		t.Errorf("the flushed tail ships BEFORE STREAM_END")
+	}
+}
+
+// TEST8119: the coalescing AGE bound — an emission arriving after the
+// buffer's oldest byte crossed CoalesceMaxAge flushes the accumulated batch,
+// so steady token emission lags the wire by at most one write-gap; the tail
+// emitted after that flush ships with Finalize. Nothing is lost, order is
+// preserved, and the frame count is the batch count, not the emission count.
+func Test8119_coalesce_age_bound_flushes_on_next_write(t *testing.T) {
+	frames := outputEmitterCapture(t, "stream-1", "media:enc=utf-8", 256000, func(e *threadSafeEmitter) {
+		_ = e.EmitCbor([]byte("ab"))
+		_ = e.EmitCbor([]byte("cd"))
+		// Cross the age bound, then emit again: THIS emission must flush all
+		// three fragments as one chunk.
+		time.Sleep(CoalesceMaxAge + 10*time.Millisecond)
+		_ = e.EmitCbor([]byte("ef"))
+		// A fresh fragment after the flush stays buffered until Finalize.
+		_ = e.EmitCbor([]byte("gh"))
+	})
+
+	var chunks []*Frame
+	for i := range frames {
+		if frames[i].FrameType == FrameTypeChunk {
+			chunks = append(chunks, &frames[i])
+		}
+	}
+	if len(chunks) != 2 {
+		t.Fatalf("one age-flushed batch + one Finalize-flushed tail — never one frame per emission; got %d", len(chunks))
+	}
+	var first, second []byte
+	if err := cborlib.Unmarshal(chunks[0].Payload, &first); err != nil {
+		t.Fatalf("first chunk decodes: %v", err)
+	}
+	if err := cborlib.Unmarshal(chunks[1].Payload, &second); err != nil {
+		t.Fatalf("second chunk decodes: %v", err)
+	}
+	if string(first) != "abcdef" || string(second) != "gh" {
+		t.Fatalf("lossless order-preserving batches, got %q and %q", first, second)
+	}
+}
+
+// TEST8120: a non-Bytes emission is an ordering BARRIER — buffered bytes
+// ship first, then the barrier value, and Finalize flushes the tail. The
+// STREAM_END promises the coalesced count.
+func Test8120_non_bytes_emission_barriers_coalesced_bytes(t *testing.T) {
+	frames := outputEmitterCapture(t, "stream-1", "media:enc=utf-8", 256000, func(e *threadSafeEmitter) {
+		_ = e.EmitCbor([]byte("tok1"))
+		_ = e.EmitCbor([]byte("tok2"))
+		_ = e.EmitCbor(uint64(7))
+		_ = e.EmitCbor([]byte("tok3"))
+	})
+
+	var chunks []*Frame
+	streamEndIdx, lastChunkIdx := -1, -1
+	var streamEnd *Frame
+	for i := range frames {
+		switch frames[i].FrameType {
+		case FrameTypeChunk:
+			chunks = append(chunks, &frames[i])
+			lastChunkIdx = i
+		case FrameTypeStreamEnd:
+			if streamEnd == nil {
+				streamEnd = &frames[i]
+				streamEndIdx = i
+			}
+		}
+	}
+	if len(chunks) != 3 {
+		t.Fatalf("batch, barrier value, Finalize-flushed tail; got %d", len(chunks))
+	}
+	var batch []byte
+	if err := cborlib.Unmarshal(chunks[0].Payload, &batch); err != nil || string(batch) != "tok1tok2" {
+		t.Fatalf("buffered bytes ship FIRST as one batch, got %q (err %v)", batch, err)
+	}
+	var barrier uint64
+	if err := cborlib.Unmarshal(chunks[1].Payload, &barrier); err != nil || barrier != 7 {
+		t.Fatalf("barrier value ships after the batch, got %d (err %v)", barrier, err)
+	}
+	var tail []byte
+	if err := cborlib.Unmarshal(chunks[2].Payload, &tail); err != nil || string(tail) != "tok3" {
+		t.Fatalf("tail flushes with Finalize, got %q (err %v)", tail, err)
+	}
+	if streamEnd == nil || streamEnd.ChunkCount == nil || *streamEnd.ChunkCount != 3 {
+		t.Fatalf("STREAM_END promises the coalesced count (3), got %+v", streamEnd)
+	}
+	if lastChunkIdx > streamEndIdx {
+		t.Fatalf("tail ships before STREAM_END")
 	}
 }
 

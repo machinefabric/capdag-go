@@ -16,12 +16,18 @@ func rsKey(x, r uint64) RequestKey {
 	return NewRequestKey(NewMessageIdFromUint(x), NewMessageIdFromUint(r))
 }
 
+// rsTestInitialCredit is the ledger seed every test request negotiates —
+// deliberately a small odd-sized window so seed arithmetic is visible in
+// assertions.
+const rsTestInitialCredit = 8
+
 func rsState(dest int, origin *int, isPeer bool) *RequestState {
 	return NewRequestState(
 		RequestRoutingEntry{SourceMasterIdx: origin, DestinationMasterIdx: dest},
 		origin,
 		nil,
 		isPeer,
+		rsTestInitialCredit,
 	)
 }
 
@@ -254,8 +260,41 @@ func Test7032_record_frame_stats_and_phase(t *testing.T) {
 	assert.Equal(t, uint64(100), s1.BytesOut)
 	assert.True(t, s1.Unbounded)
 	assert.True(t, s1.Ended)
-	// +4 granted, -1 consumed inbound chunk
-	assert.Equal(t, int64(3), s1.CreditOutstanding)
+	// The ledger is the REMAINING WINDOW: seeded with the negotiated initial
+	// credit, +4 granted, -1 per chunk in EITHER direction (the inbound chunk
+	// and the outbound chunk each consumed one).
+	assert.Equal(t, int64(rsTestInitialCredit)+4-2, s1.CreditOutstanding,
+		"window = seed + grants - chunks")
+}
+
+// TEST8115: recently_terminated_rid discriminates the teardown race from
+// genuine routing loss: true for a rid whose request just terminated, false
+// for a rid the table never knew, false again once the summary is evicted
+// past the ring's horizon — a pathologically late frame ages back into
+// no_route, where something that stale belongs.
+func Test8115_recently_terminated_rid_discriminates_and_ages_out(t *testing.T) {
+	table := NewRequestTable()
+
+	k := rsKey(1, 500)
+	require.NoError(t, table.Register(k, rsState(0, nil, false)))
+	assert.False(t, table.RecentlyTerminatedRid(NewMessageIdFromUint(500)),
+		"a LIVE request is not recently terminated")
+	require.NotNil(t, table.Terminate(k, TerminalKindEnd))
+	assert.True(t, table.RecentlyTerminatedRid(NewMessageIdFromUint(500)),
+		"a just-terminated rid must be in the ring")
+	assert.False(t, table.RecentlyTerminatedRid(NewMessageIdFromUint(9999)),
+		"an unknown rid is a genuine routing anomaly, never post_terminal")
+
+	// Push the ring past its horizon: rid 500's summary must age out.
+	for n := uint64(1000); n < 1000+uint64(RecentTerminatedCap); n++ {
+		k := rsKey(n, n)
+		require.NoError(t, table.Register(k, rsState(0, nil, false)))
+		require.NotNil(t, table.Terminate(k, TerminalKindEnd))
+	}
+	assert.False(t, table.RecentlyTerminatedRid(NewMessageIdFromUint(500)),
+		"eviction past RecentTerminatedCap ends post_terminal classification")
+	assert.True(t, table.RecentlyTerminatedRid(NewMessageIdFromUint(1000+uint64(RecentTerminatedCap)-1)),
+		"the newest termination is still in the ring")
 }
 
 // TEST7033: Terminated requests leave a bounded ring of summaries carrying

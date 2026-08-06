@@ -908,6 +908,31 @@ func (sw *RelaySwitch) Limits() Limits {
 	return sw.negotiatedLimits
 }
 
+// classifyUnroutableLocked discriminates an unroutable frame's drop reason: a
+// RID whose request recently terminated is the ordinary teardown race of
+// credit-based flow control (post_terminal — a grant or straggler that
+// crossed END/ERR in flight); a RID the table never knew is a genuine
+// routing anomaly (no_route). Caller holds sw.mu.
+func (sw *RelaySwitch) classifyUnroutableLocked(rid MessageId) DropReason {
+	if sw.requests.RecentlyTerminatedRid(rid) {
+		return DropReasonPostTerminal
+	}
+	return DropReasonNoRoute
+}
+
+// masterInitialCreditLocked is the destination master's negotiated initial
+// credit — the ledger seed for requests routed to it
+// (RequestState.InitialCredit). When the slot has already detached (a
+// resolve/attach race — the registration that follows will fail on
+// delivery), the switch-level negotiated minimum is the correct window
+// bound. Caller holds sw.mu.
+func (sw *RelaySwitch) masterInitialCreditLocked(destIdx int) uint64 {
+	if destIdx >= 0 && destIdx < len(sw.masters) {
+		return uint64(sw.masters[destIdx].limits.InitialCredit)
+	}
+	return uint64(sw.negotiatedLimits.InitialCredit)
+}
+
 // SubscribeCapabilities subscribes to changes in the *routable* capability
 // set. The returned receiver yields the current capabilities snapshot
 // immediately (Borrow) and a fresh snapshot every time the routable set
@@ -1076,6 +1101,7 @@ func (sw *RelaySwitch) runIdentityProbeViaRelay(masterIdx int) error {
 		nil,
 		ch,
 		false,
+		sw.masterInitialCreditLocked(masterIdx),
 	).WithCapUrn(&probeCap)
 	if regErr := sw.requests.Register(key, state); regErr != nil {
 		sw.mu.Unlock()
@@ -1379,6 +1405,7 @@ func (sw *RelaySwitch) SendToMaster(frame *Frame, preferredCap *string) error {
 			nil,
 			nil,
 			false,
+			sw.masterInitialCreditLocked(destIdx),
 		).WithCapUrn(frame.Cap)
 		state = state.WithAdmissionPermit(permit)
 		if regErr := sw.requests.Register(key, state); regErr != nil {
@@ -1419,6 +1446,12 @@ func (sw *RelaySwitch) SendToMaster(frame *Frame, preferredCap *string) error {
 			}
 		}
 		frame.RoutingId = &xid
+
+		// RECORD the outbound frame in the request's flow ledger.
+		// Engine-originated grants and chunks are half of every stream's
+		// credit arithmetic; skipping them made the snapshot ledger read
+		// healthy streams as deep-negative.
+		sw.requests.RecordFrame(key, FrameDirectionOutbound, frame)
 
 		return sw.masters[state.Routing.DestinationMasterIdx].socketWriter.WriteFrame(frame)
 
@@ -1828,6 +1861,7 @@ func (sw *RelaySwitch) handleMasterFrame(sourceIdx int, frame *Frame) (*Frame, e
 			&srcIdx,
 			nil,
 			true,
+			sw.masterInitialCreditLocked(destIdx),
 		).WithCapUrn(frame.Cap)
 		if regErr := sw.requests.Register(key, state); regErr != nil {
 			return nil, &RelaySwitchError{Type: RelaySwitchErrorTypeProtocol, Message: regErr.Error()}
@@ -1874,13 +1908,17 @@ func (sw *RelaySwitch) handleMasterFrame(sourceIdx int, frame *Frame) (*Frame, e
 				}
 				state = sw.requests.Terminate(key, kind)
 				if state == nil {
-					sw.drops.Record(DropReasonNoRoute)
+					// Classify by the terminated ring: a frame for a
+					// request that JUST terminated is the ordinary
+					// teardown race (post_terminal); only a RID the
+					// table never knew is a routing anomaly (no_route).
+					sw.drops.Record(sw.classifyUnroutableLocked(rid))
 					return nil, nil
 				}
 			} else {
 				state = sw.requests.Get(key)
 				if state == nil {
-					sw.drops.Record(DropReasonNoRoute)
+					sw.drops.Record(sw.classifyUnroutableLocked(rid))
 					return nil, nil
 				}
 			}
@@ -1926,14 +1964,14 @@ func (sw *RelaySwitch) handleMasterFrame(sourceIdx int, frame *Frame) (*Frame, e
 		rid := frame.Id
 		xid, ok := sw.requests.XidForRid(rid)
 		if !ok {
-			sw.drops.Record(DropReasonNoRoute)
+			sw.drops.Record(sw.classifyUnroutableLocked(rid))
 			return nil, nil
 		}
 		key := RequestKey{Xid: xid, Rid: rid}
 		sw.requests.RecordFrame(key, FrameDirectionInbound, frame)
 		state := sw.requests.Get(key)
 		if state == nil {
-			sw.drops.Record(DropReasonNoRoute)
+			sw.drops.Record(sw.classifyUnroutableLocked(rid))
 			return nil, nil
 		}
 

@@ -344,6 +344,18 @@ type CartridgeHost struct {
 	// body phase, so the transition is unambiguous.
 	outgoingRids  map[string]outgoingRoute  // rid string → route (carries typed RID)
 	incomingRxids map[rxidKey]incomingRoute // (xid, rid) → route (carries typed XID/RID)
+	// recentReleasedRids is a bounded ring of RIDs whose routing entries were
+	// released by an OBSERVED terminal — a completed request, a completed
+	// peer response, or a cartridge death (which synthesizes the ERR terminal
+	// itself). This is the discriminator between the two ways a frame can
+	// arrive with no routing entry: a hit means the frame crossed its
+	// request's terminal in flight (the ordinary teardown race of
+	// credit-based flow control — counted post_terminal), a miss means the
+	// host never routed this RID within the ring's horizon (no_route, a
+	// genuine anomaly). GC evictions are deliberately NOT recorded here: an
+	// evicted entry never saw its terminal, so a frame for it is real routing
+	// loss and stays no_route beside routingGcEvictedTotal.
+	recentReleasedRids []string
 
 	// incomingBodyDone marks keys in incomingRxids whose REQUEST BODY has
 	// completed (body END routed to the handler) but whose RESPONSE has
@@ -445,6 +457,38 @@ func (h *CartridgeHost) touchIncomingRxid(key rxidKey) {
 
 // touchOutgoingRid stamps rid in outgoingRidsTouched with a fresh touch
 // sequence. Caller must hold h.mu.
+// RecentReleasedRidsCap is how many terminal-released RIDs the
+// discrimination ring retains (mirrors the Rust host's
+// RECENT_RELEASED_RIDS_CAP).
+const RecentReleasedRidsCap = 64
+
+// noteReleasedRid records that rid's routing entry was released by an
+// observed terminal (see recentReleasedRids). Deduplicated; bounded at
+// RecentReleasedRidsCap. Caller holds the host lock.
+func (h *CartridgeHost) noteReleasedRid(rid string) {
+	for _, r := range h.recentReleasedRids {
+		if r == rid {
+			return
+		}
+	}
+	if len(h.recentReleasedRids) == RecentReleasedRidsCap {
+		h.recentReleasedRids = append(h.recentReleasedRids[:0], h.recentReleasedRids[1:]...)
+	}
+	h.recentReleasedRids = append(h.recentReleasedRids, rid)
+}
+
+// recentlyReleasedRid reports whether rid's routing entry was recently
+// released by a terminal — the post_terminal / no_route discriminator for
+// unroutable frames. Caller holds the host lock.
+func (h *CartridgeHost) recentlyReleasedRid(rid string) bool {
+	for _, r := range h.recentReleasedRids {
+		if r == rid {
+			return true
+		}
+	}
+	return false
+}
+
 func (h *CartridgeHost) touchOutgoingRid(rid string) {
 	h.routingTouchSeq++
 	h.outgoingRidsTouched[rid] = h.routingTouchSeq
@@ -1314,6 +1358,9 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 			// Mirrors Rust host_runtime.rs:1438.
 			delete(h.incomingRxids, key)
 			delete(h.incomingRxidsTouched, key)
+			// The synthesized ERR below terminates this request; stragglers
+			// for it are post_terminal, not routing anomalies.
+			h.noteReleasedRid(frame.Id.ToString())
 			// A dead cartridge process is a runtime-environment failure —
 			// Environment (docs/failure-taxonomy.md).
 			errFrame := NewErr(frame.Id, "CARTRIDGE_DIED", AttributionClassEnvironment, err.Error(), nil)
@@ -1402,10 +1449,16 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 			}
 		}
 		if !haveRoute {
-			// No routing — the request was already torn down (e.g.
-			// after cartridge death). A counted no_route drop (L6/L8),
-			// never a silent loss.
-			h.drops.Record(DropReasonNoRoute)
+			// Discriminate the teardown race from real routing loss: a
+			// RID released by an observed terminal is the ordinary
+			// END/Credit race (post_terminal); a RID this host never
+			// routed is a genuine anomaly (no_route). Counted either
+			// way (L6/L8), never a silent loss.
+			if h.recentlyReleasedRid(frame.Id.ToString()) {
+				h.drops.Record(DropReasonPostTerminal)
+			} else {
+				h.drops.Record(DropReasonNoRoute)
+			}
 			return nil
 		}
 
@@ -1428,6 +1481,8 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 				delete(h.outgoingRids, frame.Id.ToString())
 				delete(h.outgoingRidsTouched, frame.Id.ToString())
 			}
+			// The synthesized ERR below terminates this request.
+			h.noteReleasedRid(frame.Id.ToString())
 			errFrame := NewErr(frame.Id, "CARTRIDGE_DIED", AttributionClassEnvironment, err.Error(), nil)
 			errFrame.RoutingId = frame.RoutingId
 			relayWriter.WriteFrame(errFrame)
@@ -1449,6 +1504,7 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 					delete(h.incomingResponseDone, key)
 					delete(h.incomingRxids, key)
 					delete(h.incomingRxidsTouched, key)
+					h.noteReleasedRid(frame.Id.ToString())
 				} else {
 					h.incomingBodyDone[key] = struct{}{}
 				}
@@ -1459,6 +1515,7 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 				// with deterministic id allocators) starts fresh.
 				delete(h.outgoingRids, frame.Id.ToString())
 				delete(h.outgoingRidsTouched, frame.Id.ToString())
+				h.noteReleasedRid(frame.Id.ToString())
 			}
 		}
 
@@ -1482,6 +1539,15 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 		// request-lifecycle frame set.
 		if route, ok := h.outgoingRids[frame.Id.ToString()]; ok {
 			_ = h.sendToCartridge(route.cartridgeIdx, frame)
+		} else {
+			// No routing entry: COUNTED drop, never silent (L8) — a LOG
+			// that crossed its peer request's terminal is post_terminal;
+			// one for a RID never routed here is no_route.
+			if h.recentlyReleasedRid(frame.Id.ToString()) {
+				h.drops.Record(DropReasonPostTerminal)
+			} else {
+				h.drops.Record(DropReasonNoRoute)
+			}
 		}
 		return nil
 	}
@@ -1583,6 +1649,7 @@ func (h *CartridgeHost) handleCartridgeFrame(cartridgeIdx int, frame *Frame, rel
 				delete(h.incomingBodyDone, key)
 				delete(h.incomingRxids, key)
 				delete(h.incomingRxidsTouched, key)
+				h.noteReleasedRid(frame.Id.ToString())
 			} else if _, stillIncoming := h.incomingRxids[key]; stillIncoming {
 				h.incomingResponseDone[key] = struct{}{}
 			}
@@ -1689,6 +1756,9 @@ func (h *CartridgeHost) handleCartridgeDeath(cartridgeIdx int, generation uint64
 		delete(h.incomingRxidsTouched, key)
 		delete(h.incomingBodyDone, key)
 		delete(h.incomingResponseDone, key)
+		// The death sweep synthesized ERR terminals for these RIDs above;
+		// stragglers for them are post_terminal.
+		h.noteReleasedRid(key.rid)
 	}
 
 	var outgoingKeys []string
@@ -1703,6 +1773,7 @@ func (h *CartridgeHost) handleCartridgeDeath(cartridgeIdx int, generation uint64
 	for _, key := range outgoingKeys {
 		delete(h.outgoingRids, key)
 		delete(h.outgoingRidsTouched, key)
+		h.noteReleasedRid(key)
 	}
 
 	h.updateCapTable()

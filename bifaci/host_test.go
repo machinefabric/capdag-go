@@ -1,6 +1,7 @@
 package bifaci
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -320,3 +321,102 @@ func Test462_attached_cartridge_identity_from_manifest(t *testing.T) {
 	assert.Nil(t, installedCartridgeRecordFromManifest([]byte(`{not json`)),
 		"unparseable manifest must yield nil, not a placeholder identity")
 }
+
+// TEST8116: the terminal-release ring discriminates and stays bounded —
+// released rids classify as post_terminal material, unknown rids do not,
+// duplicates collapse, and eviction past the cap ages a rid back out.
+// (Mirrors Rust host_runtime TEST8116.)
+func Test8116_released_rid_ring_discriminates_dedupes_and_ages_out(t *testing.T) {
+	h := NewCartridgeHost()
+	rid := "rid-7"
+
+	if h.recentlyReleasedRid(rid) {
+		t.Fatal("nothing released yet")
+	}
+	h.noteReleasedRid(rid)
+	h.noteReleasedRid(rid) // duplicate must collapse
+	if !h.recentlyReleasedRid(rid) {
+		t.Fatal("a just-released rid must be in the ring")
+	}
+	if len(h.recentReleasedRids) != 1 {
+		t.Fatalf("duplicate releases collapse to one ring entry, got %d", len(h.recentReleasedRids))
+	}
+	if h.recentlyReleasedRid("rid-9999") {
+		t.Fatal("a rid never released here is a genuine anomaly")
+	}
+
+	for n := 100; n < 100+RecentReleasedRidsCap; n++ {
+		h.noteReleasedRid(fmt.Sprintf("rid-%d", n))
+	}
+	if h.recentlyReleasedRid(rid) {
+		t.Fatal("eviction past RecentReleasedRidsCap ends post_terminal classification")
+	}
+	if len(h.recentReleasedRids) != RecentReleasedRidsCap {
+		t.Fatalf("the ring is bounded, got %d", len(h.recentReleasedRids))
+	}
+}
+
+// TEST8117: an unroutable continuation from the relay is classified by the
+// release ring — post_terminal for a rid a terminal just released, no_route
+// for a rid this host never routed. The same law covers unroutable LOG
+// frames: counted, never silent. (Mirrors Rust host_runtime TEST8117.)
+func Test8117_unroutable_continuation_classified_by_release_ring(t *testing.T) {
+	h := NewCartridgeHost()
+	out := &relayOutbound{ch: make(chan *Frame, 16)}
+
+	// Unknown rid: no routing entry, nothing released → no_route.
+	unknownRid := NewMessageIdFromUint(41)
+	xid := NewMessageIdFromUint(4)
+	unknown := newFrame(FrameTypeChunk, unknownRid)
+	streamID := "s"
+	zero := uint64(0)
+	unknown.StreamId = &streamID
+	unknown.ChunkIndex = &zero
+	unknown.Checksum = &zero
+	unknown.RoutingId = &xid
+	if err := h.handleRelayFrame(unknown, out); err != nil {
+		t.Fatalf("unroutable frame must not error (L6): %v", err)
+	}
+	if got := h.drops.Get(DropReasonNoRoute); got != 1 {
+		t.Fatalf("a rid never routed here is a routing anomaly, got %d", got)
+	}
+	if got := h.drops.Get(DropReasonPostTerminal); got != 0 {
+		t.Fatalf("no post_terminal yet, got %d", got)
+	}
+
+	// Released rid: the same frame after a terminal released the route →
+	// post_terminal, and the no_route counter must NOT move.
+	releasedRid := NewMessageIdFromUint(42)
+	h.noteReleasedRid(releasedRid.ToString())
+	straggler := newFrame(FrameTypeChunk, releasedRid)
+	straggler.StreamId = &streamID
+	straggler.ChunkIndex = &zero
+	straggler.Checksum = &zero
+	straggler.RoutingId = &xid
+	if err := h.handleRelayFrame(straggler, out); err != nil {
+		t.Fatalf("post-terminal straggler must not error (L6): %v", err)
+	}
+	if got := h.drops.Get(DropReasonPostTerminal); got != 1 {
+		t.Fatalf("a released rid's straggler is the teardown race, got %d", got)
+	}
+	if got := h.drops.Get(DropReasonNoRoute); got != 1 {
+		t.Fatalf("the routing-anomaly counter must not absorb teardown races, got %d", got)
+	}
+
+	// Unroutable LOG frames follow the same law — counted, never silent.
+	logReleased := NewProgress(releasedRid, 0.5, "late log")
+	if err := h.handleRelayFrame(logReleased, out); err != nil {
+		t.Fatalf("unroutable LOG must not error: %v", err)
+	}
+	if got := h.drops.Get(DropReasonPostTerminal); got != 2 {
+		t.Fatalf("released-rid LOG is post_terminal, got %d", got)
+	}
+	logUnknown := NewProgress(NewMessageIdFromUint(43), 0.5, "alien log")
+	if err := h.handleRelayFrame(logUnknown, out); err != nil {
+		t.Fatalf("unroutable LOG must not error: %v", err)
+	}
+	if got := h.drops.Get(DropReasonNoRoute); got != 2 {
+		t.Fatalf("unknown-rid LOG is no_route, got %d", got)
+	}
+}
+

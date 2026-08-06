@@ -2248,6 +2248,7 @@ func Test7093_dead_consumer_cancels_upstream(t *testing.T) {
 		nil,
 		ch,
 		false,
+		uint64(DefaultInitialCredit),
 	).WithCapUrn(&registeredCap)
 	if regErr := sw.requests.Register(key, state); regErr != nil {
 		sw.mu.Unlock()
@@ -2442,6 +2443,162 @@ func Test7025_unroutable_flow_frame_is_counted_drop(t *testing.T) {
 //
 // Uses a single capless connected master in place of the Rust reference's
 // zero-master switch — see TEST7025's doc comment.
+// TEST8114: A flow frame that CROSSED its request's terminal in flight is
+// counted post_terminal, not no_route — the ordinary teardown race of
+// credit-based flow control must not pollute the routing-anomaly alarm. A
+// frame for a RID the table never knew stays no_route (TEST7025).
+func Test8114_straggler_for_terminated_request_counts_post_terminal(t *testing.T) {
+	sw := buildSwitchWithNCaplessMasters(t, 1)
+
+	xid := NewMessageIdFromUint(21)
+	rid := NewMessageIdRandom()
+	key := RequestKey{Xid: xid, Rid: rid}
+	ch := make(chan Frame, 1)
+	sw.mu.Lock()
+	if err := sw.requests.Register(key, NewRequestState(
+		RequestRoutingEntry{SourceMasterIdx: nil, DestinationMasterIdx: 0},
+		nil,
+		ch,
+		false,
+		uint64(DefaultInitialCredit),
+	)); err != nil {
+		sw.mu.Unlock()
+		t.Fatalf("registration must succeed: %v", err)
+	}
+	sw.mu.Unlock()
+
+	progress := 1.0
+	end := EndOkWith(rid, nil, &progress, nil)
+	end.RoutingId = &xid
+	sw.mu.Lock()
+	if _, err := sw.handleMasterFrame(0, end); err != nil {
+		sw.mu.Unlock()
+		t.Fatalf("terminal must route: %v", err)
+	}
+	sw.mu.Unlock()
+	select {
+	case delivered := <-ch:
+		if delivered.FrameType != FrameTypeEnd {
+			t.Fatalf("expected END, got %d", delivered.FrameType)
+		}
+	default:
+		t.Fatalf("END must reach the response channel")
+	}
+
+	// A response continuation (has XID) that raced the END.
+	late := NewProgress(rid, 0.9, "late")
+	late.RoutingId = &xid
+	sw.mu.Lock()
+	if _, err := sw.handleMasterFrame(0, late); err != nil {
+		sw.mu.Unlock()
+		t.Fatalf("post-terminal straggler must not error (L6): %v", err)
+	}
+	sw.mu.Unlock()
+
+	// A request continuation (no XID) for the same terminated RID.
+	chunk := newFrame(FrameTypeChunk, rid)
+	streamID := "s"
+	chunk.StreamId = &streamID
+	zero := uint64(0)
+	chunk.ChunkIndex = &zero
+	chunk.Checksum = &zero
+	sw.mu.Lock()
+	if _, err := sw.handleMasterFrame(0, chunk); err != nil {
+		sw.mu.Unlock()
+		t.Fatalf("post-terminal continuation must not error: %v", err)
+	}
+	sw.mu.Unlock()
+
+	// A duplicate terminal for the released request.
+	dupEnd := EndOkWith(rid, nil, &progress, nil)
+	dupEnd.RoutingId = &xid
+	sw.mu.Lock()
+	if _, err := sw.handleMasterFrame(0, dupEnd); err != nil {
+		sw.mu.Unlock()
+		t.Fatalf("duplicate terminal must not error: %v", err)
+	}
+	sw.mu.Unlock()
+
+	stats := sw.ProtocolStats()
+	if got := stats.Drops.ByReason["post_terminal"]; got != 3 {
+		t.Fatalf("all three stragglers classified post_terminal, got %d: %+v", got, stats.Drops)
+	}
+	if got := stats.Drops.ByReason["no_route"]; got != 0 {
+		t.Fatalf("a terminated request's stragglers must never read as routing anomalies, got %d: %+v", got, stats.Drops)
+	}
+}
+
+// TEST8118: the flow ledger is a WINDOW — seeded with the request's
+// negotiated initial credit, consumed by chunks, replenished by grants — and
+// engine-originated frames sent through SendToMaster are recorded as its
+// outbound half. Before this, engine grants and chunks bypassed the ledger
+// entirely, so every healthy stream snapshot read as negative by exactly the
+// un-seeded initial window.
+func Test8118_send_to_master_records_outbound_flow_and_window(t *testing.T) {
+	sw := buildSwitchWithNCaplessMasters(t, 1)
+
+	xid := NewMessageIdFromUint(31)
+	rid := NewMessageIdFromUint(310)
+	key := RequestKey{Xid: xid, Rid: rid}
+	sw.mu.Lock()
+	if err := sw.requests.Register(key, NewRequestState(
+		RequestRoutingEntry{SourceMasterIdx: nil, DestinationMasterIdx: 0},
+		nil,
+		nil,
+		false,
+		5, // negotiated window under test — odd-sized so seed arithmetic is visible
+	)); err != nil {
+		sw.mu.Unlock()
+		t.Fatalf("registration must succeed: %v", err)
+	}
+	sw.mu.Unlock()
+
+	// An outbound chunk and an outbound grant from the engine side. The
+	// ledger records BEFORE the write, exactly like the inbound path records
+	// before routing, so stats never depend on delivery succeeding.
+	payload := []byte{0, 1, 2, 3, 4, 5, 6}
+	checksum := ComputeChecksum(payload)
+	chunk := NewChunk(rid, "s", 0, payload, 0, checksum)
+	chunk.RoutingId = &xid
+	_ = sw.SendToMaster(chunk, nil)
+
+	streamID := "s"
+	credit := NewCredit(rid, &streamID, 3, CreditDirectionResponse)
+	credit.RoutingId = &xid
+	_ = sw.SendToMaster(credit, nil)
+
+	stats := sw.ProtocolStats()
+	var found bool
+	for _, req := range stats.Requests.Active {
+		if req.Rid != rid.ToString() {
+			continue
+		}
+		found = true
+		var streamFound bool
+		for _, st := range req.Streams {
+			if st.StreamId == nil || *st.StreamId != "s" {
+				continue
+			}
+			streamFound = true
+			if st.Stats.ChunksOut != 1 {
+				t.Fatalf("outbound chunk recorded, got %d", st.Stats.ChunksOut)
+			}
+			if st.Stats.BytesOut != 7 {
+				t.Fatalf("outbound bytes recorded, got %d", st.Stats.BytesOut)
+			}
+			if st.Stats.CreditOutstanding != 5-1+3 {
+				t.Fatalf("window = seed - chunks + grants, got %d", st.Stats.CreditOutstanding)
+			}
+		}
+		if !streamFound {
+			t.Fatalf("stream ledger must exist for the outbound flow: %+v", req.Streams)
+		}
+	}
+	if !found {
+		t.Fatalf("request must still be active: %+v", stats.Requests.Active)
+	}
+}
+
 func Test7035_end_terminates_and_releases_all_state(t *testing.T) {
 	sw := buildSwitchWithNCaplessMasters(t, 1)
 
@@ -2455,6 +2612,7 @@ func Test7035_end_terminates_and_releases_all_state(t *testing.T) {
 		nil,
 		ch,
 		false,
+		uint64(DefaultInitialCredit),
 	)); err != nil {
 		sw.mu.Unlock()
 		t.Fatalf("registration must succeed: %v", err)
@@ -2537,6 +2695,7 @@ func Test7036_err_terminates_and_releases_all_state(t *testing.T) {
 		nil,
 		ch,
 		false,
+		uint64(DefaultInitialCredit),
 	)); err != nil {
 		sw.mu.Unlock()
 		t.Fatalf("registration must succeed: %v", err)
@@ -2622,6 +2781,7 @@ func Test7037_cancel_cascades_to_children_and_cleans_all_state(t *testing.T) {
 		nil,
 		pch,
 		false,
+		uint64(DefaultInitialCredit),
 	)); err != nil {
 		sw.mu.Unlock()
 		t.Fatalf("register parent: %v", err)
@@ -2631,6 +2791,7 @@ func Test7037_cancel_cascades_to_children_and_cleans_all_state(t *testing.T) {
 		&srcIdx,
 		nil,
 		true,
+		uint64(DefaultInitialCredit),
 	)); err != nil {
 		sw.mu.Unlock()
 		t.Fatalf("register child: %v", err)
@@ -2719,6 +2880,7 @@ func Test7038_master_death_terminates_pending_requests(t *testing.T) {
 		nil,
 		ch,
 		false,
+		uint64(DefaultInitialCredit),
 	)); err != nil {
 		sw.mu.Unlock()
 		t.Fatalf("register: %v", err)

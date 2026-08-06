@@ -2258,6 +2258,19 @@ type threadSafeEmitter struct {
 	// calls fail hard (matches Rust OutputStream::check_mode). Guarded by
 	// seqMu.
 	isSequence bool
+	// coalesceBuf accumulates small EmitCbor([]byte) emissions (the
+	// per-token path) so they ship as ONE CBOR-Bytes CHUNK per size/age
+	// threshold instead of one frame per token (mirrors the Rust
+	// CoalesceBuf). Chunk boundaries on a scalar stream are non-semantic —
+	// every receiver decodes each CHUNK payload as one CBOR Bytes value and
+	// concatenates the inner bytes — so coalescing is invisible to
+	// consumers. Non-Bytes emissions and Finalize flush first, so nothing
+	// overtakes buffered bytes and nothing is ever dropped. Guarded by
+	// seqMu.
+	coalesceBuf []byte
+	// coalesceOldest is when the oldest buffered byte arrived (zero when the
+	// buffer is empty). Guarded by seqMu.
+	coalesceOldest time.Time
 	// unbounded is set by StartUnbounded before the stream is started
 	// (protocol v4, L16): the STREAM_START carries no length promise and
 	// Finalize's STREAM_END omits chunk_count. Guarded by seqMu.
@@ -2380,6 +2393,88 @@ func (e *threadSafeEmitter) StartUnbounded(isSequence bool) error {
 	return e.ensureStreamStarted(isSequence)
 }
 
+// CoalesceMaxBytes is the cap on bytes buffered before an EmitCbor([]byte)
+// forces a flush (mirrors the Rust COALESCE_MAX_BYTES).
+const CoalesceMaxBytes = 4096
+
+// CoalesceMaxAge is the oldest buffered byte age that forces a flush on the
+// next emission (mirrors the Rust COALESCE_MAX_AGE).
+const CoalesceMaxAge = 20 * time.Millisecond
+
+// appendCoalescedLocked appends data to the coalescing buffer and returns a
+// batch that is DUE (size or age threshold crossed), or nil while the batch
+// is still accumulating. Caller holds seqMu.
+func (e *threadSafeEmitter) appendCoalescedLocked(data []byte) []byte {
+	if len(e.coalesceBuf) == 0 {
+		e.coalesceOldest = time.Now()
+	}
+	e.coalesceBuf = append(e.coalesceBuf, data...)
+	if len(e.coalesceBuf) >= CoalesceMaxBytes || time.Since(e.coalesceOldest) >= CoalesceMaxAge {
+		batch := e.coalesceBuf
+		e.coalesceBuf = nil
+		e.coalesceOldest = time.Time{}
+		return batch
+	}
+	return nil
+}
+
+// takeCoalescedLocked takes whatever is buffered, unconditionally — the
+// flush/close/ordering-barrier primitive. Caller holds seqMu.
+func (e *threadSafeEmitter) takeCoalescedLocked() []byte {
+	if len(e.coalesceBuf) == 0 {
+		return nil
+	}
+	batch := e.coalesceBuf
+	e.coalesceBuf = nil
+	e.coalesceOldest = time.Time{}
+	return batch
+}
+
+// writeCoalescedBatchLocked ships one coalesced batch: split at maxChunk,
+// each piece one CBOR-Bytes CHUNK, one credit per chunk. Caller holds seqMu.
+func (e *threadSafeEmitter) writeCoalescedBatchLocked(batch []byte) error {
+	offset := 0
+	for offset < len(batch) {
+		chunkSize := len(batch) - offset
+		if chunkSize > e.maxChunk {
+			chunkSize = e.maxChunk
+		}
+		chunkBytes := batch[offset : offset+chunkSize]
+
+		cborPayload, err := cborlib.Marshal(chunkBytes)
+		if err != nil {
+			return fmt.Errorf("failed to encode chunk: %w", err)
+		}
+
+		currentSeq := e.seq
+		e.seq++
+		currentIndex := e.chunkIndex
+		e.chunkIndex++
+		checksum := ComputeChecksum(cborPayload)
+
+		frame := NewChunk(e.requestID, e.streamID, currentSeq, cborPayload, currentIndex, checksum)
+		frame.RoutingId = e.routingId
+		if err := e.acquireCredit(); err != nil {
+			return err
+		}
+		if err := e.writer.WriteFrame(frame); err != nil {
+			return fmt.Errorf("failed to write chunk: %w", err)
+		}
+
+		offset += chunkSize
+	}
+	return nil
+}
+
+// flushCoalescedLocked ships any buffered-but-unsent bytes now. Caller holds
+// seqMu.
+func (e *threadSafeEmitter) flushCoalescedLocked() error {
+	if batch := e.takeCoalescedLocked(); batch != nil {
+		return e.writeCoalescedBatchLocked(batch)
+	}
+	return nil
+}
+
 func (e *threadSafeEmitter) EmitCbor(value interface{}) error {
 	e.seqMu.Lock()
 	defer e.seqMu.Unlock()
@@ -2401,39 +2496,24 @@ func (e *threadSafeEmitter) EmitCbor(value interface{}) error {
 
 	// Split large byte/text data, encode each chunk as complete CBOR value
 	if byteSlice, ok := value.([]byte); ok {
-		// Split bytes BEFORE encoding, encode each chunk as []byte
-		offset := 0
-		for offset < len(byteSlice) {
-			chunkSize := len(byteSlice) - offset
-			if chunkSize > e.maxChunk {
-				chunkSize = e.maxChunk
-			}
-			chunkBytes := byteSlice[offset : offset+chunkSize]
-
-			// Encode as complete []byte - independently decodable
-			cborPayload, err := cborlib.Marshal(chunkBytes)
-			if err != nil {
-				return fmt.Errorf("failed to encode chunk: %w", err)
-			}
-
-			currentSeq := e.seq
-			e.seq++
-			currentIndex := e.chunkIndex
-			e.chunkIndex++
-			checksum := ComputeChecksum(cborPayload)
-
-			frame := NewChunk(e.requestID, e.streamID, currentSeq, cborPayload, currentIndex, checksum)
-			frame.RoutingId = e.routingId
-			if err := e.acquireCredit(); err != nil {
+		// Byte emissions COALESCE (the per-token path): on a scalar stream
+		// a CBOR-Bytes chunk is pure byte-stream continuation, so small
+		// rapid emissions accumulate and ship as one chunk per size/age
+		// threshold; Finalize flushes the tail before STREAM_END.
+		if len(byteSlice) == 0 {
+			return nil
+		}
+		if batch := e.appendCoalescedLocked(byteSlice); batch != nil {
+			if err := e.writeCoalescedBatchLocked(batch); err != nil {
 				return err
 			}
-			if err := e.writer.WriteFrame(frame); err != nil {
-				return fmt.Errorf("failed to write chunk: %w", err)
-			}
-
-			offset += chunkSize
 		}
 	} else if str, ok := value.(string); ok {
+		// ORDERING BARRIER: a non-Bytes value must not overtake bytes still
+		// sitting in the coalescing buffer.
+		if err := e.flushCoalescedLocked(); err != nil {
+			return err
+		}
 		// Split string BEFORE encoding, encode each chunk as string
 		strBytes := []byte(str)
 		offset := 0
@@ -2476,6 +2556,9 @@ func (e *threadSafeEmitter) EmitCbor(value interface{}) error {
 			offset += chunkSize
 		}
 	} else if slice, ok := value.([]interface{}); ok {
+		if err := e.flushCoalescedLocked(); err != nil {
+			return err
+		}
 		// Array: send each element as independent CBOR chunk
 		// Allows receiver to reconstruct elements without waiting for entire array
 		for _, element := range slice {
@@ -2501,6 +2584,9 @@ func (e *threadSafeEmitter) EmitCbor(value interface{}) error {
 			}
 		}
 	} else if m, ok := value.(map[interface{}]interface{}); ok {
+		if err := e.flushCoalescedLocked(); err != nil {
+			return err
+		}
 		// Map: send each entry as independent CBOR chunk
 		// Receiver must wait for all entries before reconstructing map
 		for key, val := range m {
@@ -2527,6 +2613,9 @@ func (e *threadSafeEmitter) EmitCbor(value interface{}) error {
 			}
 		}
 	} else {
+		if err := e.flushCoalescedLocked(); err != nil {
+			return err
+		}
 		// For other types (int, float, bool, nil): encode as single chunk
 		// These have single-value semantics and are typically small
 		cborPayload, err := cborlib.Marshal(value)
@@ -2566,6 +2655,13 @@ func (e *threadSafeEmitter) Finalize() {
 	// mode preference).
 	if err := e.ensureStreamStarted(false); err != nil {
 		fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write STREAM_START: %v\n", err)
+		return
+	}
+
+	// Coalesced tail bytes ship BEFORE the STREAM_END that promises the
+	// chunk count — flushing here is what makes coalescing lossless.
+	if err := e.flushCoalescedLocked(); err != nil {
+		fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to flush coalesced tail: %v\n", err)
 		return
 	}
 
@@ -2613,6 +2709,11 @@ func (e *threadSafeEmitter) Write(data []byte) error {
 
 	if err := e.ensureStreamStarted(false); err != nil {
 		return fmt.Errorf("failed to write STREAM_START: %w", err)
+	}
+	// Raw-payload writes never coalesce; barrier-flush so they cannot
+	// overtake buffered CBOR-Bytes emissions on the same stream.
+	if err := e.flushCoalescedLocked(); err != nil {
+		return err
 	}
 
 	offset := 0
