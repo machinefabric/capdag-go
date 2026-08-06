@@ -535,6 +535,19 @@ func Test551_is_file_path(t *testing.T) {
 	assert.False(t, binaryUrn.IsFilePath())
 }
 
+// TEST553: is_live_feed returns true for every URN carrying the `live` marker tag (the reference-media family the runtime resolves via providers), false for everything else — including content URNs a feed delivers.
+func Test553_is_live_feed(t *testing.T) {
+	for _, live := range []string{"media:live", "media:live;synthetic", "media:audio;live;microphone"} {
+		urn, err := NewMediaUrnFromString(live)
+		require.NoError(t, err)
+		assert.True(t, urn.IsLiveFeed(), live)
+	}
+	for _, notLive := range []string{standard.MediaString, standard.MediaFilePath, "media:audio;pcm"} {
+		urn, err := NewMediaUrnFromString(notLive)
+		require.NoError(t, err)
+		assert.False(t, urn.IsLiveFeed(), notLive)
+	}
+}
 
 // TEST558: predicates are consistent with constants — every constant triggers exactly the expected predicates
 func Test558_predicate_constant_consistency(t *testing.T) {

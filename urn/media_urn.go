@@ -451,6 +451,16 @@ func (m *MediaUrn) IsFilePath() bool {
 	return m.HasTag("file-path")
 }
 
+// IsLiveFeed returns true if this URN carries the `live` marker tag — a
+// live-feed REFERENCE (13.2 §Reference Media): the arg value is a selector
+// record the runtime resolves into an unbounded content stream via a
+// registered provider, the same transport-resolution family as
+// `media:file-path`. This is the canonical membership predicate for that
+// family; callers must not test the `live` tag themselves.
+func (m *MediaUrn) IsLiveFeed() bool {
+	return m.HasTag("live")
+}
+
 // GetExtension returns the ext tag value if present
 func (m *MediaUrn) GetExtension() (string, bool) {
 	return m.GetTag("ext")
