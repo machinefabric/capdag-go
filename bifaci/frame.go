@@ -51,6 +51,59 @@ const (
 	FrameTypeCredit FrameType = 13
 )
 
+// FrameTypeAll is all variants, for counter arrays and snapshot
+// serialization (matches Rust FrameType::ALL).
+var FrameTypeAll = []FrameType{
+	FrameTypeHello,
+	FrameTypeReq,
+	FrameTypeChunk,
+	FrameTypeEnd,
+	FrameTypeLog,
+	FrameTypeErr,
+	FrameTypeHeartbeat,
+	FrameTypeStreamStart,
+	FrameTypeStreamEnd,
+	FrameTypeRelayNotify,
+	FrameTypeRelayState,
+	FrameTypeCancel,
+	FrameTypeCredit,
+}
+
+// AsStr returns the stable snake_case name (the snapshot contract for
+// mirrors and traces). (matches Rust FrameType::as_str)
+func (ft FrameType) AsStr() string {
+	switch ft {
+	case FrameTypeHello:
+		return "hello"
+	case FrameTypeReq:
+		return "req"
+	case FrameTypeChunk:
+		return "chunk"
+	case FrameTypeEnd:
+		return "end"
+	case FrameTypeLog:
+		return "log"
+	case FrameTypeErr:
+		return "err"
+	case FrameTypeHeartbeat:
+		return "heartbeat"
+	case FrameTypeStreamStart:
+		return "stream_start"
+	case FrameTypeStreamEnd:
+		return "stream_end"
+	case FrameTypeRelayNotify:
+		return "relay_notify"
+	case FrameTypeRelayState:
+		return "relay_state"
+	case FrameTypeCancel:
+		return "cancel"
+	case FrameTypeCredit:
+		return "credit"
+	default:
+		panic(fmt.Sprintf("BUG: FrameType %d not covered by AsStr", uint8(ft)))
+	}
+}
+
 // String returns the frame type name
 func (ft FrameType) String() string {
 	switch ft {
@@ -582,9 +635,9 @@ func NewErr(id MessageId, code string, class AttributionClass, message string, a
 	}
 	frame := newFrame(FrameTypeErr, id)
 	frame.Meta = map[string]interface{}{
-		"code":    code,
+		"code":              code,
 		"attribution_class": class.String(),
-		"message": message,
+		"message":           message,
 	}
 	if argUrn != nil {
 		frame.Meta["arg_urn"] = *argUrn
@@ -1081,11 +1134,17 @@ func (rb *ReorderBuffer) CleanupFlow(key FlowKey) {
 // never dropped silently. (matches Rust DropReason)
 type DropReason uint8
 
+// A DROP means something went wrong. The benign teardown crossing — a flow
+// frame that arrives after its request's terminal, which the protocol
+// expects (in-flight frames legally race END/ERR, L13) — is NOT a drop and
+// has no reason here: it is counted as a post-terminal STRAGGLER
+// (StragglerCounters in stats.go), indicated as benign in every stats
+// surface.
 const (
-	// DropReasonPostTerminal: flow frame enqueued/received after the request's terminal (END/ERR) frame.
-	DropReasonPostTerminal DropReason = iota
-	// DropReasonNoRoute: flow frame for a request with no routing state (already released or never registered).
-	DropReasonNoRoute
+	// DropReasonNoRoute: flow frame for a request with no routing state
+	// (never registered, or released for a reason the terminated-ledger
+	// cannot vouch for).
+	DropReasonNoRoute DropReason = iota
 	// DropReasonChannelClosed: send attempted on a closed channel (receiver gone).
 	DropReasonChannelClosed
 	// DropReasonCreditViolation: CHUNK received beyond the granted credit window.
@@ -1099,7 +1158,6 @@ const (
 // DropReasonAll is all variants, for counter arrays and snapshot serialization
 // (matches Rust DropReason::ALL).
 var DropReasonAll = []DropReason{
-	DropReasonPostTerminal,
 	DropReasonNoRoute,
 	DropReasonChannelClosed,
 	DropReasonCreditViolation,
@@ -1111,8 +1169,6 @@ var DropReasonAll = []DropReason{
 // mirrors). (matches Rust DropReason::as_str)
 func (r DropReason) AsStr() string {
 	switch r {
-	case DropReasonPostTerminal:
-		return "post_terminal"
 	case DropReasonNoRoute:
 		return "no_route"
 	case DropReasonChannelClosed:

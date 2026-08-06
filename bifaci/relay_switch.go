@@ -376,10 +376,14 @@ type RelaySwitch struct {
 	// unsynchronized, mirroring the Rust reference's RwLock<RequestTable>
 	// and the Swift mirror's lock-guarded RequestTable).
 	requests *RequestTable
-	// drops is dropped-frame accounting (L8): unroutable/post-terminal
-	// frames are counted drops, never silent losses and never protocol
-	// errors.
-	drops                        *DropCounters
+	// drops is dropped-frame accounting (L8): frames lost to something
+	// going WRONG (no routing state, dead channels), counted per reason ×
+	// frame type — never silent losses and never protocol errors.
+	drops *DropCounters
+	// stragglers counts benign post-terminal stragglers: flow frames that
+	// crossed their request's terminal in flight — the expected teardown
+	// race, indicated as benign in every stats surface, never as drops.
+	stragglers                   *StragglerCounters
 	capabilities                 []byte
 	aggregateInstalledCartridges []InstalledCartridgeRecord
 	negotiatedLimits             Limits
@@ -644,6 +648,7 @@ func NewRelaySwitch(sockets []SocketPair) (*RelaySwitch, error) {
 		capTable:                     []CapTableEntry{},
 		requests:                     NewRequestTable(),
 		drops:                        NewDropCounters(),
+		stragglers:                   NewStragglerCounters(),
 		aggregateInstalledCartridges: []InstalledCartridgeRecord{},
 		frameRx:                      frameRx,
 		pendingProbes:                make(chan int, 256),
@@ -908,16 +913,19 @@ func (sw *RelaySwitch) Limits() Limits {
 	return sw.negotiatedLimits
 }
 
-// classifyUnroutableLocked discriminates an unroutable frame's drop reason: a
-// RID whose request recently terminated is the ordinary teardown race of
-// credit-based flow control (post_terminal — a grant or straggler that
-// crossed END/ERR in flight); a RID the table never knew is a genuine
-// routing anomaly (no_route). Caller holds sw.mu.
-func (sw *RelaySwitch) classifyUnroutableLocked(rid MessageId) DropReason {
-	if sw.requests.RecentlyTerminatedRid(rid) {
-		return DropReasonPostTerminal
+// accountUnroutedFrameLocked accounts a flow frame that found no routing
+// state, for the narrow case it actually is: when the terminated ledger
+// vouches the request JUST terminated, the frame is a BENIGN post-terminal
+// straggler — the expected teardown crossing, counted per frame type and
+// never a drop. Otherwise the RID is one the table never knew: a genuine
+// routing anomaly, counted as a no_route drop. Caller holds sw.mu.
+// (matches Rust RelaySwitch::account_unrouted_frame)
+func (sw *RelaySwitch) accountUnroutedFrameLocked(frame *Frame) {
+	if sw.requests.RecentlyTerminatedRid(frame.Id) {
+		sw.stragglers.Record(frame.FrameType)
+		return
 	}
-	return DropReasonNoRoute
+	sw.drops.Record(DropReasonNoRoute, frame.FrameType)
 }
 
 // masterInitialCreditLocked is the destination master's negotiated initial
@@ -957,9 +965,13 @@ func (sw *RelaySwitch) SubscribeCapabilities() *CapabilitiesReceiver {
 // simpler channel-based routing has no honest value for them (see the
 // doc-comment on HostProtocolStats). (matches Rust RelaySwitchProtocolStats)
 type RelaySwitchProtocolStats struct {
-	Requests RequestTableSnapshot         `json:"requests"`
-	Drops    DropSnapshot                 `json:"drops"`
-	Hosts    map[string]HostProtocolStats `json:"hosts"`
+	Requests RequestTableSnapshot `json:"requests"`
+	Drops    DropSnapshot         `json:"drops"`
+	// Stragglers are benign post-terminal frames — the expected teardown
+	// crossing, counted per frame type. Indicated separately from Drops
+	// because nothing went wrong.
+	Stragglers StragglerSnapshot            `json:"stragglers"`
+	Hosts      map[string]HostProtocolStats `json:"hosts"`
 }
 
 // ProtocolStats returns the switch's protocol observability snapshot (L8):
@@ -978,9 +990,10 @@ func (sw *RelaySwitch) ProtocolStats() RelaySwitchProtocolStats {
 		}
 	}
 	return RelaySwitchProtocolStats{
-		Requests: sw.requests.Snapshot(),
-		Drops:    sw.drops.Snapshot(),
-		Hosts:    hosts,
+		Requests:   sw.requests.Snapshot(),
+		Drops:      sw.drops.Snapshot(),
+		Stragglers: sw.stragglers.Snapshot(),
+		Hosts:      hosts,
 	}
 }
 
@@ -1909,16 +1922,16 @@ func (sw *RelaySwitch) handleMasterFrame(sourceIdx int, frame *Frame) (*Frame, e
 				state = sw.requests.Terminate(key, kind)
 				if state == nil {
 					// Classify by the terminated ring: a frame for a
-					// request that JUST terminated is the ordinary
-					// teardown race (post_terminal); only a RID the
-					// table never knew is a routing anomaly (no_route).
-					sw.drops.Record(sw.classifyUnroutableLocked(rid))
+					// request that JUST terminated is a benign
+					// straggler; only a RID the table never knew is a
+					// routing anomaly (no_route drop).
+					sw.accountUnroutedFrameLocked(frame)
 					return nil, nil
 				}
 			} else {
 				state = sw.requests.Get(key)
 				if state == nil {
-					sw.drops.Record(sw.classifyUnroutableLocked(rid))
+					sw.accountUnroutedFrameLocked(frame)
 					return nil, nil
 				}
 			}
@@ -1927,7 +1940,7 @@ func (sw *RelaySwitch) handleMasterFrame(sourceIdx int, frame *Frame) (*Frame, e
 				if state.ExternalChannel != nil {
 					// Deliver to the external response channel (keep XID).
 					if !deliverExternal(state.ExternalChannel, *frame) {
-						sw.drops.Record(DropReasonChannelClosed)
+						sw.drops.Record(DropReasonChannelClosed, frame.FrameType)
 						// A dead consumer on a LIVE request means the
 						// caller abandoned it. Nobody can ever read this
 						// response — cancel upstream so the cartridge
@@ -1964,14 +1977,14 @@ func (sw *RelaySwitch) handleMasterFrame(sourceIdx int, frame *Frame) (*Frame, e
 		rid := frame.Id
 		xid, ok := sw.requests.XidForRid(rid)
 		if !ok {
-			sw.drops.Record(sw.classifyUnroutableLocked(rid))
+			sw.accountUnroutedFrameLocked(frame)
 			return nil, nil
 		}
 		key := RequestKey{Xid: xid, Rid: rid}
 		sw.requests.RecordFrame(key, FrameDirectionInbound, frame)
 		state := sw.requests.Get(key)
 		if state == nil {
-			sw.drops.Record(sw.classifyUnroutableLocked(rid))
+			sw.accountUnroutedFrameLocked(frame)
 			return nil, nil
 		}
 

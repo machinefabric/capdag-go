@@ -532,7 +532,8 @@ func (t *RequestTable) SetTerminateObserver(observer TerminateObserver) {
 // routing state. A hit here means the frame CROSSED its request's terminal in
 // flight — the ordinary teardown race of credit-based flow control (a grant
 // or straggler emitted before the sender observed END/ERR) — which receivers
-// count as post_terminal. A miss means the table has never known the RID
+// count as a BENIGN post-terminal straggler (nothing went wrong; never a
+// drop). A miss means the table has never known the RID
 // within the ring's horizon: a genuine no_route anomaly worth alarming on.
 // The ring holds the last RecentTerminatedCap terminations; the race window
 // is milliseconds, so eviction cannot misclassify a real race, only age a

@@ -2741,7 +2741,7 @@ func Test398_BuildPayloadIOError(t *testing.T) {
 func Test544_peer_invoker_sends_end_frame(t *testing.T) {
 	var buf bytes.Buffer
 	writer := NewFrameWriter(&buf)
-	syncWriter := newSyncFrameWriter(writer, NewDropCounters())
+	syncWriter := newSyncFrameWriter(writer, NewDropCounters(), NewStragglerCounters())
 	pendingRequests := &sync.Map{}
 
 	peer := newPeerInvokerImpl(syncWriter, pendingRequests, DefaultLimits().MaxChunk, nil, 0)
@@ -3039,7 +3039,7 @@ func (m *mockFrameWriter) WriteFrame(frame *Frame) error {
 func Test842_progress_sender_emits_frames(t *testing.T) {
 	var buf bytes.Buffer
 	writer := NewFrameWriter(&buf)
-	syncWriter := newSyncFrameWriter(writer, NewDropCounters())
+	syncWriter := newSyncFrameWriter(writer, NewDropCounters(), NewStragglerCounters())
 	reqId := NewMessageIdRandom()
 	ps := &ProgressSender{
 		writer:    syncWriter,
@@ -3085,7 +3085,7 @@ func Test842_progress_sender_emits_frames(t *testing.T) {
 func Test843_progress_sender_from_goroutine(t *testing.T) {
 	var buf bytes.Buffer
 	writer := NewFrameWriter(&buf)
-	syncWriter := newSyncFrameWriter(writer, NewDropCounters())
+	syncWriter := newSyncFrameWriter(writer, NewDropCounters(), NewStragglerCounters())
 	reqId := NewMessageIdRandom()
 	ps := &ProgressSender{
 		writer:    syncWriter,
@@ -3118,7 +3118,7 @@ func Test843_progress_sender_from_goroutine(t *testing.T) {
 func Test844_progress_sender_multiple_goroutines(t *testing.T) {
 	var buf bytes.Buffer
 	writer := NewFrameWriter(&buf)
-	syncWriter := newSyncFrameWriter(writer, NewDropCounters())
+	syncWriter := newSyncFrameWriter(writer, NewDropCounters(), NewStragglerCounters())
 	reqId := NewMessageIdRandom()
 	ps := &ProgressSender{
 		writer:    syncWriter,
@@ -3163,7 +3163,7 @@ func Test844_progress_sender_multiple_goroutines(t *testing.T) {
 func Test845_progress_sender_independent_of_emitter(t *testing.T) {
 	var buf bytes.Buffer
 	writer := NewFrameWriter(&buf)
-	syncWriter := newSyncFrameWriter(writer, NewDropCounters())
+	syncWriter := newSyncFrameWriter(writer, NewDropCounters(), NewStragglerCounters())
 	reqId := NewMessageIdRandom()
 	ps := &ProgressSender{
 		writer:    syncWriter,
@@ -3691,7 +3691,7 @@ func outputEmitterCapture(t *testing.T, streamID, mediaUrn string, maxChunk int,
 	t.Helper()
 	var buf bytes.Buffer
 	writer := NewFrameWriter(&buf)
-	syncWriter := newSyncFrameWriter(writer, NewDropCounters())
+	syncWriter := newSyncFrameWriter(writer, NewDropCounters(), NewStragglerCounters())
 	emitter := newThreadSafeEmitter(syncWriter, NewMessageIdRandom(), nil, streamID, mediaUrn, maxChunk, nil, 0)
 	emit(emitter)
 	emitter.Finalize()
@@ -3709,6 +3709,39 @@ func outputEmitterCapture(t *testing.T, streamID, mediaUrn string, maxChunk int,
 }
 
 // TEST539: OutputStream sends STREAM_START on first write
+// TEST8126: DeriveResponseMedia — the response label is the effect
+// inference over the declared input, per effect value; an unparseable
+// cap URN fails hard instead of falling back.
+func Test8126_derive_response_media_per_effect(t *testing.T) {
+	m, err := DeriveResponseMedia(`cap:extract;in="media:ext=pdf";out="media:record"`)
+	if err != nil {
+		t.Fatalf("effect=declared derivation must succeed: %v", err)
+	}
+	if m != "media:record" {
+		t.Errorf("effect=declared derives the declared out=, got %q", m)
+	}
+
+	m, err = DeriveResponseMedia(`cap:decimate-sequence;effect=none;in="media:ext=png;image";out="media:image"`)
+	if err != nil {
+		t.Fatalf("effect=none derivation must succeed: %v", err)
+	}
+	if m != "media:ext=png;image" {
+		t.Errorf("effect=none derives the declared in=, got %q", m)
+	}
+
+	m, err = DeriveResponseMedia(`cap:convert;effect=patch;in="media:ext=jpeg;image";out="media:ext=png;image"`)
+	if err != nil {
+		t.Fatalf("effect=patch derivation must succeed: %v", err)
+	}
+	if m != "media:ext=png;image" {
+		t.Errorf("effect=patch derives the patched declared in=, got %q", m)
+	}
+
+	if _, err = DeriveResponseMedia("not-a-cap-urn"); err == nil {
+		t.Error("an unparseable cap URN is a broken declaration: hard error expected")
+	}
+}
+
 func Test539_output_stream_sends_stream_start(t *testing.T) {
 	frames := outputEmitterCapture(t, "stream-1", "media:test", 256000, func(e *threadSafeEmitter) {
 		if err := e.EmitCbor([]byte("test")); err != nil {
@@ -3944,13 +3977,14 @@ func decodeWireFrames(t *testing.T, buf []byte) []Frame {
 func f64Ptr(v float64) *float64 { return &v }
 
 // TEST7020: A flow frame reaching the writer after the flow's END has been
-// written is dropped with a counted post_terminal drop — END is the last flow
-// frame on the wire.
-func Test7020_writer_gate_drops_post_terminal_flow_frames(t *testing.T) {
+// written is suppressed as a benign counted straggler (never a drop) — END
+// is the last flow frame on the wire.
+func Test7020_writer_gate_suppresses_post_terminal_stragglers(t *testing.T) {
 	rid := NewMessageIdRandom()
 	var buf bytes.Buffer
 	drops := NewDropCounters()
-	w := newSyncFrameWriter(NewFrameWriter(&buf), drops)
+	stragglers := NewStragglerCounters()
+	w := newSyncFrameWriter(NewFrameWriter(&buf), drops, stragglers)
 
 	// In-order: chunk, END — both written.
 	payload := []byte{1, 2, 3}
@@ -3969,10 +4003,13 @@ func Test7020_writer_gate_drops_post_terminal_flow_frames(t *testing.T) {
 	// an error the caller must handle differently.
 	straggler := NewProgress(rid, 1.0, "late keepalive")
 	if err := w.WriteFrame(straggler); err != nil {
-		t.Fatalf("post-terminal drop must not surface as a write error: %v", err)
+		t.Fatalf("straggler suppression must not surface as a write error: %v", err)
 	}
-	if got := drops.Get(DropReasonPostTerminal); got != 1 {
-		t.Errorf("expected 1 post_terminal drop, got %d", got)
+	if got := stragglers.Get(FrameTypeLog); got != 1 {
+		t.Errorf("expected 1 benign straggler (log), got %d", got)
+	}
+	if got := drops.Total(); got != 0 {
+		t.Errorf("benign stragglers must never count as drops, got %d", got)
 	}
 
 	frames := decodeWireFrames(t, buf.Bytes())
@@ -4001,7 +4038,8 @@ func Test7021_writer_gate_precision(t *testing.T) {
 	ridB := NewMessageIdFromUint(2)
 	var buf bytes.Buffer
 	drops := NewDropCounters()
-	w := newSyncFrameWriter(NewFrameWriter(&buf), drops)
+	stragglers := NewStragglerCounters()
+	w := newSyncFrameWriter(NewFrameWriter(&buf), drops, stragglers)
 
 	// Progress before END is written (the gate never over-drops).
 	if err := w.WriteFrame(NewProgress(ridA, 0.5, "halfway")); err != nil {
@@ -4026,9 +4064,9 @@ func Test7021_writer_gate_precision(t *testing.T) {
 		t.Fatalf("progress for a different flow must succeed: %v", err)
 	}
 
-	// But a flow frame for A is gated.
+	// But a flow frame for A is gated — suppressed as a benign straggler.
 	if err := w.WriteFrame(NewLog(ridA, "info", AttributionClassInternal, "late", nil)); err != nil {
-		t.Fatalf("post-terminal drop must not surface as a write error: %v", err)
+		t.Fatalf("straggler suppression must not surface as a write error: %v", err)
 	}
 
 	frames := decodeWireFrames(t, buf.Bytes())
@@ -4041,8 +4079,11 @@ func Test7021_writer_gate_precision(t *testing.T) {
 			t.Errorf("frame %d: expected %v, got %v", i, want, frames[i].FrameType)
 		}
 	}
-	if got := drops.Get(DropReasonPostTerminal); got != 1 {
-		t.Errorf("expected 1 post_terminal drop, got %d", got)
+	if got := stragglers.Get(FrameTypeLog); got != 1 {
+		t.Errorf("expected 1 benign straggler (log), got %d", got)
+	}
+	if got := drops.Total(); got != 0 {
+		t.Errorf("benign stragglers must never count as drops, got %d", got)
 	}
 }
 
@@ -4062,7 +4103,7 @@ func (f *failingWriter) Write(p []byte) (int, error) {
 func Test7027_channel_closed_sends_are_counted(t *testing.T) {
 	fw := &failingWriter{}
 	drops := NewDropCounters()
-	w := newSyncFrameWriter(NewFrameWriter(fw), drops)
+	w := newSyncFrameWriter(NewFrameWriter(fw), drops, NewStragglerCounters())
 
 	frame := NewProgress(NewMessageIdRandom(), 0.4, "working")
 
@@ -4090,39 +4131,52 @@ func Test7027_channel_closed_sends_are_counted(t *testing.T) {
 	}
 }
 
-// TEST7086: One runtime's drop counters aggregate every drop source —
-// post-terminal writer drops and closed-channel sends — each counted exactly
-// once, and the snapshot totals match the induced drops.
+// TEST7086: The runtime's counters keep the two categories apart — benign
+// writer-gate stragglers land in the straggler counters (named by frame
+// type), a closed-sink send is a genuine drop — each counted exactly once,
+// and neither pollutes the other (L8/L4).
 func Test7086_drop_snapshot_matches_induced_drops(t *testing.T) {
 	drops := NewDropCounters()
+	stragglers := NewStragglerCounters()
 	rid := NewMessageIdRandom()
 
-	// Source 1: post-terminal drops at the writer gate (two stragglers).
+	// Source 1: benign post-terminal stragglers at the writer gate (two).
 	var buf bytes.Buffer
-	w := newSyncFrameWriter(NewFrameWriter(&buf), drops)
+	w := newSyncFrameWriter(NewFrameWriter(&buf), drops, stragglers)
 	if err := w.WriteFrame(EndOk(rid, nil)); err != nil {
 		t.Fatalf("end write must succeed: %v", err)
 	}
 	for i := 0; i < 2; i++ {
 		if err := w.WriteFrame(NewProgress(rid, 1.0, "straggler")); err != nil {
-			t.Fatalf("post-terminal drop must not surface as a write error: %v", err)
+			t.Fatalf("straggler suppression must not surface as a write error: %v", err)
 		}
 	}
 
-	// Source 2: closed-sink send (one drop).
+	// Source 2: closed-sink send (one genuine drop).
 	fw := &failingWriter{fail: true}
-	w2 := newSyncFrameWriter(NewFrameWriter(fw), drops)
+	w2 := newSyncFrameWriter(NewFrameWriter(fw), drops, NewStragglerCounters())
 	_ = w2.WriteFrame(NewLog(rid, "info", AttributionClassInternal, "dead sink", nil))
 
-	snap := drops.Snapshot()
-	if snap.Total != 3 {
-		t.Errorf("expected each induced drop counted exactly once (L8), total=%d", snap.Total)
+	stragglerSnap := stragglers.Snapshot()
+	if stragglerSnap.Total != 2 {
+		t.Errorf("expected each benign straggler counted exactly once (L4), total=%d", stragglerSnap.Total)
 	}
-	if got := snap.ByReason["post_terminal"]; got != 2 {
-		t.Errorf("expected 2 post_terminal drops in snapshot, got %d", got)
+	if got := stragglerSnap.ByFrameType["log"]; got != 2 {
+		t.Errorf("expected 2 log stragglers in snapshot, got %d", got)
+	}
+
+	snap := drops.Snapshot()
+	if snap.Total != 1 {
+		t.Errorf("expected each genuine drop counted exactly once (L8), total=%d", snap.Total)
 	}
 	if got := snap.ByReason["channel_closed"]; got != 1 {
 		t.Errorf("expected 1 channel_closed drop in snapshot, got %d", got)
+	}
+	if got := snap.ByReasonFrameType["channel_closed"]["log"]; got != 1 {
+		t.Errorf("the drop must be named by frame type, got %d", got)
+	}
+	if _, has := snap.ByReason["post_terminal"]; has {
+		t.Error("benign stragglers never appear among drops")
 	}
 }
 
@@ -4151,7 +4205,7 @@ func (s *safeWireBuf) Bytes() []byte {
 // until a CREDIT grant arrives — observed on the captured wire bytes.
 func Test7050_sender_stalls_at_window_and_resumes_on_grant(t *testing.T) {
 	buf := &safeWireBuf{}
-	w := newSyncFrameWriter(NewFrameWriter(buf), NewDropCounters())
+	w := newSyncFrameWriter(NewFrameWriter(buf), NewDropCounters(), NewStragglerCounters())
 	router := NewCreditRouter()
 	rid := NewMessageIdRandom()
 
@@ -4232,7 +4286,7 @@ func Test7050_sender_stalls_at_window_and_resumes_on_grant(t *testing.T) {
 // control frames are never credited.
 func Test7062_log_flows_while_window_exhausted(t *testing.T) {
 	buf := &safeWireBuf{}
-	w := newSyncFrameWriter(NewFrameWriter(buf), NewDropCounters())
+	w := newSyncFrameWriter(NewFrameWriter(buf), NewDropCounters(), NewStragglerCounters())
 	router := NewCreditRouter()
 	rid := NewMessageIdRandom()
 
@@ -4281,7 +4335,7 @@ func Test7062_log_flows_while_window_exhausted(t *testing.T) {
 // gap out, since Rust/Swift never had it to begin with).
 func TestPeerInvokerArgStreamsAreCredited(t *testing.T) {
 	buf := &safeWireBuf{}
-	w := newSyncFrameWriter(NewFrameWriter(buf), NewDropCounters())
+	w := newSyncFrameWriter(NewFrameWriter(buf), NewDropCounters(), NewStragglerCounters())
 	router := NewCreditRouter()
 	pending := &sync.Map{}
 

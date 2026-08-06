@@ -283,7 +283,7 @@ func Test8115_recently_terminated_rid_discriminates_and_ages_out(t *testing.T) {
 	assert.True(t, table.RecentlyTerminatedRid(NewMessageIdFromUint(500)),
 		"a just-terminated rid must be in the ring")
 	assert.False(t, table.RecentlyTerminatedRid(NewMessageIdFromUint(9999)),
-		"an unknown rid is a genuine routing anomaly, never post_terminal")
+		"an unknown rid is a genuine routing anomaly, never a benign straggler")
 
 	// Push the ring past its horizon: rid 500's summary must age out.
 	for n := uint64(1000); n < 1000+uint64(RecentTerminatedCap); n++ {
@@ -292,7 +292,7 @@ func Test8115_recently_terminated_rid_discriminates_and_ages_out(t *testing.T) {
 		require.NotNil(t, table.Terminate(k, TerminalKindEnd))
 	}
 	assert.False(t, table.RecentlyTerminatedRid(NewMessageIdFromUint(500)),
-		"eviction past RecentTerminatedCap ends post_terminal classification")
+		"eviction past RecentTerminatedCap ends benign-straggler classification")
 	assert.True(t, table.RecentlyTerminatedRid(NewMessageIdFromUint(1000+uint64(RecentTerminatedCap)-1)),
 		"the newest termination is still in the ring")
 }

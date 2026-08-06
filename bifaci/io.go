@@ -271,10 +271,10 @@ func requiredHelloLimits(f *Frame) (Limits, error) {
 		return Limits{}, errors.New("protocol violation: HELLO missing limits")
 	}
 	limits := Limits{
-		MaxFrame: extractIntFromMeta(f.Meta, "max_frame"),
-		MaxChunk: extractIntFromMeta(f.Meta, "max_chunk"),
+		MaxFrame:         extractIntFromMeta(f.Meta, "max_frame"),
+		MaxChunk:         extractIntFromMeta(f.Meta, "max_chunk"),
 		MaxReorderBuffer: extractIntFromMeta(f.Meta, "max_reorder_buffer"),
-		InitialCredit: extractIntFromMeta(f.Meta, "initial_credit"),
+		InitialCredit:    extractIntFromMeta(f.Meta, "initial_credit"),
 	}
 	if limits.MaxFrame <= 0 {
 		return Limits{}, errors.New("protocol violation: HELLO missing positive max_frame")

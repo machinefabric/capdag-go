@@ -348,9 +348,15 @@ type CartridgeRuntime struct {
 	// concurrent handlers. Shared so handlers can adjust it dynamically.
 	capacity *CapacityHandle
 
-	// dropCounters is process-wide dropped-frame accounting (L8). Shared with
-	// the writer's terminal gate and every counted drop site.
+	// dropCounters is process-wide dropped-frame accounting (L8). Shared
+	// with every counted drop site. Drops mean something went wrong.
 	dropCounters *DropCounters
+
+	// stragglerCounters counts benign post-terminal stragglers suppressed
+	// by the writer's terminal gate (L4): late frames that crossed their
+	// flow's END/ERR — the expected teardown race, indicated as benign,
+	// never as drops.
+	stragglerCounters *StragglerCounters
 }
 
 // NewCartridgeRuntime creates a new cartridge runtime with the required manifest JSON
@@ -360,11 +366,12 @@ func NewCartridgeRuntime(manifestJSON []byte) (*CartridgeRuntime, error) {
 	parseErr := json.Unmarshal(manifestJSON, &manifest)
 
 	runtime := &CartridgeRuntime{
-		handlers:     make(map[string]HandlerFunc),
-		manifestData: manifestJSON,
-		limits:       DefaultLimits(),
-		capacity:     NewCapacityHandle(0),
-		dropCounters: NewDropCounters(),
+		handlers:          make(map[string]HandlerFunc),
+		manifestData:      manifestJSON,
+		limits:            DefaultLimits(),
+		capacity:          NewCapacityHandle(0),
+		dropCounters:      NewDropCounters(),
+		stragglerCounters: NewStragglerCounters(),
 	}
 
 	if parseErr == nil {
@@ -560,10 +567,18 @@ func (pr *CartridgeRuntime) SetCapacity(n uint64) {
 }
 
 // ProtocolDrops returns a snapshot of this runtime's dropped-frame counters
-// (L8): post-terminal writer-gate drops, closed-channel sends, and
-// credit-window violations. (matches Rust CartridgeRuntime::protocol_drops)
+// (L8): closed-channel sends and credit-window violations — genuine losses.
+// (matches Rust CartridgeRuntime::protocol_drops)
 func (pr *CartridgeRuntime) ProtocolDrops() DropSnapshot {
 	return pr.dropCounters.Snapshot()
+}
+
+// ProtocolStragglers returns a snapshot of the benign post-terminal
+// stragglers the writer's terminal gate suppressed (L4), per frame type.
+// Separate from drops — nothing went wrong.
+// (matches Rust CartridgeRuntime::protocol_stragglers)
+func (pr *CartridgeRuntime) ProtocolStragglers() StragglerSnapshot {
+	return pr.stragglerCounters.Snapshot()
 }
 
 // Request bundles the handler's input frames, output emitter, and peer invoker into a
@@ -752,6 +767,36 @@ type liveHandlerRequest struct {
 	frames    *unboundedFrameChan
 }
 
+// DeriveResponseMedia is the media URN a cap's response STREAM_START must
+// carry, derived from the cap's declared effect over its declared main
+// input — the label every engine-fed input stream carries (spec 13.2):
+//
+//   - effect=declared → the declared out=
+//   - effect=none     → the declared in= (the type passes through)
+//   - effect=patch    → the declared in= with the declared delta applied
+//
+// This is CapUrn.InferRuntimeOutputMedia over the declared input — the SAME
+// inference the engine's effect audit checks emissions against
+// (CapUrn.IsConformantRuntimeOutput), so a runtime-labeled response is
+// conformant by construction. Every runtime that labels a response must go
+// through this function; a hand-picked label is how a cap lies about its
+// effect. (matches Rust derive_response_media)
+func DeriveResponseMedia(capUrn string) (string, error) {
+	parsed, err := urn.NewCapUrnFromString(capUrn)
+	if err != nil {
+		return "", fmt.Errorf("response media derivation: cap URN '%s' does not parse: %w", capUrn, err)
+	}
+	declaredIn, err := parsed.InMediaUrn()
+	if err != nil {
+		return "", fmt.Errorf("response media derivation: cap '%s' declared input is not a valid media URN: %w", capUrn, err)
+	}
+	out, err := parsed.InferRuntimeOutputMedia(declaredIn)
+	if err != nil {
+		return "", fmt.Errorf("response media derivation: cap '%s' effect could not be applied to its declared input: %w", capUrn, err)
+	}
+	return out.String(), nil
+}
+
 // runLiveHandler invokes a request's handler against its live frame channel
 // (already receiving frames from the main read loop — see
 // pendingIncomingRequest.frames) and writes the terminal ERR/END frame.
@@ -762,7 +807,20 @@ func runLiveHandler(qr *liveHandlerRequest, writer *syncFrameWriter, limits Limi
 
 	// Generate unique stream ID for response
 	streamID := fmt.Sprintf("resp-%s", requestID.ToString()[:8])
-	mediaUrn := "media:" // Default output media URN
+	// The response label is DERIVED from the cap's declared effect — not
+	// chosen by the handler — so an honest lib-runtime cartridge satisfies
+	// the engine's effect audit by construction. An underivable label is a
+	// broken cap declaration: fail the request, never fall back.
+	mediaUrn, deriveErr := DeriveResponseMedia(qr.capUrn)
+	if deriveErr != nil {
+		fmt.Fprintf(os.Stderr, "[CartridgeRuntime] response media derivation FAILED: cap=%s req_id=%s error=%v\n", qr.capUrn, requestID.ToString(), deriveErr)
+		errFrame := NewErr(requestID, "HANDLER_ERROR", AttributionClassInternal, deriveErr.Error(), nil)
+		errFrame.RoutingId = qr.routingId
+		if writeErr := writer.WriteFrame(errFrame); writeErr != nil {
+			fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", writeErr)
+		}
+		return
+	}
 
 	// Create emitter with stream multiplexing (preserve routing_id for
 	// response routing), flow-controlled by the host's consumption (protocol
@@ -822,7 +880,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 	rawWriter.SetLimits(negotiatedLimits)
 
 	// Wrap writer for thread-safe concurrent access from handler goroutines
-	writer := newSyncFrameWriter(rawWriter, pr.dropCounters)
+	writer := newSyncFrameWriter(rawWriter, pr.dropCounters, pr.stragglerCounters)
 
 	pr.mu.Lock()
 	pr.limits = negotiatedLimits
@@ -1045,8 +1103,11 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 		case FrameTypeHeartbeat:
 			// Respond to heartbeat immediately - never blocked by handlers
 			response := NewHeartbeat(frame.Id)
+			// The benign straggler total rides alongside drops_total,
+			// under its own name — stragglers are not drops.
 			response.Meta = map[string]interface{}{
 				"drops_total":      pr.dropCounters.Total(),
+				"stragglers_total": pr.stragglerCounters.Total(),
 				"handler_capacity": pr.capacity.Get(),
 			}
 			if err := writer.WriteFrame(response); err != nil {
@@ -1127,7 +1188,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 				if foundStream.window < 0 {
 					delete(pendingIncoming, frame.Id.ToString())
 					pendingIncomingMu.Unlock()
-					total := pr.dropCounters.Record(DropReasonCreditViolation)
+					total := pr.dropCounters.Record(DropReasonCreditViolation, frame.FrameType)
 					errFrame := NewErr(
 						frame.Id,
 						"CREDIT_VIOLATION",
@@ -2186,35 +2247,39 @@ type syncFrameWriter struct {
 	// terminated tracks flows whose END/ERR has already been written (L4).
 	terminated *TerminatedFlows
 	// drops is process-wide dropped-frame accounting (L8), shared with the
-	// owning CartridgeRuntime.
+	// owning CartridgeRuntime. Drops mean something went wrong.
 	drops *DropCounters
+	// stragglers counts the benign post-terminal frames the gate
+	// suppresses (L4) — the expected teardown race, never drops.
+	stragglers *StragglerCounters
 }
 
-func newSyncFrameWriter(w *FrameWriter, drops *DropCounters) *syncFrameWriter {
+func newSyncFrameWriter(w *FrameWriter, drops *DropCounters, stragglers *StragglerCounters) *syncFrameWriter {
 	return &syncFrameWriter{
 		writer:      w,
 		seqAssigner: NewSeqAssigner(),
 		terminated:  NewTerminatedFlows(1024),
 		drops:       drops,
+		stragglers:  stragglers,
 	}
 }
 
 // WriteFrame writes one frame through the terminal gate (L4). A post-terminal
-// flow frame is dropped and counted (PostTerminal) and returns nil — the
-// caller's send "succeeded" in the sense that this is not a caller error, it
-// is the gate correctly suppressing a duplicate/straggler terminal write. A
-// real I/O failure (host gone) is counted as ChannelClosed and returned as an
-// error so callers stop trying to write. Frames are never dropped silently
-// (no bare "best effort" send — every drop increments a counter).
+// flow frame is a BENIGN straggler: suppressed, counted per frame type
+// (never a drop — nothing went wrong), and returns nil — the gate correctly
+// suppressing a late frame that crossed its flow's terminal. A real I/O
+// failure (host gone) is counted as a ChannelClosed DROP and returned as an
+// error so callers stop trying to write. Frames are never lost silently —
+// every suppression and every drop increments its counter.
 func (s *syncFrameWriter) WriteFrame(frame *Frame) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	key := FlowKeyFromFrame(frame)
 	if frame.IsFlowFrame() && s.terminated.Contains(key) {
-		total := s.drops.Record(DropReasonPostTerminal)
+		total := s.stragglers.Record(frame.FrameType)
 		fmt.Fprintf(os.Stderr,
-			"[CartridgeRuntime] writer: dropped post-terminal flow frame — END/ERR already written for this flow (L4) type=%v rid=%s post_terminal_total=%d\n",
+			"[CartridgeRuntime] writer: suppressed benign post-terminal straggler — END/ERR already written for this flow, the frame is moot (L4) type=%v rid=%s straggler_total=%d\n",
 			frame.FrameType, frame.Id.ToString(), total)
 		return nil
 	}
@@ -2223,7 +2288,7 @@ func (s *syncFrameWriter) WriteFrame(frame *Frame) error {
 	s.seqAssigner.Assign(frame)
 	err := s.writer.WriteFrame(frame)
 	if err != nil {
-		total := s.drops.Record(DropReasonChannelClosed)
+		total := s.drops.Record(DropReasonChannelClosed, frame.FrameType)
 		fmt.Fprintf(os.Stderr,
 			"[CartridgeRuntime] frame dropped: output write failed (channel_closed_total=%d) type=%v rid=%s: %v\n",
 			total, frame.FrameType, frame.Id.ToString(), err)

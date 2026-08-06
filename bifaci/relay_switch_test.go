@@ -2105,10 +2105,13 @@ func Test1901_add_master_reattach_verifies_identity(t *testing.T) {
 // protocol stats snapshot, surviving the wire round-trip.
 func Test7085_relay_notify_carries_host_protocol_stats(t *testing.T) {
 	counters := NewDropCounters()
-	counters.Record(DropReasonNoRoute)
-	counters.Record(DropReasonNoRoute)
+	counters.Record(DropReasonNoRoute, FrameTypeChunk)
+	counters.Record(DropReasonNoRoute, FrameTypeCredit)
+	stragglers := NewStragglerCounters()
+	stragglers.Record(FrameTypeCredit)
 	stats := HostProtocolStats{
 		Drops:                 counters.Snapshot(),
+		Stragglers:            stragglers.Snapshot(),
 		OutgoingRids:          3,
 		IncomingRxids:         5,
 		RoutingGcRunsTotal:    2,
@@ -2311,10 +2314,15 @@ func Test7091_switch_retains_host_protocol_stats_from_relay_notify(t *testing.T)
 		manifest := testManifestWithCaps([]string{testCapIdentity})
 		manifest["host_protocol_stats"] = map[string]interface{}{
 			"drops": map[string]interface{}{
-				"total": 3,
+				"total": 1,
 				"by_reason": map[string]interface{}{
-					"post_terminal": 2,
-					"no_route":      1,
+					"no_route": 1,
+				},
+			},
+			"stragglers": map[string]interface{}{
+				"total": 2,
+				"by_frame_type": map[string]interface{}{
+					"credit": 2,
 				},
 			},
 			"outgoing_rids":            4,
@@ -2368,11 +2376,14 @@ func Test7091_switch_retains_host_protocol_stats_from_relay_notify(t *testing.T)
 		t.Fatalf("host stats must surface in ProtocolStats().Hosts after RelayNotify")
 	}
 
-	if got.Drops.Total != 3 {
-		t.Errorf("expected drops.total=3, got %d", got.Drops.Total)
+	if got.Drops.Total != 1 {
+		t.Errorf("expected drops.total=1, got %d", got.Drops.Total)
 	}
-	if got.Drops.ByReason["post_terminal"] != 2 {
-		t.Errorf("expected drops.by_reason[post_terminal]=2, got %v", got.Drops.ByReason)
+	if got.Drops.ByReason["no_route"] != 1 {
+		t.Errorf("expected drops.by_reason[no_route]=1, got %v", got.Drops.ByReason)
+	}
+	if got.Stragglers.ByFrameType["credit"] != 2 {
+		t.Errorf("benign stragglers surface separately from drops, got %v", got.Stragglers)
 	}
 	if got.IncomingRxids != 6 {
 		t.Errorf("expected incoming_rxids=6, got %d", got.IncomingRxids)
@@ -2443,11 +2454,12 @@ func Test7025_unroutable_flow_frame_is_counted_drop(t *testing.T) {
 //
 // Uses a single capless connected master in place of the Rust reference's
 // zero-master switch — see TEST7025's doc comment.
-// TEST8114: A flow frame that CROSSED its request's terminal in flight is
-// counted post_terminal, not no_route — the ordinary teardown race of
-// credit-based flow control must not pollute the routing-anomaly alarm. A
-// frame for a RID the table never knew stays no_route (TEST7025).
-func Test8114_straggler_for_terminated_request_counts_post_terminal(t *testing.T) {
+// TEST8114: A flow frame that CROSSED its request's terminal in flight is a
+// BENIGN straggler — the ordinary teardown race of credit-based flow control
+// must not pollute the routing-anomaly alarm, nor the drop counters at all:
+// the crossing is counted as a straggler, named by frame type. A frame for a
+// RID the table never knew stays a no_route DROP (TEST7025).
+func Test8114_straggler_for_terminated_request_is_benign_not_a_drop(t *testing.T) {
 	sw := buildSwitchWithNCaplessMasters(t, 1)
 
 	xid := NewMessageIdFromUint(21)
@@ -2520,11 +2532,20 @@ func Test8114_straggler_for_terminated_request_counts_post_terminal(t *testing.T
 	sw.mu.Unlock()
 
 	stats := sw.ProtocolStats()
-	if got := stats.Drops.ByReason["post_terminal"]; got != 3 {
-		t.Fatalf("all three stragglers classified post_terminal, got %d: %+v", got, stats.Drops)
+	if got := stats.Stragglers.Total; got != 3 {
+		t.Fatalf("all three post-terminal frames counted as benign stragglers, got %d: %+v", got, stats.Stragglers)
 	}
-	if got := stats.Drops.ByReason["no_route"]; got != 0 {
-		t.Fatalf("a terminated request's stragglers must never read as routing anomalies, got %d: %+v", got, stats.Drops)
+	if got := stats.Stragglers.ByFrameType["log"]; got != 1 {
+		t.Fatalf("the late progress LOG is named by frame type, got %d", got)
+	}
+	if got := stats.Stragglers.ByFrameType["chunk"]; got != 1 {
+		t.Fatalf("the late request continuation CHUNK is named by frame type, got %d", got)
+	}
+	if got := stats.Stragglers.ByFrameType["end"]; got != 1 {
+		t.Fatalf("the duplicate terminal END is named by frame type, got %d", got)
+	}
+	if got := stats.Drops.Total; got != 0 {
+		t.Fatalf("a terminated request's stragglers are benign — never drops: %+v", stats.Drops)
 	}
 }
 
@@ -2666,9 +2687,9 @@ func Test7035_end_terminates_and_releases_all_state(t *testing.T) {
 		t.Fatalf("ingress recording captured the terminal frame: expected frames_in=1, got %d", summary.FramesIn)
 	}
 
-	// A follow-up frame for the released key is a counted drop CLASSIFIED as
-	// the teardown race: the request just terminated, so it counts
-	// post_terminal — no_route stays reserved for RIDs the table never knew
+	// A follow-up frame for the released key is a BENIGN post-terminal
+	// straggler — the expected teardown race, counted separately and never
+	// as a drop; no_route stays reserved for RIDs the table never knew
 	// (TEST8114).
 	late := NewProgress(rid, 1.0, "late")
 	late.RoutingId = &xid
@@ -2676,14 +2697,14 @@ func Test7035_end_terminates_and_releases_all_state(t *testing.T) {
 	_, err = sw.handleMasterFrame(0, late)
 	sw.mu.Unlock()
 	if err != nil {
-		t.Fatalf("post-terminal frame must not error: %v", err)
+		t.Fatalf("post-terminal straggler must not error: %v", err)
 	}
-	drops := sw.ProtocolStats().Drops
-	if got := drops.ByReason["post_terminal"]; got != 1 {
-		t.Fatalf("expected 1 post_terminal drop, got %d: %+v", got, drops)
+	postStats := sw.ProtocolStats()
+	if got := postStats.Stragglers.ByFrameType["log"]; got != 1 {
+		t.Fatalf("expected 1 benign straggler (log), got %d: %+v", got, postStats.Stragglers)
 	}
-	if got := drops.ByReason["no_route"]; got != 0 {
-		t.Fatalf("a just-terminated request's straggler is not a routing anomaly, got %d no_route: %+v", got, drops)
+	if got := postStats.Drops.Total; got != 0 {
+		t.Fatalf("a just-terminated request's straggler is benign — never a drop: %+v", postStats.Drops)
 	}
 }
 

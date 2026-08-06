@@ -2090,3 +2090,93 @@ func Test0128_effect_dispatch_requires_explicit_wildcard(t *testing.T) {
 	assert.False(t, noneCandidate.IsDispatchable(declaredRequest))
 	assert.True(t, noneCandidate.IsDispatchable(anyRequest))
 }
+
+// TEST8121: IsConformantRuntimeOutput — effect=declared accepts a more
+// specific emission, rejects a more generic one
+func Test8121_effect_conformance_declared_asymmetry(t *testing.T) {
+	capUrn, err := NewCapUrnFromString(`cap:extract;in="media:ext=pdf";out="media:record"`)
+	require.NoError(t, err)
+	input, err := NewMediaUrnFromString("media:ext=pdf")
+	require.NoError(t, err)
+
+	declared, err := NewMediaUrnFromString("media:record")
+	require.NoError(t, err)
+	ok, err := capUrn.IsConformantRuntimeOutput(input, declared)
+	require.NoError(t, err)
+	assert.True(t, ok, "emitting exactly the declared out is conformant")
+
+	moreSpecific, err := NewMediaUrnFromString("media:fmt=json;record")
+	require.NoError(t, err)
+	ok, err = capUrn.IsConformantRuntimeOutput(input, moreSpecific)
+	require.NoError(t, err)
+	assert.True(t, ok, "a more specific emission than the declared out is conformant")
+
+	moreGeneric, err := NewMediaUrnFromString("media:")
+	require.NoError(t, err)
+	ok, err = capUrn.IsConformantRuntimeOutput(input, moreGeneric)
+	require.NoError(t, err)
+	assert.False(t, ok, "a more generic emission than the declared out is a violation")
+
+	unrelated, err := NewMediaUrnFromString("media:ext=png;image")
+	require.NoError(t, err)
+	ok, err = capUrn.IsConformantRuntimeOutput(input, unrelated)
+	require.NoError(t, err)
+	assert.False(t, ok, "an unrelated emission is a violation")
+}
+
+// TEST8122: IsConformantRuntimeOutput — effect=none requires the emission
+// to be tag-equivalent to the runtime input; MORE specific is still a lie
+func Test8122_effect_conformance_none_requires_equivalence(t *testing.T) {
+	capUrn, err := NewCapUrnFromString("cap:decimate-sequence;effect=none")
+	require.NoError(t, err)
+	input, err := NewMediaUrnFromString("media:ext=png;image")
+	require.NoError(t, err)
+
+	ok, err := capUrn.IsConformantRuntimeOutput(input, input)
+	require.NoError(t, err)
+	assert.True(t, ok, "emitting exactly the runtime input type is conformant")
+
+	moreSpecific, err := NewMediaUrnFromString("media:ext=png;image;width=64")
+	require.NoError(t, err)
+	ok, err = capUrn.IsConformantRuntimeOutput(input, moreSpecific)
+	require.NoError(t, err)
+	assert.False(t, ok, "effect=none promises the output type IS the input type; more specific is a lie")
+
+	moreGeneric, err := NewMediaUrnFromString("media:image")
+	require.NoError(t, err)
+	ok, err = capUrn.IsConformantRuntimeOutput(input, moreGeneric)
+	require.NoError(t, err)
+	assert.False(t, ok, "a more generic emission is a violation")
+
+	strict, err := NewCapUrnFromString(`cap:effect=none;in="media:image";out="media:image"`)
+	require.NoError(t, err)
+	nonImage, err := NewMediaUrnFromString("media:ext=pdf")
+	require.NoError(t, err)
+	_, err = strict.IsConformantRuntimeOutput(nonImage, nonImage)
+	assert.Error(t, err, "a nonconforming runtime input is an upstream contract break, surfaced as an error")
+}
+
+// TEST8123: IsConformantRuntimeOutput — effect=patch requires exactly the
+// delta-patched input type
+func Test8123_effect_conformance_patch_requires_patched_input(t *testing.T) {
+	capUrn, err := NewCapUrnFromString(`cap:convert;effect=patch;in="media:ext=jpeg;image";out="media:ext=png;image"`)
+	require.NoError(t, err)
+	input, err := NewMediaUrnFromString("media:ext=jpeg;image;width=64")
+	require.NoError(t, err)
+
+	patched, err := NewMediaUrnFromString("media:ext=png;image;width=64")
+	require.NoError(t, err)
+	ok, err := capUrn.IsConformantRuntimeOutput(input, patched)
+	require.NoError(t, err)
+	assert.True(t, ok, "the delta-patched input type (preserved tags intact) is conformant")
+
+	bareDeclared, err := NewMediaUrnFromString("media:ext=png;image")
+	require.NoError(t, err)
+	ok, err = capUrn.IsConformantRuntimeOutput(input, bareDeclared)
+	require.NoError(t, err)
+	assert.False(t, ok, "dropping the preserved width tag violates the patch promise")
+
+	ok, err = capUrn.IsConformantRuntimeOutput(input, input)
+	require.NoError(t, err)
+	assert.False(t, ok, "emitting the unpatched input type is a violation")
+}

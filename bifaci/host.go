@@ -350,7 +350,7 @@ type CartridgeHost struct {
 	// itself). This is the discriminator between the two ways a frame can
 	// arrive with no routing entry: a hit means the frame crossed its
 	// request's terminal in flight (the ordinary teardown race of
-	// credit-based flow control — counted post_terminal), a miss means the
+	// credit-based flow control — counted as a benign straggler), a miss means the
 	// host never routed this RID within the ring's horizon (no_route, a
 	// genuine anomaly). GC evictions are deliberately NOT recorded here: an
 	// evicted entry never saw its terminal, so a frame for it is real routing
@@ -379,6 +379,9 @@ type CartridgeHost struct {
 	// continuations and frames for dead cartridges are counted drops,
 	// never silent losses. Mirrors Rust CartridgeHostRuntime.drops.
 	drops *DropCounters
+	// stragglers counts benign post-terminal stragglers (the expected
+	// teardown race) per frame type — never drops, nothing went wrong.
+	stragglers *StragglerCounters
 
 	// staticInventoryRecords are inventory records this host does NOT
 	// manage as processes — discovery outcomes such as incompatible
@@ -425,6 +428,7 @@ func NewCartridgeHost() *CartridgeHost {
 		incomingBodyDone:     make(map[rxidKey]struct{}),
 		incomingResponseDone: make(map[rxidKey]struct{}),
 		drops:                NewDropCounters(),
+		stragglers:           NewStragglerCounters(),
 		eventCh:              make(chan cartridgeEvent, 256),
 		commandCh:            make(chan hostCommand, 16),
 	}
@@ -478,7 +482,7 @@ func (h *CartridgeHost) noteReleasedRid(rid string) {
 }
 
 // recentlyReleasedRid reports whether rid's routing entry was recently
-// released by a terminal — the post_terminal / no_route discriminator for
+// released by a terminal — the benign-straggler / no_route discriminator for
 // unroutable frames. Caller holds the host lock.
 func (h *CartridgeHost) recentlyReleasedRid(rid string) bool {
 	for _, r := range h.recentReleasedRids {
@@ -626,11 +630,15 @@ func (h *CartridgeHost) SetStaticInventoryRecords(records []InstalledCartridgeRe
 // have no honest value to report here and are omitted rather than
 // fabricated as a permanent zero.
 type HostProtocolStats struct {
-	Drops                 DropSnapshot `json:"drops"`
-	OutgoingRids          int          `json:"outgoing_rids"`
-	IncomingRxids         int          `json:"incoming_rxids"`
-	RoutingGcRunsTotal    uint64       `json:"routing_gc_runs_total"`
-	RoutingGcEvictedTotal uint64       `json:"routing_gc_evicted_total"`
+	Drops DropSnapshot `json:"drops"`
+	// Stragglers are benign post-terminal frames — the expected teardown
+	// crossing, counted per frame type. Separate from Drops: nothing went
+	// wrong.
+	Stragglers            StragglerSnapshot `json:"stragglers"`
+	OutgoingRids          int               `json:"outgoing_rids"`
+	IncomingRxids         int               `json:"incoming_rxids"`
+	RoutingGcRunsTotal    uint64            `json:"routing_gc_runs_total"`
+	RoutingGcEvictedTotal uint64            `json:"routing_gc_evicted_total"`
 }
 
 // ProtocolStats returns the protocol observability snapshot (L8): drop
@@ -645,6 +653,7 @@ func (h *CartridgeHost) ProtocolStats() HostProtocolStats {
 func (h *CartridgeHost) protocolStatsLocked() HostProtocolStats {
 	return HostProtocolStats{
 		Drops:                 h.drops.Snapshot(),
+		Stragglers:            h.stragglers.Snapshot(),
 		OutgoingRids:          len(h.outgoingRids),
 		IncomingRxids:         len(h.incomingRxids),
 		RoutingGcRunsTotal:    h.routingGcRunsTotal,
@@ -1359,7 +1368,7 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 			delete(h.incomingRxids, key)
 			delete(h.incomingRxidsTouched, key)
 			// The synthesized ERR below terminates this request; stragglers
-			// for it are post_terminal, not routing anomalies.
+			// for it are benign stragglers, not routing anomalies.
 			h.noteReleasedRid(frame.Id.ToString())
 			// A dead cartridge process is a runtime-environment failure —
 			// Environment (docs/failure-taxonomy.md).
@@ -1406,7 +1415,7 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 			if dir == nil {
 				// Dropped: v4 requires credit_dir on every CREDIT frame —
 				// never a silent loss (no_route, L6/L8).
-				h.drops.Record(DropReasonNoRoute)
+				h.drops.Record(DropReasonNoRoute, frame.FrameType)
 				return nil
 			}
 			preferIncoming = *dir == CreditDirectionResponse
@@ -1450,14 +1459,16 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 		}
 		if !haveRoute {
 			// Discriminate the teardown race from real routing loss: a
-			// RID released by an observed terminal is the ordinary
-			// END/Credit race (post_terminal); a RID this host never
-			// routed is a genuine anomaly (no_route). Counted either
-			// way (L6/L8), never a silent loss.
+			// RID released by an observed terminal is a BENIGN
+			// post-terminal straggler (the ordinary END/Credit race —
+			// nothing went wrong, counted separately from drops); a
+			// RID this host never routed is a genuine anomaly
+			// (no_route drop). Counted either way (L6/L8), never a
+			// silent loss — and never conflated.
 			if h.recentlyReleasedRid(frame.Id.ToString()) {
-				h.drops.Record(DropReasonPostTerminal)
+				h.stragglers.Record(frame.FrameType)
 			} else {
-				h.drops.Record(DropReasonNoRoute)
+				h.drops.Record(DropReasonNoRoute, frame.FrameType)
 			}
 			return nil
 		}
@@ -1540,13 +1551,13 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 		if route, ok := h.outgoingRids[frame.Id.ToString()]; ok {
 			_ = h.sendToCartridge(route.cartridgeIdx, frame)
 		} else {
-			// No routing entry: COUNTED drop, never silent (L8) — a LOG
-			// that crossed its peer request's terminal is post_terminal;
-			// one for a RID never routed here is no_route.
+			// A LOG that crossed its peer request's terminal is a benign
+			// straggler (never a drop); one for a RID never routed here
+			// is a genuine no_route drop — counted, never silent (L8).
 			if h.recentlyReleasedRid(frame.Id.ToString()) {
-				h.drops.Record(DropReasonPostTerminal)
+				h.stragglers.Record(frame.FrameType)
 			} else {
-				h.drops.Record(DropReasonNoRoute)
+				h.drops.Record(DropReasonNoRoute, frame.FrameType)
 			}
 		}
 		return nil
@@ -1757,7 +1768,7 @@ func (h *CartridgeHost) handleCartridgeDeath(cartridgeIdx int, generation uint64
 		delete(h.incomingBodyDone, key)
 		delete(h.incomingResponseDone, key)
 		// The death sweep synthesized ERR terminals for these RIDs above;
-		// stragglers for them are post_terminal.
+		// frames for them classify as benign stragglers.
 		h.noteReleasedRid(key.rid)
 	}
 

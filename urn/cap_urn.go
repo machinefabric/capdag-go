@@ -528,7 +528,7 @@ func (c *CapUrn) validateAdmissible() error {
 	}
 	if inMedia.IsTop() && outMedia.IsTop() && len(c.tags) == 0 && c.Effect() == CapEffectDeclared {
 		return &CapUrnError{
-			Code: ErrorIllegalDeclaration,
+			Code:    ErrorIllegalDeclaration,
 			Message: "illegal bare top cap; use cap:effect=none for identity, or declare a non-vacuous input/output/effect/tag",
 		}
 	}
@@ -539,7 +539,7 @@ func (c *CapUrn) validateAdmissible() error {
 	case CapEffectNone:
 		if !inMedia.ConformsTo(outMedia) {
 			return &CapUrnError{
-				Code: ErrorIllegalDeclaration,
+				Code:    ErrorIllegalDeclaration,
 				Message: fmt.Sprintf("effect=none requires declared input '%s' to conform to declared output '%s'", inMedia, outMedia),
 			}
 		}
@@ -548,20 +548,20 @@ func (c *CapUrn) validateAdmissible() error {
 		delta, err := outMedia.DeltaFrom(inMedia)
 		if err != nil {
 			return &CapUrnError{
-				Code: ErrorIllegalDeclaration,
+				Code:    ErrorIllegalDeclaration,
 				Message: fmt.Sprintf("effect=patch requires a computable declared media delta from '%s' to '%s': %v", inMedia, outMedia, err),
 			}
 		}
 		witness, err := inMedia.ApplyDelta(delta)
 		if err != nil {
 			return &CapUrnError{
-				Code: ErrorIllegalDeclaration,
+				Code:    ErrorIllegalDeclaration,
 				Message: fmt.Sprintf("effect=patch failed to apply declared media delta to input '%s': %v", inMedia, err),
 			}
 		}
 		if !witness.ConformsTo(outMedia) {
 			return &CapUrnError{
-				Code: ErrorIllegalDeclaration,
+				Code:    ErrorIllegalDeclaration,
 				Message: fmt.Sprintf("effect=patch witness '%s' does not conform to declared output '%s'", witness, outMedia),
 			}
 		}
@@ -1038,6 +1038,50 @@ func (c *CapUrn) InferRuntimeOutputMedia(runtimeInput *MediaUrn) (*MediaUrn, err
 		}
 	}
 	return runtimeOut, nil
+}
+
+// IsConformantRuntimeOutput reports whether an actually-emitted runtime
+// output satisfies this cap's declared effect contract for the given
+// runtime input.
+//
+// This is THE effect-audit predicate: every check of "did the cap emit
+// what its effect promised" must go through it — never a hand-rolled
+// combination of InferRuntimeOutputMedia with equality or conformance
+// checks, so the contract has exactly one definition.
+//
+// The condition is deliberately asymmetric per effect:
+//
+//   - effect=none and effect=patch compute an EXACT runtime output type,
+//     so the emission must be tag-equivalent to the inference. A more
+//     specific emission would still be a lie: the effect promises the
+//     type is fully determined by the input.
+//   - effect=declared promises only the declared out=, so an emission
+//     that is MORE specific than the declaration is legal and desirable;
+//     the emission must conform to the declared output. A more generic
+//     emission breaks downstream plan refinement and fails.
+//
+// Errors (rather than returning false) when the inference itself is
+// impossible: the runtime input does not conform to the declared input,
+// the effect is the unconstrained request form (?effect), or the URN
+// state is internally inconsistent — those are upstream contract breaks,
+// not emission mismatches, and must surface as such.
+func (c *CapUrn) IsConformantRuntimeOutput(runtimeInput, runtimeOutput *MediaUrn) (bool, error) {
+	inferred, err := c.InferRuntimeOutputMedia(runtimeInput)
+	if err != nil {
+		return false, err
+	}
+	if runtimeOutput == nil {
+		return false, &CapUrnError{Code: ErrorInvalidEffectApply, Message: "cannot audit a nil runtime output"}
+	}
+	switch c.Effect() {
+	case CapEffectNone, CapEffectPatch:
+		return runtimeOutput.IsEquivalent(inferred), nil
+	case CapEffectDeclared:
+		return runtimeOutput.ConformsTo(inferred), nil
+	case CapEffectAny:
+		return false, &CapUrnError{Code: ErrorInvalidEffectApply, Message: "Cannot audit an emission against an unconstrained effect request"}
+	}
+	return false, &CapUrnError{Code: ErrorInvalidEffectApply, Message: fmt.Sprintf("unknown effect '%s'", c.Effect())}
 }
 
 // Per-axis weights for cap-URN specificity. Two orders of magnitude

@@ -323,7 +323,7 @@ func Test462_attached_cartridge_identity_from_manifest(t *testing.T) {
 }
 
 // TEST8116: the terminal-release ring discriminates and stays bounded —
-// released rids classify as post_terminal material, unknown rids do not,
+// released rids classify as benign-straggler material, unknown rids do not,
 // duplicates collapse, and eviction past the cap ages a rid back out.
 // (Mirrors Rust host_runtime TEST8116.)
 func Test8116_released_rid_ring_discriminates_dedupes_and_ages_out(t *testing.T) {
@@ -349,7 +349,7 @@ func Test8116_released_rid_ring_discriminates_dedupes_and_ages_out(t *testing.T)
 		h.noteReleasedRid(fmt.Sprintf("rid-%d", n))
 	}
 	if h.recentlyReleasedRid(rid) {
-		t.Fatal("eviction past RecentReleasedRidsCap ends post_terminal classification")
+		t.Fatal("eviction past RecentReleasedRidsCap ends benign-straggler classification")
 	}
 	if len(h.recentReleasedRids) != RecentReleasedRidsCap {
 		t.Fatalf("the ring is bounded, got %d", len(h.recentReleasedRids))
@@ -357,9 +357,11 @@ func Test8116_released_rid_ring_discriminates_dedupes_and_ages_out(t *testing.T)
 }
 
 // TEST8117: an unroutable continuation from the relay is classified by the
-// release ring — post_terminal for a rid a terminal just released, no_route
-// for a rid this host never routed. The same law covers unroutable LOG
-// frames: counted, never silent. (Mirrors Rust host_runtime TEST8117.)
+// release ring — a rid a terminal just released is a BENIGN straggler
+// (counted per frame type, never a drop); a rid this host never routed is a
+// genuine no_route DROP. The same law covers unroutable LOG frames:
+// counted, never silent, never conflated. (Mirrors Rust host_runtime
+// TEST8117.)
 func Test8117_unroutable_continuation_classified_by_release_ring(t *testing.T) {
 	h := NewCartridgeHost()
 	out := &relayOutbound{ch: make(chan *Frame, 16)}
@@ -380,12 +382,12 @@ func Test8117_unroutable_continuation_classified_by_release_ring(t *testing.T) {
 	if got := h.drops.Get(DropReasonNoRoute); got != 1 {
 		t.Fatalf("a rid never routed here is a routing anomaly, got %d", got)
 	}
-	if got := h.drops.Get(DropReasonPostTerminal); got != 0 {
-		t.Fatalf("no post_terminal yet, got %d", got)
+	if got := h.stragglers.Total(); got != 0 {
+		t.Fatalf("a genuine anomaly is never counted as a benign straggler, got %d", got)
 	}
 
 	// Released rid: the same frame after a terminal released the route →
-	// post_terminal, and the no_route counter must NOT move.
+	// a benign straggler; NO drop counter moves.
 	releasedRid := NewMessageIdFromUint(42)
 	h.noteReleasedRid(releasedRid.ToString())
 	straggler := newFrame(FrameTypeChunk, releasedRid)
@@ -396,11 +398,11 @@ func Test8117_unroutable_continuation_classified_by_release_ring(t *testing.T) {
 	if err := h.handleRelayFrame(straggler, out); err != nil {
 		t.Fatalf("post-terminal straggler must not error (L6): %v", err)
 	}
-	if got := h.drops.Get(DropReasonPostTerminal); got != 1 {
-		t.Fatalf("a released rid's straggler is the teardown race, got %d", got)
+	if got := h.stragglers.Get(FrameTypeChunk); got != 1 {
+		t.Fatalf("a released rid's straggler is the benign teardown race, named by frame type, got %d", got)
 	}
-	if got := h.drops.Get(DropReasonNoRoute); got != 1 {
-		t.Fatalf("the routing-anomaly counter must not absorb teardown races, got %d", got)
+	if got := h.drops.Total(); got != 1 {
+		t.Fatalf("the drop counters must not absorb benign teardown races, got %d", got)
 	}
 
 	// Unroutable LOG frames follow the same law — counted, never silent.
@@ -408,8 +410,8 @@ func Test8117_unroutable_continuation_classified_by_release_ring(t *testing.T) {
 	if err := h.handleRelayFrame(logReleased, out); err != nil {
 		t.Fatalf("unroutable LOG must not error: %v", err)
 	}
-	if got := h.drops.Get(DropReasonPostTerminal); got != 2 {
-		t.Fatalf("released-rid LOG is post_terminal, got %d", got)
+	if got := h.stragglers.Get(FrameTypeLog); got != 1 {
+		t.Fatalf("released-rid LOG is a benign straggler, got %d", got)
 	}
 	logUnknown := NewProgress(NewMessageIdFromUint(43), 0.5, "alien log")
 	if err := h.handleRelayFrame(logUnknown, out); err != nil {

@@ -1837,7 +1837,7 @@ func runV4Handshake(t *testing.T, cartridgeLimits Limits) (hostManifest []byte, 
 			return
 		}
 
-			hello := NewHelloWithManifest(
+		hello := NewHelloWithManifest(
 			cartridgeLimits.MaxFrame,
 			cartridgeLimits.MaxChunk,
 			cartridgeLimits.MaxReorderBuffer,
@@ -1866,7 +1866,7 @@ func runV4Handshake(t *testing.T, cartridgeLimits Limits) (hostManifest []byte, 
 
 	reader := NewFrameReader(hostRead)
 	writer := NewFrameWriter(hostWrite)
-		hostManifest, hostLimits, _, hostErr = HandshakeInitiate(reader, writer)
+	hostManifest, hostLimits, _, hostErr = HandshakeInitiate(reader, writer)
 
 	wg.Wait()
 	hostRead.Close()

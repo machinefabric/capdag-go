@@ -31,7 +31,7 @@ type DiscoveryIdentity struct {
 	// RegistryURL is non-nil for release/nightly hosts, nil for dev hosts
 	// (cartridges then live under the reserved dev slug and any registry
 	// scheme is allowed).
-	RegistryURL *string
+	RegistryURL           *string
 	FabricManifestVersion uint32
 	// CartridgeRegistryVersion is the registry regime version this host speaks —
 	// an on-disk PATH level: cartridges live under
