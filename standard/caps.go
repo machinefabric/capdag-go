@@ -11,9 +11,11 @@ import "fmt"
 // Accepts any media type as input and preserves the runtime media identity.
 const CapIdentity = "cap:effect=none"
 
-// CapDiscard is the standard discard capability URN
-// Accepts any media type as input and produces void output
-const CapDiscard = "cap:in=media:;out=media:void"
+// CapDiscard is the standard discard capability URN.
+// Accepts any media type as input and produces void output.
+// Canonical form: default in= (media:) and default effect (declared)
+// are omitted; only out=media:void remains.
+const CapDiscard = "cap:out=media:void"
 
 // CapAdapterSelection is the standard adapter-selection capability URN.
 // Default implementation returns empty END (no match).

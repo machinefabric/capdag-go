@@ -77,23 +77,27 @@ func Test312_all_urn_builders_produce_valid_urns(t *testing.T) {
 	assert.True(t, strings.Contains(summarizeStr, MediaPlainText), "must produce finalised plain text, not a judgment record")
 }
 
-// TEST473: CAP_DISCARD parses as valid CapUrn with in=media: and out=media:void
+// TEST473: CAP_DISCARD is the canonical discard URN (default in= and
+// default effect omitted; only out=media:void remains)
 func Test473_cap_discard_parses_as_valid_urn(t *testing.T) {
 	// Cannot import urn package from standard_test (import cycle),
 	// so verify via string assertions on the constant value
 	assert.True(t, strings.HasPrefix(CapDiscard, "cap:"), "CAP_DISCARD must be a cap URN")
-	assert.True(t, strings.Contains(CapDiscard, "in=media:"), "CAP_DISCARD input must be wildcard media:")
-	assert.True(t, strings.Contains(CapDiscard, "out=media:void"), "CAP_DISCARD output must be media:void")
+	assert.Equal(t, "cap:out=media:void", CapDiscard,
+		"CAP_DISCARD must be the canonical rendering: default in= (media:) and default effect (declared) omitted")
 }
 
-// TEST474: CAP_DISCARD accepts specific-input/void-output caps
+// TEST474: CAP_DISCARD carries no y-axis tags and only the void out= coordinate
 func Test474_cap_discard_structure(t *testing.T) {
 	// Discard has no op tag — it's a pattern that accepts anything with void output
 	assert.False(t, strings.Contains(CapDiscard, "op="),
 		"CAP_DISCARD should have no op tag (accepts any op)")
-	// Input is wildcard media: (accepts any input type)
-	assert.True(t, strings.Contains(CapDiscard, "in=media:;") || strings.HasSuffix(CapDiscard, "in=media:"),
-		"CAP_DISCARD input must be bare media: (wildcard)")
+	// Canonical form omits the default wildcard in= entirely
+	assert.False(t, strings.Contains(CapDiscard, "in="),
+		"CAP_DISCARD must omit the default in=media: in canonical form")
+	// Canonical form omits the default effect (declared)
+	assert.False(t, strings.Contains(CapDiscard, "effect="),
+		"CAP_DISCARD must omit the default effect (declared) in canonical form")
 	// Output is specifically void
 	assert.True(t, strings.Contains(CapDiscard, "out=media:void"),
 		"CAP_DISCARD output must be media:void")

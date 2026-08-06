@@ -496,7 +496,7 @@ func (pr *CartridgeRuntime) autoRegisterIdentity() {
 }
 
 // autoRegisterDiscard registers a default discard handler if none exists.
-// The discard cap (cap:in=media:;out=media:void) is the terminal morphism:
+// The discard cap (cap:out=media:void) is the terminal morphism:
 // it drains all input and produces nothing. Mirrors Rust's DiscardOp, which
 // CartridgeRuntime auto-registers at CAP_DISCARD on construction.
 func (pr *CartridgeRuntime) autoRegisterDiscard() {
