@@ -2666,7 +2666,10 @@ func Test7035_end_terminates_and_releases_all_state(t *testing.T) {
 		t.Fatalf("ingress recording captured the terminal frame: expected frames_in=1, got %d", summary.FramesIn)
 	}
 
-	// A follow-up frame for the released key is a counted no_route drop.
+	// A follow-up frame for the released key is a counted drop CLASSIFIED as
+	// the teardown race: the request just terminated, so it counts
+	// post_terminal — no_route stays reserved for RIDs the table never knew
+	// (TEST8114).
 	late := NewProgress(rid, 1.0, "late")
 	late.RoutingId = &xid
 	sw.mu.Lock()
@@ -2675,8 +2678,12 @@ func Test7035_end_terminates_and_releases_all_state(t *testing.T) {
 	if err != nil {
 		t.Fatalf("post-terminal frame must not error: %v", err)
 	}
-	if got := sw.ProtocolStats().Drops.ByReason["no_route"]; got != 1 {
-		t.Fatalf("expected 1 no_route drop, got %d", got)
+	drops := sw.ProtocolStats().Drops
+	if got := drops.ByReason["post_terminal"]; got != 1 {
+		t.Fatalf("expected 1 post_terminal drop, got %d: %+v", got, drops)
+	}
+	if got := drops.ByReason["no_route"]; got != 0 {
+		t.Fatalf("a just-terminated request's straggler is not a routing anomaly, got %d no_route: %+v", got, drops)
 	}
 }
 
