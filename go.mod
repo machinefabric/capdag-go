@@ -1,19 +1,17 @@
 module github.com/machinefabric/capdag-go
 
-// version: 1.331.2782
+// version: 1.332.2787
 
 go 1.21
 
 require (
-	github.com/machinefabric/tagged-urn-go v0.0.0
+	github.com/machinefabric/tagged-urn-go v1.35.108
 	github.com/fxamacker/cbor/v2 v2.9.0
 	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.8.4
 	github.com/xeipuuv/gojsonschema v1.2.0
 	github.com/yhirose/go-peg v0.0.0-20210804202551-de25d6753cf1
 )
-
-replace github.com/machinefabric/tagged-urn-go => ../tagged-urn-go
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
