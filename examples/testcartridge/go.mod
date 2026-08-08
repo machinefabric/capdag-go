@@ -5,7 +5,7 @@ go 1.21
 require github.com/machinefabric/capdag-go v0.0.0
 
 require (
-	github.com/machinefabric/tagged-urn-go v0.0.0 // indirect
+	github.com/machinefabric/tagged-urn-go v1.35.108 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
@@ -16,4 +16,3 @@ require (
 
 replace github.com/machinefabric/capdag-go => ../..
 
-replace github.com/machinefabric/tagged-urn-go => ../../../tagged-urn-go
