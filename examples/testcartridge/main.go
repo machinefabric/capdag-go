@@ -6,10 +6,13 @@ import (
 	"os"
 
 	capdag "github.com/machinefabric/capdag-go"
+	"github.com/machinefabric/capdag-go/bifaci"
 )
 
 // cartridgeChannel is set at link time via
-//   go build -ldflags='-X main.cartridgeChannel=release'
+//
+//	go build -ldflags='-X main.cartridgeChannel=release'
+//
 // (or "nightly"). The build wrapper (`dx cartridge`) injects this
 // from $MFR_CARTRIDGE_CHANNEL. An empty value here means the build
 // path didn't set the flag, which is a build-system bug — fail
@@ -17,7 +20,9 @@ import (
 var cartridgeChannel string
 
 // cartridgeRegistryURL is set at link time via
-//   go build -ldflags='-X main.cartridgeRegistryURL=https://...'
+//
+//	go build -ldflags='-X main.cartridgeRegistryURL=https://...'
+//
 // when the cartridge is being built for a specific registry. Empty
 // (the default) ⇔ dev build; the cartridge can only be installed
 // under the on-disk `dev/` slot. Mirror of Rust's
@@ -78,42 +83,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Register echo handler
-	runtime.Register(capdag.CapIdentity,
-		func(payload []byte, emitter capdag.StreamEmitter, peer capdag.PeerInvoker) error {
-			// Parse input JSON
-			var input map[string]interface{}
-			if err := json.Unmarshal(payload, &input); err != nil {
-				return fmt.Errorf("failed to parse input: %w", err)
-			}
-
-			// Extract the text field
-			text, ok := input["text"].(string)
-			if !ok {
-				return fmt.Errorf("missing or invalid 'text' field")
-			}
-
-			// Echo it back
-			response := map[string]string{
-				"result": text,
-			}
-
-			responseData, err := json.Marshal(response)
-			if err != nil {
-				return fmt.Errorf("failed to marshal response: %w", err)
-			}
-
-			emitter.Emit(responseData)
-			return nil
-		})
-
-	// Register void test handler
-	runtime.Register(`cap:in="media:void";void-test;out="media:void"`,
-		func(payload []byte, emitter capdag.StreamEmitter, peer capdag.PeerInvoker) error {
-			// Void capability - no input, no output
-			emitter.Emit([]byte{})
-			return nil
-		})
+	runtime.RegisterOp(capdag.CapIdentity, &EchoOp{})
+	runtime.RegisterOp(`cap:in="media:void";void-test;out="media:void"`, &VoidOp{})
 
 	// Run runtime (auto-detects CLI vs CBOR mode)
 	if err := runtime.Run(); err != nil {
@@ -128,4 +99,71 @@ func mustParseCapUrn(urnStr string) *capdag.CapUrn {
 		panic(fmt.Sprintf("invalid URN: %s - %v", urnStr, err))
 	}
 	return urn
+}
+
+// EchoOp reads a `{"text": ...}` request and answers `{"result": ...}`.
+type EchoOp struct{}
+
+func (op *EchoOp) Perform(req *bifaci.Request) error {
+	payload, err := collectPayload(req.Frames())
+	if err != nil {
+		return err
+	}
+
+	var input map[string]interface{}
+	if err := json.Unmarshal(payload, &input); err != nil {
+		return fmt.Errorf("failed to parse input: %w", err)
+	}
+
+	text, ok := input["text"].(string)
+	if !ok {
+		return fmt.Errorf("missing or invalid 'text' field")
+	}
+
+	responseData, err := json.Marshal(map[string]string{"result": text})
+	if err != nil {
+		return fmt.Errorf("failed to marshal response: %w", err)
+	}
+
+	// Write, not EmitCbor: these are already-marshalled JSON bytes, and
+	// EmitCbor would CBOR-encode them a second time.
+	return req.Output().Write(responseData)
+}
+
+// VoidOp is a capability with no input and no output.
+type VoidOp struct{}
+
+func (op *VoidOp) Perform(req *bifaci.Request) error {
+	// Drain the request stream even though there is nothing in it: leaving the
+	// channel unread would strand the frame pump.
+	for range req.Frames() {
+	}
+	// `out="media:void"` emits NOTHING. The runtime finalizes the empty
+	// response stream when this returns; a zero-length Write would open one.
+	return nil
+}
+
+// collectPayload reassembles a request's CHUNK payloads into the raw bytes the
+// handler was sent, stopping at END.
+func collectPayload(frames <-chan bifaci.Frame) ([]byte, error) {
+	var payload []byte
+	for frame := range frames {
+		switch frame.FrameType {
+		case bifaci.FrameTypeChunk:
+			if err := bifaci.VerifyChunkChecksum(&frame); err != nil {
+				return nil, fmt.Errorf("corrupted data: %w", err)
+			}
+			if frame.Payload == nil {
+				continue
+			}
+			chunk, err := bifaci.DecodeChunkPayload(frame.Payload)
+			if err != nil {
+				return nil, err
+			}
+			payload = append(payload, chunk...)
+		case bifaci.FrameTypeEnd:
+			return payload, nil
+		}
+	}
+	return payload, nil
 }

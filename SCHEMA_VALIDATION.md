@@ -174,10 +174,6 @@ Comprehensive test coverage includes:
 - Complex nested schema validation
 - Error handling and edge cases
 
-**Example files:**
-- `examples/example_schema_usage.go` - Basic usage examples
-- `examples/cartridge_sdk_example.go` - Complete cartridge SDK integration example
-
 ## Dependencies
 
 Added dependency:

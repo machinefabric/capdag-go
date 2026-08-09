@@ -53,6 +53,7 @@ var NewMessageIdRandom = bifaci.NewMessageIdRandom
 var NewFrameReader = bifaci.NewFrameReader
 var NewFrameWriter = bifaci.NewFrameWriter
 var NewCartridgeRuntime = bifaci.NewCartridgeRuntime
+var NewCartridgeRuntimeWithManifest = bifaci.NewCartridgeRuntimeWithManifest
 var NewCapManifest = bifaci.NewCapManifest
 var RegistryURLFromBuildEnv = bifaci.RegistryURLFromBuildEnv
 var DefaultGroup = bifaci.DefaultGroup
