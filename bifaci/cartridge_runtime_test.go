@@ -4752,3 +4752,119 @@ func TestOutputStreamDefaultFinalProgressIsOne(t *testing.T) {
 		t.Errorf("expected default final progress 1.0, got %v", progress)
 	}
 }
+
+// recordingEmitter captures the side-channel calls a forwarding collector makes,
+// so a test can assert WHAT was forwarded rather than merely that nothing blew
+// up. The data-path methods are unused by forwarding and fail loudly if called,
+// because a forwarding collector writing to the output stream would be a defect.
+type recordingEmitter struct {
+	progress []recordedProgress
+	logs     []recordedLog
+}
+
+type recordedProgress struct {
+	value   float32
+	message string
+}
+
+type recordedLog struct {
+	level   string
+	class   AttributionClass
+	message string
+	argUrn  *string
+}
+
+func (e *recordingEmitter) StartUnbounded(isSequence bool) error { panic("not used by forwarding") }
+func (e *recordingEmitter) EmitCbor(value interface{}) error     { panic("not used by forwarding") }
+func (e *recordingEmitter) Write(data []byte) error              { panic("not used by forwarding") }
+func (e *recordingEmitter) EmitListItem(value interface{}) error { panic("not used by forwarding") }
+func (e *recordingEmitter) Finish(progress float32, message string) {
+	panic("not used by forwarding")
+}
+func (e *recordingEmitter) EmitLog(level string, class AttributionClass, message string, argUrn *string) {
+	e.logs = append(e.logs, recordedLog{level: level, class: class, message: message, argUrn: argUrn})
+}
+func (e *recordingEmitter) Progress(progress float32, message string) {
+	e.progress = append(e.progress, recordedProgress{value: progress, message: message})
+}
+
+// TEST7118: finite peer collection preserves source diagnostics instead of
+// consuming them as data or dropping them. Progress is mapped into the caller's
+// range and argument attribution survives byte-for-byte.
+func Test7118_collect_bytes_forwarding_preserves_peer_side_channels(t *testing.T) {
+	reqId := NewMessageIdRandom()
+	rawCh := make(chan Frame, 10)
+
+	rawCh <- *NewProgress(reqId, 0.5, "halfway")
+	argUrn := "media:model-spec"
+	rawCh <- *NewLog(reqId, "warn", AttributionClassResource, "cache pressure", &argUrn)
+
+	rawCh <- *NewStreamStart(reqId, "s1", "media:test", nil)
+	payload, err := cborlib.Marshal("payload")
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	rawCh <- *NewChunk(reqId, "s1", 0, payload, 0, ComputeChecksum(payload))
+	rawCh <- *NewStreamEnd(reqId, "s1", 1)
+	close(rawCh)
+
+	emitter := &recordingEmitter{}
+	bytes, err := DemuxPeerResponse(rawCh).CollectBytesForwarding(emitter, 0.2, 0.4)
+	if err != nil {
+		t.Fatalf("forwarding collection failed: %v", err)
+	}
+	if string(bytes) != "payload" {
+		t.Fatalf("expected data \"payload\", got %q", string(bytes))
+	}
+
+	if len(emitter.progress) != 1 {
+		t.Fatalf("expected exactly one forwarded progress, got %d", len(emitter.progress))
+	}
+	// 0.2 + 0.5*0.4 = 0.4 — the peer's midpoint mapped into the caller's slice.
+	if emitter.progress[0].value < 0.399 || emitter.progress[0].value > 0.401 {
+		t.Fatalf("expected progress 0.4, got %v", emitter.progress[0].value)
+	}
+	if emitter.progress[0].message != "halfway" {
+		t.Fatalf("expected message \"halfway\", got %q", emitter.progress[0].message)
+	}
+
+	if len(emitter.logs) != 1 {
+		t.Fatalf("expected exactly one forwarded diagnostic, got %d", len(emitter.logs))
+	}
+	if emitter.logs[0].class != AttributionClassResource {
+		t.Fatalf("the SOURCE's attribution class must survive, got %v", emitter.logs[0].class)
+	}
+	if emitter.logs[0].argUrn == nil || *emitter.logs[0].argUrn != "media:model-spec" {
+		t.Fatalf("argument attribution must survive, got %v", emitter.logs[0].argUrn)
+	}
+}
+
+// TEST1949: a peer progress LOG with no numeric value FAILS HARD. Forwarding
+// must not silently drop it or substitute a value — a malformed frame is an
+// emitter defect and must surface as one, which is exactly the failure the
+// engine raises for the same frame.
+func Test1949_peer_progress_without_numeric_value_fails_hard(t *testing.T) {
+	reqId := NewMessageIdRandom()
+	rawCh := make(chan Frame, 4)
+
+	// level="progress" with no `progress` key — malformed at the emitter.
+	malformed := NewFrame(FrameTypeLog, reqId)
+	malformed.Meta = map[string]interface{}{
+		"level":   "progress",
+		"message": "no number here",
+	}
+	rawCh <- *malformed
+	close(rawCh)
+
+	emitter := &recordingEmitter{}
+	_, err := DemuxPeerResponse(rawCh).CollectBytesForwarding(emitter, 0.0, 1.0)
+	if err == nil {
+		t.Fatal("a progress LOG without a numeric value must fail, not pass silently")
+	}
+	if !strings.Contains(err.Error(), "progress") {
+		t.Fatalf("the failure must name the missing progress value: %v", err)
+	}
+	if len(emitter.progress) != 0 || len(emitter.logs) != 0 {
+		t.Fatal("no frame may be emitted from a malformed peer frame")
+	}
+}

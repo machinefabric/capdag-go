@@ -104,6 +104,80 @@ func (pr *PeerResponse) Recv() (PeerResponseItem, bool) {
 	return item, ok
 }
 
+// CollectBytesForwarding collects finite peer data while PRESERVING every peer
+// side-channel frame.
+//
+// Progress is mapped into the caller's declared range: a peer reporting 0..1
+// becomes progressBase..progressBase+progressWeight in this cartridge's own
+// output, so a caller that delegates part of its work reports one continuous
+// progression rather than restarting at zero. Non-progress LOG frames keep the
+// SOURCE's level, attribution class and optional argument attribution — a
+// diagnostic is never re-attributed to the forwarder.
+//
+// Use this whenever the peer may emit progress or diagnostics; CollectBytes
+// REJECTS LOG frames rather than discarding them, because silently dropping a
+// callee's diagnostics loses the only record of what it said.
+//
+// Mirrors the reference's `PeerResponse::collect_bytes_forwarding`.
+func (pr *PeerResponse) CollectBytesForwarding(output StreamEmitter, progressBase, progressWeight float32) ([]byte, error) {
+	var result []byte
+	for item := range pr.ch {
+		if item.LogFrame != nil {
+			frame := item.LogFrame
+			level := frame.LogLevel()
+			if level == "" {
+				return nil, errors.New("peer LOG missing required text level")
+			}
+			message := frame.LogMessage()
+			if message == "" {
+				return nil, errors.New("peer LOG missing required text message")
+			}
+			if level == "progress" {
+				progress, ok := frame.LogProgress()
+				if !ok {
+					return nil, fmt.Errorf(
+						"peer progress LOG has no numeric progress — the `progress` slot is %s "+
+							"(level is \"progress\", so a number is required)",
+						frame.LogProgressSlotDescription())
+				}
+				if progress < 0 {
+					progress = 0
+				} else if progress > 1 {
+					progress = 1
+				}
+				output.Progress(progressBase+progress*progressWeight, message)
+			} else {
+				class, err := frame.AttributionClass()
+				if err != nil {
+					return nil, err
+				}
+				argUrn, err := frame.AttributionArgUrn()
+				if err != nil {
+					return nil, err
+				}
+				output.EmitLog(level, class, message, argUrn)
+			}
+			continue
+		}
+		if item.DataErr != nil {
+			return nil, item.DataErr
+		}
+		switch v := item.DataValue.(type) {
+		case []byte:
+			result = append(result, v...)
+		case string:
+			result = append(result, []byte(v)...)
+		default:
+			encoded, err := cborlib.Marshal(v)
+			if err != nil {
+				return nil, fmt.Errorf("failed to encode CBOR: %w", err)
+			}
+			result = append(result, encoded...)
+		}
+	}
+	return result, nil
+}
+
 // CollectBytes collects all data chunks into a single byte slice and rejects
 // unhandled LOG frames.
 func (pr *PeerResponse) CollectBytes() ([]byte, error) {

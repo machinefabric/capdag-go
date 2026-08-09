@@ -836,6 +836,44 @@ func (f *Frame) LogMessage() string {
 	return ""
 }
 
+// LogProgressSlotDescription describes what the frame's `progress` meta slot
+// actually holds, for an error message that has to explain why LogProgress
+// could not read it.
+//
+// "Absent" and "a text value" are different defects in the PEER, and an error
+// that cannot tell them apart forces whoever reads it to reproduce the failure
+// to learn which. Mirrors the reference's
+// `Frame::log_progress_slot_description`.
+func (f *Frame) LogProgressSlotDescription() string {
+	if f.Meta == nil {
+		return "absent (frame carries no meta)"
+	}
+	value, present := f.Meta["progress"]
+	if !present {
+		return "absent"
+	}
+	switch value.(type) {
+	case string:
+		return "a text value"
+	case []byte:
+		return "a byte string"
+	case bool:
+		return "a boolean"
+	case nil:
+		return "null"
+	case []interface{}:
+		return "an array"
+	case map[string]interface{}, map[interface{}]interface{}:
+		return "a map"
+	case float64, float32:
+		return "a float (readable — not this error)"
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		return "an integer (readable — not this error)"
+	default:
+		return "an unrecognized CBOR type"
+	}
+}
+
 // LogProgress gets progress value (0.0-1.0) if this is a LOG frame with level="progress".
 // Returns (progress, true) if present, (0, false) otherwise.
 func (f *Frame) LogProgress() (float32, bool) {

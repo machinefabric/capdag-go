@@ -22,7 +22,26 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
+
+// InstallTimestampNow renders InstalledAt for a cartridge being installed
+// right now.
+//
+// The field is declared RFC3339 and every reader (and every fixture) treats it
+// as one, so every producer goes through this one function — a bare epoch count
+// with a "Z" stuck on the end parses as neither a number nor a timestamp, and
+// would leave the field readable only by a human who already knew what it was.
+//
+// Mirrors capdag::bifaci::cartridge_json::install_timestamp_now.
+func InstallTimestampNow() string {
+	return formatRFC3339UTC(time.Now().Unix())
+}
+
+// formatRFC3339UTC formats Unix seconds as YYYY-MM-DDTHH:MM:SSZ.
+func formatRFC3339UTC(secs int64) string {
+	return time.Unix(secs, 0).UTC().Format("2006-01-02T15:04:05Z")
+}
 
 // CartridgeInstallSource is opaque optional metadata describing how
 // a cartridge was installed. **Not consulted for any host or engine
