@@ -72,10 +72,10 @@ func Test6727_cartridge_json_fabric_manifest_version_nonzero_round_trip(t *testi
 		"FabricManifestVersion must survive unmarshal round-trip")
 }
 
-// TEST7153: InstalledAt is a real RFC3339 UTC timestamp, at known epoch
+// TEST7153: `installed_at` is a real RFC3339 UTC timestamp, at known epoch
 // instants and at the instants that break naive date arithmetic — a leap day,
 // the day after one, and a century year that is NOT a leap year. Emitting a
-// bare epoch count with a "Z" appended would satisfy "some string ending in Z"
+// bare epoch count with a `Z` appended would satisfy "some string ending in Z"
 // and satisfy nothing else; every reader and every fixture in the tree treats
 // this field as a parseable timestamp.
 func Test7153_install_timestamp_is_rfc3339_utc(t *testing.T) {

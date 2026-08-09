@@ -140,7 +140,7 @@ func writeStubEntry(t *testing.T, dir, name, alias, capURN string) string {
 	return path
 }
 
-// TEST7156: ReadEntryManifest + StageDevCartridge + FindDevCapByAlias
+// TEST7156: read_entry_manifest + stage_dev_cartridge + find_dev_cap_by_alias
 // round-trip: a stub project installs under dev/v{N}/nightly/<name>/<ver>/,
 // writes a cartridge.json, and its custom cap is resolvable by alias.
 func Test7156_dev_install_and_find_by_alias(t *testing.T) {
@@ -267,13 +267,13 @@ func Test7159_two_entries_is_ambiguous_not_a_coin_flip(t *testing.T) {
 	}
 }
 
-// TEST7160: the vendored stub contract is IDENTICAL to the reference's.
+// TEST7160: the vendored stub contract is IDENTICAL to the canonical source.
 //
 // This is the whole promise of `capdag new`: the same command from any capdag
-// binary writes the same project. The vendored copies are generated from one
-// source, so a difference here means a mirror was vendored from a different
-// commit — which would ship two capdags that disagree about what a cartridge
-// looks like, silently.
+// binary writes the same project. Every mirror's copy is generated from this
+// one source, so a difference here means the reference itself was vendored
+// from a different commit than the stub repo currently holds — which would
+// ship capdags that disagree about what a cartridge looks like, silently.
 func Test7160_vendored_stub_contract_matches_the_canonical_source(t *testing.T) {
 	// Locate the canonical stubs relative to this mirror inside the workspace.
 	// Absent (a standalone checkout of capdag-go), there is nothing to compare
@@ -349,11 +349,6 @@ func Test7160_vendored_stub_contract_matches_the_canonical_source(t *testing.T) 
 // TEST7158: the fabric-conflict guard — a dev cap whose alias the fabric maps
 // to a DIFFERENT cap is rejected; a brand-new alias, and a dev cap that matches
 // an existing fabric cap exactly, are both accepted.
-//
-// The resolver stands in for the fabric's alias table. The reference passes a
-// live FabricRegistry; this mirror takes the lookup as a function, which is a
-// documented object-level divergence — the guard's behavior is identical, and
-// that is what the shared number asserts.
 func Test7158_fabric_conflict_guard(t *testing.T) {
 	alphaURN := `cap:alpha;in="media:enc=utf-8";out="media:enc=utf-8;alpha"`
 	alphaParsed, err := urn.NewCapUrnFromString(alphaURN)
