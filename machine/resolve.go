@@ -3,7 +3,7 @@ package machine
 import (
 	"sort"
 
-	"github.com/machinefabric/capdag-go/cap"
+	"github.com/machinefabric/capdag-go/fabric"
 	"github.com/machinefabric/capdag-go/planner"
 	"github.com/machinefabric/capdag-go/standard"
 	"github.com/machinefabric/capdag-go/urn"
@@ -29,7 +29,7 @@ type preInternedWiring struct {
 // single source of truth shared with path search.
 func resolveStrand(
 	strand *planner.Strand,
-	registry *cap.FabricRegistry,
+	registry *fabric.FabricRegistry,
 	strandIndex int,
 ) (*MachineStrand, *MachineAbstractionError) {
 	var nodes []*urn.MediaUrn
@@ -115,7 +115,7 @@ func resolveStrand(
 func resolvePreInterned(
 	nodes []*urn.MediaUrn,
 	wirings []preInternedWiring,
-	registry *cap.FabricRegistry,
+	registry *fabric.FabricRegistry,
 	strandIndex int,
 ) (*MachineStrand, *MachineAbstractionError) {
 	if len(wirings) == 0 {

@@ -2,7 +2,6 @@ package media
 
 import (
 	"encoding/json"
-	"strings"
 	"testing"
 
 	"github.com/machinefabric/capdag-go/standard"
@@ -24,10 +23,9 @@ import (
 // every test to explicit per-test seeding (mirroring the Rust
 // reference's discipline); leaving the helper in place avoids a
 // big-bang rewrite of unrelated tests.
-func testRegistry(t *testing.T) *FabricRegistry {
+func testRegistry(t *testing.T) *testMediaDefSource {
 	t.Helper()
-	registry, err := NewFabricRegistry()
-	require.NoError(t, err, "Failed to create test registry")
+	registry := newTestMediaDefSource()
 	for _, def := range []MediaDef{
 		{Urn: "media:enc=utf-8", MediaType: "text/plain", ProfileURI: "https://capdag.com/schema/string"},
 		{Urn: "media:enc=utf-8;record", MediaType: "application/json", ProfileURI: "https://capdag.com/schema/object"},
@@ -75,8 +73,7 @@ func Test089_resolve_seeded_record_spec(t *testing.T) {
 
 // TEST6282: Test resolving a custom media URN from a registry-seeded media def
 func Test6282_resolve_custom_media_def(t *testing.T) {
-	registry, err := NewFabricRegistryForTest()
-	require.NoError(t, err)
+	registry := newTestMediaDefSource()
 	registry.AddSpec(StoredMediaDef{
 		Urn:        "media:custom-spec;fmt=json",
 		MediaType:  "application/json",
@@ -94,8 +91,7 @@ func Test6282_resolve_custom_media_def(t *testing.T) {
 
 // TEST6283: Test resolving a custom record media def carrying a schema from a registry-seeded media def
 func Test6283_resolve_custom_with_schema(t *testing.T) {
-	registry, err := NewFabricRegistryForTest()
-	require.NoError(t, err)
+	registry := newTestMediaDefSource()
 	schema := map[string]any{
 		"type":       "object",
 		"properties": map[string]any{"name": map[string]any{"type": "string"}},
@@ -513,110 +509,8 @@ func Test894_multiple_extensions(t *testing.T) {
 	assert.Len(t, resolved.Extensions, 2)
 }
 
-// -------------------------------------------------------------------------
-// Media registry tests
-// -------------------------------------------------------------------------
-
-// TEST607: media_urns_for_extension returns error for unknown extension
-func Test607_media_urns_for_extension_unknown(t *testing.T) {
-	registry, err := NewFabricRegistryForTest()
-	require.NoError(t, err)
-
-	_, err = registry.MediaUrnsForExtension("zzzzunknown")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "zzzzunknown")
-}
-
-// TEST608: media_urns_for_extension returns URNs after adding a spec with extensions
-func Test608_media_urns_for_extension_populated(t *testing.T) {
-	registry, err := NewFabricRegistryForTest()
-	require.NoError(t, err)
-
-	registry.AddSpec(StoredMediaDef{
-		Urn:        "media:ext=pdf",
-		MediaType:  "application/pdf",
-		Title:      "PDF Document",
-		Extensions: []string{"pdf"},
-	})
-
-	urns, err := registry.MediaUrnsForExtension("pdf")
-	require.NoError(t, err)
-	assert.NotEmpty(t, urns, "Should have at least one URN for pdf")
-
-	found := false
-	for _, u := range urns {
-		if strings.Contains(u, "pdf") {
-			found = true
-			break
-		}
-	}
-	assert.True(t, found, "URNs should contain pdf: %v", urns)
-
-	// Case-insensitive
-	urnsUpper, err := registry.MediaUrnsForExtension("PDF")
-	require.NoError(t, err)
-	assert.Equal(t, urns, urnsUpper)
-}
-
-// TEST609: get_extension_mappings returns all registered extension→URN pairs.
-func Test609_get_extension_mappings(t *testing.T) {
-	registry, err := NewFabricRegistryForTest()
-	require.NoError(t, err)
-
-	registry.AddSpec(StoredMediaDef{
-		Urn:        "media:ext=pdf",
-		MediaType:  "application/octet-stream",
-		Title:      "Test",
-		Extensions: []string{"pdf"},
-	})
-	registry.AddSpec(StoredMediaDef{
-		Urn:        "media:ext=epub",
-		MediaType:  "application/octet-stream",
-		Title:      "Test",
-		Extensions: []string{"epub"},
-	})
-
-	mappings := registry.GetExtensionMappings()
-	extNames := make(map[string]bool)
-	for _, m := range mappings {
-		extNames[m.Extension] = true
-	}
-	assert.True(t, extNames["pdf"], "Should contain pdf")
-	assert.True(t, extNames["epub"], "Should contain epub")
-}
-
-// TEST610: get_cached_spec returns None for unknown and Some for known
-func Test610_get_cached_spec(t *testing.T) {
-	registry, err := NewFabricRegistryForTest()
-	require.NoError(t, err)
-
-	// Unknown spec
-	assert.Nil(t, registry.GetCachedMediaDef("media:nonexistent;xyzzy"))
-
-	// Add a spec and verify retrieval
-	registry.AddSpec(StoredMediaDef{
-		Urn:       "media:enc=utf-8;test;spec",
-		MediaType: "text/plain",
-		Title:     "Test Spec",
-	})
-
-	retrieved := registry.GetCachedMediaDef("media:enc=utf-8;test;spec")
-	require.NotNil(t, retrieved, "Should find spec by URN")
-	assert.Equal(t, "Test Spec", retrieved.Title)
-}
-
-// TEST618 lives in profile_test.go (profile schema registry creation with a
-// temp disk cache) — it is the genuine Rust TEST618 (media/profile.rs). The
-// former spec_test.go TEST618 was a tautological NotNil-only duplicate over the
-// in-memory FabricRegistry and was removed.
-
-// TEST615 (deleted): exercised the on-disk cache-key hashing
-// scheme — an internal persistence detail with no user-observable
-// behavior. Rust and Python dropped this for the same reason; this
-// deletion keeps the Go mirror in parity.
-
-// TEST616: Verify StoredMediaDef converts to MediaDef preserving all fields
-func Test616_stored_media_def_to_def(t *testing.T) {
+// TEST616: StoredMediaDef converts to MediaDef preserving every field.
+func Test616_stored_media_def_to_media_def(t *testing.T) {
 	spec := StoredMediaDef{
 		Urn:         "media:ext=pdf",
 		MediaType:   "application/pdf",
@@ -632,17 +526,6 @@ func Test616_stored_media_def_to_def(t *testing.T) {
 	assert.Equal(t, "PDF Document", def.Title)
 	assert.Equal(t, "PDF document data", def.Description)
 	assert.Equal(t, []string{"pdf"}, def.Extensions)
-}
-
-// TEST617: Verify normalize_media_urn produces consistent non-empty results
-func Test617_normalize_media_urn(t *testing.T) {
-	urn1, err1 := normalizeMediaUrn("media:string")
-	urn2, err2 := normalizeMediaUrn("media:string")
-	assert.NoError(t, err1)
-	assert.NoError(t, err2)
-	assert.NotEmpty(t, urn1)
-	assert.NotEmpty(t, urn2)
-	assert.Equal(t, urn1, urn2)
 }
 
 // TEST288: Documentation propagates from MediaDef through ResolveMediaUrn

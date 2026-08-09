@@ -26,12 +26,9 @@ func strPtr(s string) *string { return &s }
 // defs the resolver tests reference (pdf, txt, json, model-spec). The registry
 // hydrates extension lookups from spec arrival, so tests must seed the specs
 // they exercise explicitly.
-func createTestFabricRegistry(t *testing.T) *media.FabricRegistry {
+func createTestFabricRegistry(t *testing.T) *testMediaDefSource {
 	t.Helper()
-	registry, err := media.NewFabricRegistryForTest()
-	if err != nil {
-		t.Fatalf("NewFabricRegistryForTest: %v", err)
-	}
+	registry := newTestMediaDefSource()
 
 	// PDF.
 	registry.AddSpec(media.StoredMediaDef{

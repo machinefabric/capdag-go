@@ -7,6 +7,7 @@ package capdag
 import (
 	"github.com/machinefabric/capdag-go/bifaci"
 	"github.com/machinefabric/capdag-go/cap"
+	"github.com/machinefabric/capdag-go/fabric"
 	"github.com/machinefabric/capdag-go/media"
 	"github.com/machinefabric/capdag-go/standard"
 	"github.com/machinefabric/capdag-go/urn"
@@ -30,7 +31,7 @@ type CapResultKind = cap.CapResultKind
 
 // Media types
 type MediaDef = media.MediaDef
-type FabricRegistry = media.FabricRegistry
+type FabricRegistry = fabric.FabricRegistry
 type ResolvedMediaDef = media.ResolvedMediaDef
 
 // Bifaci (protocol) types - core frame types
@@ -69,5 +70,5 @@ const CapAdapterSelection = standard.CapAdapterSelection
 
 // Protocol constants
 const ProtocolVersion = bifaci.ProtocolVersion // v4 substrate; single source of truth
-const DefaultMaxFrame = 16 * 1024 * 1024  // 16MB
-const DefaultMaxChunk = 256 * 1024  // 256KB
+const DefaultMaxFrame = 16 * 1024 * 1024       // 16MB
+const DefaultMaxChunk = 256 * 1024             // 256KB

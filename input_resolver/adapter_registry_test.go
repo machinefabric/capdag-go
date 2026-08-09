@@ -10,12 +10,9 @@ import (
 // createTestRegistry builds a FabricRegistry pre-seeded with a JSON media def
 // (the only extension these tests reference). The registry hydrates extensions
 // from spec arrival; tests must seed explicitly.
-func createTestRegistry(t *testing.T) *media.FabricRegistry {
+func createTestRegistry(t *testing.T) *testMediaDefSource {
 	t.Helper()
-	registry, err := media.NewFabricRegistryForTest()
-	if err != nil {
-		t.Fatalf("NewFabricRegistryForTest: %v", err)
-	}
+	registry := newTestMediaDefSource()
 	registry.AddSpec(media.StoredMediaDef{
 		Version:    0,
 		Urn:        "media:fmt=json;record",

@@ -64,8 +64,7 @@ func Test051_input_validation_success(t *testing.T) {
 	inputArgs := []interface{}{"/path/to/file.txt"}
 
 	validator := NewInputValidator()
-	registry, err := media.NewFabricRegistry()
-	require.NoError(t, err)
+	registry := newTestMediaDefSource()
 	// The unified registry resolves the cap's referenced media URNs
 	// at validation time; seed the spec the cap references.
 	registry.AddSpec(media.MediaDef{
@@ -89,8 +88,7 @@ func Test052_input_validation_missing_required(t *testing.T) {
 	inputArgs := []interface{}{} // Missing required argument
 
 	validator := NewInputValidator()
-	registry, err := media.NewFabricRegistry()
-	require.NoError(t, err)
+	registry := newTestMediaDefSource()
 
 	err = validator.ValidateArguments(cap, inputArgs, registry)
 	require.Error(t, err)
@@ -103,8 +101,7 @@ func Test053_input_validation_wrong_type(t *testing.T) {
 	require.NoError(t, err)
 	cap := NewCap(u, "Test Capability", []string{"test-command"})
 
-	registry, err := media.NewFabricRegistry()
-	require.NoError(t, err)
+	registry := newTestMediaDefSource()
 	registry.AddSpec((media.NewMediaDefWithSchema(
 		standard.MediaInteger,
 		"text/plain",

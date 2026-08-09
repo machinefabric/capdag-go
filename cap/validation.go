@@ -250,7 +250,7 @@ func NewInputValidatorWithSchemaResolver(resolver SchemaResolver) *InputValidato
 }
 
 // ValidateArguments validates arguments against a cap's input schema
-func (iv *InputValidator) ValidateArguments(cap *Cap, arguments []interface{}, registry *media.FabricRegistry) error {
+func (iv *InputValidator) ValidateArguments(cap *Cap, arguments []interface{}, registry media.MediaDefSource) error {
 	capUrn := cap.UrnString()
 	args := cap.GetArgs()
 
@@ -293,7 +293,7 @@ func (iv *InputValidator) ValidateArguments(cap *Cap, arguments []interface{}, r
 }
 
 // ValidateNamedArguments validates named arguments against a cap's input schema
-func (iv *InputValidator) ValidateNamedArguments(cap *Cap, namedArgs []map[string]interface{}, registry *media.FabricRegistry) error {
+func (iv *InputValidator) ValidateNamedArguments(cap *Cap, namedArgs []map[string]interface{}, registry media.MediaDefSource) error {
 	capUrn := cap.UrnString()
 	args := cap.GetArgs()
 
@@ -346,7 +346,7 @@ func (iv *InputValidator) ValidateNamedArguments(cap *Cap, namedArgs []map[strin
 	return nil
 }
 
-func (iv *InputValidator) validateSingleArgument(cap *Cap, argDef *CapArg, value interface{}, registry *media.FabricRegistry) error {
+func (iv *InputValidator) validateSingleArgument(cap *Cap, argDef *CapArg, value interface{}, registry media.MediaDefSource) error {
 	// Resolve the media URN. Mirrors Rust's validate_argument_type:
 	// resolve -> local-schema-if-present -> else profile-uri-if-present -> rules.
 	resolved, err := argDef.Resolve(registry)
@@ -505,7 +505,7 @@ func NewOutputValidatorWithSchemaResolver(resolver SchemaResolver) *OutputValida
 // Two-pass validation:
 // 1. Type validation + media def validation rules (inherent to semantic type)
 // 2. Output-level validation rules (context-specific)
-func (ov *OutputValidator) ValidateOutput(cap *Cap, output interface{}, registry *media.FabricRegistry) error {
+func (ov *OutputValidator) ValidateOutput(cap *Cap, output interface{}, registry media.MediaDefSource) error {
 	capUrn := cap.UrnString()
 
 	outputDef := cap.GetOutput()
@@ -679,7 +679,7 @@ func (cvc *CapValidationCoordinator) GetCap(capUrn string) *Cap {
 }
 
 // ValidateInputs validates arguments against a cap's input schema
-func (cvc *CapValidationCoordinator) ValidateInputs(capUrn string, arguments []interface{}, registry *media.FabricRegistry) error {
+func (cvc *CapValidationCoordinator) ValidateInputs(capUrn string, arguments []interface{}, registry media.MediaDefSource) error {
 	cap := cvc.GetCap(capUrn)
 	if cap == nil {
 		return NewUnknownCapError(capUrn)
@@ -689,7 +689,7 @@ func (cvc *CapValidationCoordinator) ValidateInputs(capUrn string, arguments []i
 }
 
 // ValidateOutput validates output against a cap's output schema
-func (cvc *CapValidationCoordinator) ValidateOutput(capUrn string, output interface{}, registry *media.FabricRegistry) error {
+func (cvc *CapValidationCoordinator) ValidateOutput(capUrn string, output interface{}, registry media.MediaDefSource) error {
 	cap := cvc.GetCap(capUrn)
 	if cap == nil {
 		return NewUnknownCapError(capUrn)
@@ -699,7 +699,7 @@ func (cvc *CapValidationCoordinator) ValidateOutput(capUrn string, output interf
 }
 
 // ValidateCapSchema validates a cap definition itself
-func (cvc *CapValidationCoordinator) ValidateCapSchema(cap *Cap, registry *media.FabricRegistry) error {
+func (cvc *CapValidationCoordinator) ValidateCapSchema(cap *Cap, registry media.MediaDefSource) error {
 	capUrn := cap.UrnString()
 	args := cap.GetArgs()
 
@@ -1017,4 +1017,3 @@ func getNumericValue(value interface{}) (float64, bool) {
 // ============================================================================
 // XV5 VALIDATION - No Redefinition of Registry Media Defs
 // ============================================================================
-

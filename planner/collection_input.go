@@ -36,11 +36,11 @@ func (f *CollectionFile) WithSecurityBookmark(bookmark []byte) *CollectionFile {
 
 // CapInputCollection is a recursive folder hierarchy for collection-type cap inputs.
 type CapInputCollection struct {
-	FolderID   string                        `json:"folder_id"`
-	FolderName string                        `json:"folder_name"`
-	Files      []*CollectionFile             `json:"files"`
+	FolderID   string                         `json:"folder_id"`
+	FolderName string                         `json:"folder_name"`
+	Files      []*CollectionFile              `json:"files"`
 	Folders    map[string]*CapInputCollection `json:"folders"`
-	MediaUrn   string                        `json:"media_urn"`
+	MediaUrn   string                         `json:"media_urn"`
 }
 
 // NewCapInputCollection creates an empty collection with required fields.

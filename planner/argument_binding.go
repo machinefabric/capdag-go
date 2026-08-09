@@ -10,7 +10,7 @@ import (
 type SourceEntityType int
 
 const (
-	SourceListing   SourceEntityType = iota
+	SourceListing SourceEntityType = iota
 	SourceCapOutput
 	SourceChip
 	SourceBlock
@@ -156,7 +156,7 @@ func (f *CapInputFile) HasFileReference() bool {
 type ArgumentSource int
 
 const (
-	SourceArgInputFile       ArgumentSource = iota
+	SourceArgInputFile ArgumentSource = iota
 	SourceArgPreviousOutput
 	SourceArgCapDefault
 	SourceArgCapSetting
@@ -169,7 +169,7 @@ const (
 type ArgumentBindingKind int
 
 const (
-	BindingInputFile     ArgumentBindingKind = iota
+	BindingInputFile ArgumentBindingKind = iota
 	BindingInputFilePath
 	BindingInputMediaUrn
 	BindingPreviousOutput

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/machinefabric/capdag-go/cap"
+	"github.com/machinefabric/capdag-go/fabric"
 	"github.com/machinefabric/capdag-go/planner"
 )
 
@@ -19,7 +20,7 @@ import (
 //
 // All cap lookups use GetCachedCap: caps must be pre-loaded into the registry
 // cache before calling this function.
-func PlanToResolvedGraph(plan *planner.MachinePlan, registry *cap.FabricRegistry) (*ResolvedGraph, error) {
+func PlanToResolvedGraph(plan *planner.MachinePlan, registry *fabric.FabricRegistry) (*ResolvedGraph, error) {
 	nodes := make(map[string]string)
 	var resolvedEdges []*ResolvedEdge
 

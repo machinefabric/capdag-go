@@ -168,7 +168,7 @@ func (rw *ResponseWrapper) IsJSON() bool {
 // Text-ness of a media is expressed by the orthogonal `enc=` dim, not here.
 
 // ValidateAgainstCap validates response against cap output definition
-func (rw *ResponseWrapper) ValidateAgainstCap(cap *Cap, registry *media.FabricRegistry) error {
+func (rw *ResponseWrapper) ValidateAgainstCap(cap *Cap, registry media.MediaDefSource) error {
 	// Convert response to interface{} for validation
 	var value interface{}
 	switch rw.contentType {
@@ -223,7 +223,7 @@ func (rw *ResponseWrapper) GetContentType() string {
 
 // MatchesOutputType checks if response matches expected output type.
 // Returns error if the output spec cannot be resolved - no fallbacks.
-func (rw *ResponseWrapper) MatchesOutputType(cap *Cap, registry *media.FabricRegistry) (bool, error) {
+func (rw *ResponseWrapper) MatchesOutputType(cap *Cap, registry media.MediaDefSource) (bool, error) {
 	output := cap.GetOutput()
 	if output == nil {
 		return false, fmt.Errorf("cap '%s' has no output definition", cap.UrnString())

@@ -19,10 +19,9 @@ import (
 )
 
 // Helper to create test registry
-func createTestRegistry(t *testing.T) *media.FabricRegistry {
+func createTestRegistry(t *testing.T) *testMediaDefSource {
 	t.Helper()
-	registry, err := media.NewFabricRegistry()
-	require.NoError(t, err)
+	registry := newTestMediaDefSource()
 	for _, def := range []media.MediaDef{
 		{Urn: "media:enc=utf-8", MediaType: "text/plain", ProfileURI: media.ProfileStr},
 		{Urn: "media:record;enc=utf-8", MediaType: "application/json", ProfileURI: media.ProfileObj},

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/machinefabric/capdag-go/cap"
+	"github.com/machinefabric/capdag-go/fabric"
 	"github.com/machinefabric/capdag-go/media"
 	"github.com/machinefabric/capdag-go/urn"
 )
@@ -106,11 +107,11 @@ type PathArgumentRequirements struct {
 
 // MachinePlanBuilder builds execution plans from resolved paths.
 type MachinePlanBuilder struct {
-	fabricRegistry *cap.FabricRegistry
+	fabricRegistry *fabric.FabricRegistry
 }
 
 // NewMachinePlanBuilder creates a new plan builder.
-func NewMachinePlanBuilder(fabricRegistry *cap.FabricRegistry) *MachinePlanBuilder {
+func NewMachinePlanBuilder(fabricRegistry *fabric.FabricRegistry) *MachinePlanBuilder {
 	return &MachinePlanBuilder{
 		fabricRegistry: fabricRegistry,
 	}

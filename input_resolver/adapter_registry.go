@@ -53,12 +53,12 @@ type registeredAdapter struct {
 //  3. Maps file extensions to cartridges that can inspect them.
 type MediaAdapterRegistry struct {
 	registeredAdapters []registeredAdapter
-	fabricRegistry     *media.FabricRegistry
+	fabricRegistry     media.MediaDefSource
 }
 
 // NewMediaAdapterRegistry creates a new empty registry with the given FabricRegistry.
 // No adapters are registered by default — cartridges register them via RegisterCapGroup.
-func NewMediaAdapterRegistry(fabricRegistry *media.FabricRegistry) *MediaAdapterRegistry {
+func NewMediaAdapterRegistry(fabricRegistry media.MediaDefSource) *MediaAdapterRegistry {
 	return &MediaAdapterRegistry{
 		registeredAdapters: nil,
 		fabricRegistry:     fabricRegistry,
@@ -66,7 +66,7 @@ func NewMediaAdapterRegistry(fabricRegistry *media.FabricRegistry) *MediaAdapter
 }
 
 // FabricRegistry returns the media URN registry.
-func (r *MediaAdapterRegistry) FabricRegistry() *media.FabricRegistry {
+func (r *MediaAdapterRegistry) FabricRegistry() media.MediaDefSource {
 	return r.fabricRegistry
 }
 

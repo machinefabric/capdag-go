@@ -146,14 +146,14 @@ func (r *ResolvedInputSet) IsEmpty() bool {
 type InputResolverErrorKind int
 
 const (
-	InputErrNotFound        InputResolverErrorKind = iota
+	InputErrNotFound         InputResolverErrorKind = iota
 	InputErrPermissionDenied InputResolverErrorKind = iota
-	InputErrInvalidGlob     InputResolverErrorKind = iota
-	InputErrIo              InputResolverErrorKind = iota
+	InputErrInvalidGlob      InputResolverErrorKind = iota
+	InputErrIo               InputResolverErrorKind = iota
 	InputErrInspectionFailed InputResolverErrorKind = iota
-	InputErrEmptyInput      InputResolverErrorKind = iota
-	InputErrNoFilesResolved InputResolverErrorKind = iota
-	InputErrSymlinkCycle    InputResolverErrorKind = iota
+	InputErrEmptyInput       InputResolverErrorKind = iota
+	InputErrNoFilesResolved  InputResolverErrorKind = iota
+	InputErrSymlinkCycle     InputResolverErrorKind = iota
 )
 
 // InputResolverError is an error that can occur during input resolution.

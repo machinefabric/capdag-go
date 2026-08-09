@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/machinefabric/capdag-go/cap"
+	"github.com/machinefabric/capdag-go/fabric"
 	"github.com/machinefabric/capdag-go/urn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -843,7 +844,7 @@ func allBookends(caps []*cap.Cap) map[string]bool {
 
 // TEST791: Tests sync_from_cap_urns actually adds edges
 func Test791_sync_from_cap_urns_adds_edges(t *testing.T) {
-	registry := cap.NewFabricRegistryForTest()
+	registry := fabric.NewForTest()
 
 	disbind := makeTestCapForGraph("media:ext=pdf", "media:enc=utf-8;page", "disbind", "Disbind PDF")
 	choose := makeTestCapForGraph("media:enc=utf-8", "media:decision;fmt=json;record", "choose", "Make a Decision")

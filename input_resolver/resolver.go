@@ -26,7 +26,7 @@ import (
 // specific than the baseline survive without validation.
 //
 // Returns the surviving candidate URN strings in their original order.
-func DiscriminateCandidatesByValidation(content []byte, candidateUrns []string, fabricRegistry *media.FabricRegistry, baselineUrn string) []string {
+func DiscriminateCandidatesByValidation(content []byte, candidateUrns []string, fabricRegistry media.MediaDefSource, baselineUrn string) []string {
 	var contentStr string
 	hasContentStr := utf8.Valid(content)
 	if hasContentStr {
@@ -140,13 +140,13 @@ func validationPasses(validation *media.MediaValidation, contentStr string, hasC
 
 // ResolveInput resolves a single input item using the supplied FabricRegistry
 // for extension lookups.
-func ResolveInput(item InputItem, fabricRegistry *media.FabricRegistry) (*ResolvedInputSet, error) {
+func ResolveInput(item InputItem, fabricRegistry media.MediaDefSource) (*ResolvedInputSet, error) {
 	return ResolveInputs([]InputItem{item}, fabricRegistry)
 }
 
 // ResolveInputs resolves multiple input items using the supplied FabricRegistry
 // for extension lookups.
-func ResolveInputs(items []InputItem, fabricRegistry *media.FabricRegistry) (*ResolvedInputSet, error) {
+func ResolveInputs(items []InputItem, fabricRegistry media.MediaDefSource) (*ResolvedInputSet, error) {
 	paths, err := ResolveItems(items)
 	if err != nil {
 		return nil, err
@@ -170,7 +170,7 @@ func ResolveInputs(items []InputItem, fabricRegistry *media.FabricRegistry) (*Re
 
 // ResolvePaths is a convenience: resolve from string paths (auto-detect
 // file/dir/glob) using the supplied FabricRegistry for extension lookups.
-func ResolvePaths(paths []string, fabricRegistry *media.FabricRegistry) (*ResolvedInputSet, error) {
+func ResolvePaths(paths []string, fabricRegistry media.MediaDefSource) (*ResolvedInputSet, error) {
 	items := make([]InputItem, 0, len(paths))
 	for _, s := range paths {
 		items = append(items, FromString(s))
@@ -180,7 +180,7 @@ func ResolvePaths(paths []string, fabricRegistry *media.FabricRegistry) (*Resolv
 
 // detectFileByExtensionWithRegistry performs extension-based detection using a
 // specific FabricRegistry.
-func detectFileByExtensionWithRegistry(path string, fabricRegistry *media.FabricRegistry) (*ResolvedFile, error) {
+func detectFileByExtensionWithRegistry(path string, fabricRegistry media.MediaDefSource) (*ResolvedFile, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {

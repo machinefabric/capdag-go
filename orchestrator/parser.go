@@ -3,7 +3,7 @@ package orchestrator
 import (
 	"fmt"
 
-	"github.com/machinefabric/capdag-go/cap"
+	"github.com/machinefabric/capdag-go/fabric"
 	"github.com/machinefabric/capdag-go/machine"
 	"github.com/machinefabric/capdag-go/planner"
 	"github.com/machinefabric/capdag-go/urn"
@@ -38,7 +38,7 @@ func checkStructureCompatibility(source, target *urn.MediaUrn, nodeName string) 
 // derived from the cap's in=/out= specs. Media type consistency and structure
 // compatibility (record vs opaque) are validated at each node.
 // Caps must be pre-loaded into the registry cache before calling this function.
-func ParseMachineToCapDag(machineStr string, registry *cap.FabricRegistry) (*ResolvedGraph, error) {
+func ParseMachineToCapDag(machineStr string, registry *fabric.FabricRegistry) (*ResolvedGraph, error) {
 	// Phase 1: Parse + resolve. The resolver does the syntactic parse, the
 	// source-to-cap-arg matching (Hungarian minimum-cost bipartite matching by
 	// media-URN conformance), cycle detection, and canonical edge ordering. It

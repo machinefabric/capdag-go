@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/machinefabric/capdag-go/cap"
+	"github.com/machinefabric/capdag-go/fabric"
 	"github.com/machinefabric/capdag-go/planner"
 	"github.com/machinefabric/capdag-go/urn"
 )
@@ -238,7 +238,7 @@ func fromResolvedStrands(strands []*MachineStrand) *Machine {
 // FromStrand builds a Machine containing exactly one MachineStrand from a
 // planner-produced Strand. The cap registry is required to look up each
 // cap's args list for source-to-arg matching.
-func FromStrand(strand *planner.Strand, registry *cap.FabricRegistry) (*Machine, *MachineAbstractionError) {
+func FromStrand(strand *planner.Strand, registry *fabric.FabricRegistry) (*Machine, *MachineAbstractionError) {
 	resolved, err := resolveStrand(strand, registry, 0)
 	if err != nil {
 		return nil, err
@@ -248,7 +248,7 @@ func FromStrand(strand *planner.Strand, registry *cap.FabricRegistry) (*Machine,
 
 // FromStrands builds a Machine containing N MachineStrands, one per input
 // strand, in the given order. Each strand is resolved independently.
-func FromStrands(strands []*planner.Strand, registry *cap.FabricRegistry) (*Machine, *MachineAbstractionError) {
+func FromStrands(strands []*planner.Strand, registry *fabric.FabricRegistry) (*Machine, *MachineAbstractionError) {
 	if len(strands) == 0 {
 		return nil, noCapabilityStepsError()
 	}
@@ -296,7 +296,7 @@ func (m *Machine) IsEquivalent(other *Machine) bool {
 
 // FromString parses machine notation into a Machine.
 // Requires the cap registry for the resolution phase.
-func FromString(input string, registry *cap.FabricRegistry) (*Machine, *MachineParseError) {
+func FromString(input string, registry *fabric.FabricRegistry) (*Machine, *MachineParseError) {
 	return ParseMachine(input, registry)
 }
 
@@ -441,7 +441,7 @@ func (m *Machine) ToMachineNotationFormatted(format NotationFormat) string {
 // the alias cache), so the form round-trips.
 //
 // Mirrors Rust machine::serializer::Machine::to_machine_notation_aliased.
-func (m *Machine) ToMachineNotationAliased(registry *cap.FabricRegistry, format NotationFormat) string {
+func (m *Machine) ToMachineNotationAliased(registry *fabric.FabricRegistry, format NotationFormat) string {
 	if m.IsEmpty() {
 		return ""
 	}
@@ -547,7 +547,7 @@ func (m *Machine) ToMachineNotationAliased(registry *cap.FabricRegistry, format 
 // Machine.ToMachineNotation() on the knitted machine — not this.
 //
 // Mirrors Rust planner::live_cap_fab::Strand::to_machine_notation.
-func StrandToMachineNotation(strand *planner.Strand, registry *cap.FabricRegistry) (string, *MachineAbstractionError) {
+func StrandToMachineNotation(strand *planner.Strand, registry *fabric.FabricRegistry) (string, *MachineAbstractionError) {
 	m, err := FromStrand(strand, registry)
 	if err != nil {
 		return "", err
@@ -585,14 +585,14 @@ func (m *Machine) ToRenderPayloadJSON() string {
 // falling back to the synthetic edge_N for an un-aliased cap. The render payload
 // is a display surface, so it uses the aliased token, mirroring Rust's
 // to_render_payload_json (which always takes the registry).
-func (m *Machine) ToRenderPayloadJSONAliased(registry *cap.FabricRegistry) string {
+func (m *Machine) ToRenderPayloadJSONAliased(registry *fabric.FabricRegistry) string {
 	return m.renderPayloadJSON(registry)
 }
 
 // renderPayloadJSON is the shared body. When registry is non-nil, edge alias
 // labels are the cap's display alias (falling back to edge_N); when nil, every
 // edge label is the synthetic edge_N.
-func (m *Machine) renderPayloadJSON(registry *cap.FabricRegistry) string {
+func (m *Machine) renderPayloadJSON(registry *fabric.FabricRegistry) string {
 	if m.IsEmpty() {
 		return `{"strands":[]}`
 	}

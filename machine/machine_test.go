@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/machinefabric/capdag-go/cap"
+	"github.com/machinefabric/capdag-go/fabric"
 	"github.com/machinefabric/capdag-go/planner"
 	"github.com/machinefabric/capdag-go/urn"
 	"github.com/stretchr/testify/assert"
@@ -39,8 +40,8 @@ func buildCap(capUrnStr, title string, argMediaUrns []string, outputMediaUrn str
 }
 
 // registryWith builds a test FabricRegistry pre-populated with the given caps.
-func registryWith(caps []*cap.Cap) *cap.FabricRegistry {
-	r := cap.NewFabricRegistryForTest()
+func registryWith(caps []*cap.Cap) *fabric.FabricRegistry {
+	r := fabric.NewForTest()
 	r.AddCapsToCache(caps)
 	return r
 }
@@ -1281,7 +1282,7 @@ func Test1308_CyclicStrandFailsHard(t *testing.T) {
 // Helpers
 // ===================================================================
 
-func pdfExtractEmbedRegistry() *cap.FabricRegistry {
+func pdfExtractEmbedRegistry() *fabric.FabricRegistry {
 	extract := buildCap(
 		`cap:in="media:ext=pdf";extract;out="media:txt;enc=utf-8"`,
 		"extract",

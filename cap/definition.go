@@ -69,8 +69,8 @@ func (s *ArgSource) GetCliFlag() *string {
 
 // CapArg represents an argument definition with sources
 type CapArg struct {
-	MediaUrn       string      `json:"media_urn"`
-	Required       bool        `json:"required"`
+	MediaUrn string `json:"media_urn"`
+	Required bool   `json:"required"`
 	// Emitted even when false, as the reference does: the manifest is compared
 	// across implementations and `omitempty` made Go's bytes differ from Rust's
 	// for the identical cap.
@@ -298,12 +298,12 @@ func (a *CapArg) GetCliFlag() *string {
 }
 
 // Resolve resolves the argument's media URN through the FabricRegistry.
-func (a *CapArg) Resolve(registry *media.FabricRegistry) (*media.ResolvedMediaDef, error) {
+func (a *CapArg) Resolve(registry media.MediaDefSource) (*media.ResolvedMediaDef, error) {
 	return media.ResolveMediaUrn(a.MediaUrn, registry)
 }
 
 // IsStructured checks if this argument expects structured data (map or list).
-func (a *CapArg) IsStructured(registry *media.FabricRegistry) (bool, error) {
+func (a *CapArg) IsStructured(registry media.MediaDefSource) (bool, error) {
 	resolved, err := a.Resolve(registry)
 	if err != nil {
 		return false, fmt.Errorf("failed to resolve argument media_urn '%s': %w", a.MediaUrn, err)
@@ -312,7 +312,7 @@ func (a *CapArg) IsStructured(registry *media.FabricRegistry) (bool, error) {
 }
 
 // GetMediaType returns the resolved media type for this argument.
-func (a *CapArg) GetMediaType(registry *media.FabricRegistry) (string, error) {
+func (a *CapArg) GetMediaType(registry media.MediaDefSource) (string, error) {
 	resolved, err := a.Resolve(registry)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve argument media_urn '%s': %w", a.MediaUrn, err)
@@ -325,17 +325,17 @@ type CapOutput struct {
 	MediaUrn          string `json:"media_urn"`
 	OutputDescription string `json:"output_description"`
 	// Emitted even when false — see CapArg.IsSequence.
-	IsSequence        bool   `json:"is_sequence"`
-	Metadata          any    `json:"metadata,omitempty"`
+	IsSequence bool `json:"is_sequence"`
+	Metadata   any  `json:"metadata,omitempty"`
 }
 
 // Resolve resolves the output's media URN through the FabricRegistry.
-func (co *CapOutput) Resolve(registry *media.FabricRegistry) (*media.ResolvedMediaDef, error) {
+func (co *CapOutput) Resolve(registry media.MediaDefSource) (*media.ResolvedMediaDef, error) {
 	return media.ResolveMediaUrn(co.MediaUrn, registry)
 }
 
 // IsStructured checks if this output produces structured data (map or list).
-func (co *CapOutput) IsStructured(registry *media.FabricRegistry) (bool, error) {
+func (co *CapOutput) IsStructured(registry media.MediaDefSource) (bool, error) {
 	resolved, err := co.Resolve(registry)
 	if err != nil {
 		return false, fmt.Errorf("failed to resolve output media_urn '%s': %w", co.MediaUrn, err)
@@ -344,7 +344,7 @@ func (co *CapOutput) IsStructured(registry *media.FabricRegistry) (bool, error) 
 }
 
 // GetMediaType returns the resolved media type for this output.
-func (co *CapOutput) GetMediaType(registry *media.FabricRegistry) (string, error) {
+func (co *CapOutput) GetMediaType(registry media.MediaDefSource) (string, error) {
 	resolved, err := co.Resolve(registry)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve output media_urn '%s': %w", co.MediaUrn, err)

@@ -31,15 +31,15 @@ const (
 
 // ParseOrchestrationError represents any error during orchestration parsing.
 type ParseOrchestrationError struct {
-	Kind               ParseOrchestrationErrorKind
-	Message            string
-	CapUrn             string
-	Node               string
-	Existing           string
-	RequiredByCap      string
-	CycleNodes         []string
-	SourceStructure    planner.InputStructure
-	ExpectedStructure  planner.InputStructure
+	Kind              ParseOrchestrationErrorKind
+	Message           string
+	CapUrn            string
+	Node              string
+	Existing          string
+	RequiredByCap     string
+	CycleNodes        []string
+	SourceStructure   planner.InputStructure
+	ExpectedStructure planner.InputStructure
 }
 
 func (e *ParseOrchestrationError) Error() string {
@@ -174,5 +174,5 @@ func mermaidEscape(s string) string {
 }
 
 // FabricRegistryTrait is gone. The orchestrator parser and plan converter take
-// *cap.FabricRegistry directly. Tests use FabricRegistry.NewForTest() +
+// *fabric.FabricRegistry directly. Tests use FabricRegistry.NewForTest() +
 // AddCapsToCache(...) instead of a hand-built mock.

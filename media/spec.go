@@ -402,7 +402,7 @@ func ValidateNoMediaDefDuplicates(mediaDefs []MediaDef) error {
 // Returns:
 //   - ResolvedMediaDef if found
 //   - Error if media URN cannot be resolved
-func ResolveMediaUrn(mediaUrn string, registry *FabricRegistry) (*ResolvedMediaDef, error) {
+func ResolveMediaUrn(mediaUrn string, registry MediaDefSource) (*ResolvedMediaDef, error) {
 	if !strings.HasPrefix(mediaUrn, "media:") {
 		return nil, ErrInvalidMediaUrn
 	}
@@ -435,7 +435,7 @@ func ResolveMediaUrn(mediaUrn string, registry *FabricRegistry) (*ResolvedMediaD
 
 // GetMediaDefFromCapUrn extracts media def from a CapUrn using the 'out' tag
 // The 'out' tag contains a media URN
-func GetMediaDefFromCapUrn(urn *urn.CapUrn, registry *FabricRegistry) (*ResolvedMediaDef, error) {
+func GetMediaDefFromCapUrn(urn *urn.CapUrn, registry MediaDefSource) (*ResolvedMediaDef, error) {
 	outUrn := urn.OutSpec()
 	if outUrn == "" {
 		return nil, errors.New("no 'out' tag found in cap URN")

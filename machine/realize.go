@@ -3,7 +3,7 @@ package machine
 import (
 	"fmt"
 
-	"github.com/machinefabric/capdag-go/cap"
+	"github.com/machinefabric/capdag-go/fabric"
 	"github.com/machinefabric/capdag-go/planner"
 	"github.com/machinefabric/capdag-go/urn"
 )
@@ -54,7 +54,7 @@ import (
 // strandIndex is used only for diagnostics.
 func RealizeStrand(
 	machineStrand *MachineStrand,
-	registry *cap.FabricRegistry,
+	registry *fabric.FabricRegistry,
 	sourceUrn *urn.MediaUrn,
 	strandIndex int,
 ) (*planner.Strand, *MachineAbstractionError) {

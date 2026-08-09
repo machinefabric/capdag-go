@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/machinefabric/capdag-go/cap"
+	"github.com/machinefabric/capdag-go/fabric"
 	"github.com/machinefabric/capdag-go/media"
 	"github.com/machinefabric/capdag-go/standard"
 	"github.com/machinefabric/capdag-go/urn"
@@ -81,7 +82,7 @@ func Test6646_analyze_path_arguments_stdin_is_from_input_file(t *testing.T) {
 	c := cap.NewCapWithArgs(capUrnParsed, "Extract", []string{"test"}, []cap.CapArg{stdinArg})
 	c.Output = &cap.CapOutput{MediaUrn: capUrnParsed.OutSpec()}
 
-	registry := cap.NewFabricRegistryForTest()
+	registry := fabric.NewForTest()
 	registry.AddCapsToCache([]*cap.Cap{c})
 	builder := NewMachinePlanBuilder(registry)
 
@@ -125,7 +126,7 @@ func Test6647_analyze_path_arguments_user_input_arg_appears_in_slots(t *testing.
 	c := cap.NewCapWithArgs(capUrnParsed, "Translate", []string{"test"}, []cap.CapArg{stdinArg, userArg})
 	c.Output = &cap.CapOutput{MediaUrn: capUrnParsed.OutSpec()}
 
-	registry := cap.NewFabricRegistryForTest()
+	registry := fabric.NewForTest()
 	registry.AddCapsToCache([]*cap.Cap{c})
 	builder := NewMachinePlanBuilder(registry)
 

@@ -7,7 +7,7 @@ import (
 	"github.com/google/uuid"
 	peg "github.com/yhirose/go-peg"
 
-	"github.com/machinefabric/capdag-go/cap"
+	"github.com/machinefabric/capdag-go/fabric"
 	"github.com/machinefabric/capdag-go/urn"
 )
 
@@ -58,7 +58,7 @@ type rawWiring struct {
 //
 // Thin wrapper over ParseMachineWithNodeNames for callers that do not need the
 // per-strand node-name maps.
-func ParseMachine(input string, registry *cap.FabricRegistry) (*Machine, *MachineParseError) {
+func ParseMachine(input string, registry *fabric.FabricRegistry) (*Machine, *MachineParseError) {
 	m, _, err := ParseMachineWithNodeNames(input, registry)
 	return m, err
 }
@@ -79,7 +79,7 @@ func ParseMachine(input string, registry *cap.FabricRegistry) (*Machine, *Machin
 //
 // Uses a PEG parser with a grammar equivalent to machine.pest.
 // Fails hard — no fallbacks, no guessing, no recovery.
-func ParseMachineWithNodeNames(input string, registry *cap.FabricRegistry) (*Machine, []map[string]NodeId, *MachineParseError) {
+func ParseMachineWithNodeNames(input string, registry *fabric.FabricRegistry) (*Machine, []map[string]NodeId, *MachineParseError) {
 	input = strings.TrimSpace(input)
 	if input == "" {
 		return nil, nil, syntaxParseError(emptyError())

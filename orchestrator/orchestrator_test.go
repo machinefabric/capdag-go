@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/machinefabric/capdag-go/cap"
+	"github.com/machinefabric/capdag-go/fabric"
 	"github.com/machinefabric/capdag-go/planner"
 	"github.com/machinefabric/capdag-go/urn"
 )
@@ -42,9 +43,9 @@ func buildTestCapWithStdin(t *testing.T, capUrn string, title string) *cap.Cap {
 }
 
 // buildParserTestRegistry creates a registry with caps that have stdin args (for machine parser tests).
-func buildParserTestRegistry(t *testing.T, capUrns []string) *cap.FabricRegistry {
+func buildParserTestRegistry(t *testing.T, capUrns []string) *fabric.FabricRegistry {
 	t.Helper()
-	registry := cap.NewFabricRegistryForTest()
+	registry := fabric.NewForTest()
 	caps := make([]*cap.Cap, 0, len(capUrns))
 	for index, capUrn := range capUrns {
 		caps = append(caps, buildTestCapWithStdin(t, capUrn, "Test Cap "+string(rune('0'+index))))
@@ -53,9 +54,9 @@ func buildParserTestRegistry(t *testing.T, capUrns []string) *cap.FabricRegistry
 	return registry
 }
 
-func buildTestRegistry(t *testing.T, capUrns []string) *cap.FabricRegistry {
+func buildTestRegistry(t *testing.T, capUrns []string) *fabric.FabricRegistry {
 	t.Helper()
-	registry := cap.NewFabricRegistryForTest()
+	registry := fabric.NewForTest()
 	caps := make([]*cap.Cap, 0, len(capUrns))
 	for index, capUrn := range capUrns {
 		caps = append(caps, buildTestCap(t, capUrn, "Test Cap "+string(rune('0'+index))))
@@ -373,7 +374,7 @@ func Test1259_parse_fan_in(t *testing.T) {
 	// The describe cap has TWO input args: image;png (the primary, declared
 	// in= spec) and enc=utf-8;model-spec (a secondary fan-in input). The
 	// resolver's matching assigns each source URN to the right arg slot.
-	registry := cap.NewFabricRegistryForTest()
+	registry := fabric.NewForTest()
 	thumb := buildTestCapWithStdin(t, `cap:in="media:ext=pdf";generate-thumbnail;out="media:ext=png;image;thumbnail"`, "thumb")
 	modelDl := buildTestCapWithStdin(t, `cap:in="media:enc=utf-8;model-spec";download;out="media:enc=utf-8;model-spec"`, "download")
 	// describe: two args (image;png and model-spec), each with a stdin source.
@@ -672,7 +673,7 @@ func Test6649_rejects_foreach_paired_collect(t *testing.T) {
 // synthetic caps the orchestrator integration parse tests depend on. Each cap
 // carries a single stdin arg = its in_spec, matching the Rust helper
 // build_testcartridge_cap so the resolver's source-to-arg matching works.
-func createTestFabricRegistry(t *testing.T) *cap.FabricRegistry {
+func createTestFabricRegistry(t *testing.T) *fabric.FabricRegistry {
 	t.Helper()
 	return buildParserTestRegistry(t, []string{
 		`cap:in="media:enc=utf-8;node1";test-edge1;out="media:enc=utf-8;node2"`,

@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/machinefabric/capdag-go/cap"
+	"github.com/machinefabric/capdag-go/fabric"
 	"github.com/machinefabric/capdag-go/standard"
 	"github.com/machinefabric/capdag-go/urn"
 )
@@ -318,7 +319,7 @@ func (g *LiveCapFab) refreshBookends(bookendUrns map[string]bool) {
 // in-memory registry hydration path has no synchronous Go analog; Go's
 // FabricRegistry.GetCachedCaps already returns the full cached set, so the
 // equivalence lookup over that set is the complete match path.
-func (g *LiveCapFab) SyncFromCapUrns(capUrns []string, registry *cap.FabricRegistry, bookendUrns map[string]bool) {
+func (g *LiveCapFab) SyncFromCapUrns(capUrns []string, registry *fabric.FabricRegistry, bookendUrns map[string]bool) {
 	g.Clear()
 
 	allCaps := registry.GetCachedCaps()

@@ -106,7 +106,7 @@ func (sv *SchemaValidator) ValidateOutputWithSchema(output *CapOutput, schema in
 }
 
 // ValidateArguments validates all arguments for a capability using media defs
-func (sv *SchemaValidator) ValidateArguments(cap *Cap, arguments []interface{}, namedArgs map[string]interface{}, registry *media.FabricRegistry) error {
+func (sv *SchemaValidator) ValidateArguments(cap *Cap, arguments []interface{}, namedArgs map[string]interface{}, registry media.MediaDefSource) error {
 	args := cap.GetArgs()
 	if len(args) == 0 {
 		return nil
