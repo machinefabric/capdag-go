@@ -71,7 +71,10 @@ func (s *ArgSource) GetCliFlag() *string {
 type CapArg struct {
 	MediaUrn       string      `json:"media_urn"`
 	Required       bool        `json:"required"`
-	IsSequence     bool        `json:"is_sequence,omitempty"`
+	// Emitted even when false, as the reference does: the manifest is compared
+	// across implementations and `omitempty` made Go's bytes differ from Rust's
+	// for the identical cap.
+	IsSequence     bool        `json:"is_sequence"`
 	Sources        []ArgSource `json:"sources"`
 	ArgDescription *string     `json:"arg_description,omitempty"`
 	DefaultValue   any         `json:"default_value,omitempty"`
@@ -97,7 +100,7 @@ func decodeArbitraryJSON(data []byte) (any, error) {
 type capArgJSON struct {
 	MediaUrn       string           `json:"media_urn"`
 	Required       bool             `json:"required"`
-	IsSequence     bool             `json:"is_sequence,omitempty"`
+	IsSequence     bool             `json:"is_sequence"`
 	Sources        []ArgSource      `json:"sources"`
 	ArgDescription *string          `json:"arg_description,omitempty"`
 	DefaultValue   *json.RawMessage `json:"default_value,omitempty"`
@@ -321,7 +324,8 @@ func (a *CapArg) GetMediaType(registry *media.FabricRegistry) (string, error) {
 type CapOutput struct {
 	MediaUrn          string `json:"media_urn"`
 	OutputDescription string `json:"output_description"`
-	IsSequence        bool   `json:"is_sequence,omitempty"`
+	// Emitted even when false — see CapArg.IsSequence.
+	IsSequence        bool   `json:"is_sequence"`
 	Metadata          any    `json:"metadata,omitempty"`
 }
 

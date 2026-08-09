@@ -1023,3 +1023,67 @@ func Test8066_VoidInputSequenceShapeIsScalarWithoutArguments(t *testing.T) {
 	assert.False(t, inputIsSequence)
 	assert.False(t, outputIsSequence)
 }
+
+// TEST7150: a cap's OUTPUT survives a manifest round-trip, under the wire
+// key names the other implementations read.
+func Test7150_CapOutputSurvivesSerializationRoundtrip(t *testing.T) {
+	capUrn, err := urn.NewCapUrnFromString(`cap:in="media:enc=utf-8;in";out="media:enc=utf-8;tag";tag`)
+	require.NoError(t, err)
+	c := NewCap(capUrn, "tag", []string{"tag"})
+	c.SetOutput(NewCapOutput("media:enc=utf-8;tag", "One of 'positive', 'neutral', or 'negative'."))
+
+	raw, err := json.Marshal(c)
+	require.NoError(t, err)
+	var decoded map[string]any
+	require.NoError(t, json.Unmarshal(raw, &decoded))
+
+	output, ok := decoded["output"].(map[string]any)
+	require.True(t, ok, "a cap that declares an output must serialize one")
+	assert.Equal(t, "media:enc=utf-8;tag", output["media_urn"])
+	assert.Equal(t, "One of 'positive', 'neutral', or 'negative'.", output["output_description"])
+
+	var back Cap
+	require.NoError(t, json.Unmarshal(raw, &back))
+	require.NotNil(t, back.Output, "output survives the round-trip")
+	assert.Equal(t, "media:enc=utf-8;tag", back.Output.MediaUrn)
+	assert.False(t, back.Output.IsSequence)
+
+	// A cap with no output must not carry the key at all.
+	identityUrn, err := urn.NewCapUrnFromString(standard.CapIdentity)
+	require.NoError(t, err)
+	bare := NewCap(identityUrn, "Identity", []string{"identity"})
+	bareRaw, err := json.Marshal(bare)
+	require.NoError(t, err)
+	var bareDecoded map[string]any
+	require.NoError(t, json.Unmarshal(bareRaw, &bareDecoded))
+	_, present := bareDecoded["output"]
+	assert.False(t, present, "a cap without an output must omit the key")
+}
+
+// TEST7151: `is_sequence` is serialized even when false, on both CapArg and
+// CapOutput.
+//
+// It is not a `skip_serializing_if` field. Mirrors that omitted it produced a
+// manifest for the identical cap that differed from this one's bytes, which is
+// how a cross-language manifest comparison finds drift that every per-mirror
+// test passes through.
+func Test7151_IsSequenceIsSerializedEvenWhenFalse(t *testing.T) {
+	stdin := "media:enc=utf-8;in"
+	arg := NewCapArg("media:enc=utf-8;in", true, []ArgSource{{Stdin: &stdin}})
+	argRaw, err := json.Marshal(arg)
+	require.NoError(t, err)
+	var argDecoded map[string]any
+	require.NoError(t, json.Unmarshal(argRaw, &argDecoded))
+	value, present := argDecoded["is_sequence"]
+	require.True(t, present, "CapArg must write is_sequence even when false")
+	assert.Equal(t, false, value)
+
+	output := NewCapOutput("media:enc=utf-8;tag", "a tag")
+	outputRaw, err := json.Marshal(output)
+	require.NoError(t, err)
+	var outputDecoded map[string]any
+	require.NoError(t, json.Unmarshal(outputRaw, &outputDecoded))
+	value, present = outputDecoded["is_sequence"]
+	require.True(t, present, "CapOutput must write is_sequence even when false")
+	assert.Equal(t, false, value)
+}

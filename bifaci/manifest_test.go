@@ -475,3 +475,39 @@ func Test118_dev_manifest_registry_url_is_explicit_null(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, parsed.RegistryURL)
 }
+
+// TEST7152: an empty `adapter_urns` is omitted from a serialized cap group.
+//
+// Most cartridges claim no adapters, so a mirror that wrote `[]` put an extra
+// key in nearly every manifest it produced — invisible to that mirror's own
+// tests, and a difference the moment two languages' manifests for the same
+// cartridge are compared.
+func Test7152_EmptyAdapterUrnsIsOmitted(t *testing.T) {
+	group := CapGroup{Name: "default", Caps: []cap.Cap{}}
+	raw, err := json.Marshal(group)
+	if err != nil {
+		t.Fatalf("group serializes: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("group deserializes: %v", err)
+	}
+	_, present := decoded["adapter_urns"]
+	assert.False(t, present, "an empty adapter_urns must be omitted, not written as []")
+
+	// A group that DOES claim adapters still writes them.
+	claiming := CapGroup{Name: "default", Caps: []cap.Cap{}, AdapterUrns: []string{"media:ext=pdf"}}
+	claimingRaw, err := json.Marshal(claiming)
+	if err != nil {
+		t.Fatalf("group serializes: %v", err)
+	}
+	var claimingDecoded map[string]any
+	if err := json.Unmarshal(claimingRaw, &claimingDecoded); err != nil {
+		t.Fatalf("group deserializes: %v", err)
+	}
+	urns, ok := claimingDecoded["adapter_urns"].([]any)
+	if !ok {
+		t.Fatalf("a non-empty adapter_urns must be written, got %v", claimingDecoded["adapter_urns"])
+	}
+	assert.Equal(t, 1, len(urns), "a non-empty adapter_urns must be written")
+}
