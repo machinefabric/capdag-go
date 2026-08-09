@@ -1,6 +1,6 @@
 module github.com/machinefabric/capdag-go
 
-// version: 1.338.2883
+// version: 1.339.2889
 
 go 1.21
 
