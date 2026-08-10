@@ -87,19 +87,8 @@ cartridge.json
 				Executable: false,
 			},
 			{
-				Dest: `Cargo.toml`,
-				Contents: `[package]
-name = "__CARTRIDGE_NAME__"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-anyhow = "1.0"
-capdag = { git = "https://github.com/machinefabric/capdag", tag = "v1.644.6474" }
-ciborium = "0.2"
-serde_json = "1.0"
-tokio = { version = "1.0", features = ["full"] }
-`,
+				Dest:       `Cargo.toml`,
+				Contents:   "[package]\nname = \"__CARTRIDGE_NAME__\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nanyhow = \"1.0\"\n# capdag is resolved from a git TAG, not crates.io: it depends on ffmpeg-bundle,\n# which is unpublishable, and cargo requires a version requirement on every\n# dependency. The tag is stamped from capdag's own version.txt, so it tracks\n# what `dx publish capdag` tags instead of drifting until someone notices.\ncapdag = { git = \"https://github.com/machinefabric/capdag\", tag = \"v1.648.6494\" }\nciborium = \"0.2\"\nserde_json = \"1.0\"\ntokio = { version = \"1.0\", features = [\"full\"] }\n",
 				Executable: false,
 			},
 			{
@@ -137,13 +126,8 @@ cartridge.json
 				Executable: false,
 			},
 			{
-				Dest: `go.mod`,
-				Contents: `module __CARTRIDGE_NAME__
-
-go 1.21
-
-require github.com/machinefabric/capdag-go v1.333.2790
-`,
+				Dest:       `go.mod`,
+				Contents:   "module __CARTRIDGE_NAME__\n\ngo 1.21\n\n// Stamped from capdag-go's own version.txt, so the required version tracks what\n// `dx publish capdag-go` tags rather than drifting until someone notices.\nrequire github.com/machinefabric/capdag-go v1.342.2907\n",
 				Executable: false,
 			},
 			{
@@ -186,7 +170,7 @@ let package = Package(
         .macOS(.v13)
     ],
     dependencies: [
-        .package(url: "https://github.com/machinefabric/capdag-objc.git", from: "1.395.3928"),
+        .package(url: "https://github.com/machinefabric/capdag-objc.git", from: "1.402.3970"),
         .package(url: "https://github.com/jowharshamshiri/ops-objc.git", from: "1.18.132"),
     ],
     targets: [
