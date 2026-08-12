@@ -88,7 +88,7 @@ cartridge.json
 			},
 			{
 				Dest:       `Cargo.toml`,
-				Contents:   "[package]\nname = \"__CARTRIDGE_NAME__\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nanyhow = \"1.0\"\n# capdag is resolved from a git TAG, not crates.io: it depends on ffmpeg-bundle,\n# which is unpublishable, and cargo requires a version requirement on every\n# dependency. The tag is stamped from capdag's own version.txt, so it tracks\n# what `dx publish capdag` tags instead of drifting until someone notices.\ncapdag = { git = \"https://github.com/machinefabric/capdag-rs\", tag = \"v1.648.6494\" }\nciborium = \"0.2\"\nserde_json = \"1.0\"\ntokio = { version = \"1.0\", features = [\"full\"] }\n",
+				Contents:   "[package]\nname = \"__CARTRIDGE_NAME__\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nanyhow = \"1.0\"\n# capdag is resolved from a git TAG, not crates.io: it depends on ffmpeg-bundle,\n# which is unpublishable, and cargo requires a version requirement on every\n# dependency. The tag is stamped from capdag's own version.txt, so it tracks\n# what `dx publish capdag` tags instead of drifting until someone notices.\ncapdag = { git = \"https://github.com/machinefabric/capdag-rs\", tag = \"v1.656.32\" }\nciborium = \"0.2\"\nserde_json = \"1.0\"\ntokio = { version = \"1.0\", features = [\"full\"] }\n",
 				Executable: false,
 			},
 			{
