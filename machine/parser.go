@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/google/uuid"
 	peg "github.com/yhirose/go-peg"
 
 	"github.com/machinefabric/capdag-go/fabric"
+	"github.com/machinefabric/capdag-go/planner"
 	"github.com/machinefabric/capdag-go/urn"
 )
 
@@ -370,7 +370,7 @@ func ParseMachineWithNodeNames(input string, registry *fabric.FabricRegistry) (*
 				// The notation (static-machine) path has no resolved-strand step to
 				// inherit from, so each parsed wiring's edge gets its own freshly
 				// minted stable identity.
-				tokenId:       uuid.New().String(),
+				tokenId:       planner.MintStepToken(),
 				capUrn:        entry.capUrn,
 				sourceNodeIds: sourceNodeIds,
 				targetNodeId:  targetNodeId,

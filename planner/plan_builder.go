@@ -84,8 +84,15 @@ type ArgumentInfo struct {
 
 // StepArgumentRequirements holds argument info for one step in a path.
 type StepArgumentRequirements struct {
-	CapUrn    string          `json:"cap_urn"`
-	StepIndex int             `json:"step_index"`
+	CapUrn string `json:"cap_urn"`
+	// TokenId is the planner-minted StrandStep.TokenId of the step these
+	// requirements describe — the ONLY address an argument value is ever bound
+	// to. A token exists because a plan exists; it is never derived from a
+	// position, a notation string, or anything else. Positions cannot address a
+	// step because a strand is a DAG: parallel branches merging downstream have
+	// no ordinal, and two identical caps on separate branches differ only by
+	// token.
+	TokenId   StepToken       `json:"token_id"`
 	Title     string          `json:"title"`
 	Arguments []*ArgumentInfo `json:"arguments"`
 	Slots     []*ArgumentInfo `json:"slots"`
@@ -395,7 +402,7 @@ func (b *MachinePlanBuilder) AnalyzePathArguments(
 	var stepRequirements []*StepArgumentRequirements
 	capStepIndex := 0
 
-	for i, step := range path.Steps {
+	for _, step := range path.Steps {
 		if step.CapUrnVal == nil {
 			continue
 		}
@@ -446,7 +453,7 @@ func (b *MachinePlanBuilder) AnalyzePathArguments(
 
 		stepRequirements = append(stepRequirements, &StepArgumentRequirements{
 			CapUrn:              capUrnStr,
-			StepIndex:           i,
+			TokenId:             step.TokenId,
 			Title:               step.Title(),
 			Arguments:           arguments,
 			Slots:               slots,

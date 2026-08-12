@@ -103,7 +103,7 @@ func capStep(capUrnStr, title, from, to string) *planner.StrandStep {
 // fixtures that build linear strands wrap their step slice in this before
 // constructing the Strand. Mirrors Rust test_fixtures::chain_cap_steps.
 func chainCapSteps(steps []*planner.StrandStep) []*planner.StrandStep {
-	var prevCapToken string
+	var prevCapToken planner.StepToken
 	haveProducer := false
 	for _, step := range steps {
 		token := step.TokenId
@@ -1168,7 +1168,7 @@ func Test1138_assignment_bindings_are_sorted_by_cap_arg_media_urn(t *testing.T) 
 	mergeCapUrn := capUrnVal(`cap:in="media:ext=pdf";merge;out="media:txt;enc=utf-8"`)
 	wirings := []preInternedWiring{
 		{
-			tokenId:       "tok-1",
+			tokenId:       mustStepToken(t, "tok-1"),
 			capUrn:        mergeCapUrn,
 			sourceNodeIds: []NodeId{0, 1}, // pdf first, enc=utf-8 second
 			targetNodeId:  2,
@@ -1253,13 +1253,13 @@ func Test1308_CyclicStrandFailsHard(t *testing.T) {
 	// node 0 -> cap_a -> node 1  and  node 1 -> cap_b -> node 0 (cycle)
 	wirings := []preInternedWiring{
 		{
-			tokenId:       "tok-2",
+			tokenId:       mustStepToken(t, "tok-2"),
 			capUrn:        capUrnVal(urnA),
 			sourceNodeIds: []NodeId{0},
 			targetNodeId:  1,
 		},
 		{
-			tokenId:       "tok-3",
+			tokenId:       mustStepToken(t, "tok-3"),
 			capUrn:        capUrnVal(urnB),
 			sourceNodeIds: []NodeId{1},
 			targetNodeId:  0,
@@ -1309,4 +1309,13 @@ func findSubstr(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// mustStepToken parses a fixture's literal token through the one door tokens
+// come in by. A fixture that names an empty token is a broken fixture.
+func mustStepToken(t *testing.T, raw string) planner.StepToken {
+	t.Helper()
+	token, err := planner.ParseStepToken(raw)
+	require.NoError(t, err)
+	return token
 }

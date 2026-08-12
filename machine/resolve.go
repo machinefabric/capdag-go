@@ -14,7 +14,7 @@ import (
 type preInternedWiring struct {
 	// tokenId is the originating resolved-strand step's stable identity,
 	// carried onto the resulting MachineEdge (see MachineEdge.TokenId).
-	tokenId       string
+	tokenId       planner.StepToken
 	capUrn        *urn.CapUrn
 	sourceNodeIds []NodeId
 	targetNodeId  NodeId
@@ -39,7 +39,7 @@ func resolveStrand(
 	// NodeId. Explicit input sources (CapInput.Source) resolve against this — no
 	// positional predecessor assumption, so fan-out and convergence both wire
 	// correctly.
-	producerNode := make(map[string]NodeId)
+	producerNode := make(map[planner.StepToken]NodeId)
 	// The single shared strand input anchor node, allocated on first StrandInput
 	// reference and refined to the most specific consuming FromSpec.
 	var strandInputNode *NodeId

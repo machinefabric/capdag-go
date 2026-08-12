@@ -41,7 +41,7 @@ type MachineEdge struct {
 	// updates route by. It is IDENTITY, not semantics: IsEquivalent
 	// deliberately ignores it (two structurally-identical machines stay
 	// equivalent even with different per-run TokenIds).
-	TokenId string
+	TokenId planner.StepToken
 }
 
 func (e *MachineEdge) String() string {

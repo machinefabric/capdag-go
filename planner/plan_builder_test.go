@@ -371,9 +371,9 @@ func Test768_path_argument_requirements_structure(t *testing.T) {
 		TargetMediaUrn: "media:ext=png;image",
 		Steps: []*StepArgumentRequirements{
 			{
-				CapUrn:    "cap:generate-thumbnail;in=pdf;out=png",
-				StepIndex: 0,
-				Title:     "Generate Thumbnail",
+				CapUrn:  "cap:generate-thumbnail;in=pdf;out=png",
+				TokenId: mustStepToken(t, "tok-thumbnail"),
+				Title:   "Generate Thumbnail",
 				Arguments: []*ArgumentInfo{
 					{
 						Name:        "file_path",
@@ -405,9 +405,9 @@ func Test769_path_with_required_slot(t *testing.T) {
 		TargetMediaUrn: "media:translated",
 		Steps: []*StepArgumentRequirements{
 			{
-				CapUrn:    "cap:translate;in=text;out=translated",
-				StepIndex: 0,
-				Title:     "Translate",
+				CapUrn:  "cap:translate;in=text;out=translated",
+				TokenId: mustStepToken(t, "tok-translate"),
+				Title:   "Translate",
 				Arguments: []*ArgumentInfo{
 					{
 						Name:        "file_path",
@@ -446,4 +446,117 @@ func Test769_path_with_required_slot(t *testing.T) {
 	assert.False(t, requirements.CanExecuteWithoutInput)
 	assert.Equal(t, 1, len(requirements.Steps[0].Slots))
 	assert.Equal(t, "target_language", requirements.Steps[0].Slots[0].Name)
+}
+
+// mustStepToken parses a fixture's literal token through the one door tokens
+// come in by. A fixture that names an empty token is a broken fixture.
+func mustStepToken(t *testing.T, raw string) StepToken {
+	t.Helper()
+	token, err := ParseStepToken(raw)
+	require.NoError(t, err)
+	return token
+}
+
+// rewriteCap is a cap with one stdin main input.
+func rewriteCap(t *testing.T) *cap.Cap {
+	t.Helper()
+	capUrn, err := urn.NewCapUrnFromString(`cap:rewrite;in="media:ext=txt;text";out="media:ext=txt;text"`)
+	require.NoError(t, err)
+	c := cap.NewCap(capUrn, "Rewrite", []string{"rewrite"})
+	stdin := "media:ext=txt;text"
+	c.Args = []cap.CapArg{
+		cap.NewCapArgWithFullDefinition(
+			"media:enc=utf-8;file-path", true,
+			[]cap.ArgSource{{Stdin: &stdin}},
+			"Text to rewrite", nil, nil,
+		),
+	}
+	return c
+}
+
+// repeatedCapStrand builds two steps running the SAME cap — the shape where
+// positional identity is indistinguishable from token identity unless the
+// tokens are actually carried.
+func repeatedCapStrand(t *testing.T, c *cap.Cap) *Strand {
+	t.Helper()
+	mediaUrn, err := urn.NewMediaUrnFromString("media:ext=txt;text")
+	require.NoError(t, err)
+	argUrn, err := urn.NewMediaUrnFromString("media:enc=utf-8;file-path")
+	require.NoError(t, err)
+
+	newStep := func() *StrandStep {
+		step := NewStrandStep(StepTypeCap, mediaUrn, mediaUrn)
+		step.CapUrnVal = c.Urn
+		step.StepTitle = "Rewrite"
+		step.SpecificityVal = 1
+		step.Inputs = []CapInput{{ArgUrn: argUrn, Source: NewArgSourceStrandInput()}}
+		return step
+	}
+
+	return &Strand{
+		Steps:          []*StrandStep{newStep(), newStep()},
+		SourceMediaUrn: mediaUrn,
+		TargetMediaUrn: mediaUrn,
+		TotalSteps:     2,
+		CapStepCount:   2,
+		Description:    "Rewrite twice",
+	}
+}
+
+// TEST1461: Step requirements are addressed by the plan's own token. Two steps of the SAME cap must yield the two DISTINCT StrandStep.TokenId values the planner minted, in correspondence with the steps they describe
+func TestTest1461StepRequirementsCarryThePlansOwnTokens(t *testing.T) {
+	c := rewriteCap(t)
+	registry := fabric.NewForTest()
+	registry.AddCapsToCache([]*cap.Cap{c})
+	builder := NewMachinePlanBuilder(registry)
+	strand := repeatedCapStrand(t, c)
+
+	strandTokens := []StepToken{strand.Steps[0].TokenId, strand.Steps[1].TokenId}
+	assert.NotEqual(t, strandTokens[0], strandTokens[1],
+		"the planner mints a distinct token per step even for a repeated cap")
+
+	requirements, err := builder.AnalyzePathArguments(strand)
+	require.NoError(t, err)
+	require.Equal(t, 2, len(requirements.Steps))
+
+	requirementTokens := []StepToken{requirements.Steps[0].TokenId, requirements.Steps[1].TokenId}
+	assert.Equal(t, strandTokens, requirementTokens,
+		"each requirement carries the token of the step it describes — the address a "+
+			"value is bound to, not a position to be counted")
+	for _, step := range requirements.Steps {
+		assert.False(t, step.TokenId.IsZero(),
+			"a requirement without a token cannot be bound to and must never be emitted")
+	}
+}
+
+// TEST1462: An unidentified step is not a state the program can hold. StepToken is the type that makes it so - minting is the only way to create one and ParseStepToken, the sole path back from text, refuses an empty id
+func TestTest1462AStepTokenCannotBeEmpty(t *testing.T) {
+	_, err := ParseStepToken("")
+	assert.ErrorIs(t, err, ErrEmptyStepToken,
+		"an empty id names no step and is not a token")
+
+	// Decoding is the one boundary where a strand arrives as data rather than
+	// being constructed, so it is the one place the illegal state could enter.
+	var decoded StepToken
+	assert.Error(t, json.Unmarshal([]byte(`""`), &decoded),
+		"decoding an empty token must fail")
+
+	// The mirror's serialization boundaries carry tokens in wire structs, and
+	// each of them refuses "" by construction rather than by a hand-written
+	// emptiness check downstream.
+	var requirements StepArgumentRequirements
+	assert.Error(t, json.Unmarshal([]byte(`{"cap_urn":"cap:x","token_id":""}`), &requirements),
+		"step requirements naming an empty token must not decode")
+
+	var outcome BodyOutcome
+	assert.Error(t, json.Unmarshal([]byte(`{"foreach_token_id":"","body_index":0}`), &outcome),
+		"a body outcome naming an empty ForEach token must not decode")
+
+	// A minted token round-trips through the same boundary unchanged.
+	minted := MintStepToken()
+	encoded, err := json.Marshal(minted)
+	require.NoError(t, err)
+	var roundTripped StepToken
+	require.NoError(t, json.Unmarshal(encoded, &roundTripped))
+	assert.Equal(t, minted, roundTripped)
 }

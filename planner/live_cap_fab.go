@@ -1,6 +1,8 @@
 package planner
 
 import (
+	"encoding/json"
+	"errors"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -92,6 +94,77 @@ const (
 // ArgSourceRef is the producer of one of a cap step's inputs.
 //
 // A Strand is a DAG of steps: an input is fed either by the strand's own input
+// StepToken is the stable identity of one step of a resolved strand — the ONLY
+// address by which a step, or an argument value destined for it, is ever named.
+//
+// The raw text is unexported so that an unidentified step is not a state the
+// program can be in: there is exactly one way to make a token (MintStepToken)
+// and exactly one way to recover one that was already minted (ParseStepToken,
+// which refuses an empty id). UnmarshalJSON goes through ParseStepToken, so a
+// persisted strand carrying "" fails to load rather than loading into a strand
+// whose steps cannot be addressed.
+//
+// Nothing derives a token. Not from a position — a strand is a DAG, and parallel
+// branches merging downstream have no ordinal, so two identical caps on separate
+// branches differ only by token. Not from notation — a plan holds strictly more
+// than the notation it was planned from, and reducing one back to the other
+// discards exactly the identities this type exists to carry. A token comes from
+// the plan that minted it or it does not exist.
+//
+// The struct is comparable, so a token works directly as a map key.
+// Matches Rust: pub struct StepToken(String)
+type StepToken struct {
+	raw string
+}
+
+// ErrEmptyStepToken is the only way a StepToken can fail to exist.
+var ErrEmptyStepToken = errors.New(
+	"a strand step token_id is empty; a step without a token came from no plan and cannot be addressed",
+)
+
+// MintStepToken mints a fresh identity. This is how every step in production is
+// born.
+func MintStepToken() StepToken {
+	return StepToken{raw: uuid.New().String()}
+}
+
+// ParseStepToken recovers an already-minted token — from decoding, from a
+// protocol message, from a persisted run. An empty id is not a token: it names
+// no step, so a value bound to it could never be delivered.
+func ParseStepToken(raw string) (StepToken, error) {
+	if raw == "" {
+		return StepToken{}, ErrEmptyStepToken
+	}
+	return StepToken{raw: raw}, nil
+}
+
+// String returns the token's text, for protocol encoding and diagnostics.
+func (t StepToken) String() string { return t.raw }
+
+// IsZero reports whether this is the zero StepToken — the value a struct field
+// holds before a token has been put in it. It is never a token.
+func (t StepToken) IsZero() bool { return t.raw == "" }
+
+// MarshalJSON encodes the token as its plain text.
+func (t StepToken) MarshalJSON() ([]byte, error) {
+	return json.Marshal(t.raw)
+}
+
+// UnmarshalJSON decodes through ParseStepToken, so "" is refused here exactly as
+// it is everywhere else a token crosses into the process.
+func (t *StepToken) UnmarshalJSON(data []byte) error {
+	var raw string
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	parsed, err := ParseStepToken(raw)
+	if err != nil {
+		return err
+	}
+	*t = parsed
+	return nil
+}
+
 // (an input anchor) or by another cap step's output. There are no positional
 // assumptions — every input names its producer explicitly, so fan-out (one
 // producer feeding several caps' main inputs) and convergence (one cap fed by
@@ -101,7 +174,7 @@ type ArgSourceRef struct {
 	Kind ArgSourceKind
 	// TokenId is the producing step's stable identity. Only meaningful when
 	// Kind == ArgSourceStep.
-	TokenId string
+	TokenId StepToken
 }
 
 // NewArgSourceStrandInput builds an ArgSourceRef fed by the strand's own input.
@@ -110,7 +183,7 @@ func NewArgSourceStrandInput() ArgSourceRef {
 }
 
 // NewArgSourceStep builds an ArgSourceRef fed by another cap step's output.
-func NewArgSourceStep(tokenId string) ArgSourceRef {
+func NewArgSourceStep(tokenId StepToken) ArgSourceRef {
 	return ArgSourceRef{Kind: ArgSourceStep, TokenId: tokenId}
 }
 
@@ -138,7 +211,7 @@ type StrandStep struct {
 	// Alias-free and notation-independent; it travels verbatim through
 	// serialization, the run's persisted resolved strand, the render payload,
 	// and every progress message.
-	TokenId          string
+	TokenId          StepToken
 	StepType         StrandStepType
 	FromSpec         *urn.MediaUrn
 	ToSpec           *urn.MediaUrn
@@ -162,7 +235,7 @@ type StrandStep struct {
 // Matches Rust: impl StrandStep { pub fn new(...) -> Self }
 func NewStrandStep(stepType StrandStepType, fromSpec, toSpec *urn.MediaUrn) *StrandStep {
 	return &StrandStep{
-		TokenId:  uuid.New().String(),
+		TokenId:  MintStepToken(),
 		StepType: stepType,
 		FromSpec: fromSpec,
 		ToSpec:   toSpec,

@@ -766,7 +766,7 @@ type NodeExecutionResult struct {
 type BodyOutcome struct {
 	// ForEachTokenID is the immutable ForEach StrandStep token that scopes
 	// BodyIndex. Nil only for the single linear whole-run outcome.
-	ForEachTokenID *string `json:"foreach_token_id"`
+	ForEachTokenID *StepToken `json:"foreach_token_id"`
 	// BodyIndex is the index of this body within the ForEach (0-based). 0 for linear pipelines.
 	BodyIndex int `json:"body_index"`
 	// Success indicates whether this body completed successfully.
@@ -775,7 +775,7 @@ type BodyOutcome struct {
 	CapUrns []string `json:"cap_urns"`
 	// FailedTokenID is the immutable StrandStep token that failed. Nil if no
 	// single step is attributable or the body succeeded.
-	FailedTokenID *string `json:"failed_token_id"`
+	FailedTokenID *StepToken `json:"failed_token_id"`
 	// Error is the error message if the body failed.
 	Error *string `json:"error"`
 	// FailedArgURN is the argument media URN attributed by the emit source.
@@ -801,12 +801,9 @@ func (b BodyOutcome) validate() error {
 	if b.ForEachTokenID == nil && b.BodyIndex != 0 {
 		return fmt.Errorf("linear body outcome must use body_index 0")
 	}
-	if b.ForEachTokenID != nil && *b.ForEachTokenID == "" {
-		return fmt.Errorf("body outcome foreach_token_id must be null or non-empty")
-	}
-	if b.FailedTokenID != nil && *b.FailedTokenID == "" {
-		return fmt.Errorf("body outcome failed_token_id must be null or non-empty")
-	}
+	// foreach_token_id and failed_token_id need no emptiness check here: a
+	// StepToken cannot BE empty, and decoding one from "" already failed before
+	// this outcome existed.
 	if b.FailedArgURN != nil && *b.FailedArgURN == "" {
 		return fmt.Errorf("body outcome failed_arg_urn must be null or non-empty")
 	}

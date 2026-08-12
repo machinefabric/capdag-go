@@ -69,7 +69,7 @@ func RealizeStrand(
 	}
 	// The step (by stable TokenId) that produced each node, for wiring
 	// convergence args. Input anchors have no producing step.
-	nodeProducer := make(map[NodeId]string)
+	nodeProducer := make(map[NodeId]planner.StepToken)
 
 	edges := machineStrand.Edges()
 	emitted := make([]bool, len(edges))

@@ -893,7 +893,7 @@ func Test6525_body_outcome_serialization_preserves_attribution_shape(t *testing.
 	_, err = json.Marshal(BodyOutcome{BodyIndex: 1, Success: true})
 	require.ErrorContains(t, err, "linear body outcome must use body_index 0")
 
-	foreachToken := "tok-foreach"
+	foreachToken := mustStepToken(t, "tok-foreach")
 	foreachOutcome := BodyOutcome{
 		ForEachTokenID: &foreachToken,
 		BodyIndex:      3,
