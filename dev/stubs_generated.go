@@ -88,7 +88,7 @@ cartridge.json
 			},
 			{
 				Dest:       `Cargo.toml`,
-				Contents:   "[package]\nname = \"__CARTRIDGE_NAME__\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nanyhow = \"1.0\"\n# capdag is resolved from a git TAG, not crates.io: it depends on ffmpeg-bundle,\n# which is unpublishable, and cargo requires a version requirement on every\n# dependency. The tag is stamped from capdag's own version.txt, so it tracks\n# what `dx publish capdag` tags instead of drifting until someone notices.\ncapdag = { git = \"https://github.com/machinefabric/capdag-rs\", tag = \"v1.656.33\" }\nciborium = \"0.2\"\nserde_json = \"1.0\"\ntokio = { version = \"1.0\", features = [\"full\"] }\n",
+				Contents:   "[package]\nname = \"__CARTRIDGE_NAME__\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nanyhow = \"1.0\"\n# capdag is resolved from a git TAG, not crates.io: it depends on ffmpeg-bundle,\n# which is unpublishable, and cargo requires a version requirement on every\n# dependency. The tag is stamped from capdag's own version.txt, so it tracks\n# what `dx publish capdag` tags instead of drifting until someone notices.\ncapdag = { git = \"https://github.com/machinefabric/capdag-rs\", tag = \"v1.663.8\" }\nciborium = \"0.2\"\nserde_json = \"1.0\"\ntokio = { version = \"1.0\", features = [\"full\"] }\n",
 				Executable: false,
 			},
 			{
@@ -127,7 +127,7 @@ cartridge.json
 			},
 			{
 				Dest:       `go.mod`,
-				Contents:   "module __CARTRIDGE_NAME__\n\ngo 1.21\n\n// Stamped from capdag-go's own version.txt, so the required version tracks what\n// `dx publish capdag-go` tags rather than drifting until someone notices.\nrequire github.com/machinefabric/capdag-go v1.345.9\n",
+				Contents:   "module __CARTRIDGE_NAME__\n\ngo 1.21\n\n// Stamped from capdag-go's own version.txt, so the required version tracks what\n// `dx publish capdag-go` tags rather than drifting until someone notices.\nrequire github.com/machinefabric/capdag-go v1.351.6\n",
 				Executable: false,
 			},
 			{
@@ -170,7 +170,7 @@ let package = Package(
         .macOS(.v13)
     ],
     dependencies: [
-        .package(url: "https://github.com/machinefabric/capdag-objc.git", from: "1.409.3999"),
+        .package(url: "https://github.com/machinefabric/capdag-objc.git", from: "1.411.3"),
         .package(url: "https://github.com/jowharshamshiri/ops-objc.git", from: "1.18.132"),
     ],
     targets: [
