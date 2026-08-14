@@ -87,18 +87,33 @@ cartridge.json
 				Executable: false,
 			},
 			{
-				Dest:       `Cargo.toml`,
-				Contents:   "[package]\nname = \"__CARTRIDGE_NAME__\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nanyhow = \"1.0\"\n# capdag is resolved from a git TAG, not crates.io: it depends on ffmpeg-bundle,\n# which is unpublishable, and cargo requires a version requirement on every\n# dependency. The tag is stamped from capdag's own version.txt, so it tracks\n# what `dx publish capdag` tags instead of drifting until someone notices.\ncapdag = { git = \"https://github.com/machinefabric/capdag-rs\", tag = \"v1.663.8\" }\nciborium = \"0.2\"\nserde_json = \"1.0\"\ntokio = { version = \"1.0\", features = [\"full\"] }\n",
+				Dest: `Cargo.toml`,
+				Contents: `[package]
+name = "__CARTRIDGE_NAME__"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0"
+# capdag is resolved from a git TAG, not crates.io: it depends on ffmpeg-bundle,
+# which is unpublishable, and cargo requires a version requirement on every
+# dependency. The tag is stamped from capdag's own version.txt, so it tracks
+# what capdag's next release tags instead of drifting until someone notices.
+capdag = { git = "https://github.com/machinefabric/capdag-rs", tag = "v1.667.0" }
+ciborium = "0.2"
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+`,
 				Executable: false,
 			},
 			{
 				Dest:       `.cargo/config.toml`,
-				Contents:   "# capdag's build script bakes two versions into the crate and treats both as\n# MANDATORY \u2014 a plain `cargo build` without them fails with a message telling\n# you to build through `dx`, which is the MachineFabric workspace's tool and not\n# something a cartridge project has. Setting them here is what makes `cargo\n# build` work in a scaffolded project.\n#\n# They pin which fabric manifest and which cartridge registry regime this\n# cartridge is compiled against, and they must match the capdag version above.\n[env]\nMFR_FABRIC_MANIFEST_VERSION = \"4\"\nMFR_CARTRIDGE_REGISTRY_VERSION = \"1\"\n",
+				Contents:   "# capdag's build script bakes two versions into the crate and treats both as\n# MANDATORY \u2014 a plain `cargo build` without them fails with a message telling\n# you to build through a workspace tool, which is MachineFabric's own and not\n# something a cartridge project has. Setting them here is what makes `cargo\n# build` work in a scaffolded project.\n#\n# They pin which fabric manifest and which cartridge registry regime this\n# cartridge is compiled against, and they must match the capdag version above.\n[env]\nMFR_FABRIC_MANIFEST_VERSION = \"4\"\nMFR_CARTRIDGE_REGISTRY_VERSION = \"1\"\n",
 				Executable: false,
 			},
 			{
 				Dest:       `README.md`,
-				Contents:   "# __CARTRIDGE_NAME__\n\nA MachineFabric cartridge scaffolded by `capdag new`. It reads UTF-8 text on\nstdin and emits `positive`, `neutral`, or `negative`.\n\n## Develop\n\n```bash\n# 1. Build the entry the host launches:\ncargo build --release\n\n# 2. Install this cartridge under the local `dev` slug:\ncapdag dev-install .\n\n# 3. Run your cap through the capdag host:\necho \"I love this\" | capdag __CARTRIDGE_NAME__\n# => positive\n\n# 4. Edit the labels or the peer cap in src/main.rs, then re-run steps 1-2:\ncargo build --release && capdag dev-install .\n```\n\nUnlike the Python cartridge, the entry here is a COMPILED binary, so an edit\ndoes not reach the host until you rebuild.\n\n## `.cargo/config.toml`\n\nThe `capdag` crate's build script bakes two versions into the crate and treats\nboth as mandatory: `MFR_FABRIC_MANIFEST_VERSION` (which fabric manifest this\ncartridge is compiled against) and `MFR_CARTRIDGE_REGISTRY_VERSION` (which\ncartridge registry regime). Without them `cargo build` fails with a message\ntelling you to build through `dx`, which is the MachineFabric workspace's own\ntool \u2014 not something a cartridge project has.\n\n`.cargo/config.toml` sets them, which is what makes a plain `cargo build` work\nhere. Change them only together with the `capdag` version in `Cargo.toml`.\n\n## It needs the host\n\nThis cartridge does not classify anything itself \u2014 it PEER-CALLS `classify-en`\nand a model cartridge answers. Peer calls are routed by the capdag host, so\nrunning the built entry directly (`./__CARTRIDGE_NAME__ __CARTRIDGE_NAME__`)\nfails with `Peer invocation not supported in this context`. That is correct, not\na bug: run it through `capdag __CARTRIDGE_NAME__`, which hosts the cartridge and\nroutes the call.\n\nA model cartridge providing `classify-en` must be installed. The first run\ndownloads the model, which is why the peer reports progress and why this\ncartridge forwards it.\n\nThe cap is a *dev* cap: it is not published to the fabric, so you can develop\nand run it locally as long as its alias (`__CARTRIDGE_NAME__`) does not collide\nwith a published cap.\n",
+				Contents:   "# __CARTRIDGE_NAME__\n\nA MachineFabric cartridge scaffolded by `capdag new`. It reads UTF-8 text on\nstdin and emits `positive`, `neutral`, or `negative`.\n\n## Develop\n\n```bash\n# 1. Build the entry the host launches:\ncargo build --release\n\n# 2. Install this cartridge under the local `dev` slug:\ncapdag dev-install .\n\n# 3. Run your cap through the capdag host:\necho \"I love this\" | capdag __CARTRIDGE_NAME__\n# => positive\n\n# 4. Edit the labels or the peer cap in src/main.rs, then re-run steps 1-2:\ncargo build --release && capdag dev-install .\n```\n\nUnlike the Python cartridge, the entry here is a COMPILED binary, so an edit\ndoes not reach the host until you rebuild.\n\n## `.cargo/config.toml`\n\nThe `capdag` crate's build script bakes two versions into the crate and treats\nboth as mandatory: `MFR_FABRIC_MANIFEST_VERSION` (which fabric manifest this\ncartridge is compiled against) and `MFR_CARTRIDGE_REGISTRY_VERSION` (which\ncartridge registry regime). Without them `cargo build` fails with a message\ntelling you to build through a workspace tool, which is MachineFabric's own\ntool \u2014 not something a cartridge project has.\n\n`.cargo/config.toml` sets them, which is what makes a plain `cargo build` work\nhere. Change them only together with the `capdag` version in `Cargo.toml`.\n\n## It needs the host\n\nThis cartridge does not classify anything itself \u2014 it PEER-CALLS `classify-en`\nand a model cartridge answers. Peer calls are routed by the capdag host, so\nrunning the built entry directly (`./__CARTRIDGE_NAME__ __CARTRIDGE_NAME__`)\nfails with `Peer invocation not supported in this context`. That is correct, not\na bug: run it through `capdag __CARTRIDGE_NAME__`, which hosts the cartridge and\nroutes the call.\n\nA model cartridge providing `classify-en` must be installed. The first run\ndownloads the model, which is why the peer reports progress and why this\ncartridge forwards it.\n\nThe cap is a *dev* cap: it is not published to the fabric, so you can develop\nand run it locally as long as its alias (`__CARTRIDGE_NAME__`) does not collide\nwith a published cap.\n",
 				Executable: false,
 			},
 			{
@@ -126,8 +141,15 @@ cartridge.json
 				Executable: false,
 			},
 			{
-				Dest:       `go.mod`,
-				Contents:   "module __CARTRIDGE_NAME__\n\ngo 1.21\n\n// Stamped from capdag-go's own version.txt, so the required version tracks what\n// `dx publish capdag-go` tags rather than drifting until someone notices.\nrequire github.com/machinefabric/capdag-go v1.351.6\n",
+				Dest: `go.mod`,
+				Contents: `module __CARTRIDGE_NAME__
+
+go 1.21
+
+// Stamped from capdag-go's own version.txt, so the required version tracks what
+// capdag-go's next release tags rather than drifting until someone notices.
+require github.com/machinefabric/capdag-go v1.353.4
+`,
 				Executable: false,
 			},
 			{
@@ -170,7 +192,7 @@ let package = Package(
         .macOS(.v13)
     ],
     dependencies: [
-        .package(url: "https://github.com/machinefabric/capdag-objc.git", from: "1.411.3"),
+        .package(url: "https://github.com/machinefabric/capdag-objc.git", from: "1.413.5"),
         .package(url: "https://github.com/jowharshamshiri/ops-objc.git", from: "1.18.132"),
     ],
     targets: [
