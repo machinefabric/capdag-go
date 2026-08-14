@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -303,14 +304,14 @@ func Test7160_vendored_stub_contract_matches_the_canonical_source(t *testing.T) 
 	}
 
 	if contract.ContractVersion != StubContractVersion {
-		t.Fatalf("vendored contract version %d, canonical %d — re-run dx stubs vendor",
+		t.Fatalf("vendored contract version %d, canonical %d — re-vendor the stubs",
 			StubContractVersion, contract.ContractVersion)
 	}
 	if contract.Placeholder != StubPlaceholder {
 		t.Fatalf("vendored placeholder %q, canonical %q", StubPlaceholder, contract.Placeholder)
 	}
 	if len(contract.Languages) != len(StubLanguages) {
-		t.Fatalf("vendored %d languages, canonical %d — re-run dx stubs vendor",
+		t.Fatalf("vendored %d languages, canonical %d — re-vendor the stubs",
 			len(StubLanguages), len(contract.Languages))
 	}
 
@@ -338,10 +339,7 @@ func Test7160_vendored_stub_contract_matches_the_canonical_source(t *testing.T) 
 				t.Fatalf("%s: vendored file %d (%s) differs from canonical (%s)",
 					vendored.ID, j, got.Dest, file.Dest)
 			}
-			if got.Contents != string(want) {
-				t.Fatalf("%s: vendored %s differs from the canonical bytes — re-run dx stubs vendor",
-					vendored.ID, file.Dest)
-			}
+			assertStubMatches(t, vendored.ID, got.Dest, got.Contents, string(want))
 		}
 	}
 }
@@ -394,5 +392,104 @@ func Test7158_fabric_conflict_guard(t *testing.T) {
 	// The very same fabric cap (same alias => same URN) => not a conflict.
 	if err := CheckNoFabricConflict(resolve, alpha); err != nil {
 		t.Errorf("a dev cap matching the fabric cap exactly must be accepted, got %v", err)
+	}
+}
+
+// firstTriple returns the first `N.N.N` in a line and the span it occupies.
+func firstTriple(line string) ([]uint64, int, int, bool) {
+	for index := 0; index < len(line); index++ {
+		if line[index] < '0' || line[index] > '9' {
+			continue
+		}
+		start := index
+		for index < len(line) && ((line[index] >= '0' && line[index] <= '9') || line[index] == '.') {
+			index++
+		}
+		parts := strings.Split(line[start:index], ".")
+		if len(parts) != 3 {
+			index = start
+			continue
+		}
+		numbers := make([]uint64, 0, 3)
+		ok := true
+		for _, part := range parts {
+			value, err := strconv.ParseUint(part, 10, 64)
+			if err != nil {
+				ok = false
+				break
+			}
+			numbers = append(numbers, value)
+		}
+		if ok {
+			return numbers, start, index, true
+		}
+		index = start
+	}
+	return nil, 0, 0, false
+}
+
+// splitPin separates a stub file into its capdag version pin and everything else.
+//
+// The pin appears once per stub, in the language's own dependency syntax:
+// `tag = "v1.2.3"` (Cargo), `capdag-go v1.2.3` (go.mod), `from: "1.2.3"`
+// (SwiftPM). Rather than teach this three grammars, the first dotted-triple on a
+// line that mentions capdag IS the pin.
+func splitPin(text string) ([]uint64, string) {
+	var pin []uint64
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		if pin == nil && strings.Contains(line, "capdag") {
+			if numbers, start, end, ok := firstTriple(line); ok {
+				pin = numbers
+				lines[i] = line[:start] + "<pin>" + line[end:]
+			}
+		}
+	}
+	return pin, strings.Join(lines, "\n")
+}
+
+func joinVersion(version []uint64) string {
+	parts := make([]string, 0, len(version))
+	for _, value := range version {
+		parts = append(parts, strconv.FormatUint(value, 10))
+	}
+	return strings.Join(parts, ".")
+}
+
+// assertStubMatches compares a vendored stub file with the canonical bytes.
+//
+// Byte equality, with ONE allowance: the capdag version the stub pins may be
+// OLDER in the vendored copy than in the canonical one. The canonical stub is
+// rendered from a template that stamps capdag's current version, and the
+// vendored copies are snapshots taken when someone last vendored them — so the
+// two disagree from the moment capdag's version moves, which is every time it is
+// bumped, and the disagreement says nothing about the stub CONTRACT.
+//
+// An older pin is harmless: it names a release that exists, so a cartridge
+// scaffolded from it resolves. A NEWER pin is not, because it would name a
+// version this capdag has not reached, so the comparison is an ordering and not
+// "ignore the version".
+func assertStubMatches(t *testing.T, language, dest, vendored, canonical string) {
+	t.Helper()
+	if vendored == canonical {
+		return
+	}
+	vendoredPin, vendoredRest := splitPin(vendored)
+	canonicalPin, canonicalRest := splitPin(canonical)
+	if vendoredRest != canonicalRest {
+		t.Fatalf("%s: vendored %s differs from the canonical bytes in more than the pinned capdag version — re-vendor the stubs", language, dest)
+	}
+	if vendoredPin == nil || canonicalPin == nil {
+		t.Fatalf("%s: vendored %s differs from the canonical bytes and neither carries a version pin to explain it — re-vendor the stubs", language, dest)
+	}
+	for i := range vendoredPin {
+		if vendoredPin[i] == canonicalPin[i] {
+			continue
+		}
+		if vendoredPin[i] > canonicalPin[i] {
+			t.Fatalf("%s: vendored %s pins capdag %s but capdag is %s — a stub may lag a release, never precede one",
+				language, dest, joinVersion(vendoredPin), joinVersion(canonicalPin))
+		}
+		return
 	}
 }
