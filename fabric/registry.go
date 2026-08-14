@@ -236,7 +236,7 @@ func mediaURLAndCachePath(cacheDir string, config Config, normalizedURN string, 
 // Rust bakes this into the binary at compile time; Go has no build-time
 // codegen, so a shipped binary carries it through the linker
 // (-X github.com/machinefabric/capdag-go/fabric.BakedManifestVersion=N) and a
-// workspace build reads MFR_FABRIC_MANIFEST_VERSION, the same variable dx
+// workspace build reads MFR_FABRIC_MANIFEST_VERSION, the same variable the workspace build tool
 // exports for every other language. Neither is a fallback for the other: both
 // are explicit declarations, and their absence is a hard failure rather than a
 // silent drop to v0, which would resolve every URN against the frozen flat-path
@@ -254,7 +254,7 @@ func ManifestVersion() (uint32, error) {
 		return 0, errf(ErrValidation,
 			"the fabric manifest version is not set. A packaged build bakes it via "+
 				"-ldflags '-X github.com/machinefabric/capdag-go/fabric.BakedManifestVersion=N'; "+
-				"a workspace build reads MFR_FABRIC_MANIFEST_VERSION, which dx exports "+
+				"a workspace build reads MFR_FABRIC_MANIFEST_VERSION, which the workspace build tool exports "+
 				"from fabric/manifest-version.txt")
 	}
 	parsed, err := strconv.ParseUint(raw, 10, 32)

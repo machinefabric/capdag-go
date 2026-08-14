@@ -19,7 +19,7 @@ package bifaci
 import "strings"
 
 // DevSlug is the reserved folder name for cartridges with no registry
-// (developer-built cartridges installed via `dx cartridge --install` without
+// (developer-built cartridges installed via a workspace cartridge install without
 // `--registry`). A real registry authority is never the literal "dev".
 const DevSlug = "dev"
 

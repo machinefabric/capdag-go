@@ -62,7 +62,7 @@ const (
 // each cartridge version directory.
 //
 // `(RegistryURL, Channel, Name, Version)` is the install's full
-// identity. The installer (.pkg or `dx cartridge --install`) writes
+// identity. The installer (.pkg or a workspace cartridge install) writes
 // these fields based on which (registry × channel) the cartridge
 // was published / built for. Each (registry, channel) is an
 // independent namespace: install of the same id+version from

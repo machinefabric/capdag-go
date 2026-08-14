@@ -1,7 +1,7 @@
 // A cartridge whose build identity arrives through the linker.
 //
 // This is the fixture for TEST7161. It exists to be BUILT — with and without
-// the ldflags `dx cartridge` injects — so the test can observe what each build
+// the ldflags the workspace cartridge build injects — so the test can observe what each build
 // produces. It is under `testdata/` so the module's own `go build ./...` never
 // compiles it: the point is what happens when it is built a particular way, and
 // the test is the only thing that knows which way.
@@ -23,7 +23,7 @@ import (
 //
 //	go build -ldflags='-X main.cartridgeChannel=release'
 //
-// (or "nightly"). `dx cartridge` injects it from $MFR_CARTRIDGE_CHANNEL. An
+// (or "nightly"). the workspace cartridge build injects it from $MFR_CARTRIDGE_CHANNEL. An
 // empty value means the build path did not set the flag, which is a build-system
 // bug — fail loudly at startup rather than ship a binary with no channel.
 var cartridgeChannel string
@@ -41,7 +41,7 @@ func main() {
 	if cartridgeChannel != "release" && cartridgeChannel != "nightly" {
 		fmt.Fprintf(os.Stderr,
 			"FATAL: cartridgeChannel link-time var is %q; expected \"release\" or \"nightly\". "+
-				"Build with `dx cartridge --release` or `--nightly` to inject the channel via "+
+				"Build with a workspace cartridge build for the release or nightly channel to inject the channel via "+
 				"-ldflags '-X main.cartridgeChannel=…'.\n",
 			cartridgeChannel,
 		)
