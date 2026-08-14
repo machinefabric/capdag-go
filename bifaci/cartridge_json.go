@@ -58,6 +58,11 @@ const (
 	CartridgeInstallSourceAppInstaller CartridgeInstallSource = "app_installer"
 )
 
+// Values outside these constants are legal on the wire: the provenance
+// vocabulary grows as installers do, and only `bundle` carries semantics —
+// the string type deliberately preserves unknown spellings verbatim rather
+// than rejecting them. No writer's mistake is ever promoted to a constant.
+
 // CartridgeJson holds install-context metadata stored in cartridge.json inside
 // each cartridge version directory.
 //

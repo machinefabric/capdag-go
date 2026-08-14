@@ -2,6 +2,7 @@ package bifaci
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -106,4 +107,45 @@ func Test7153_install_timestamp_is_rfc3339_utc(t *testing.T) {
 	require.NoError(t, err, "not parseable as RFC3339: %s", now)
 	assert.True(t, parsed.Year() >= 2020 && parsed.Year() < 2200,
 		"the current year came out as %d: %s", parsed.Year(), now)
+}
+
+// TEST1514: the provenance vocabulary grows with installers. A workspace
+// build install parses to its named constant; a spelling this build does not
+// know parses, is preserved VERBATIM, round-trips, and is not `bundle` (the
+// one semantic value) — an unknown telemetry hint can never fail the
+// cartridge.json parse and take the cartridge down with it. Go's string
+// type is tolerant by construction; this pins that property so a future
+// "validate against the constants" refactor cannot reintroduce the closed
+// vocabulary that bricked installs elsewhere.
+func Test1514_install_source_vocabulary_tolerance(t *testing.T) {
+	base := `{
+		"name": "candlecartridge",
+		"version": "1.227.800",
+		"channel": "nightly",
+		"registry_url": "https://cartridges-staging.machinefabric.com/v1/manifest",
+		"entry": "candlecartridge",
+		"installed_at": "2026-08-14T22:26:59Z",
+		"installed_from": "%s",
+		"fabric_manifest_version": 4
+	}`
+
+	// A drifted installer's spelling is tolerated but NOT blessed: the
+	// protocol's vocabulary is registry/dev/bundle/app_installer, and a
+	// writer's mistake never becomes a constant.
+	var built CartridgeJson
+	require.NoError(t, json.Unmarshal([]byte(fmt.Sprintf(base, "build")), &built))
+	require.NotNil(t, built.InstalledFrom)
+	assert.Equal(t, CartridgeInstallSource("build"), *built.InstalledFrom)
+
+	var unknown CartridgeJson
+	require.NoError(t, json.Unmarshal([]byte(fmt.Sprintf(base, "quantum_courier")), &unknown),
+		"an unknown provenance spelling must never fail the parse")
+	require.NotNil(t, unknown.InstalledFrom)
+	assert.Equal(t, CartridgeInstallSource("quantum_courier"), *unknown.InstalledFrom)
+	assert.NotEqual(t, CartridgeInstallSourceBundle, *unknown.InstalledFrom)
+
+	rewritten, err := json.Marshal(unknown)
+	require.NoError(t, err)
+	assert.Contains(t, string(rewritten), `"installed_from":"quantum_courier"`,
+		"unknown spellings round-trip verbatim")
 }
