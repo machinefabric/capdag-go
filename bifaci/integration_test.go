@@ -277,7 +277,7 @@ func Test284_HandshakeHostCartridge(t *testing.T) {
 		reader := NewFrameReader(cartridgeRead)
 		writer := NewFrameWriter(cartridgeWrite)
 
-		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), 0)
+		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), make(PoolStates))
 		require.NoError(t, err)
 		assert.True(t, limits.MaxFrame > 0)
 		assert.True(t, limits.MaxChunk > 0)
@@ -319,7 +319,7 @@ func Test285_RequestResponseSimple(t *testing.T) {
 		writer := NewFrameWriter(cartridgeWrite)
 
 		// Handshake
-		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), 0)
+		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), make(PoolStates))
 		require.NoError(t, err)
 		reader.SetLimits(limits)
 		writer.SetLimits(limits)
@@ -380,7 +380,7 @@ func Test286_StreamingChunks(t *testing.T) {
 		reader := NewFrameReader(cartridgeRead)
 		writer := NewFrameWriter(cartridgeWrite)
 
-		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), 0)
+		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), make(PoolStates))
 		require.NoError(t, err)
 		reader.SetLimits(limits)
 		writer.SetLimits(limits)
@@ -456,7 +456,7 @@ func Test287_HeartbeatFromHost(t *testing.T) {
 		reader := NewFrameReader(cartridgeRead)
 		writer := NewFrameWriter(cartridgeWrite)
 
-		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), 0)
+		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), make(PoolStates))
 		require.NoError(t, err)
 		reader.SetLimits(limits)
 		writer.SetLimits(limits)
@@ -468,7 +468,7 @@ func Test287_HeartbeatFromHost(t *testing.T) {
 
 		// Respond with heartbeat
 		response := NewHeartbeat(frame.Id)
-		response.Meta = map[string]interface{}{"handler_capacity": uint64(0)}
+		response.Meta = map[string]interface{}{MetaPools: EncodePoolStates(make(PoolStates))}
 		err = writer.WriteFrame(response)
 		require.NoError(t, err)
 
@@ -517,7 +517,7 @@ func Test0265_CartridgeErrorResponse(t *testing.T) {
 		reader := NewFrameReader(cartridgeRead)
 		writer := NewFrameWriter(cartridgeWrite)
 
-		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), 0)
+		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), make(PoolStates))
 		require.NoError(t, err)
 		reader.SetLimits(limits)
 		writer.SetLimits(limits)
@@ -574,7 +574,7 @@ func Test6524_LogFramesDuringRequest(t *testing.T) {
 		reader := NewFrameReader(cartridgeRead)
 		writer := NewFrameWriter(cartridgeWrite)
 
-		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), 0)
+		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), make(PoolStates))
 		require.NoError(t, err)
 		reader.SetLimits(limits)
 		writer.SetLimits(limits)
@@ -652,7 +652,7 @@ func Test290_LimitsNegotiation(t *testing.T) {
 		writer := NewFrameWriter(cartridgeWrite)
 
 		// Handshake
-		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), 0)
+		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), make(PoolStates))
 		require.NoError(t, err)
 		cartridgeLimits = limits
 	}()
@@ -696,7 +696,7 @@ func Test291_BinaryPayloadRoundtrip(t *testing.T) {
 		reader := NewFrameReader(cartridgeRead)
 		writer := NewFrameWriter(cartridgeWrite)
 
-		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), 0)
+		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), make(PoolStates))
 		require.NoError(t, err)
 		reader.SetLimits(limits)
 		writer.SetLimits(limits)
@@ -766,7 +766,7 @@ func Test292_MessageIdUniqueness(t *testing.T) {
 		reader := NewFrameReader(cartridgeRead)
 		writer := NewFrameWriter(cartridgeWrite)
 
-		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), 0)
+		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), make(PoolStates))
 		require.NoError(t, err)
 		reader.SetLimits(limits)
 		writer.SetLimits(limits)
@@ -862,7 +862,7 @@ func Test0267_HeartbeatDuringStreaming(t *testing.T) {
 		reader := NewFrameReader(cartridgeRead)
 		writer := NewFrameWriter(cartridgeWrite)
 
-		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), 0)
+		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), make(PoolStates))
 		require.NoError(t, err)
 		reader.SetLimits(limits)
 		writer.SetLimits(limits)
@@ -960,7 +960,7 @@ func Test6526_HostInitiatedHeartbeatNoPingPong(t *testing.T) {
 		reader := NewFrameReader(cartridgeRead)
 		writer := NewFrameWriter(cartridgeWrite)
 
-		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), 0)
+		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), make(PoolStates))
 		require.NoError(t, err)
 		reader.SetLimits(limits)
 		writer.SetLimits(limits)
@@ -979,7 +979,7 @@ func Test6526_HostInitiatedHeartbeatNoPingPong(t *testing.T) {
 
 		// Respond to heartbeat
 		hbResponse := NewHeartbeat(heartbeatID)
-		hbResponse.Meta = map[string]interface{}{"handler_capacity": uint64(0)}
+		hbResponse.Meta = map[string]interface{}{MetaPools: EncodePoolStates(make(PoolStates))}
 		err = writer.WriteFrame(hbResponse)
 		require.NoError(t, err)
 
@@ -1043,7 +1043,7 @@ func Test0269_ArgumentsRoundtrip(t *testing.T) {
 		reader := NewFrameReader(cartridgeRead)
 		writer := NewFrameWriter(cartridgeWrite)
 
-		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), 0)
+		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), make(PoolStates))
 		require.NoError(t, err)
 		reader.SetLimits(limits)
 		writer.SetLimits(limits)
@@ -1118,7 +1118,7 @@ func Test6528_CartridgeSuddenDisconnect(t *testing.T) {
 		reader := NewFrameReader(cartridgeRead)
 		writer := NewFrameWriter(cartridgeWrite)
 
-		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), 0)
+		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), make(PoolStates))
 		require.NoError(t, err)
 		reader.SetLimits(limits)
 		writer.SetLimits(limits)
@@ -1172,7 +1172,7 @@ func Test299_EmptyPayloadRoundtrip(t *testing.T) {
 		reader := NewFrameReader(cartridgeRead)
 		writer := NewFrameWriter(cartridgeWrite)
 
-		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), 0)
+		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), make(PoolStates))
 		require.NoError(t, err)
 		reader.SetLimits(limits)
 		writer.SetLimits(limits)
@@ -1228,7 +1228,7 @@ func Test6529_EndFrameNoPayload(t *testing.T) {
 		reader := NewFrameReader(cartridgeRead)
 		writer := NewFrameWriter(cartridgeWrite)
 
-		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), 0)
+		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), make(PoolStates))
 		require.NoError(t, err)
 		reader.SetLimits(limits)
 		writer.SetLimits(limits)
@@ -1284,7 +1284,7 @@ func Test6530_StreamingSequenceNumbers(t *testing.T) {
 		reader := NewFrameReader(cartridgeRead)
 		writer := NewFrameWriter(cartridgeWrite)
 
-		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), 0)
+		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), make(PoolStates))
 		require.NoError(t, err)
 		reader.SetLimits(limits)
 		writer.SetLimits(limits)
@@ -1356,7 +1356,7 @@ func Test6531_RequestAfterShutdown(t *testing.T) {
 		reader := NewFrameReader(cartridgeRead)
 		writer := NewFrameWriter(cartridgeWrite)
 
-		_, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), 0)
+		_, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), make(PoolStates))
 		require.NoError(t, err)
 
 		// Close immediately
@@ -1403,7 +1403,7 @@ func Test6532_ArgumentsMultiple(t *testing.T) {
 		reader := NewFrameReader(cartridgeRead)
 		writer := NewFrameWriter(cartridgeWrite)
 
-		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), 0)
+		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), make(PoolStates))
 		require.NoError(t, err)
 		reader.SetLimits(limits)
 		writer.SetLimits(limits)
@@ -1475,7 +1475,7 @@ func Test6533_AutoChunkingReassembly(t *testing.T) {
 		reader := NewFrameReader(cartridgeRead)
 		writer := NewFrameWriter(cartridgeWrite)
 
-		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), 0)
+		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), make(PoolStates))
 		require.NoError(t, err)
 		reader.SetLimits(limits)
 		writer.SetLimits(limits)
@@ -1561,7 +1561,7 @@ func Test6535_ExactMaxChunkSingleEnd(t *testing.T) {
 		reader := NewFrameReader(cartridgeRead)
 		writer := NewFrameWriter(cartridgeWrite)
 
-		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), 0)
+		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), make(PoolStates))
 		require.NoError(t, err)
 		reader.SetLimits(limits)
 		writer.SetLimits(limits)
@@ -1626,7 +1626,7 @@ func Test6537_MaxChunkPlusOneSplitsIntoTwo(t *testing.T) {
 		reader := NewFrameReader(cartridgeRead)
 		writer := NewFrameWriter(cartridgeWrite)
 
-		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), 0)
+		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), make(PoolStates))
 		require.NoError(t, err)
 		reader.SetLimits(limits)
 		writer.SetLimits(limits)
@@ -1735,7 +1735,7 @@ func Test6330_ChunkingDataIntegrity3x(t *testing.T) {
 		reader := NewFrameReader(cartridgeRead)
 		writer := NewFrameWriter(cartridgeWrite)
 
-		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), 0)
+		limits, err := HandshakeAccept(reader, writer, []byte(testCBORManifest), make(PoolStates))
 		require.NoError(t, err)
 		reader.SetLimits(limits)
 		writer.SetLimits(limits)

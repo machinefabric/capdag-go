@@ -152,7 +152,11 @@ const (
 
 // CartridgeRuntimeStats holds live statistics for a managed cartridge.
 type CartridgeRuntimeStats struct {
-	HandlerCapacity          uint64  `json:"handler_capacity"`
+	// Pools is the cartridge's full concurrency-pool state map (pools.go):
+	// declared/configured/available/active/queued per pool — singleton
+	// pools keyed by cap URN, declared shared pools, and `all`. This IS
+	// the capacity surface; there is no scalar.
+	Pools                    PoolStates `json:"pools"`
 	Running                  bool    `json:"running"`
 	PID                      *uint32 `json:"pid,omitempty"`
 	ActiveRequestCount       uint64  `json:"active_request_count"`
@@ -169,28 +173,28 @@ type CartridgeRuntimeStats struct {
 	ProtocolDropsTotal *uint64 `json:"protocol_drops_total,omitempty"`
 }
 
-// UnmarshalJSON enforces the protocol-v4 handler-capacity field. A missing
-// field must not decode as the meaningful value zero (unlimited).
+// UnmarshalJSON enforces the protocol-v4 pool-state map. A missing map must
+// not decode as the meaningful empty value.
 func (s *CartridgeRuntimeStats) UnmarshalJSON(data []byte) error {
 	type alias CartridgeRuntimeStats
 	var raw struct {
 		*alias
-		HandlerCapacity *uint64 `json:"handler_capacity"`
+		Pools *PoolStates `json:"pools"`
 	}
 	raw.alias = (*alias)(s)
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
-	if raw.HandlerCapacity == nil {
-		return errors.New("runtime_stats.handler_capacity is required")
+	if raw.Pools == nil {
+		return errors.New("runtime_stats.pools is required")
 	}
-	s.HandlerCapacity = *raw.HandlerCapacity
+	s.Pools = *raw.Pools
 	return nil
 }
 
 // NotRunning returns a CartridgeRuntimeStats representing a stopped cartridge.
 func NotRunning() CartridgeRuntimeStats {
-	return CartridgeRuntimeStats{Running: false, HandlerCapacity: 0}
+	return CartridgeRuntimeStats{Running: false, Pools: make(PoolStates)}
 }
 
 // InstalledCartridgeRecord represents the identity of an installed
@@ -363,8 +367,9 @@ type RelaySwitch struct {
 	masters  []*MasterConnection
 	capTable []CapTableEntry
 	// admission is the FIFO switch-side admission gate. Mirrors Rust
-	// RelaySwitch.admission: a positive handler_capacity bounds how many
-	// requests the switch dispatches to one cartridge install at a time.
+	// RelaySwitch.admission: a dispatch is held against its cap's whole
+	// pool CHAIN (see pools.go); a bounded pool limits how many requests
+	// the switch dispatches through it at a time.
 	admission *AdmissionController
 	// requests is the unified per-request state (L7): routing, origin, peer
 	// markers, cancel-cascade children, external response channel (used by
@@ -1531,15 +1536,18 @@ func (sw *RelaySwitch) acquireCapAdmission(capURN string, preferredCap *string) 
 		sw.mu.Unlock()
 		return nil, err
 	}
-	key, capacity, err := sw.capAdmissionTargetLocked(destIdx, registeredCap)
+	chain, err := sw.capAdmissionTargetLocked(destIdx, registeredCap)
 	if err != nil {
 		sw.mu.Unlock()
 		return nil, err
 	}
-	sw.admission.Configure(key, capacity)
 	sw.mu.Unlock()
 
-	permit, err := sw.admission.Acquire(key, nil)
+	keys := make([]PoolKey, len(chain))
+	for i, entry := range chain {
+		keys[i] = entry.Key
+	}
+	permit, err := sw.admission.Acquire(keys, nil)
 	if err != nil {
 		return nil, &RelaySwitchError{
 			Type:    RelaySwitchErrorTypeCartridgeUnavailable,
@@ -1581,30 +1589,67 @@ func (sw *RelaySwitch) configureMasterAdmissionLocked(masterIdx int, cartridges 
 					record.Id, masterIdx),
 			}
 		}
-		capacity := uint64(1)
-		if record.RuntimeStats.Running {
-			capacity = record.RuntimeStats.HandlerCapacity
-		}
 		key := admissionKeyFor(masterIdx, record)
 		// A host may expose several process instances of the same logical
 		// install. They share one admission identity: preserve the first
 		// host-ordered record, matching host dispatch, rather than letting a
-		// later duplicate overwrite its effective capacity.
+		// later duplicate overwrite its effective capacities.
 		if _, seen := available[key]; !seen {
+			capacities, err := poolCapacities(record.RuntimeStats, record.Id)
+			if err != nil {
+				return err
+			}
 			available[key] = struct{}{}
-			sw.admission.Configure(key, capacity)
+			sw.admission.ConfigurePools(key, capacities)
 		}
 	}
 	sw.admission.ReconcileMaster(masterIdx, available)
 	return nil
 }
 
-// capAdmissionTargetLocked resolves the admission identity and capacity of the
-// cartridge that owns registeredCap on this master. Caller must hold sw.mu.
-// Mirrors Rust cap_admission_target.
-func (sw *RelaySwitch) capAdmissionTargetLocked(masterIdx int, registeredCap string) (AdmissionKey, uint64, error) {
+// poolCapacities converts one record's advertised pool map into the
+// admission controller's EFFECTIVE capacities. A NOT-RUNNING record's `all`
+// pool is clamped to 1 — the cold-start canary: the first dispatch to a
+// cold cartridge is a single body that proves the spawn before the
+// advertised capacities apply (failure containment, not missing
+// information). An EMPTY pool map on an operational record is a protocol
+// error, never a free pass. (matches Rust pool_capacities)
+func poolCapacities(stats *CartridgeRuntimeStats, cartridgeID string) (map[string]uint64, error) {
+	if len(stats.Pools) == 0 {
+		return nil, &RelaySwitchError{
+			Type: RelaySwitchErrorTypeProtocol,
+			Message: fmt.Sprintf(
+				"cartridge '%s' advertises no concurrency pools — the pool map is mandatory for operational records",
+				cartridgeID),
+		}
+	}
+	capacities := make(map[string]uint64, len(stats.Pools))
+	for name, state := range stats.Pools {
+		if !stats.Running && name == PoolAll {
+			capacities[name] = 1
+			continue
+		}
+		s := state
+		capacities[name] = s.Effective()
+	}
+	return capacities, nil
+}
+
+// admissionChainEntry is one pool of a cap's admission chain paired with
+// that pool's effective capacity (0 = unlimited). (matches Rust
+// admission_chain's Vec<(PoolKey, usize)> elements)
+type admissionChainEntry struct {
+	Key      PoolKey
+	Capacity uint64
+}
+
+// capAdmissionTargetLocked resolves the cap's admission CHAIN — each
+// (install, pool) permit domain a dispatch is held against, in order
+// (singleton, declared pools, `all`), with per-pool effective capacities —
+// on this master. Caller must hold sw.mu. Mirrors Rust cap_admission_target.
+func (sw *RelaySwitch) capAdmissionTargetLocked(masterIdx int, registeredCap string) ([]admissionChainEntry, error) {
 	if masterIdx < 0 || masterIdx >= len(sw.masters) {
-		return AdmissionKey{}, 0, &RelaySwitchError{
+		return nil, &RelaySwitchError{
 			Type:    RelaySwitchErrorTypeProtocol,
 			Message: fmt.Sprintf("selected master index %d no longer exists", masterIdx),
 		}
@@ -1634,7 +1679,7 @@ func (sw *RelaySwitch) capAdmissionTargetLocked(masterIdx int, registeredCap str
 			continue
 		}
 		if key != ownerKey {
-			return AdmissionKey{}, 0, &RelaySwitchError{
+			return nil, &RelaySwitchError{
 				Type: RelaySwitchErrorTypeProtocol,
 				Message: fmt.Sprintf(
 					"master %d has multiple distinct installed cartridges claiming cap '%s'; routing is ambiguous",
@@ -1643,7 +1688,7 @@ func (sw *RelaySwitch) capAdmissionTargetLocked(masterIdx int, registeredCap str
 		}
 	}
 	if owner == nil {
-		return AdmissionKey{}, 0, &RelaySwitchError{
+		return nil, &RelaySwitchError{
 			Type: RelaySwitchErrorTypeProtocol,
 			Message: fmt.Sprintf(
 				"master %d advertises cap '%s' without an installed-cartridge owner",
@@ -1651,25 +1696,68 @@ func (sw *RelaySwitch) capAdmissionTargetLocked(masterIdx int, registeredCap str
 		}
 	}
 	if owner.RuntimeStats == nil {
-		return AdmissionKey{}, 0, &RelaySwitchError{
+		return nil, &RelaySwitchError{
 			Type: RelaySwitchErrorTypeProtocol,
 			Message: fmt.Sprintf(
 				"cartridge '%s' on master %d is missing mandatory v4 runtime_stats",
 				owner.Id, masterIdx),
 		}
 	}
-	capacity := uint64(1)
-	if owner.RuntimeStats.Running {
-		capacity = owner.RuntimeStats.HandlerCapacity
+	capacities, err := poolCapacities(owner.RuntimeStats, owner.Id)
+	if err != nil {
+		return nil, err
 	}
-	return ownerKey, capacity, nil
+	sw.admission.ConfigurePools(ownerKey, capacities)
+	return admissionChain(ownerKey, owner.RuntimeStats, registeredCap, owner.Id)
 }
 
-// AdmissionCapacityForCap returns the authoritative handler capacity for the
-// cartridge selected by normal cap dispatch. A positive capacity is an
-// execution boundary: callers must not pre-acquire that request as part of a
-// multi-cap live pipeline, because the permit represents an actively owned
-// process slot. Zero means unlimited. Mirrors Rust admission_capacity_for_cap.
+// admissionChain builds the cap's pool CHAIN over one record's advertised
+// pool map, each admission domain paired with its effective capacity (0 =
+// unlimited, with the not-running canary clamp on `all`). A cap the pool
+// map does not cover is a protocol error, never a free pass. (matches Rust
+// admission_chain)
+func admissionChain(install AdmissionKey, stats *CartridgeRuntimeStats, registeredCap, cartridgeID string) ([]admissionChainEntry, error) {
+	parsed, err := urn.NewCapUrnFromString(registeredCap)
+	if err != nil {
+		return nil, &RelaySwitchError{
+			Type:    RelaySwitchErrorTypeProtocol,
+			Message: fmt.Sprintf("registered cap '%s' is not a valid cap URN: %v", registeredCap, err),
+		}
+	}
+	canonical := parsed.String()
+	names := ChainFromStates(stats.Pools, canonical)
+	if len(names) == 0 || names[0] != canonical || names[len(names)-1] != PoolAll {
+		return nil, &RelaySwitchError{
+			Type: RelaySwitchErrorTypeProtocol,
+			Message: fmt.Sprintf(
+				"cartridge '%s' advertises cap '%s' with no pool coverage — its pool map is missing the cap's singleton or the '%s' pool",
+				cartridgeID, canonical, PoolAll),
+		}
+	}
+	chain := make([]admissionChainEntry, 0, len(names))
+	for _, name := range names {
+		var effective uint64
+		if !stats.Running && name == PoolAll {
+			// The cold-start canary clamp — see poolCapacities.
+			effective = 1
+		} else {
+			state := stats.Pools[name]
+			effective = state.Effective()
+		}
+		chain = append(chain, admissionChainEntry{
+			Key:      PoolKey{Install: install, Pool: name},
+			Capacity: effective,
+		})
+	}
+	return chain, nil
+}
+
+// AdmissionCapacityForCap returns the authoritative minimum effective
+// capacity across the pool chain serving a cap (0 = every pool unlimited).
+// A positive capacity is an execution boundary: callers must not
+// pre-acquire that request as part of a multi-cap live pipeline, because
+// the permit represents actively owned pool slots. Mirrors Rust
+// admission_capacity_for_cap.
 func (sw *RelaySwitch) AdmissionCapacityForCap(capURN string) (uint64, error) {
 	sw.mu.Lock()
 	defer sw.mu.Unlock()
@@ -1681,8 +1769,20 @@ func (sw *RelaySwitch) AdmissionCapacityForCap(capURN string) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	_, capacity, err := sw.capAdmissionTargetLocked(destIdx, registeredCap)
-	return capacity, err
+	chain, err := sw.capAdmissionTargetLocked(destIdx, registeredCap)
+	if err != nil {
+		return 0, err
+	}
+	var minEffective uint64
+	for _, entry := range chain {
+		if entry.Capacity == 0 {
+			continue
+		}
+		if minEffective == 0 || entry.Capacity < minEffective {
+			minEffective = entry.Capacity
+		}
+	}
+	return minEffective, nil
 }
 
 // registeredCapForLocked returns the cap-table entry on this master that the

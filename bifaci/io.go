@@ -160,8 +160,9 @@ func (fw *FrameWriter) WriteResponseWithChunking(requestId MessageId, streamId s
 	return fw.WriteFrame(endFrame)
 }
 
-// HandshakeAccept performs handshake from cartridge side
-func HandshakeAccept(reader *FrameReader, writer *FrameWriter, manifestData []byte, handlerCapacity uint64) (Limits, error) {
+// HandshakeAccept performs handshake from cartridge side. poolStates is the
+// cartridge's mandatory concurrency-pool state map (see pools.go).
+func HandshakeAccept(reader *FrameReader, writer *FrameWriter, manifestData []byte, poolStates PoolStates) (Limits, error) {
 	// 1. Read HELLO from host
 	helloFrame, err := reader.ReadFrame()
 	if err != nil {
@@ -189,7 +190,7 @@ func HandshakeAccept(reader *FrameReader, writer *FrameWriter, manifestData []by
 	}
 
 	// 3. Send HELLO back with manifest
-	responseFrame := NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit, handlerCapacity, manifestData)
+	responseFrame := NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit, manifestData, poolStates)
 	if err := writer.WriteFrame(responseFrame); err != nil {
 		return Limits{}, fmt.Errorf("failed to write HELLO response: %w", err)
 	}
@@ -200,32 +201,35 @@ func HandshakeAccept(reader *FrameReader, writer *FrameWriter, manifestData []by
 	return negotiated, nil
 }
 
-// HandshakeInitiate performs handshake from host side
-func HandshakeInitiate(reader *FrameReader, writer *FrameWriter) ([]byte, Limits, uint64, error) {
+// HandshakeInitiate performs handshake from host side. Returns the
+// cartridge's manifest bytes, the negotiated limits, and the cartridge's
+// mandatory concurrency-pool state map (a missing or malformed map is a
+// protocol violation, never a default).
+func HandshakeInitiate(reader *FrameReader, writer *FrameWriter) ([]byte, Limits, PoolStates, error) {
 	// 1. Send HELLO with our limits
 	helloFrame := NewHello(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit)
 	if err := writer.WriteFrame(helloFrame); err != nil {
-		return nil, Limits{}, 0, fmt.Errorf("failed to write HELLO: %w", err)
+		return nil, Limits{}, nil, fmt.Errorf("failed to write HELLO: %w", err)
 	}
 
 	// 2. Read HELLO response with manifest
 	responseFrame, err := reader.ReadFrame()
 	if err != nil {
-		return nil, Limits{}, 0, fmt.Errorf("failed to read HELLO response: %w", err)
+		return nil, Limits{}, nil, fmt.Errorf("failed to read HELLO response: %w", err)
 	}
 
 	if responseFrame.FrameType != FrameTypeHello {
-		return nil, Limits{}, 0, errors.New("expected HELLO response")
+		return nil, Limits{}, nil, errors.New("expected HELLO response")
 	}
 
 	// Protocol version must match exactly (L1). No cross-version operation.
 	// (matches Rust handshake)
 	theirVersion, err := helloVersion(responseFrame)
 	if err != nil {
-		return nil, Limits{}, 0, err
+		return nil, Limits{}, nil, err
 	}
 	if theirVersion != ProtocolVersion {
-		return nil, Limits{}, 0, fmt.Errorf("protocol version mismatch: ours %d, theirs %d", ProtocolVersion, theirVersion)
+		return nil, Limits{}, nil, fmt.Errorf("protocol version mismatch: ours %d, theirs %d", ProtocolVersion, theirVersion)
 	}
 
 	// 3. Extract manifest from Meta map
@@ -235,21 +239,27 @@ func HandshakeInitiate(reader *FrameReader, writer *FrameWriter) ([]byte, Limits
 			manifestData = manifest
 		}
 	}
-	handlerCapacity, ok := extractUint64FromMeta(responseFrame.Meta, "handler_capacity")
-	if !ok {
-		return nil, Limits{}, 0, errors.New("cartridge HELLO missing required non-negative handler_capacity")
+	// The pool-state map is MANDATORY on a cartridge HELLO (see pools.go):
+	// a missing or malformed map is a protocol violation, never a default.
+	poolBytes := responseFrame.PoolStateBytes()
+	if poolBytes == nil {
+		return nil, Limits{}, nil, errors.New("cartridge HELLO missing required concurrency-pool state map")
+	}
+	poolStates, err := DecodePoolStates(poolBytes)
+	if err != nil {
+		return nil, Limits{}, nil, fmt.Errorf("cartridge HELLO pool-state map: %w", err)
 	}
 
 	// 4. Extract cartridge limits from Meta map
 	cartridgeLimits, err := requiredHelloLimits(responseFrame)
 	if err != nil {
-		return nil, Limits{}, 0, err
+		return nil, Limits{}, nil, err
 	}
 
 	// 5. Negotiate limits
 	negotiated := NegotiateLimits(DefaultLimits(), cartridgeLimits)
 
-	return manifestData, negotiated, handlerCapacity, nil
+	return manifestData, negotiated, poolStates, nil
 }
 
 // helloVersion reads the required protocol version declared by HELLO itself.

@@ -68,6 +68,11 @@ type CapManifest struct {
 
 	// Human-readable page URL for the cartridge (e.g., repository page, documentation)
 	PageUrl *string `json:"page_url,omitempty"`
+
+	// Concurrency-pool declarations (see pools.go): shared-pool
+	// memberships and declared capacities. nil = nothing declared
+	// (every pool unlimited). (matches Rust CapManifest.pool_declarations)
+	PoolDeclarations *PoolDeclarations `json:"pool_declarations,omitempty"`
 }
 
 // UnmarshalJSON deserializes a CapManifest, enforcing the stricter
@@ -101,14 +106,15 @@ func (cm *CapManifest) UnmarshalJSON(data []byte) error {
 	}
 
 	type rawManifest struct {
-		Name        string           `json:"name"`
-		Version     string           `json:"version"`
-		Channel     CartridgeChannel `json:"channel"`
-		RegistryURL *string          `json:"registry_url"`
-		Description string           `json:"description"`
-		CapGroups   []CapGroup       `json:"cap_groups"`
-		Author      *string          `json:"author"`
-		PageUrl     *string          `json:"page_url"`
+		Name             string            `json:"name"`
+		Version          string            `json:"version"`
+		Channel          CartridgeChannel  `json:"channel"`
+		RegistryURL      *string           `json:"registry_url"`
+		Description      string            `json:"description"`
+		CapGroups        []CapGroup        `json:"cap_groups"`
+		Author           *string           `json:"author"`
+		PageUrl          *string           `json:"page_url"`
+		PoolDeclarations *PoolDeclarations `json:"pool_declarations"`
 	}
 	var raw rawManifest
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -123,6 +129,7 @@ func (cm *CapManifest) UnmarshalJSON(data []byte) error {
 	cm.CapGroups = raw.CapGroups
 	cm.Author = raw.Author
 	cm.PageUrl = raw.PageUrl
+	cm.PoolDeclarations = raw.PoolDeclarations
 	return nil
 }
 
@@ -203,6 +210,42 @@ func (cm *CapManifest) WithPageUrl(pageUrl string) *CapManifest {
 	return cm
 }
 
+// WithPoolDeclarations validates the pool declarations against this
+// manifest's caps, canonicalizes them, and attaches them. Hard error on
+// any illegal shape (see PoolDeclarations.Validated). (matches Rust
+// CapManifest::with_pool_declarations)
+func (cm *CapManifest) WithPoolDeclarations(declarations PoolDeclarations) (*CapManifest, error) {
+	declared := cm.declaredCapUrns()
+	validated, err := declarations.Validated(declared)
+	if err != nil {
+		return nil, err
+	}
+	cm.PoolDeclarations = validated
+	return cm, nil
+}
+
+// DeclaredPoolStates materializes the manifest's declared pool-state map:
+// one singleton pool per cap, every declared shared pool, and `all` (see
+// pools.go). (matches Rust CapManifest::declared_pool_states)
+func (cm *CapManifest) DeclaredPoolStates() PoolStates {
+	declarations := cm.PoolDeclarations
+	if declarations == nil {
+		declarations = &PoolDeclarations{}
+	}
+	return declarations.DeclaredStates(cm.declaredCapUrns())
+}
+
+func (cm *CapManifest) declaredCapUrns() []*urn.CapUrn {
+	caps := cm.AllCaps()
+	urns := make([]*urn.CapUrn, 0, len(caps))
+	for _, c := range caps {
+		if c.Urn != nil {
+			urns = append(urns, c.Urn)
+		}
+	}
+	return urns
+}
+
 // Validate checks that CAP_IDENTITY is declared in this manifest.
 // Checks caps within cap_groups.
 // Returns error if missing — identity is mandatory in every capset.
@@ -212,13 +255,25 @@ func (cm *CapManifest) Validate() error {
 		return fmt.Errorf("BUG: CAP_IDENTITY constant is invalid: %v", err)
 	}
 
+	hasIdentity := false
 	for _, c := range cm.AllCaps() {
 		if c.Urn != nil && identityUrn.ConformsTo(c.Urn) {
-			return nil
+			hasIdentity = true
+			break
 		}
 	}
+	if !hasIdentity {
+		return fmt.Errorf("Manifest missing required CAP_IDENTITY (%s)", standard.CapIdentity)
+	}
 
-	return fmt.Errorf("Manifest missing required CAP_IDENTITY (%s)", standard.CapIdentity)
+	// Pool declarations must resolve against this manifest's caps —
+	// a dangling reference is a cartridge-author bug, surfaced here.
+	if cm.PoolDeclarations != nil {
+		if _, err := cm.PoolDeclarations.Validated(cm.declaredCapUrns()); err != nil {
+			return fmt.Errorf("pool declarations: %w", err)
+		}
+	}
+	return nil
 }
 
 // EnsureIdentity ensures the manifest includes CAP_IDENTITY

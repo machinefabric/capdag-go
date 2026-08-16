@@ -12,6 +12,7 @@ import (
 
 	"github.com/machinefabric/capdag-go/cap"
 	"github.com/machinefabric/capdag-go/standard"
+	"github.com/machinefabric/capdag-go/urn"
 )
 
 // testManifestWithCaps builds a RelayNotify-shaped manifest JSON map
@@ -35,6 +36,25 @@ const (
 	testCapEcho     = "cap:echo"
 )
 
+// testPoolStatesJSON builds a roster pools map for test stats: one at-rest
+// singleton per cap (canonical URN) plus the mandatory `all` pool — the
+// pool-map equivalent of the retired scalar handler_capacity.
+func testPoolStatesJSON(capURNs []string) map[string]interface{} {
+	atRest := func() map[string]interface{} {
+		return map[string]interface{}{"declared": 0, "configured": 0, "active": 0, "queued": 0}
+	}
+	pools := map[string]interface{}{}
+	for _, u := range capURNs {
+		parsed, err := urn.NewCapUrnFromString(u)
+		if err != nil {
+			panic(fmt.Sprintf("test cap URN must parse: %v", err))
+		}
+		pools[parsed.String()] = atRest()
+	}
+	pools[PoolAll] = atRest()
+	return pools
+}
+
 func testManifestWithCaps(capURNs []string) map[string]interface{} {
 	id := atomic.AddInt64(&testManifestCounter, 1)
 	if len(capURNs) == 0 {
@@ -48,11 +68,11 @@ func testManifestWithCaps(capURNs []string) map[string]interface{} {
 					"sha256":       "0000000000000000000000000000000000000000000000000000000000000000",
 					"cap_groups":   []interface{}{},
 					// v4: an advertised installed cartridge always carries its
-					// runtime stats — the switch resolves admission capacity
-					// from handler_capacity.
+					// runtime stats — the switch resolves admission
+					// capacities from the pool map.
 					"runtime_stats": map[string]interface{}{
-						"running":          false,
-						"handler_capacity": 0,
+						"running": false,
+						"pools":   testPoolStatesJSON(nil),
 					},
 				},
 			},
@@ -76,8 +96,8 @@ func testManifestWithCaps(capURNs []string) map[string]interface{} {
 				"version":      "0.0.0",
 				"sha256":       "0000000000000000000000000000000000000000000000000000000000000000",
 				"runtime_stats": map[string]interface{}{
-					"running":          true,
-					"handler_capacity": 0,
+					"running": true,
+					"pools":   testPoolStatesJSON(capURNs),
 				},
 				"cap_groups": []interface{}{
 					map[string]interface{}{
@@ -1693,11 +1713,11 @@ func deferredIdentityNotify(capURNs []string) []byte {
 				"version":      "0.0.0",
 				"sha256":       "0000000000000000000000000000000000000000000000000000000000000000",
 				// v4: an advertised installed cartridge always carries its
-				// runtime stats — the switch resolves admission capacity from
-				// handler_capacity.
+				// runtime stats — the switch resolves admission capacities
+				// from the pool map.
 				"runtime_stats": map[string]interface{}{
-					"running":          true,
-					"handler_capacity": 0,
+					"running": true,
+					"pools":   testPoolStatesJSON(capURNs),
 				},
 				"cap_groups": []interface{}{
 					map[string]interface{}{

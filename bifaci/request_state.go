@@ -19,6 +19,7 @@ package bifaci
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -751,7 +752,7 @@ func (t *RequestTable) String() string {
 // Admission control (mirrors Rust src/bifaci/request_state.rs).
 //
 // FIFO admission per cartridge install identity behind one relay master. The
-// cartridge-side `handler_capacity` gate (cartridge_runtime.go) bounds what one
+// cartridge-side pool-chain gate (cartridge_runtime.go) bounds what one
 // process runs at a time; THIS gate bounds what the switch dispatches to it, so
 // work queues in the switch instead of piling up unacknowledged on the wire.
 // =============================================================================
@@ -785,47 +786,70 @@ type AdmissionKey struct {
 	Sha256      string
 }
 
-type admissionSlot struct {
+// PoolKey is one admission domain: a pool on one install. (matches Rust
+// request_state::PoolKey)
+type PoolKey struct {
+	Install AdmissionKey
+	Pool    string
+}
+
+// poolSlot is one pool's admission state: EFFECTIVE capacity (0 =
+// unlimited), active count, and — for singleton pools only, the head of
+// every chain — the FIFO ticket queue. (matches Rust PoolSlot)
+type poolSlot struct {
+	capacity uint64
+	active   uint64
+	queue    []uint64
+}
+
+func (s *poolSlot) hasRoom() bool {
+	return s.capacity == 0 || s.active < s.capacity
+}
+
+// installState is one install's availability. Outages are an INSTALL-level
+// fact — a process disappears whole, never one pool at a time.
+// (matches Rust InstallState)
+type installState struct {
 	// unavailableSince is nil while the target is available, and set from the
 	// moment it went unavailable. Kept as an instant rather than a bool so the
 	// grace window measures the OUTAGE, not the arrival time of each waiter — a
 	// request that queues late into an outage does not get a fresh window.
 	unavailableSince *time.Time
-	capacity         uint64
-	active           uint64
-	queue            []uint64
 }
 
-func (s *admissionSlot) available() bool { return s.unavailableSince == nil }
+func (s *installState) available() bool { return s.unavailableSince == nil }
 
-// markUnavailable marks the slot unavailable, preserving the start of an outage
-// already in progress.
-func (s *admissionSlot) markUnavailable(now time.Time) {
+// markUnavailable marks the install unavailable, preserving the start of an
+// outage already in progress.
+func (s *installState) markUnavailable(now time.Time) {
 	if s.unavailableSince == nil {
 		t := now
 		s.unavailableSince = &t
 	}
 }
 
-// graceRemaining returns the remaining grace for an outage and true, or false
-// when the slot is available. A zero duration means the window has expired.
-func (s *admissionSlot) graceRemaining(now time.Time, grace time.Duration) (time.Duration, bool) {
+// graceRemaining reports (remaining, unavailable): remaining is what is left
+// of the outage window, zero once expired; unavailable is false while the
+// install is available.
+func (s *installState) graceRemaining(now time.Time, grace time.Duration) (time.Duration, bool) {
 	if s.unavailableSince == nil {
 		return 0, false
 	}
-	remaining := grace - now.Sub(*s.unavailableSince)
-	if remaining < 0 {
-		remaining = 0
+	elapsed := now.Sub(*s.unavailableSince)
+	if elapsed >= grace {
+		return 0, true
 	}
-	return remaining, true
+	return grace - elapsed, true
 }
 
-// AdmissionController is the FIFO admission shared by every request path in a
-// RelaySwitch.
+// AdmissionController is the engine-side pool admission gate (see pools.go):
+// one slot per (install, pool), one availability state per install. A
+// dispatch acquires its cap's whole pool CHAIN atomically.
 type AdmissionController struct {
-	mu      sync.Mutex
-	slots   map[AdmissionKey]*admissionSlot
-	tickets uint64
+	mu       sync.Mutex
+	slots    map[PoolKey]*poolSlot
+	installs map[AdmissionKey]*installState
+	tickets  uint64
 	// notify is closed and replaced whenever slot state changes, which is how
 	// waiters are woken (the Go analog of Rust's tokio Notify).
 	notify chan struct{}
@@ -838,9 +862,10 @@ type AdmissionController struct {
 // window.
 func NewAdmissionController() *AdmissionController {
 	return &AdmissionController{
-		slots:  make(map[AdmissionKey]*admissionSlot),
-		notify: make(chan struct{}),
-		grace:  AdmissionUnavailableGrace,
+		slots:    make(map[PoolKey]*poolSlot),
+		installs: make(map[AdmissionKey]*installState),
+		notify:   make(chan struct{}),
+		grace:    AdmissionUnavailableGrace,
 	}
 }
 
@@ -850,61 +875,70 @@ func (c *AdmissionController) notifyAllLocked() {
 	c.notify = make(chan struct{})
 }
 
-// Configure registers or updates a target's capacity. A configure is the target
-// advertising itself: it ENDS any outage, which is what releases waiters queued
-// through a respawn or a roster round-trip.
-func (c *AdmissionController) Configure(key AdmissionKey, capacity uint64) {
+// ConfigurePools advertises one install's full pool map: EFFECTIVE capacity
+// per pool. A configure is the target advertising itself: it ENDS any
+// outage, which is what releases waiters queued through a respawn or a
+// roster round-trip. (matches Rust configure_pools)
+func (c *AdmissionController) ConfigurePools(install AdmissionKey, pools map[string]uint64) {
 	c.mu.Lock()
-	slot, ok := c.slots[key]
+	state, ok := c.installs[install]
 	if !ok {
-		slot = &admissionSlot{}
-		c.slots[key] = slot
+		state = &installState{}
+		c.installs[install] = state
 	}
-	slot.unavailableSince = nil
-	slot.capacity = capacity
+	state.unavailableSince = nil
+	for pool, capacity := range pools {
+		key := PoolKey{Install: install, Pool: pool}
+		slot, ok := c.slots[key]
+		if !ok {
+			slot = &poolSlot{}
+			c.slots[key] = slot
+		}
+		slot.capacity = capacity
+	}
 	c.notifyAllLocked()
 	c.mu.Unlock()
 }
 
-// ReconcileMaster marks every slot of this master that is absent from the
+// ReconcileMaster marks every install of this master that is absent from the
 // advertised set unavailable.
 func (c *AdmissionController) ReconcileMaster(masterIdx int, available map[AdmissionKey]struct{}) {
 	now := time.Now()
 	c.mu.Lock()
-	for key, slot := range c.slots {
-		if key.MasterIdx != masterIdx {
+	for install, state := range c.installs {
+		if install.MasterIdx != masterIdx {
 			continue
 		}
-		if _, ok := available[key]; !ok {
-			slot.markUnavailable(now)
+		if _, ok := available[install]; !ok {
+			state.markUnavailable(now)
 		}
 	}
 	c.notifyAllLocked()
 	c.mu.Unlock()
 }
 
-// DisableMaster marks every slot of this master unavailable (the master died or
-// disconnected).
+// DisableMaster marks every install of this master unavailable.
 func (c *AdmissionController) DisableMaster(masterIdx int) {
 	now := time.Now()
 	c.mu.Lock()
-	for key, slot := range c.slots {
-		if key.MasterIdx == masterIdx {
-			slot.markUnavailable(now)
+	for install, state := range c.installs {
+		if install.MasterIdx == masterIdx {
+			state.markUnavailable(now)
 		}
 	}
 	c.notifyAllLocked()
 	c.mu.Unlock()
 }
 
-// AdmissionPermit is an actively owned process slot. Release exactly once.
+// AdmissionPermit is a set of actively owned pool slots — a dispatch's whole
+// chain. Release exactly once.
 type AdmissionPermit struct {
 	controller *AdmissionController
-	key        AdmissionKey
+	chain      []PoolKey
 	released   bool
 }
 
-// Release returns the slot. Idempotent.
+// Release returns every chain slot. Idempotent.
 func (p *AdmissionPermit) Release() {
 	if p == nil || p.released {
 		return
@@ -912,62 +946,87 @@ func (p *AdmissionPermit) Release() {
 	p.released = true
 	c := p.controller
 	c.mu.Lock()
-	if slot, ok := c.slots[p.key]; ok && slot.active > 0 {
-		slot.active--
+	for _, key := range p.chain {
+		if slot, ok := c.slots[key]; ok && slot.active > 0 {
+			slot.active--
+		}
 	}
 	c.notifyAllLocked()
 	c.mu.Unlock()
 }
 
-// Acquire takes a FIFO admission slot for key, waiting for capacity.
+// Acquire takes a FIFO admission slot across a cap's whole pool CHAIN,
+// waiting for capacity. The chain's FIRST key is the cap's singleton pool —
+// the queue the ticket waits in; admission requires EVERY chain pool to
+// have room, decided in one critical section (no half-admission).
 //
-// An UNAVAILABLE target does not fail the caller immediately. The request stays
-// queued for AdmissionUnavailableGrace measured from the start of the outage, so
-// a cartridge that is respawning — or that a transient registry outage briefly
-// retired — resumes serving its queue instead of terminally failing every body
-// waiting on it (17.2: one body's process loss must not terminate unrelated
-// queued bodies). Only when the window expires does the wait fail, and it fails
-// hard.
+// An UNAVAILABLE target (an install-level fact) does not fail the caller
+// immediately. The request stays queued for AdmissionUnavailableGrace
+// measured from the start of the outage, so a cartridge that is respawning
+// — or that a transient registry outage briefly retired — resumes serving
+// its queue instead of terminally failing every body waiting on it (17.2:
+// one body's process loss must not terminate unrelated queued bodies). Only
+// when the window expires does the wait fail, and it fails hard.
 //
-// `cancel`, when non-nil, abandons the wait when closed (the caller gave up);
-// the ticket is removed so it cannot strand the queue behind a dead head.
-func (c *AdmissionController) Acquire(key AdmissionKey, cancel <-chan struct{}) (*AdmissionPermit, error) {
+// `cancel`, when non-nil, abandons the wait when closed (the caller gave
+// up); the ticket is removed so it cannot strand the queue behind a dead
+// head. (matches Rust acquire)
+func (c *AdmissionController) Acquire(chain []PoolKey, cancel <-chan struct{}) (*AdmissionPermit, error) {
+	if len(chain) == 0 {
+		return nil, errors.New("admission chain is empty — a dispatch always has at least its cap's own pool")
+	}
+	head := chain[0]
+	install := head.Install
 	c.mu.Lock()
-	slot, ok := c.slots[key]
-	if !ok {
-		c.mu.Unlock()
-		return nil, fmt.Errorf("cartridge '%s' has no configured admission target", key.Id)
+	for _, key := range chain {
+		if _, ok := c.slots[key]; !ok {
+			c.mu.Unlock()
+			return nil, fmt.Errorf("cartridge '%s' has no configured admission pool '%s'", key.Install.Id, key.Pool)
+		}
 	}
 	ticket := c.tickets
 	c.tickets++
 	// Queue even while unavailable: the loop below owns the grace window, so a
 	// request arriving mid-outage gets the same treatment as one that was
 	// already waiting when the outage began.
-	slot.queue = append(slot.queue, ticket)
+	c.slots[head].queue = append(c.slots[head].queue, ticket)
 	c.mu.Unlock()
 
 	for {
 		c.mu.Lock()
-		slot, ok := c.slots[key]
+		headSlot, ok := c.slots[head]
 		if !ok {
 			c.mu.Unlock()
-			return nil, fmt.Errorf("admission slot for '%s' disappeared while queued", key.Id)
+			return nil, fmt.Errorf("admission pool for '%s' disappeared while queued", install.Id)
 		}
-		hasCapacity := slot.capacity == 0 || slot.active < slot.capacity
-		if slot.available() && hasCapacity && len(slot.queue) > 0 && slot.queue[0] == ticket {
-			slot.queue = slot.queue[1:]
-			slot.active++
+		state, hasState := c.installs[install]
+		if !hasState {
+			c.mu.Unlock()
+			return nil, fmt.Errorf("cartridge '%s' has admission pools but no install state — ConfigurePools was bypassed", install.Id)
+		}
+		chainHasRoom := true
+		for _, key := range chain {
+			if !c.slots[key].hasRoom() {
+				chainHasRoom = false
+				break
+			}
+		}
+		if state.available() && chainHasRoom && len(headSlot.queue) > 0 && headSlot.queue[0] == ticket {
+			headSlot.queue = headSlot.queue[1:]
+			for _, key := range chain {
+				c.slots[key].active++
+			}
 			c.notifyAllLocked()
 			c.mu.Unlock()
-			return &AdmissionPermit{controller: c, key: key}, nil
+			return &AdmissionPermit{controller: c, chain: chain}, nil
 		}
-		remaining, unavailable := slot.graceRemaining(time.Now(), c.grace)
+		remaining, unavailable := state.graceRemaining(time.Now(), c.grace)
 		if unavailable && remaining == 0 {
-			c.removeTicketLocked(key, ticket)
+			c.removeTicketLocked(head, ticket)
 			c.mu.Unlock()
 			return nil, fmt.Errorf(
 				"cartridge '%s' was unavailable for longer than %ds while this request waited for capacity",
-				key.Id, int(c.grace/time.Second),
+				install.Id, int(c.grace/time.Second),
 			)
 		}
 		wake := c.notify
@@ -985,9 +1044,9 @@ func (c *AdmissionController) Acquire(key AdmissionKey, cancel <-chan struct{}) 
 			case <-cancel:
 				timer.Stop()
 				c.mu.Lock()
-				c.removeTicketLocked(key, ticket)
+				c.removeTicketLocked(head, ticket)
 				c.mu.Unlock()
-				return nil, fmt.Errorf("admission wait for '%s' was cancelled", key.Id)
+				return nil, fmt.Errorf("admission wait for '%s' was cancelled", install.Id)
 			}
 			continue
 		}
@@ -995,16 +1054,16 @@ func (c *AdmissionController) Acquire(key AdmissionKey, cancel <-chan struct{}) 
 		case <-wake:
 		case <-cancel:
 			c.mu.Lock()
-			c.removeTicketLocked(key, ticket)
+			c.removeTicketLocked(head, ticket)
 			c.mu.Unlock()
-			return nil, fmt.Errorf("admission wait for '%s' was cancelled", key.Id)
+			return nil, fmt.Errorf("admission wait for '%s' was cancelled", install.Id)
 		}
 	}
 }
 
-// removeTicketLocked drops a ticket from its queue so an abandoned waiter cannot
-// strand the requests behind it. Caller must hold c.mu.
-func (c *AdmissionController) removeTicketLocked(key AdmissionKey, ticket uint64) {
+// removeTicketLocked drops a ticket from its singleton queue so an abandoned
+// waiter cannot strand the requests behind it. Caller must hold c.mu.
+func (c *AdmissionController) removeTicketLocked(key PoolKey, ticket uint64) {
 	slot, ok := c.slots[key]
 	if !ok {
 		return

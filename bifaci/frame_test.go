@@ -215,7 +215,7 @@ func Test180_frame_hello_without_manifest(t *testing.T) {
 // TEST181: Test Frame::hello_with_manifest produces HELLO with manifest bytes for cartridge side
 func Test181_frame_hello_with_manifest(t *testing.T) {
 	manifest := []byte(`{"name":"test"}`)
-	frame := NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit, 0, manifest)
+	frame := NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit, manifest, make(PoolStates))
 	if frame.FrameType != FrameTypeHello {
 		t.Errorf("Expected HELLO frame type, got %v", frame.FrameType)
 	}
@@ -225,6 +225,22 @@ func Test181_frame_hello_with_manifest(t *testing.T) {
 	}
 	if manifestBytes, ok := frame.Meta["manifest"].([]byte); !ok || string(manifestBytes) != string(manifest) {
 		t.Errorf("Expected manifest in Meta, got %v", frame.Meta["manifest"])
+	}
+
+	// The mandatory pool-state map rides the HELLO meta and round-trips
+	// (see pools.go) — matches the Rust TEST181 assertion.
+	states := PoolStates{PoolAll: DeclaredPoolState(2, nil)}
+	frame = NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit, manifest, states)
+	poolBytes := frame.PoolStateBytes()
+	if poolBytes == nil {
+		t.Fatal("cartridge HELLO must carry the pool-state map")
+	}
+	decoded, err := DecodePoolStates(poolBytes)
+	if err != nil {
+		t.Fatalf("HELLO pool map must decode: %v", err)
+	}
+	if decoded[PoolAll].Declared != 2 || decoded[PoolAll].Configured != 2 {
+		t.Errorf("HELLO pool map must round-trip, got %+v", decoded)
 	}
 }
 
@@ -591,7 +607,7 @@ func Test200_key_constants(t *testing.T) {
 // TEST201: Test hello_with_manifest preserves binary manifest data (not just JSON text)
 func Test201_hello_manifest_binary_data(t *testing.T) {
 	binaryManifest := []byte{0x00, 0x01, 0xFF, 0xFE, 0x80}
-	frame := NewHelloWithManifest(1000, 500, DefaultMaxReorderBuffer, DefaultInitialCredit, 0, binaryManifest)
+	frame := NewHelloWithManifest(1000, 500, DefaultMaxReorderBuffer, DefaultInitialCredit, binaryManifest, make(PoolStates))
 
 	// Extract manifest from meta
 	if frame.Meta == nil {
@@ -1362,7 +1378,7 @@ func Test1162_heartbeat_frame_with_memory_meta(t *testing.T) {
 	frame.Meta = map[string]interface{}{
 		"footprint_mb":     int64(4096),
 		"rss_mb":           int64(5120),
-		"handler_capacity": uint64(0),
+		MetaPools:          EncodePoolStates(make(PoolStates)),
 	}
 
 	assert.Equal(t, FrameTypeHeartbeat, frame.FrameType)

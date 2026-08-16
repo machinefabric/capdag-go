@@ -2,6 +2,7 @@ package bifaci
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -344,21 +345,32 @@ func admissionTestKey() AdmissionKey {
 }
 
 // TEST7110: admission is strict FIFO and a terminal request releases exactly one waiter.
+
+func testPoolKey(install AdmissionKey, pool string) PoolKey {
+	return PoolKey{Install: install, Pool: pool}
+}
+
+// allChain is the minimal chain: a cap addressed through its install's
+// `all` pool.
+func allChain(install AdmissionKey) []PoolKey {
+	return []PoolKey{testPoolKey(install, "all")}
+}
+
 func Test7110_admission_fifo_releases_one_waiter(t *testing.T) {
 	controller := NewAdmissionController()
 	key := admissionTestKey()
-	controller.Configure(key, 1)
+	controller.ConfigurePools(key, map[string]uint64{"all": 1})
 
-	first, err := controller.Acquire(key, nil)
+	first, err := controller.Acquire(allChain(key), nil)
 	require.NoError(t, err)
 
 	secondCh := make(chan *AdmissionPermit, 1)
 	thirdCh := make(chan *AdmissionPermit, 1)
-	go func() { p, _ := controller.Acquire(key, nil); secondCh <- p }()
+	go func() { p, _ := controller.Acquire(allChain(key), nil); secondCh <- p }()
 	// Give the second waiter time to take its ticket before the third queues,
 	// so the FIFO order under test is deterministic.
 	time.Sleep(50 * time.Millisecond)
-	go func() { p, _ := controller.Acquire(key, nil); thirdCh <- p }()
+	go func() { p, _ := controller.Acquire(allChain(key), nil); thirdCh <- p }()
 	time.Sleep(50 * time.Millisecond)
 
 	select {
@@ -393,13 +405,13 @@ func Test7110_admission_fifo_releases_one_waiter(t *testing.T) {
 func Test7111_cancelled_admission_waiter_cannot_block_queue(t *testing.T) {
 	controller := NewAdmissionController()
 	key := admissionTestKey()
-	controller.Configure(key, 1)
-	active, err := controller.Acquire(key, nil)
+	controller.ConfigurePools(key, map[string]uint64{"all": 1})
+	active, err := controller.Acquire(allChain(key), nil)
 	require.NoError(t, err)
 
 	cancel := make(chan struct{})
 	cancelled := make(chan error, 1)
-	go func() { _, err := controller.Acquire(key, cancel); cancelled <- err }()
+	go func() { _, err := controller.Acquire(allChain(key), cancel); cancelled <- err }()
 	time.Sleep(50 * time.Millisecond)
 	close(cancel)
 	select {
@@ -410,7 +422,7 @@ func Test7111_cancelled_admission_waiter_cannot_block_queue(t *testing.T) {
 	}
 
 	nextCh := make(chan *AdmissionPermit, 1)
-	go func() { p, _ := controller.Acquire(key, nil); nextCh <- p }()
+	go func() { p, _ := controller.Acquire(allChain(key), nil); nextCh <- p }()
 	time.Sleep(50 * time.Millisecond)
 	active.Release()
 	select {
@@ -425,12 +437,12 @@ func Test7111_cancelled_admission_waiter_cannot_block_queue(t *testing.T) {
 func Test7112_capacity_reconfiguration_wakes_existing_waiters(t *testing.T) {
 	controller := NewAdmissionController()
 	key := admissionTestKey()
-	controller.Configure(key, 1)
-	active, err := controller.Acquire(key, nil)
+	controller.ConfigurePools(key, map[string]uint64{"all": 1})
+	active, err := controller.Acquire(allChain(key), nil)
 	require.NoError(t, err)
 
 	waitingCh := make(chan *AdmissionPermit, 1)
-	go func() { p, _ := controller.Acquire(key, nil); waitingCh <- p }()
+	go func() { p, _ := controller.Acquire(allChain(key), nil); waitingCh <- p }()
 	time.Sleep(50 * time.Millisecond)
 	select {
 	case <-waitingCh:
@@ -438,7 +450,7 @@ func Test7112_capacity_reconfiguration_wakes_existing_waiters(t *testing.T) {
 	default:
 	}
 
-	controller.Configure(key, 0) // unlimited
+	controller.ConfigurePools(key, map[string]uint64{"all": 0}) // unlimited
 	select {
 	case p := <-waitingCh:
 		require.NotNil(t, p, "unlimited HELLO capacity must wake queued work")
@@ -452,14 +464,14 @@ func Test7112_capacity_reconfiguration_wakes_existing_waiters(t *testing.T) {
 func Test7114_transient_unavailability_does_not_fail_queued_work(t *testing.T) {
 	controller := NewAdmissionController()
 	key := admissionTestKey()
-	controller.Configure(key, 1)
-	active, err := controller.Acquire(key, nil)
+	controller.ConfigurePools(key, map[string]uint64{"all": 1})
+	active, err := controller.Acquire(allChain(key), nil)
 	require.NoError(t, err)
 
 	waitingCh := make(chan *AdmissionPermit, 1)
 	errCh := make(chan error, 1)
 	go func() {
-		p, err := controller.Acquire(key, nil)
+		p, err := controller.Acquire(allChain(key), nil)
 		waitingCh <- p
 		errCh <- err
 	}()
@@ -475,7 +487,7 @@ func Test7114_transient_unavailability_does_not_fail_queued_work(t *testing.T) {
 	}
 
 	// ...and comes back, which is what must release the queue.
-	controller.Configure(key, 1)
+	controller.ConfigurePools(key, map[string]uint64{"all": 1})
 	active.Release()
 	select {
 	case p := <-waitingCh:
@@ -493,12 +505,12 @@ func Test1943_outage_outliving_the_grace_window_fails_queued_work(t *testing.T) 
 	// through a real minute. Production uses AdmissionUnavailableGrace.
 	controller.grace = 150 * time.Millisecond
 	key := admissionTestKey()
-	controller.Configure(key, 1)
-	active, err := controller.Acquire(key, nil)
+	controller.ConfigurePools(key, map[string]uint64{"all": 1})
+	active, err := controller.Acquire(allChain(key), nil)
 	require.NoError(t, err)
 
 	errCh := make(chan error, 1)
-	go func() { _, err := controller.Acquire(key, nil); errCh <- err }()
+	go func() { _, err := controller.Acquire(allChain(key), nil); errCh <- err }()
 	time.Sleep(50 * time.Millisecond)
 	select {
 	case <-errCh:
@@ -516,4 +528,89 @@ func Test1943_outage_outliving_the_grace_window_fails_queued_work(t *testing.T) 
 		t.Fatal("an expired grace window must wake queued work")
 	}
 	active.Release()
+}
+
+
+// TEST1524: chain admission is ATOMIC — a request is admitted only when
+// EVERY pool in its chain has room, and holds all of them until release.
+// A free singleton behind a full shared pool waits; releasing the shared
+// pool's holder admits it.
+func Test1524_chain_admission_is_atomic_across_pools(t *testing.T) {
+	controller := NewAdmissionController()
+	key := admissionTestKey()
+	controller.ConfigurePools(key, map[string]uint64{
+		"cap:a": 0, "cap:b": 0, "gpu": 1, "all": 0,
+	})
+	chainA := []PoolKey{testPoolKey(key, "cap:a"), testPoolKey(key, "gpu"), testPoolKey(key, "all")}
+	chainB := []PoolKey{testPoolKey(key, "cap:b"), testPoolKey(key, "gpu"), testPoolKey(key, "all")}
+
+	holder, err := controller.Acquire(chainA, nil)
+	if err != nil {
+		t.Fatalf("first chain must acquire: %v", err)
+	}
+
+	// cap:b's own singleton is free, but the shared "gpu" pool is full —
+	// the whole chain must wait.
+	admitted := make(chan *AdmissionPermit, 1)
+	go func() { p, _ := controller.Acquire(chainB, nil); admitted <- p }()
+	select {
+	case <-admitted:
+		t.Fatal("a full shared pool must block the whole chain")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	holder.Release()
+	select {
+	case p := <-admitted:
+		if p == nil {
+			t.Fatal("queued chain must acquire all its pools")
+		}
+		p.Release()
+	case <-time.After(2 * time.Second):
+		t.Fatal("releasing the shared pool must admit the queued chain")
+	}
+}
+
+// TEST1525: pools are ISOLATED — saturating one cap's singleton does not
+// block a different cap whose chain shares only unlimited pools.
+func Test1525_disjoint_bounded_pools_admit_independently(t *testing.T) {
+	controller := NewAdmissionController()
+	key := admissionTestKey()
+	controller.ConfigurePools(key, map[string]uint64{"cap:a": 1, "cap:b": 1, "all": 0})
+
+	a, err := controller.Acquire([]PoolKey{testPoolKey(key, "cap:a"), testPoolKey(key, "all")}, nil)
+	if err != nil {
+		t.Fatalf("cap:a must acquire: %v", err)
+	}
+	// cap:a is saturated; cap:b must admit immediately.
+	done := make(chan *AdmissionPermit, 1)
+	go func() {
+		p, _ := controller.Acquire([]PoolKey{testPoolKey(key, "cap:b"), testPoolKey(key, "all")}, nil)
+		done <- p
+	}()
+	select {
+	case p := <-done:
+		if p == nil {
+			t.Fatal("disjoint chain must acquire")
+		}
+		p.Release()
+	case <-time.After(2 * time.Second):
+		t.Fatal("a saturated sibling singleton must not delay this cap")
+	}
+	a.Release()
+}
+
+// TEST1526: acquiring a chain naming a pool the install never advertised
+// fails hard — an unknown pool is a protocol defect, never a free pass.
+func Test1526_unknown_pool_in_chain_fails_hard(t *testing.T) {
+	controller := NewAdmissionController()
+	key := admissionTestKey()
+	controller.ConfigurePools(key, map[string]uint64{"all": 0})
+	_, err := controller.Acquire([]PoolKey{testPoolKey(key, "cap:ghost"), testPoolKey(key, "all")}, nil)
+	if err == nil {
+		t.Fatal("an unadvertised pool must refuse admission")
+	}
+	if !strings.Contains(err.Error(), "cap:ghost") {
+		t.Fatalf("the failure must name the unknown pool: %v", err)
+	}
 }

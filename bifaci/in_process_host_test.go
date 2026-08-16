@@ -270,7 +270,13 @@ func Test6751_ManifestIncludesAllCaps(t *testing.T) {
 	assert.Len(t, payload.InstalledCartridges[0].CapGroups, 1)
 	require.NotNil(t, payload.InstalledCartridges[0].RuntimeStats)
 	assert.True(t, payload.InstalledCartridges[0].RuntimeStats.Running)
-	assert.Equal(t, uint64(0), payload.InstalledCartridges[0].RuntimeStats.HandlerCapacity)
+	// The pool map is the capacity surface: one at-rest unlimited
+	// singleton per advertised cap plus the mandatory `all` pool.
+	pools := payload.InstalledCartridges[0].RuntimeStats.Pools
+	all, hasAll := pools[PoolAll]
+	require.True(t, hasAll, "mandatory 'all' pool")
+	assert.Equal(t, uint64(0), all.Configured, "in-process hosts are unlimited")
+	assert.Contains(t, pools, standard.CapIdentity)
 }
 
 // TEST658: InProcessCartridgeHost handles heartbeat by echoing same ID
@@ -299,9 +305,16 @@ func Test658_HeartbeatResponse(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, FrameTypeHeartbeat, resp.FrameType)
 	assert.True(t, resp.Id.Equals(hbId))
-	capacity, ok := extractUint64FromMeta(resp.Meta, "handler_capacity")
-	require.True(t, ok)
-	assert.Equal(t, uint64(0), capacity)
+	// The heartbeat reply's mandatory pool map replaces the retired
+	// scalar handler_capacity meta.
+	poolBytes := resp.PoolStateBytes()
+	require.NotNil(t, poolBytes, "heartbeat reply must carry the pool map")
+	states, err := DecodePoolStates(poolBytes)
+	require.NoError(t, err, "heartbeat pool map must decode")
+	all, hasAll := states[PoolAll]
+	require.True(t, hasAll, "mandatory 'all' pool")
+	assert.Equal(t, uint64(0), all.Configured, "in-process hosts are unlimited")
+	assert.Equal(t, uint64(0), all.Active)
 
 	testConn.Close()
 	require.NoError(t, <-hostDone)

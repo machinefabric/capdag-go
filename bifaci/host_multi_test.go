@@ -81,7 +81,7 @@ func simulateCartridge(t *testing.T, cartridgeRead, cartridgeWrite net.Conn, man
 	reader := NewFrameReader(cartridgeRead)
 	writer := NewFrameWriter(cartridgeWrite)
 
-	limits, err := HandshakeAccept(reader, writer, []byte(manifest), 0)
+	limits, err := HandshakeAccept(reader, writer, []byte(manifest), make(PoolStates))
 	require.NoError(t, err)
 	reader.SetLimits(limits)
 	writer.SetLimits(limits)
@@ -1204,7 +1204,7 @@ func Test7090_heartbeat_drops_total_reaches_inventory_stats(t *testing.T) {
 	response := NewHeartbeat(hbID)
 	response.Meta = map[string]interface{}{
 		"drops_total":      uint64(42),
-		"handler_capacity": uint64(0),
+		MetaPools:          EncodePoolStates(make(PoolStates)),
 	}
 	host.handleCartridgeFrame(0, response, relayOut)
 
@@ -1223,7 +1223,7 @@ func Test7090_heartbeat_drops_total_reaches_inventory_stats(t *testing.T) {
 	response2 := NewHeartbeat(hbID2)
 	response2.Meta = map[string]interface{}{
 		"drops_total":      uint64(45),
-		"handler_capacity": uint64(0),
+		MetaPools:          EncodePoolStates(make(PoolStates)),
 	}
 	host.handleCartridgeFrame(0, response2, relayOut)
 
@@ -1326,7 +1326,7 @@ func Test486_attach_cartridge_identity_verification_fails(t *testing.T) {
 		defer wg.Done()
 		reader := NewFrameReader(cartridgeRead)
 		writer := NewFrameWriter(cartridgeWrite)
-		limits, err := HandshakeAccept(reader, writer, []byte(manifest), 0)
+		limits, err := HandshakeAccept(reader, writer, []byte(manifest), make(PoolStates))
 		require.NoError(t, err)
 		reader.SetLimits(limits)
 		writer.SetLimits(limits)

@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"sync"
 
 	cborlib "github.com/fxamacker/cbor/v2"
@@ -394,6 +395,11 @@ func (h *InProcessCartridgeHost) BuildManifest() []byte {
 		}
 	}
 
+	capUrnList := make([]string, 0, len(caps))
+	for _, c := range caps {
+		capUrnList = append(capUrnList, c.Urn.String())
+	}
+
 	pid := uint32(os.Getpid())
 	cartridge := InstalledCartridgeRecord{
 		RegistryURL: h.identity.RegistryURL,
@@ -407,9 +413,12 @@ func (h *InProcessCartridgeHost) BuildManifest() []byte {
 			AdapterUrns: []string{},
 		}},
 		RuntimeStats: &CartridgeRuntimeStats{
-			Running:            true,
-			HandlerCapacity:    0,
-			PID:                &pid,
+			Running: true,
+			// In-process handlers are task-backed and have no fixed
+			// concurrency ceiling: every pool is unlimited, at rest at
+			// manifest-build time.
+			Pools: inProcessPoolStates(capUrnList, nil),
+			PID:   &pid,
 			ActiveRequestCount: 0,
 			PeerRequestCount:   0,
 			MemoryFootprintMB:  0,
@@ -524,6 +533,30 @@ func absInt(x int) int {
 	return x
 }
 
+// inProcessPoolStates is the host's full pool-state map: one at-rest
+// singleton per advertised cap plus the mandatory `all` pool. In-process
+// handlers are task-backed with no fixed concurrency ceiling, so every
+// capacity is 0 (unlimited) and nothing ever queues; configured carries the
+// operator overlay delivered via heartbeat probes (the ENGINE's admission
+// enforces it — see the Rust in-process host). (matches Rust
+// pool_states_snapshot)
+func inProcessPoolStates(capUrns []string, configured map[string]uint64) PoolStates {
+	states := make(PoolStates, len(capUrns)+1)
+	for _, capUrn := range capUrns {
+		state := PoolState{}
+		if c, ok := configured[capUrn]; ok {
+			state.Configured = c
+		}
+		states[capUrn] = state
+	}
+	all := PoolState{Caps: append([]string(nil), capUrns...)}
+	if c, ok := configured[PoolAll]; ok {
+		all.Configured = c
+	}
+	states[PoolAll] = all
+	return states
+}
+
 // Run runs the host. Returns when the local connection closes.
 //
 // localRead / localWrite connect to the RelaySlave's local side.
@@ -556,6 +589,19 @@ func (h *InProcessCartridgeHost) Run(localRead io.Reader, localWrite io.Writer) 
 	writeTx <- *notify
 
 	capTable := buildCapTable(h.handlers)
+
+	// Advertised caps (canonical URNs) — the singleton pool roster — and
+	// the operator `configured` overlay delivered via heartbeat probes.
+	advertisedCaps := []string{standard.CapIdentity}
+	for _, entry := range h.handlers {
+		for _, c := range entry.caps {
+			capUrn := c.Urn.String()
+			if !slices.Contains(advertisedCaps, capUrn) {
+				advertisedCaps = append(advertisedCaps, capUrn)
+			}
+		}
+	}
+	configuredOverlay := make(DesiredCapacities)
 
 	// Active request channels: request_id → input_tx for forwarding frames to
 	// handler. Keyed by MessageId.ToString() because MessageId is not comparable.
@@ -646,8 +692,38 @@ func (h *InProcessCartridgeHost) Run(localRead io.Reader, localWrite io.Writer) 
 			writeTx <- *errFrame
 
 		case FrameTypeHeartbeat:
+			// The heartbeat is the capacity CONFIG channel (see the
+			// cartridge runtime): a probe may carry the operator's desired
+			// configured values. Validate the whole batch against the pool
+			// roster first — an unknown pool refuses it all with an ERR
+			// naming it.
+			if desiredBytes := frame.DesiredCapacityBytes(); desiredBytes != nil {
+				desired, decodeErr := DecodeDesired(desiredBytes)
+				if decodeErr != nil {
+					errFrame := NewErr(frame.Id, "UNKNOWN_POOL", AttributionClassInternal, fmt.Sprintf("desired capacities refused: %v", decodeErr), nil)
+					writeTx <- *errFrame
+					continue
+				}
+				refused := false
+				for name := range desired {
+					if name != PoolAll && !slices.Contains(advertisedCaps, name) {
+						errFrame := NewErr(frame.Id, "UNKNOWN_POOL", AttributionClassInternal, fmt.Sprintf("desired capacities refused: unknown pool '%s'", name), nil)
+						writeTx <- *errFrame
+						refused = true
+						break
+					}
+				}
+				if refused {
+					continue
+				}
+				for name, configured := range desired {
+					configuredOverlay[name] = configured
+				}
+			}
 			response := NewHeartbeat(frame.Id)
-			response.Meta = map[string]interface{}{"handler_capacity": uint64(0)}
+			response.Meta = map[string]interface{}{
+				MetaPools: EncodePoolStates(inProcessPoolStates(advertisedCaps, configuredOverlay)),
+			}
 			writeTx <- *response
 
 		default:

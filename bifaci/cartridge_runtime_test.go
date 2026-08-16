@@ -3955,7 +3955,7 @@ func Test542_output_stream_empty(t *testing.T) {
 // module and the Swift/ObjC mirror's CartridgeRuntimeTests — numbered tests
 // assert the SAME behavior as those references; a few are Go-only (no shared
 // number) because they validate functionality this mirror did not have before
-// this port (CapacityHandle, OutputStream::finish).
+// this port (pool-chain admission, OutputStream::finish).
 // =============================================================================
 
 // decodeWireFrames decodes every length-prefixed frame from a captured wire
@@ -4617,19 +4617,25 @@ collect:
 // only the wire-reachable trigger for it does not exist in this
 // architecture at any negotiable window size.
 
-// TestCapacityHandleQueuesRequestsBeyondLimit: with capacity set to 1, a
-// second request arriving while the first is still running is queued (LOG
-// level="queued") instead of dispatched; once the first finishes, the queued
-// request is dequeued (LOG level="dequeued") and runs. Go-only — validates
-// CapacityHandle / concurrency-capacity queueing, which this mirror did not
-// have before this port (no corresponding number in the v3 diff: capacity
-// pre-dates it in the Rust reference).
-func TestCapacityHandleQueuesRequestsBeyondLimit(t *testing.T) {
+// TestPoolCapacityQueuesRequestsBeyondLimit: with the `all` pool declared
+// at capacity 1 (see pools.go), a second request arriving while the first
+// is still running is queued (LOG level="queued") instead of dispatched;
+// once the first finishes, the queued request is dequeued (LOG
+// level="dequeued") and runs. Go-only — validates the pool-chain admission
+// gate this mirror shares with the Rust reference.
+func TestPoolCapacityQueuesRequestsBeyondLimit(t *testing.T) {
 	rt, err := NewCartridgeRuntime([]byte(testManifest))
 	if err != nil {
 		t.Fatalf("failed to create runtime: %v", err)
 	}
-	rt.SetCapacity(1)
+	if rt.manifest == nil {
+		t.Fatal("test manifest must parse")
+	}
+	if _, err := rt.manifest.WithPoolDeclarations(PoolDeclarations{
+		Capacities: map[string]uint64{PoolAll: 1},
+	}); err != nil {
+		t.Fatalf("pool declarations must validate: %v", err)
+	}
 
 	release := make(chan struct{}, 2)
 	rt.Register(testCapUrn, func(frames <-chan Frame, emitter StreamEmitter, peer PeerInvoker) error {
@@ -4866,5 +4872,203 @@ func Test1949_peer_progress_without_numeric_value_fails_hard(t *testing.T) {
 	}
 	if len(emitter.progress) != 0 || len(emitter.logs) != 0 {
 		t.Fatal("no frame may be emitted from a malformed peer frame")
+	}
+}
+
+
+// =============================================================================
+// Concurrency pools (see pools.go) — shared-range TEST numbers with the
+// Rust reference (TEST1527–TEST1531).
+// =============================================================================
+
+const poolTestCapA = "cap:pool-a"
+const poolTestCapB = "cap:pool-b"
+
+func poolTestRequest(pattern string) *liveHandlerRequest {
+	return &liveHandlerRequest{
+		requestID: NewMessageIdRandom(),
+		capUrn:    pattern,
+		pattern:   pattern,
+	}
+}
+
+// TEST1527: runtimePools materializes one singleton per registered
+// pattern, every declared shared pool, and `all` — and a declaration
+// referencing a cap no handler serves is a hard cartridge-author error,
+// never a silently ignored name.
+func Test1527_runtime_pools_materialization_and_declaration_resolution(t *testing.T) {
+	pools, err := newRuntimePools(
+		[]string{poolTestCapA, poolTestCapB},
+		&PoolDeclarations{
+			Pools:      map[string][]string{"gpu": {poolTestCapA, poolTestCapB}},
+			Capacities: map[string]uint64{"gpu": 1},
+		},
+	)
+	if err != nil {
+		t.Fatalf("valid declarations must materialize: %v", err)
+	}
+	snapshot := pools.snapshot()
+	if len(snapshot) != 4 {
+		t.Fatalf("two singletons + gpu + all, got %d", len(snapshot))
+	}
+	if snapshot["gpu"].Declared != 1 || len(snapshot["gpu"].Caps) != 2 {
+		t.Fatalf("gpu pool wrong: %+v", snapshot["gpu"])
+	}
+	wantChain := []string{poolTestCapA, "gpu", PoolAll}
+	gotChain := pools.chain(poolTestCapA)
+	for i := range wantChain {
+		if gotChain[i] != wantChain[i] {
+			t.Fatalf("chain mismatch: got %v want %v", gotChain, wantChain)
+		}
+	}
+
+	_, err = newRuntimePools(
+		[]string{poolTestCapA},
+		&PoolDeclarations{Pools: map[string][]string{"gpu": {"cap:ghost"}}},
+	)
+	if err == nil || !strings.Contains(err.Error(), "cap:ghost") {
+		t.Fatalf("a declaration cap with no registered handler must refuse, naming it: %v", err)
+	}
+}
+
+// TEST1528: singleton queues are ISOLATED — saturating one cap queues its
+// requests without touching a sibling cap's admission, and a release
+// admits the queued request.
+func Test1528_singleton_queue_isolation(t *testing.T) {
+	pools, err := newRuntimePools(
+		[]string{poolTestCapA, poolTestCapB},
+		&PoolDeclarations{Capacities: map[string]uint64{poolTestCapA: 1}},
+	)
+	if err != nil {
+		t.Fatalf("valid declarations must materialize: %v", err)
+	}
+	if !pools.tryAdmit(poolTestCapA) {
+		t.Fatal("first dispatch admits")
+	}
+	if pools.tryAdmit(poolTestCapA) {
+		t.Fatal("singleton capacity 1 is full")
+	}
+	if position := pools.enqueue(poolTestRequest(poolTestCapA)); position != 1 {
+		t.Fatalf("queue position is 1-based for the LOG, got %d", position)
+	}
+	if !pools.tryAdmit(poolTestCapB) {
+		t.Fatal("a saturated sibling must not block this cap")
+	}
+	if pools.popAdmissible() != nil {
+		t.Fatal("nothing is admissible while the singleton is full")
+	}
+	pools.release(poolTestCapA)
+	admitted := pools.popAdmissible()
+	if admitted == nil || admitted.pattern != poolTestCapA {
+		t.Fatal("the release must admit the queued request")
+	}
+}
+
+// TEST1529: admission across a shared pool's members on release is
+// arrival-ordered by the GLOBAL ticket — never cap-biased.
+func Test1529_shared_pool_release_admits_in_global_arrival_order(t *testing.T) {
+	pools, err := newRuntimePools(
+		[]string{poolTestCapA, poolTestCapB},
+		&PoolDeclarations{
+			Pools:      map[string][]string{"gpu": {poolTestCapA, poolTestCapB}},
+			Capacities: map[string]uint64{"gpu": 1},
+		},
+	)
+	if err != nil {
+		t.Fatalf("valid declarations must materialize: %v", err)
+	}
+	if !pools.tryAdmit(poolTestCapA) {
+		t.Fatal("gpu slot taken")
+	}
+	// B arrives before A — the global ticket must remember that even
+	// though "cap:pool-a" sorts first.
+	pools.enqueue(poolTestRequest(poolTestCapB))
+	pools.enqueue(poolTestRequest(poolTestCapA))
+	pools.release(poolTestCapA)
+	first := pools.popAdmissible()
+	if first == nil || first.pattern != poolTestCapB {
+		t.Fatal("arrival order, not cap order")
+	}
+	if pools.popAdmissible() != nil {
+		t.Fatal("gpu capacity 1 admits exactly one")
+	}
+}
+
+// TEST1530: the operator's desired batch applies atomically — one unknown
+// pool refuses the WHOLE batch (nothing half-applied), a valid batch
+// rewrites `configured` and admission follows immediately.
+func Test1530_apply_desired_is_atomic_and_immediate(t *testing.T) {
+	pools, err := newRuntimePools(
+		[]string{poolTestCapA},
+		&PoolDeclarations{Capacities: map[string]uint64{poolTestCapA: 1}},
+	)
+	if err != nil {
+		t.Fatalf("valid declarations must materialize: %v", err)
+	}
+	if err := pools.applyDesired(map[string]uint64{poolTestCapA: 3, "ghost": 1}); err == nil || !strings.Contains(err.Error(), "ghost") {
+		t.Fatalf("an unknown pool must refuse the batch, naming it: %v", err)
+	}
+	if pools.snapshot()[poolTestCapA].Configured != 1 {
+		t.Fatal("a refused batch must apply NOTHING")
+	}
+	if err := pools.applyDesired(map[string]uint64{poolTestCapA: 2}); err != nil {
+		t.Fatalf("valid batch applies: %v", err)
+	}
+	if !pools.tryAdmit(poolTestCapA) || !pools.tryAdmit(poolTestCapA) {
+		t.Fatal("raise admits immediately")
+	}
+	if pools.tryAdmit(poolTestCapA) {
+		t.Fatal("raised bound still bounds")
+	}
+}
+
+// TEST1531: `available` is the cartridge's self-report — effective =
+// min(configured, available) — and the snapshot counts a waiter on its
+// own singleton AND on every chain pool actually blocking it.
+func Test1531_available_self_report_and_snapshot_queued_attribution(t *testing.T) {
+	pools, err := newRuntimePools(
+		[]string{poolTestCapA, poolTestCapB},
+		&PoolDeclarations{
+			Pools:      map[string][]string{"gpu": {poolTestCapA, poolTestCapB}},
+			Capacities: map[string]uint64{"gpu": 2},
+		},
+	)
+	if err != nil {
+		t.Fatalf("valid declarations must materialize: %v", err)
+	}
+	// Self-limit gpu to 1 (model loading): effective = min(2, 1) = 1.
+	if err := pools.setAvailable("gpu", 1); err != nil {
+		t.Fatalf("gpu is a declared pool: %v", err)
+	}
+	if !pools.tryAdmit(poolTestCapA) {
+		t.Fatal("first admit")
+	}
+	if pools.tryAdmit(poolTestCapB) {
+		t.Fatal("the self-report must bound admission below configured")
+	}
+	pools.enqueue(poolTestRequest(poolTestCapB))
+
+	snapshot := pools.snapshot()
+	if snapshot["gpu"].Available == nil || *snapshot["gpu"].Available != 1 {
+		t.Fatalf("gpu self-report must surface: %+v", snapshot["gpu"])
+	}
+	if snapshot[poolTestCapB].Queued != 1 {
+		t.Fatal("a waiter always counts on its own singleton")
+	}
+	if snapshot["gpu"].Queued != 1 {
+		t.Fatal("the full shared pool is the blocker and must own the queued count")
+	}
+	if snapshot[PoolAll].Queued != 0 {
+		t.Fatal("an unlimited chain pool blocks nobody")
+	}
+
+	if err := pools.setAvailable("gpu", 0); err != nil {
+		t.Fatalf("gpu is a declared pool: %v", err)
+	}
+	if !pools.tryAdmit(poolTestCapB) {
+		t.Fatal("clearing the self-limit (0 = unlimited) restores min(configured, inf) = 2")
+	}
+	if err := pools.setAvailable("cap:ghost", 1); err == nil || !strings.Contains(err.Error(), "cap:ghost") {
+		t.Fatalf("self-report on an unknown pool must refuse, naming it: %v", err)
 	}
 }

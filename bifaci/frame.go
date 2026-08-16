@@ -698,7 +698,6 @@ func NewHello(maxFrame, maxChunk, maxReorderBuffer, initialCredit int) *Frame {
 		"max_reorder_buffer": maxReorderBuffer,
 		"initial_credit":     initialCredit,
 		"version":            ProtocolVersion,
-		"handler_capacity":   0,
 	}
 	return frame
 }
@@ -706,8 +705,9 @@ func NewHello(maxFrame, maxChunk, maxReorderBuffer, initialCredit int) *Frame {
 // NewHelloWithManifest creates a HELLO frame with manifest (cartridge side).
 // initialCredit is the proposed initial per-stream credit window (protocol v4);
 // it is negotiated by the peer to the element-wise minimum, same as the other
-// three limits. Matches Rust Frame::hello_with_manifest.
-func NewHelloWithManifest(maxFrame, maxChunk, maxReorderBuffer, initialCredit int, handlerCapacity uint64, manifest []byte) *Frame {
+// three limits. poolStates is the cartridge's mandatory concurrency-pool
+// state map (see pools.go). Matches Rust Frame::hello_with_manifest.
+func NewHelloWithManifest(maxFrame, maxChunk, maxReorderBuffer, initialCredit int, manifest []byte, poolStates PoolStates) *Frame {
 	frame := newFrame(FrameTypeHello, MessageId{uintValue: new(uint64)})
 	frame.Meta = map[string]interface{}{
 		"max_frame":          maxFrame,
@@ -716,8 +716,48 @@ func NewHelloWithManifest(maxFrame, maxChunk, maxReorderBuffer, initialCredit in
 		"initial_credit":     initialCredit,
 		"version":            ProtocolVersion,
 		"manifest":           manifest,
-		"handler_capacity":   handlerCapacity,
+		MetaPools:            EncodePoolStates(poolStates),
 	}
+	return frame
+}
+
+// PoolStateBytes extracts the JSON-encoded pool-state map carried in this
+// frame's meta — present on the cartridge's HELLO and on every heartbeat
+// reply. Returns nil when the frame carries no map; decoding is the
+// caller's boundary and fails hard there. (matches Rust
+// Frame::pool_state_bytes)
+func (f *Frame) PoolStateBytes() []byte {
+	if f.Meta == nil {
+		return nil
+	}
+	if bytes, ok := f.Meta[MetaPools].([]byte); ok {
+		return bytes
+	}
+	return nil
+}
+
+// DesiredCapacityBytes extracts the JSON-encoded desired-capacities map
+// from a heartbeat PROBE's meta — the host delivering operator configured
+// values. (matches Rust Frame::desired_capacity_bytes)
+func (f *Frame) DesiredCapacityBytes() []byte {
+	if f.FrameType != FrameTypeHeartbeat || f.Meta == nil {
+		return nil
+	}
+	if bytes, ok := f.Meta[MetaDesiredCapacities].([]byte); ok {
+		return bytes
+	}
+	return nil
+}
+
+// NewHeartbeatWithDesired creates a heartbeat PROBE carrying the operator's
+// desired configured values (host→cartridge). The plain probe is
+// NewHeartbeat. (matches Rust Frame::heartbeat_with_desired)
+func NewHeartbeatWithDesired(id MessageId, desired DesiredCapacities) *Frame {
+	frame := NewHeartbeat(id)
+	if frame.Meta == nil {
+		frame.Meta = map[string]interface{}{}
+	}
+	frame.Meta[MetaDesiredCapacities] = EncodeDesired(desired)
 	return frame
 }
 

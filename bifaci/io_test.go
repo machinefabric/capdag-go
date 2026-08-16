@@ -167,7 +167,7 @@ func Test210_end_frame_roundtrip(t *testing.T) {
 // TEST211: Test HELLO with manifest encode/decode roundtrip preserves manifest bytes and limits
 func Test211_hello_with_manifest_roundtrip(t *testing.T) {
 	manifest := []byte(`{"name":"test","version":"1.0.0"}`)
-	original := NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit, 0, manifest)
+	original := NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit, manifest, make(PoolStates))
 
 	encoded, err := EncodeFrame(original)
 	if err != nil {
@@ -805,7 +805,7 @@ func Test230_sync_handshake(t *testing.T) {
 	}
 
 	// Cartridge sends HELLO with manifest
-	responseFrame := NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit, 0, manifest)
+	responseFrame := NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit, manifest, make(PoolStates))
 	if err := cartridgeWriter.WriteFrame(responseFrame); err != nil {
 		t.Fatalf("Failed to write cartridge HELLO: %v", err)
 	}
@@ -1661,7 +1661,7 @@ func Test481_verify_identity_succeeds(t *testing.T) {
 		defer wg.Done()
 		reader := NewFrameReader(cartridgeRead)
 		writer := NewFrameWriter(cartridgeWrite)
-		limits, err := HandshakeAccept(reader, writer, []byte(identityManifest), 0)
+		limits, err := HandshakeAccept(reader, writer, []byte(identityManifest), make(PoolStates))
 		if err != nil {
 			t.Errorf("HandshakeAccept failed: %v", err)
 			return
@@ -1720,7 +1720,7 @@ func Test482_verify_identity_fails_on_err(t *testing.T) {
 		defer wg.Done()
 		reader := NewFrameReader(cartridgeRead)
 		writer := NewFrameWriter(cartridgeWrite)
-		limits, err := HandshakeAccept(reader, writer, []byte(identityManifest), 0)
+		limits, err := HandshakeAccept(reader, writer, []byte(identityManifest), make(PoolStates))
 		if err != nil {
 			t.Errorf("HandshakeAccept failed: %v", err)
 			return
@@ -1767,7 +1767,7 @@ func Test483_verify_identity_fails_on_close(t *testing.T) {
 		defer wg.Done()
 		reader := NewFrameReader(cartridgeRead)
 		writer := NewFrameWriter(cartridgeWrite)
-		limits, err := HandshakeAccept(reader, writer, []byte(identityManifest), 0)
+		limits, err := HandshakeAccept(reader, writer, []byte(identityManifest), make(PoolStates))
 		if err != nil {
 			t.Errorf("HandshakeAccept failed: %v", err)
 			return
@@ -1842,8 +1842,8 @@ func runV4Handshake(t *testing.T, cartridgeLimits Limits) (hostManifest []byte, 
 			cartridgeLimits.MaxChunk,
 			cartridgeLimits.MaxReorderBuffer,
 			cartridgeLimits.InitialCredit,
-			0,
 			[]byte(v4TestManifest),
+			make(PoolStates),
 		)
 		if err := writer.WriteFrame(hello); err != nil {
 			cartErr = err
@@ -1933,7 +1933,7 @@ func Test7001_handshake_rejects_version_2(t *testing.T) {
 			t.Errorf("cartridge failed to read host HELLO: %v", err)
 			return
 		}
-		hello := NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit, 0, []byte(v4TestManifest))
+		hello := NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit, []byte(v4TestManifest), make(PoolStates))
 		hello.Version = 2
 		hello.Meta["version"] = 2
 		if err := writer.WriteFrame(hello); err != nil {
@@ -2005,14 +2005,14 @@ func Test7002_initial_credit_negotiated_minimum(t *testing.T) {
 func Test7008_extractUint64FromMeta_rejects_invalid_numeric_values(t *testing.T) {
 	invalid := []interface{}{-1, int64(-1), -1.0, 1.5, math.Inf(1), math.NaN()}
 	for _, value := range invalid {
-		if decoded, ok := extractUint64FromMeta(map[string]interface{}{"handler_capacity": value}, "handler_capacity"); ok {
-			t.Fatalf("invalid handler_capacity %v decoded as %d", value, decoded)
+		if decoded, ok := extractUint64FromMeta(map[string]interface{}{"drops_total": value}, "drops_total"); ok {
+			t.Fatalf("invalid drops_total %v decoded as %d", value, decoded)
 		}
 	}
 
 	for _, value := range []interface{}{0, int64(1), uint64(2), float64(3)} {
-		if _, ok := extractUint64FromMeta(map[string]interface{}{"handler_capacity": value}, "handler_capacity"); !ok {
-			t.Fatalf("valid handler_capacity %v was rejected", value)
+		if _, ok := extractUint64FromMeta(map[string]interface{}{"drops_total": value}, "drops_total"); !ok {
+			t.Fatalf("valid drops_total %v was rejected", value)
 		}
 	}
 }

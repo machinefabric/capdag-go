@@ -372,45 +372,325 @@ func (ps *ProgressSender) Log(level string, class AttributionClass, message stri
 // Handler has full streaming control - decides when to consume frames and when to produce output.
 type HandlerFunc func(frames <-chan Frame, emitter StreamEmitter, peer PeerInvoker) error
 
-// CapacityHandle is a shared handle for dynamic concurrency-capacity
-// adjustment. Cartridges receive this via Request.CapacityHandle() (or
-// CartridgeRuntime.Capacity()) and can call Set(n) at any time to adjust how
-// many concurrent requests the runtime will dispatch to handlers. For
-// example, a model-loading cartridge might set capacity to 1 during model
-// load, then raise it once resources allow. 0 = unlimited (default).
-// (matches Rust CapacityHandle)
-type CapacityHandle struct {
-	value atomic.Uint64
+// runtimePool is one materialized concurrency pool (see pools.go).
+// (matches Rust RuntimePool)
+type runtimePool struct {
+	declared   uint64
+	configured uint64
+	// available is the cartridge self-report; nil = static (the normal
+	// case). Written only through PoolHandle.Set.
+	available *uint64
+	active    uint64
+	// members lists member patterns (shared pools and `all`); singletons
+	// empty.
+	members []string
 }
 
-// NewCapacityHandle creates a CapacityHandle with the given initial capacity.
-// (matches Rust CapacityHandle::new)
-func NewCapacityHandle(initial uint64) *CapacityHandle {
-	h := &CapacityHandle{}
-	h.value.Store(initial)
-	return h
+func (p *runtimePool) effective() uint64 {
+	return EffectiveCapacity(p.configured, p.available)
 }
 
-// Set sets the concurrency capacity. 0 means unlimited. (matches Rust
-// CapacityHandle::set)
-func (h *CapacityHandle) Set(n uint64) {
-	h.value.Store(n)
+func (p *runtimePool) hasRoom() bool {
+	effective := p.effective()
+	return effective == CapacityUnlimited || p.active < effective
 }
 
-// Get returns the current capacity. 0 means unlimited. (matches Rust
-// CapacityHandle::get)
-func (h *CapacityHandle) Get() uint64 {
-	return h.value.Load()
+// runtimePools is the runtime's materialized concurrency pools (see
+// pools.go): one singleton pool per registered handler pattern, every
+// declared shared pool from the manifest, and `all`. The owning poolsCell's
+// mutex guards capacities, active counts, and queues together so admission
+// is one atomic decision. (matches Rust RuntimePools)
+type runtimePools struct {
+	pools map[string]*runtimePool
+	// chains maps registered handler pattern (canonical) → its pool chain
+	// in admission order: singleton, declared pools containing it, `all`.
+	chains map[string][]string
+	// queues are the singleton queues — queues lead to pools. Keyed by
+	// registered pattern.
+	queues map[string][]*liveHandlerRequest
+	// nextTicket is the global FIFO ticket counter: cross-cap admission on
+	// a shared-pool release is arrival-ordered, never cap-biased.
+	nextTicket uint64
+}
+
+// newRuntimePools materializes the pools from the registered handler
+// patterns and the manifest's declarations. Hard errors, never coercion: an
+// invalid registered pattern, or a declaration cap that matches no
+// registered pattern, is a cartridge-author bug named precisely.
+// (matches Rust RuntimePools::init)
+func newRuntimePools(handlerPatterns []string, declarations *PoolDeclarations) (*runtimePools, error) {
+	var patterns []string
+	for _, raw := range handlerPatterns {
+		parsed, err := urn.NewCapUrnFromString(raw)
+		if err != nil {
+			return nil, fmt.Errorf("registered handler pattern '%s' is not a valid cap URN: %w", raw, err)
+		}
+		canon := parsed.String()
+		if slices.Contains(patterns, canon) {
+			return nil, fmt.Errorf("handler pattern '%s' is registered twice", canon)
+		}
+		patterns = append(patterns, canon)
+	}
+	resolve := func(declaredCap string) (string, error) {
+		parsed, err := urn.NewCapUrnFromString(declaredCap)
+		if err != nil {
+			return "", fmt.Errorf("pool declaration cap '%s' is not a valid cap URN: %w", declaredCap, err)
+		}
+		canon := parsed.String()
+		if !slices.Contains(patterns, canon) {
+			return "", fmt.Errorf(
+				"pool declaration references cap '%s' but no handler is registered under it — pool declarations bind to the caps the runtime actually serves",
+				canon)
+		}
+		return canon, nil
+	}
+
+	pools := make(map[string]*runtimePool)
+	queues := make(map[string][]*liveHandlerRequest)
+	for _, pattern := range patterns {
+		declared := declarations.Capacities[pattern]
+		pools[pattern] = &runtimePool{declared: declared, configured: declared}
+		queues[pattern] = nil
+	}
+	for _, name := range sortedKeys(declarations.Pools) {
+		members := declarations.Pools[name]
+		var resolved []string
+		for _, member := range members {
+			canon, err := resolve(member)
+			if err != nil {
+				return nil, err
+			}
+			resolved = append(resolved, canon)
+		}
+		declared := declarations.Capacities[name]
+		pools[name] = &runtimePool{declared: declared, configured: declared, members: resolved}
+	}
+	for key := range declarations.Capacities {
+		if key == PoolAll {
+			continue
+		}
+		if _, isPool := pools[key]; isPool {
+			continue
+		}
+		if parsed, err := urn.NewCapUrnFromString(key); err == nil && slices.Contains(patterns, parsed.String()) {
+			continue
+		}
+		return nil, fmt.Errorf(
+			"declared capacity for '%s' names neither a registered cap, a declared pool, nor '%s'",
+			key, PoolAll)
+	}
+	allDeclared := declarations.Capacities[PoolAll]
+	pools[PoolAll] = &runtimePool{
+		declared:   allDeclared,
+		configured: allDeclared,
+		members:    append([]string(nil), patterns...),
+	}
+
+	chains := make(map[string][]string)
+	for _, pattern := range patterns {
+		chain := []string{pattern}
+		for _, name := range sortedKeys(pools) {
+			if name == PoolAll || name == pattern {
+				continue
+			}
+			if slices.Contains(pools[name].members, pattern) {
+				chain = append(chain, name)
+			}
+		}
+		chains[pattern] = append(chain, PoolAll)
+	}
+
+	return &runtimePools{pools: pools, chains: chains, queues: queues}, nil
+}
+
+func (rp *runtimePools) chain(pattern string) []string {
+	chain, ok := rp.chains[pattern]
+	if !ok {
+		panic(fmt.Sprintf("no pool chain for registered pattern '%s'", pattern))
+	}
+	return chain
+}
+
+func (rp *runtimePools) chainHasRoom(pattern string) bool {
+	for _, pool := range rp.chain(pattern) {
+		if !rp.pools[pool].hasRoom() {
+			return false
+		}
+	}
+	return true
+}
+
+// tryAdmit admits one dispatch of pattern if its whole chain has room.
+func (rp *runtimePools) tryAdmit(pattern string) bool {
+	if !rp.chainHasRoom(pattern) {
+		return false
+	}
+	for _, pool := range rp.chain(pattern) {
+		rp.pools[pool].active++
+	}
+	return true
+}
+
+// release releases one dispatch of pattern across its chain.
+func (rp *runtimePools) release(pattern string) {
+	for _, pool := range rp.chain(pattern) {
+		slot := rp.pools[pool]
+		if slot.active == 0 {
+			panic(fmt.Sprintf("pool '%s' released below zero active", pool))
+		}
+		slot.active--
+	}
+}
+
+// enqueue queues a request on its cap's singleton queue, returning its
+// queue position (1-based) for the "queued" LOG.
+func (rp *runtimePools) enqueue(request *liveHandlerRequest) int {
+	request.ticket = rp.nextTicket
+	rp.nextTicket++
+	if _, ok := rp.queues[request.pattern]; !ok {
+		panic(fmt.Sprintf("no singleton queue for pattern '%s'", request.pattern))
+	}
+	rp.queues[request.pattern] = append(rp.queues[request.pattern], request)
+	return len(rp.queues[request.pattern])
+}
+
+// popAdmissible pops-and-admits the oldest queued request whose chain has
+// room — arrival-ordered across all caps by the global ticket.
+func (rp *runtimePools) popAdmissible() *liveHandlerRequest {
+	bestPattern := ""
+	var bestTicket uint64
+	found := false
+	for _, pattern := range sortedKeys(rp.queues) {
+		queue := rp.queues[pattern]
+		if len(queue) == 0 {
+			continue
+		}
+		front := queue[0]
+		if rp.chainHasRoom(pattern) && (!found || front.ticket < bestTicket) {
+			found = true
+			bestPattern = pattern
+			bestTicket = front.ticket
+		}
+	}
+	if !found {
+		return nil
+	}
+	request := rp.queues[bestPattern][0]
+	rp.queues[bestPattern] = rp.queues[bestPattern][1:]
+	for _, pool := range rp.chain(bestPattern) {
+		rp.pools[pool].active++
+	}
+	return request
+}
+
+// applyDesired applies an operator's desired configured values (heartbeat
+// probe). The whole batch is validated first — an unknown pool refuses it
+// all.
+func (rp *runtimePools) applyDesired(desired DesiredCapacities) error {
+	for name := range desired {
+		if _, ok := rp.pools[name]; !ok {
+			return fmt.Errorf("unknown pool '%s'", name)
+		}
+	}
+	for name, configured := range desired {
+		rp.pools[name].configured = configured
+	}
+	return nil
+}
+
+// setAvailable is the cartridge self-report for one pool (see PoolHandle).
+func (rp *runtimePools) setAvailable(pool string, available uint64) error {
+	slot, ok := rp.pools[pool]
+	if !ok {
+		return fmt.Errorf("unknown pool '%s'", pool)
+	}
+	value := available
+	slot.available = &value
+	return nil
+}
+
+// snapshot is the full wire-shaped state map. Queued counts each waiting
+// request on its own singleton pool and on every chain pool that currently
+// lacks room (its blockers) — so a shared pool's queued figure is the
+// number of waiters it is actually holding back.
+func (rp *runtimePools) snapshot() PoolStates {
+	states := make(PoolStates, len(rp.pools))
+	for name, pool := range rp.pools {
+		var available *uint64
+		if pool.available != nil {
+			value := *pool.available
+			available = &value
+		}
+		states[name] = PoolState{
+			Declared:   pool.declared,
+			Configured: pool.configured,
+			Available:  available,
+			Active:     pool.active,
+			Caps:       append([]string(nil), pool.members...),
+		}
+	}
+	for pattern, queue := range rp.queues {
+		waiting := uint64(len(queue))
+		if waiting == 0 {
+			continue
+		}
+		singleton := states[pattern]
+		singleton.Queued += waiting
+		states[pattern] = singleton
+		for _, pool := range rp.chain(pattern) {
+			if pool != pattern && !rp.pools[pool].hasRoom() {
+				blocked := states[pool]
+				blocked.Queued += waiting
+				states[pool] = blocked
+			}
+		}
+	}
+	return states
+}
+
+// poolsCell owns the runtime's pools behind one mutex — capacities, active
+// counts, and queues change together so admission is one atomic decision.
+// pools is nil until runCBORModeIO materializes it at startup.
+type poolsCell struct {
+	mu    sync.Mutex
+	pools *runtimePools
+}
+
+// PoolHandle is a shared handle for a pool's cartridge SELF-REPORT
+// (`available` — see pools.go). Obtained from CartridgeRuntime.PoolHandle
+// with a pool name (a registered cap URN for a single cap, a declared pool
+// name, or `all`). Set(n) reports what the cartridge can serve right now
+// from its OWN state (0 = unlimited); it never touches the operator's
+// configured or the manifest's declared. A cartridge that never calls it is
+// fully static — the normal case. (matches Rust PoolHandle)
+type PoolHandle struct {
+	cell *poolsCell
+	name string
+}
+
+// Set reports the pool's current self-limit. Errors name the defect: an
+// unmaterialized runtime (Set before Run) or an unknown pool name.
+// (matches Rust PoolHandle::set)
+func (h *PoolHandle) Set(available uint64) error {
+	h.cell.mu.Lock()
+	defer h.cell.mu.Unlock()
+	if h.cell.pools == nil {
+		return fmt.Errorf("pool handle '%s' used before the runtime materialized its pools (call Run first)", h.name)
+	}
+	return h.cell.pools.setAvailable(h.name, available)
 }
 
 // CartridgeRuntime handles all I/O for cartridge binaries.
 //
-// Concurrency capacity: set via Capacity().Set(n) before Run(). When set,
-// incoming requests beyond the capacity are queued. The runtime sends LOG
-// frames with level="queued" so the pipeline knows the request is alive but
-// waiting; when a handler slot opens, the next queued request is dequeued
-// (LOG level="dequeued") and dispatched. Default is 0 (unlimited). (matches
-// Rust CartridgeRuntime concurrency capacity)
+// Concurrency: the runtime materializes CONCURRENCY POOLS at Run (see
+// pools.go) — one singleton pool per registered cap, every manifest-declared
+// shared pool, and `all`. A request admits through its cap's whole pool
+// chain; over capacity it queues on its cap's singleton queue and the
+// runtime sends a LOG frame with level="queued" so the pipeline knows the
+// request is alive but waiting; when a chain slot opens, the oldest
+// admissible queued request (global arrival order) is dequeued (LOG
+// level="dequeued") and dispatched. (matches
+// Rust CartridgeRuntime pools)
 type CartridgeRuntime struct {
 	handlers     map[string]HandlerFunc
 	manifestData []byte
@@ -418,9 +698,9 @@ type CartridgeRuntime struct {
 	limits       Limits
 	mu           sync.RWMutex
 
-	// capacity is the concurrency capacity handle: 0 = unlimited, N = max N
-	// concurrent handlers. Shared so handlers can adjust it dynamically.
-	capacity *CapacityHandle
+	// pools is the runtime's concurrency-pool state (nil inside until Run
+	// materializes it). One mutex guards admission atomically.
+	pools *poolsCell
 
 	// dropCounters is process-wide dropped-frame accounting (L8). Shared
 	// with every counted drop site. Drops mean something went wrong.
@@ -443,7 +723,7 @@ func NewCartridgeRuntime(manifestJSON []byte) (*CartridgeRuntime, error) {
 		handlers:          make(map[string]HandlerFunc),
 		manifestData:      manifestJSON,
 		limits:            DefaultLimits(),
-		capacity:          NewCapacityHandle(0),
+		pools:             &poolsCell{},
 		dropCounters:      NewDropCounters(),
 		stragglerCounters: NewStragglerCounters(),
 	}
@@ -497,7 +777,7 @@ func NewCartridgeRuntimeWithManifest(manifest *CapManifest) (*CartridgeRuntime, 
 		manifestData: manifestData,
 		manifest:     manifest,
 		limits:       DefaultLimits(),
-		capacity:     NewCapacityHandle(0),
+		pools:        &poolsCell{},
 		dropCounters: NewDropCounters(),
 	}
 
@@ -626,18 +906,11 @@ func (pr *CartridgeRuntime) Register(capUrn string, handler HandlerFunc) {
 	pr.handlers[capUrn] = handler
 }
 
-// Capacity returns the shared concurrency-capacity handle. Call Set(n) on it
-// (before or during Run()) to bound the number of concurrent handlers; 0
-// (the default) is unlimited. (matches Rust CartridgeRuntime::set_capacity /
-// capacity_handle plumbing)
-func (pr *CartridgeRuntime) Capacity() *CapacityHandle {
-	return pr.capacity
-}
-
-// SetCapacity sets the concurrency capacity. 0 means unlimited. Equivalent to
-// Capacity().Set(n).
-func (pr *CartridgeRuntime) SetCapacity(n uint64) {
-	pr.capacity.Set(n)
+// PoolHandle returns a self-report handle for one pool (a registered cap
+// URN, a declared pool name, or `all` — see pools.go). Set(n) on it writes
+// the pool's `available` only. (matches Rust CartridgeRuntime::pool_handle)
+func (pr *CartridgeRuntime) PoolHandle(pool string) *PoolHandle {
+	return &PoolHandle{cell: pr.pools, name: pool}
 }
 
 // ProtocolDrops returns a snapshot of this runtime's dropped-frame counters
@@ -659,10 +932,9 @@ func (pr *CartridgeRuntime) ProtocolStragglers() StragglerSnapshot {
 // single object. Struct-based handlers (CapOp) receive a *Request instead of the
 // three separate HandlerFunc parameters. Mirrors the Rust capdag Request type.
 type Request struct {
-	frames   <-chan Frame
-	emitter  StreamEmitter
-	peer     PeerInvoker
-	capacity *CapacityHandle
+	frames  <-chan Frame
+	emitter StreamEmitter
+	peer    PeerInvoker
 }
 
 // Frames returns the input frame channel. The handler owns the channel and must consume
@@ -675,13 +947,6 @@ func (r *Request) Output() StreamEmitter { return r.emitter }
 // Peer returns the PeerInvoker for calling capabilities on the host.
 func (r *Request) Peer() PeerInvoker { return r.peer }
 
-// CapacityHandle returns the shared concurrency-capacity handle so a handler
-// can adjust how many requests the runtime dispatches concurrently (e.g. drop
-// to 1 during a model load, then raise it once resources allow). nil when the
-// request was not dispatched by a CartridgeRuntime that wired one (matches
-// Rust Request::capacity_handle).
-func (r *Request) CapacityHandle() *CapacityHandle { return r.capacity }
-
 // CapOp is the interface for struct-based cartridge cap handlers. Implement Perform to handle
 // a capability invocation. Mirrors the Rust Op<()> pattern: input/output/peer are accessed
 // through *Request rather than as separate parameters.
@@ -693,7 +958,7 @@ type CapOp interface {
 // Bridges the struct-based CapOp interface to the function-based HandlerFunc.
 func (pr *CartridgeRuntime) RegisterOp(capUrn string, op CapOp) {
 	pr.Register(capUrn, func(frames <-chan Frame, emitter StreamEmitter, peer PeerInvoker) error {
-		return op.Perform(&Request{frames: frames, emitter: emitter, peer: peer, capacity: pr.capacity})
+		return op.Perform(&Request{frames: frames, emitter: emitter, peer: peer})
 	})
 }
 
@@ -708,24 +973,37 @@ func (pr *CartridgeRuntime) RegisterOp(capUrn string, op CapOp) {
 // then by smallest absolute distance. This prevents identity handlers
 // from stealing routes from specific handlers.
 func (pr *CartridgeRuntime) FindHandler(capUrn string) HandlerFunc {
+	handler, _ := pr.FindHandlerWithPattern(capUrn)
+	return handler
+}
+
+// FindHandlerWithPattern finds the best handler for a cap URN and returns
+// it together with the CANONICAL registered pattern that won — the
+// request's singleton pool and pool-chain key. (matches Rust
+// find_handler_with_pattern)
+func (pr *CartridgeRuntime) FindHandlerWithPattern(capUrn string) (HandlerFunc, string) {
 	pr.mu.RLock()
 	defer pr.mu.RUnlock()
 
 	// First try exact match
 	if handler, ok := pr.handlers[capUrn]; ok {
-		return handler
+		if parsed, err := urn.NewCapUrnFromString(capUrn); err == nil {
+			return handler, parsed.String()
+		}
+		return handler, capUrn
 	}
 
 	// Then try pattern matching via CapUrn
 	requestUrn, err := urn.NewCapUrnFromString(capUrn)
 	if err != nil {
-		return nil
+		return nil, ""
 	}
 
 	requestSpecificity := requestUrn.Specificity()
 
 	type handlerMatch struct {
 		handler        HandlerFunc
+		pattern        string
 		signedDistance int
 	}
 	var matches []handlerMatch
@@ -739,12 +1017,12 @@ func (pr *CartridgeRuntime) FindHandler(capUrn string) HandlerFunc {
 		if registeredUrn.IsDispatchable(requestUrn) {
 			specificity := registeredUrn.Specificity()
 			signedDistance := specificity - requestSpecificity
-			matches = append(matches, handlerMatch{handler, signedDistance})
+			matches = append(matches, handlerMatch{handler, registeredUrn.String(), signedDistance})
 		}
 	}
 
 	if len(matches) == 0 {
-		return nil
+		return nil, ""
 	}
 
 	// Rank: non-negative distance (refinement/exact) before negative (fallback),
@@ -772,7 +1050,7 @@ func (pr *CartridgeRuntime) FindHandler(capUrn string) HandlerFunc {
 		return iAbs < jAbs
 	})
 
-	return matches[0].handler
+	return matches[0].handler, matches[0].pattern
 }
 
 // Run runs the cartridge runtime (automatic mode detection)
@@ -836,6 +1114,12 @@ type incomingStream struct {
 type liveHandlerRequest struct {
 	requestID MessageId
 	capUrn    string
+	// pattern is the registered handler pattern (canonical) serving this
+	// request — the singleton pool it queues on and the key of its chain.
+	pattern string
+	// ticket is the global arrival ticket: cross-cap admission is FIFO by
+	// this. Assigned by runtimePools.enqueue.
+	ticket    uint64
 	routingId *MessageId
 	handler   HandlerFunc
 	frames    *unboundedFrameChan
@@ -941,10 +1225,34 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 	reader := NewFrameReader(in)
 	rawWriter := NewFrameWriter(out)
 
+	// Materialize the concurrency pools BEFORE the handshake — the HELLO
+	// carries the full pool-state map (see pools.go), and a declaration
+	// that does not resolve against the registered handlers is a
+	// cartridge-author bug surfaced right here, at startup.
+	pr.mu.RLock()
+	patterns := make([]string, 0, len(pr.handlers))
+	for pattern := range pr.handlers {
+		patterns = append(patterns, pattern)
+	}
+	pr.mu.RUnlock()
+	sort.Strings(patterns)
+	declarations := &PoolDeclarations{}
+	if pr.manifest != nil && pr.manifest.PoolDeclarations != nil {
+		declarations = pr.manifest.PoolDeclarations
+	}
+	materialized, err := newRuntimePools(patterns, declarations)
+	if err != nil {
+		return fmt.Errorf("concurrency pools: %w", err)
+	}
+	pr.pools.mu.Lock()
+	pr.pools.pools = materialized
+	poolSnapshot := materialized.snapshot()
+	pr.pools.mu.Unlock()
+
 	// Perform handshake - send our manifest in the HELLO response
 	// Handshake is single-threaded so raw writer is safe here
 	negotiatedLimits, err := HandshakeAccept(
-		reader, rawWriter, pr.manifestData, pr.capacity.Get(),
+		reader, rawWriter, pr.manifestData, poolSnapshot,
 	)
 	if err != nil {
 		return fmt.Errorf("handshake failed: %w", err)
@@ -1020,37 +1328,26 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 	// Track active handler goroutines for cleanup
 	var activeHandlers sync.WaitGroup
 
-	// queueMu guards the capacity-bounded handler dispatch queue below
-	// (protocol v4 concurrency capacity: CapacityHandle).
-	var queueMu sync.Mutex
-	var requestQueue []*liveHandlerRequest
-	runningHandlerCount := 0
-
 	// runHandlerNow spawns a handler goroutine for a ready-to-run request
-	// immediately (capacity already accounted for by the caller). Its live
+	// immediately (its pool chain already admitted by the caller). Its live
 	// frame channel (frames) is already being fed by the main loop below —
 	// dispatch here only decides when the handler goroutine STARTS reading
-	// it, never when frames start arriving. On completion it releases this
-	// request's credit waiters (L13) and, under capacity, self-drains the
-	// next queued request — the Go counterpart of the Rust main loop's
-	// handler_done_rx-triggered queue drain, expressed as a self-perpetuating
-	// chain instead of a central select loop.
+	// it, never when frames start arriving. On completion it releases the
+	// request's whole pool chain, releases its credit waiters (L13), and
+	// self-drains the oldest admissible queued request across ALL singleton
+	// queues (global arrival order) — the Go counterpart of the Rust main
+	// loop's handler_done_rx-triggered queue drain, expressed as a
+	// self-perpetuating chain instead of a central select loop.
 	var runHandlerNow func(qr *liveHandlerRequest)
 	runHandlerNow = func(qr *liveHandlerRequest) {
 		activeHandlers.Add(1)
 		go func() {
 			defer activeHandlers.Done()
 			defer func() {
-				queueMu.Lock()
-				runningHandlerCount--
-				cap := pr.capacity.Get()
-				var next *liveHandlerRequest
-				if len(requestQueue) > 0 && (cap == 0 || uint64(runningHandlerCount) < cap) {
-					next = requestQueue[0]
-					requestQueue = requestQueue[1:]
-					runningHandlerCount++
-				}
-				queueMu.Unlock()
+				pr.pools.mu.Lock()
+				pr.pools.pools.release(qr.pattern)
+				next := pr.pools.pools.popAdmissible()
+				pr.pools.mu.Unlock()
 				// Release this request's credit waiters (protocol v4, L13) —
 				// a sender blocked on this request's response/peer-arg credit
 				// gate must not hang once the handler is done.
@@ -1059,7 +1356,8 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 					dequeuedLog := NewLog(next.requestID, "dequeued", AttributionClassInternal, "Request dequeued, handler starting", nil)
 					dequeuedLog.RoutingId = next.routingId
 					if err := writer.WriteFrame(dequeuedLog); err != nil {
-						fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write dequeued LOG: %v\n", err)
+						fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write dequeued LOG: %v
+", err)
 					}
 					runHandlerNow(next)
 				}
@@ -1068,30 +1366,30 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 		}()
 	}
 
-	// dispatchOrQueue is the capacity gate (protocol v4, CapacityHandle): under
-	// capacity a request's handler goroutine starts immediately; at capacity
-	// it is queued and the caller is told via a LOG frame with level="queued"
-	// so the pipeline knows the request is alive but waiting — frames keep
-	// arriving into qr.frames regardless (L16). Default capacity is 0
-	// (unlimited) — matches Rust CartridgeRuntime's default. (matches Rust
-	// main loop's capacity check at REQ dispatch / queue drain)
+	// dispatchOrQueue is the pool-chain admission gate (see pools.go): when
+	// every pool in the request's chain has room, its handler goroutine
+	// starts immediately; otherwise it queues on its cap's singleton queue
+	// and the caller is told via a LOG frame with level="queued" so the
+	// pipeline knows the request is alive but waiting — frames keep
+	// arriving into qr.frames regardless (L16). (matches Rust main loop's
+	// chain admission at REQ dispatch / queue drain)
 	dispatchOrQueue := func(qr *liveHandlerRequest) {
-		queueMu.Lock()
-		cap := pr.capacity.Get()
-		if cap > 0 && uint64(runningHandlerCount) >= cap {
-			queuePos := len(requestQueue) + 1
-			active := runningHandlerCount
-			requestQueue = append(requestQueue, qr)
-			queueMu.Unlock()
-			logFrame := NewLog(qr.requestID, "queued", AttributionClassInternal, fmt.Sprintf("Request queued (position %d, %d active)", queuePos, active), nil)
+		pr.pools.mu.Lock()
+		admitted := pr.pools.pools.tryAdmit(qr.pattern)
+		queuePos := 0
+		if !admitted {
+			queuePos = pr.pools.pools.enqueue(qr)
+		}
+		pr.pools.mu.Unlock()
+		if !admitted {
+			logFrame := NewLog(qr.requestID, "queued", AttributionClassInternal, fmt.Sprintf("Request queued (position %d on pool '%s')", queuePos, qr.pattern), nil)
 			logFrame.RoutingId = qr.routingId
 			if err := writer.WriteFrame(logFrame); err != nil {
-				fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write queued LOG: %v\n", err)
+				fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write queued LOG: %v
+", err)
 			}
 			return
 		}
-		runningHandlerCount++
-		queueMu.Unlock()
 		runHandlerNow(qr)
 	}
 
@@ -1132,8 +1430,9 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 				continue
 			}
 
-			// Find handler
-			handler := pr.FindHandler(capUrn)
+			// Find handler and the registered pattern that won — the
+			// request's singleton pool and pool-chain key.
+			handler, pattern := pr.FindHandlerWithPattern(capUrn)
 			if handler == nil {
 				// A dispatched cap this binary doesn't handle is a
 				// deployment/manifest mismatch — Environment.
@@ -1168,6 +1467,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 			dispatchOrQueue(&liveHandlerRequest{
 				requestID: frame.Id,
 				capUrn:    capUrn,
+				pattern:   pattern,
 				routingId: routingId,
 				handler:   handler,
 				frames:    liveFrames,
@@ -1175,14 +1475,40 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 			continue // Wait for STREAM_START/CHUNK/STREAM_END/END frames
 
 		case FrameTypeHeartbeat:
+			// The heartbeat is the capacity CONFIG channel: a probe may
+			// carry the operator's desired configured values. The whole
+			// batch is validated first — an unknown pool refuses it all
+			// with an ERR naming it, and the probe gets that ERR instead
+			// of a reply, so the host's awaited apply fails precisely
+			// rather than silently.
+			if desiredBytes := frame.DesiredCapacityBytes(); desiredBytes != nil {
+				desired, decodeErr := DecodeDesired(desiredBytes)
+				applyErr := decodeErr
+				if applyErr == nil {
+					pr.pools.mu.Lock()
+					applyErr = pr.pools.pools.applyDesired(desired)
+					pr.pools.mu.Unlock()
+				}
+				if applyErr != nil {
+					errFrame := NewErr(frame.Id, "UNKNOWN_POOL", AttributionClassInternal, fmt.Sprintf("desired capacities refused: %v", applyErr), nil)
+					if err := writer.WriteFrame(errFrame); err != nil {
+						return fmt.Errorf("failed to write UNKNOWN_POOL error: %w", err)
+					}
+					continue
+				}
+			}
 			// Respond to heartbeat immediately - never blocked by handlers
 			response := NewHeartbeat(frame.Id)
+			pr.pools.mu.Lock()
+			heartbeatSnapshot := pr.pools.pools.snapshot()
+			pr.pools.mu.Unlock()
 			// The benign straggler total rides alongside drops_total,
-			// under its own name — stragglers are not drops.
+			// under its own name — stragglers are not drops. The pool map
+			// is MANDATORY: the host hard-errors on a reply without it.
 			response.Meta = map[string]interface{}{
 				"drops_total":      pr.dropCounters.Total(),
 				"stragglers_total": pr.stragglerCounters.Total(),
-				"handler_capacity": pr.capacity.Get(),
+				MetaPools:          EncodePoolStates(heartbeatSnapshot),
 			}
 			if err := writer.WriteFrame(response); err != nil {
 				return fmt.Errorf("failed to write heartbeat response: %w", err)

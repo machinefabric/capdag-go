@@ -243,8 +243,15 @@ type ManagedCartridge struct {
 	// retired is set before killing a retired cartridge so the death handler
 	// attributes its pending work to the retirement rather than reporting an
 	// unexpected crash. Mirrors Rust ShutdownReason::RosterRetired.
-	retired         bool
-	handlerCapacity uint64
+	retired bool
+	// poolStates is the cartridge's last-known concurrency-pool state map
+	// (see pools.go): captured at HELLO and refreshed by every heartbeat
+	// reply. This IS the capacity surface; there is no scalar.
+	poolStates PoolStates
+	// pendingDesired holds operator `configured` values queued for
+	// delivery on the next heartbeat probe (the heartbeat is the config
+	// channel). Cleared when a probe carries them.
+	pendingDesired DesiredCapacities
 	// pendingHeartbeats tracks health probes this host has sent to the
 	// cartridge (id string → sent time), so a later HEARTBEAT frame from
 	// the cartridge can be told apart from a cartridge-initiated
@@ -712,6 +719,8 @@ func (h *CartridgeHost) RegisterCartridge(path, name, version string, channel Ca
 		limits:            DefaultLimits(),
 		installedIdentity: installedCartridgeRecordFromBinary(path, name, version, channel, registryURL),
 		pendingHeartbeats: make(map[string]time.Time),
+		poolStates:        make(PoolStates),
+		pendingDesired:    make(DesiredCapacities),
 	}
 	h.cartridges = append(h.cartridges, cartridge)
 
@@ -748,6 +757,8 @@ func (h *CartridgeHost) registerCartridgeDirLocked(spec RegisteredDirSpec) {
 		running:           false,
 		limits:            DefaultLimits(),
 		pendingHeartbeats: make(map[string]time.Time),
+		poolStates:        make(PoolStates),
+		pendingDesired:    make(DesiredCapacities),
 	}
 
 	sha256, err := HashCartridgeDirectory(spec.VersionDir)
@@ -823,13 +834,67 @@ func installedCartridgeRecordFromManifest(manifest []byte) *InstalledCartridgeRe
 	}
 }
 
+// ApplyDesiredCapacities validates and delivers operator `configured`
+// values for one cartridge's pools. The heartbeat is the config channel:
+// values are queued on the cartridge and ride an IMMEDIATE out-of-cycle
+// probe when the process is running; a cold cartridge keeps them queued
+// for delivery at attach time. Validated hard against the cartridge's
+// last-known pool map: an unknown cartridge or pool name is refused with
+// the offender named, and nothing is queued. (matches Rust
+// apply_desired_capacities)
+func (h *CartridgeHost) ApplyDesiredCapacities(cartridgeID string, desired DesiredCapacities) error {
+	h.mu.Lock()
+	idx := -1
+	for i, cartridge := range h.cartridges {
+		if cartridge.removed || cartridge.installedIdentity == nil {
+			continue
+		}
+		if cartridge.installedIdentity.Id != cartridgeID {
+			continue
+		}
+		if idx != -1 {
+			h.mu.Unlock()
+			return fmt.Errorf("cartridge id '%s' is ambiguous on this host", cartridgeID)
+		}
+		idx = i
+	}
+	if idx == -1 {
+		h.mu.Unlock()
+		return fmt.Errorf("desired capacities address cartridge '%s', which this host does not carry", cartridgeID)
+	}
+	cartridge := h.cartridges[idx]
+	for pool := range desired {
+		if _, ok := cartridge.poolStates[pool]; !ok {
+			h.mu.Unlock()
+			return fmt.Errorf("desired capacities name pool '%s', which cartridge '%s' does not declare", pool, cartridgeID)
+		}
+	}
+	for pool, configured := range desired {
+		cartridge.pendingDesired[pool] = configured
+	}
+	// Immediate out-of-cycle probe when the process is up; a cold
+	// cartridge keeps the values queued for the attach-time probe.
+	var probe *Frame
+	if cartridge.running && cartridge.writerCh != nil {
+		probeID := NewMessageIdRandom()
+		probe = NewHeartbeatWithDesired(probeID, cartridge.pendingDesired)
+		cartridge.pendingDesired = make(DesiredCapacities)
+		cartridge.pendingHeartbeats[probeID.ToString()] = time.Now()
+	}
+	h.mu.Unlock()
+	if probe != nil {
+		return h.sendToCartridge(idx, probe)
+	}
+	return nil
+}
+
 // AttachCartridge attaches a pre-connected cartridge (already running).
 // Performs HELLO handshake immediately and returns the cartridge index.
 func (h *CartridgeHost) AttachCartridge(cartridgeRead io.Reader, cartridgeWrite io.Writer) (int, error) {
 	reader := NewFrameReader(cartridgeRead)
 	writer := NewFrameWriter(cartridgeWrite)
 
-	manifest, limits, handlerCapacity, err := HandshakeInitiate(reader, writer)
+	manifest, limits, poolStates, err := HandshakeInitiate(reader, writer)
 	if err != nil {
 		return -1, fmt.Errorf("handshake failed: %w", err)
 	}
@@ -862,15 +927,16 @@ func (h *CartridgeHost) AttachCartridge(cartridgeRead io.Reader, cartridgeWrite 
 		limits:          limits,
 		caps:            caps,
 		capGroups:       capGroups,
-		running:         true,
-		generation:      1,
-		handlerCapacity: handlerCapacity,
+		running:    true,
+		generation: 1,
+		poolStates: poolStates,
 		// Derive the install identity from the HELLO manifest. Advertisement
 		// is identity-gated, so without this the attached cartridge is
 		// silently excluded from every RelayNotify and the engine can never
 		// route to it (the dev/interop relay path).
 		installedIdentity: installedCartridgeRecordFromManifest(manifest),
 		pendingHeartbeats: make(map[string]time.Time),
+		pendingDesired:    make(DesiredCapacities),
 	}
 	h.cartridges = append(h.cartridges, cartridge)
 
@@ -1599,16 +1665,28 @@ func (h *CartridgeHost) handleCartridgeFrame(cartridgeIdx int, frame *Frame, rel
 					cartridge.protocolDropsTotal = &v
 				}
 			}
-			capacity, ok := extractUint64FromMeta(frame.Meta, "handler_capacity")
-			if !ok {
+			// The pool-state map is MANDATORY on every heartbeat reply
+			// (see pools.go): a missing or malformed map is a protocol
+			// violation, never a default.
+			poolBytes := frame.PoolStateBytes()
+			if poolBytes == nil {
 				cartridge.running = false
 				if cartridge.cmd != nil && cartridge.cmd.Process != nil {
 					_ = cartridge.cmd.Process.Kill()
 				}
-				fmt.Fprintln(os.Stderr, "[CartridgeHost] protocol violation: heartbeat missing handler_capacity")
+				fmt.Fprintln(os.Stderr, "[CartridgeHost] protocol violation: heartbeat reply missing concurrency-pool state map")
 				return
 			}
-			cartridge.handlerCapacity = capacity
+			replyPools, poolErr := DecodePoolStates(poolBytes)
+			if poolErr != nil {
+				cartridge.running = false
+				if cartridge.cmd != nil && cartridge.cmd.Process != nil {
+					_ = cartridge.cmd.Process.Kill()
+				}
+				fmt.Fprintf(os.Stderr, "[CartridgeHost] protocol violation: heartbeat reply pool map: %v\n", poolErr)
+				return
+			}
+			cartridge.poolStates = replyPools
 			// Stamp the round-trip completion timestamp so the
 			// runtime-stats snapshot can surface heartbeat age to the UI.
 			now := unixSecondsNow()
@@ -1870,7 +1948,7 @@ func (h *CartridgeHost) spawnCartridgeLocked(cartridgeIdx int) error {
 	reader := NewFrameReader(stdout)
 	writer := NewFrameWriter(stdin)
 
-	manifest, limits, handlerCapacity, err := HandshakeInitiate(reader, writer)
+	manifest, limits, poolStates, err := HandshakeInitiate(reader, writer)
 	if err != nil {
 		cartridge.helloFailed = true
 		cmd.Process.Kill()
@@ -1889,7 +1967,7 @@ func (h *CartridgeHost) spawnCartridgeLocked(cartridgeIdx int) error {
 
 	cartridge.manifest = manifest
 	cartridge.limits = limits
-	cartridge.handlerCapacity = handlerCapacity
+	cartridge.poolStates = poolStates
 	cartridge.capGroups = capGroups
 	cartridge.caps = flattenCapURNs(capGroups)
 	cartridge.running = true
@@ -1955,7 +2033,7 @@ func (h *CartridgeHost) buildInstalledCartridgeIdentities() []InstalledCartridge
 		capGroups := cartridge.capGroups
 
 		stats := &CartridgeRuntimeStats{
-			HandlerCapacity:          cartridge.handlerCapacity,
+			Pools:                    cartridge.poolStates,
 			Running:                  cartridge.running,
 			ActiveRequestCount:       activeCounts[idx],
 			PeerRequestCount:         peerCounts[idx],
