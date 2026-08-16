@@ -40,6 +40,40 @@ func Test1276_RegisterNonConflicting(t *testing.T) {
 	}
 }
 
+// TEST1478: exact re-registration is idempotent — the SAME cartridge
+// re-registering the SAME group with the SAME adapter URNs (a cartridge
+// attached through two hosting routes, e.g. app-bundled AND
+// system-installed) is a no-op, not a self-conflict and not duplicate rows.
+// A DIFFERENT cartridge claiming the same URN stays rejected.
+func Test1478_ExactReregistrationIsIdempotent(t *testing.T) {
+	registry := NewMediaAdapterRegistry(createTestRegistry(t))
+
+	urns := []string{"media:fmt=json", "media:fmt=yaml"}
+	if err := registry.RegisterCapGroup("text-formats", urns, "txtcartridge"); err != nil {
+		t.Fatalf("first registration failed: %v", err)
+	}
+	if err := registry.RegisterCapGroup("text-formats", urns, "txtcartridge"); err != nil {
+		t.Fatalf("re-registering the identical group must be a no-op: %v", err)
+	}
+	if registry.RegisteredCount() != 2 {
+		t.Fatalf("re-registration must not duplicate adapter rows: got %d", registry.RegisteredCount())
+	}
+
+	// A partially-new group from the same owner registers only the new URN.
+	extended := []string{"media:fmt=json", "media:fmt=toml"}
+	if err := registry.RegisterCapGroup("text-formats", extended, "txtcartridge"); err != nil {
+		t.Fatalf("known URNs skip, new URNs register: %v", err)
+	}
+	if registry.RegisteredCount() != 3 {
+		t.Fatalf("expected 3 registered adapters, got %d", registry.RegisteredCount())
+	}
+
+	// Another cartridge claiming an identical URN is still ambiguity.
+	if err := registry.RegisterCapGroup("text-formats", []string{"media:fmt=json"}, "other"); err == nil {
+		t.Fatal("an identical URN from a DIFFERENT cartridge must stay rejected")
+	}
+}
+
 // TEST1277: Registration of a cap group with an adapter that conforms_to an existing adapter is rejected
 func Test1277_RejectConformingOverlap(t *testing.T) {
 	registry := NewMediaAdapterRegistry(createTestRegistry(t))

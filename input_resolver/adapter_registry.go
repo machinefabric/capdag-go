@@ -3,6 +3,7 @@ package input_resolver
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/machinefabric/capdag-go/media"
 	"github.com/machinefabric/capdag-go/urn"
@@ -82,6 +83,12 @@ func (r *MediaAdapterRegistry) RegisteredCount() int {
 // rejected — none of its adapters get registered. On success, all adapter URNs
 // from the group are added atomically.
 //
+// Exact re-registration is IDEMPOTENT: an adapter URN equivalent to one this
+// same (cartridgeID, groupName) already registered is neither a conflict nor
+// a second row — a cartridge attached through more than one hosting route
+// (e.g. app-bundled and system-installed) is still one adapter provider, not
+// an ambiguity with itself. The skip is logged descriptively.
+//
 // Invalid URN strings are a hard error (panic), mirroring the Rust reference.
 func (r *MediaAdapterRegistry) RegisterCapGroup(groupName string, adapterUrnStrs []string, cartridgeID string) error {
 	// Parse all new adapter URNs first — fail hard on invalid URNs.
@@ -98,8 +105,35 @@ func (r *MediaAdapterRegistry) RegisterCapGroup(groupName string, adapterUrnStrs
 		newAdapters = append(newAdapters, parsed{u: u, str: s})
 	}
 
+	// Which new adapters are exact re-registrations by the same owner —
+	// skipped in the conflict scan AND in the final insert, so repeated
+	// attachment of the same cartridge stays a no-op instead of either
+	// refusing (self-conflict) or duplicating rows.
+	alreadyRegistered := make([]bool, len(newAdapters))
+	for i, na := range newAdapters {
+		for j := range r.registeredAdapters {
+			existing := &r.registeredAdapters[j]
+			if existing.cartridgeID == cartridgeID &&
+				existing.groupName == groupName &&
+				existing.mediaUrn.IsEquivalent(na.u) {
+				alreadyRegistered[i] = true
+				break
+			}
+		}
+		if alreadyRegistered[i] {
+			fmt.Fprintf(os.Stderr,
+				"[WARN] Adapter URN '%s' of cap group '%s' is already registered by "+
+					"cartridge '%s' — the cartridge is attached through more than one "+
+					"hosting route; keeping the first registration and skipping this one\n",
+				na.str, groupName, cartridgeID)
+		}
+	}
+
 	// Check each new adapter against all existing registered adapters.
-	for _, na := range newAdapters {
+	for idx, na := range newAdapters {
+		if alreadyRegistered[idx] {
+			continue
+		}
 		for i := range r.registeredAdapters {
 			existing := &r.registeredAdapters[i]
 			newConformsToExisting := na.u.ConformsTo(existing.mediaUrn)
@@ -137,8 +171,12 @@ func (r *MediaAdapterRegistry) RegisterCapGroup(groupName string, adapterUrnStrs
 		}
 	}
 
-	// No conflicts — register atomically.
-	for _, na := range newAdapters {
+	// No conflicts — register atomically (re-registered URNs already have
+	// their row).
+	for idx, na := range newAdapters {
+		if alreadyRegistered[idx] {
+			continue
+		}
 		r.registeredAdapters = append(r.registeredAdapters, registeredAdapter{
 			mediaUrn:    na.u,
 			urnString:   na.str,
