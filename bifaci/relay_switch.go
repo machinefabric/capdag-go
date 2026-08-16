@@ -1616,12 +1616,19 @@ func (sw *RelaySwitch) configureMasterAdmissionLocked(masterIdx int, cartridges 
 // error, never a free pass. (matches Rust pool_capacities)
 func poolCapacities(stats *CartridgeRuntimeStats, cartridgeID string) (map[string]uint64, error) {
 	if len(stats.Pools) == 0 {
-		return nil, &RelaySwitchError{
-			Type: RelaySwitchErrorTypeProtocol,
-			Message: fmt.Sprintf(
-				"cartridge '%s' advertises no concurrency pools — the pool map is mandatory for operational records",
-				cartridgeID),
+		if stats.Running {
+			return nil, &RelaySwitchError{
+				Type: RelaySwitchErrorTypeProtocol,
+				Message: fmt.Sprintf(
+					"cartridge '%s' is running but advertises no concurrency pools — the pool map is mandatory once HELLO has completed",
+					cartridgeID),
+			}
 		}
+		// A cold record before its first HELLO legitimately has no pool
+		// map yet (registered-dir cartridges spawn on first dispatch).
+		// Admit through the canary alone: `all` clamped to 1, so the first
+		// body proves the spawn before real capacities exist.
+		return map[string]uint64{PoolAll: 1}, nil
 	}
 	capacities := make(map[string]uint64, len(stats.Pools))
 	for name, state := range stats.Pools {
@@ -1717,6 +1724,20 @@ func (sw *RelaySwitch) capAdmissionTargetLocked(masterIdx int, registeredCap str
 // map does not cover is a protocol error, never a free pass. (matches Rust
 // admission_chain)
 func admissionChain(install AdmissionKey, stats *CartridgeRuntimeStats, registeredCap, cartridgeID string) ([]admissionChainEntry, error) {
+	if len(stats.Pools) == 0 {
+		if stats.Running {
+			return nil, &RelaySwitchError{
+				Type: RelaySwitchErrorTypeProtocol,
+				Message: fmt.Sprintf(
+					"cartridge '%s' is running but advertises no concurrency pools — the pool map is mandatory once HELLO has completed",
+					cartridgeID),
+			}
+		}
+		// Cold record before its first HELLO: the whole dispatch is the
+		// canary — one body through the clamped `all` pool, which is what
+		// triggers the spawn and the real pool map.
+		return []admissionChainEntry{{Key: PoolKey{Install: install, Pool: PoolAll}, Capacity: 1}}, nil
+	}
 	parsed, err := urn.NewCapUrnFromString(registeredCap)
 	if err != nil {
 		return nil, &RelaySwitchError{
