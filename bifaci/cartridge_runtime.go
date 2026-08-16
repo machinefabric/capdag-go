@@ -7,9 +7,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	cborlib "github.com/fxamacker/cbor/v2"
@@ -1356,8 +1356,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 					dequeuedLog := NewLog(next.requestID, "dequeued", AttributionClassInternal, "Request dequeued, handler starting", nil)
 					dequeuedLog.RoutingId = next.routingId
 					if err := writer.WriteFrame(dequeuedLog); err != nil {
-						fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write dequeued LOG: %v
-", err)
+						fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write dequeued LOG: %v\n", err)
 					}
 					runHandlerNow(next)
 				}
@@ -1385,8 +1384,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 			logFrame := NewLog(qr.requestID, "queued", AttributionClassInternal, fmt.Sprintf("Request queued (position %d on pool '%s')", queuePos, qr.pattern), nil)
 			logFrame.RoutingId = qr.routingId
 			if err := writer.WriteFrame(logFrame); err != nil {
-				fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write queued LOG: %v
-", err)
+				fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write queued LOG: %v\n", err)
 			}
 			return
 		}

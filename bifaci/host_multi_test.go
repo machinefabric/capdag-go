@@ -1203,8 +1203,8 @@ func Test7090_heartbeat_drops_total_reaches_inventory_stats(t *testing.T) {
 	host.mu.Unlock()
 	response := NewHeartbeat(hbID)
 	response.Meta = map[string]interface{}{
-		"drops_total":      uint64(42),
-		MetaPools:          EncodePoolStates(make(PoolStates)),
+		"drops_total": uint64(42),
+		MetaPools:     EncodePoolStates(make(PoolStates)),
 	}
 	host.handleCartridgeFrame(0, response, relayOut)
 
@@ -1222,8 +1222,8 @@ func Test7090_heartbeat_drops_total_reaches_inventory_stats(t *testing.T) {
 	host.mu.Unlock()
 	response2 := NewHeartbeat(hbID2)
 	response2.Meta = map[string]interface{}{
-		"drops_total":      uint64(45),
-		MetaPools:          EncodePoolStates(make(PoolStates)),
+		"drops_total": uint64(45),
+		MetaPools:     EncodePoolStates(make(PoolStates)),
 	}
 	host.handleCartridgeFrame(0, response2, relayOut)
 

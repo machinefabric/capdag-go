@@ -417,8 +417,8 @@ func (h *InProcessCartridgeHost) BuildManifest() []byte {
 			// In-process handlers are task-backed and have no fixed
 			// concurrency ceiling: every pool is unlimited, at rest at
 			// manifest-build time.
-			Pools: inProcessPoolStates(capUrnList, nil),
-			PID:   &pid,
+			Pools:              inProcessPoolStates(capUrnList, nil),
+			PID:                &pid,
 			ActiveRequestCount: 0,
 			PeerRequestCount:   0,
 			MemoryFootprintMB:  0,

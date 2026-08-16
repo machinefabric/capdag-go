@@ -922,11 +922,11 @@ func (h *CartridgeHost) AttachCartridge(cartridgeRead io.Reader, cartridgeWrite 
 
 	writerCh := make(chan *Frame, 64)
 	cartridge := &ManagedCartridge{
-		writerCh:        writerCh,
-		manifest:        manifest,
-		limits:          limits,
-		caps:            caps,
-		capGroups:       capGroups,
+		writerCh:   writerCh,
+		manifest:   manifest,
+		limits:     limits,
+		caps:       caps,
+		capGroups:  capGroups,
 		running:    true,
 		generation: 1,
 		poolStates: poolStates,

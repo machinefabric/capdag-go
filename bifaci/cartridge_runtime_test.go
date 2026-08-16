@@ -4875,7 +4875,6 @@ func Test1949_peer_progress_without_numeric_value_fails_hard(t *testing.T) {
 	}
 }
 
-
 // =============================================================================
 // Concurrency pools (see pools.go) — shared-range TEST numbers with the
 // Rust reference (TEST1527–TEST1531).

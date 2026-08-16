@@ -157,14 +157,14 @@ type CartridgeRuntimeStats struct {
 	// pools keyed by cap URN, declared shared pools, and `all`. This IS
 	// the capacity surface; there is no scalar.
 	Pools                    PoolStates `json:"pools"`
-	Running                  bool    `json:"running"`
-	PID                      *uint32 `json:"pid,omitempty"`
-	ActiveRequestCount       uint64  `json:"active_request_count"`
-	PeerRequestCount         uint64  `json:"peer_request_count"`
-	MemoryFootprintMB        uint64  `json:"memory_footprint_mb"`
-	MemoryRSSMB              uint64  `json:"memory_rss_mb"`
-	LastHeartbeatUnixSeconds *int64  `json:"last_heartbeat_unix_seconds,omitempty"`
-	RestartCount             uint64  `json:"restart_count"`
+	Running                  bool       `json:"running"`
+	PID                      *uint32    `json:"pid,omitempty"`
+	ActiveRequestCount       uint64     `json:"active_request_count"`
+	PeerRequestCount         uint64     `json:"peer_request_count"`
+	MemoryFootprintMB        uint64     `json:"memory_footprint_mb"`
+	MemoryRSSMB              uint64     `json:"memory_rss_mb"`
+	LastHeartbeatUnixSeconds *int64     `json:"last_heartbeat_unix_seconds,omitempty"`
+	RestartCount             uint64     `json:"restart_count"`
 	// ProtocolDropsTotal is the cumulative protocol-level frame drop count
 	// self-reported by the cartridge as `drops_total` on every heartbeat
 	// response meta (L8: every drop is countable end-to-end). nil until

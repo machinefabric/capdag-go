@@ -530,7 +530,6 @@ func Test1943_outage_outliving_the_grace_window_fails_queued_work(t *testing.T) 
 	active.Release()
 }
 
-
 // TEST1524: chain admission is ATOMIC — a request is admitted only when
 // EVERY pool in its chain has room, and holds all of them until release.
 // A free singleton behind a full shared pool waits; releasing the shared

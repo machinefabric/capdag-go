@@ -1376,9 +1376,9 @@ func Test1162_heartbeat_frame_with_memory_meta(t *testing.T) {
 
 	// Simulate cartridge attaching memory info to heartbeat response
 	frame.Meta = map[string]interface{}{
-		"footprint_mb":     int64(4096),
-		"rss_mb":           int64(5120),
-		MetaPools:          EncodePoolStates(make(PoolStates)),
+		"footprint_mb": int64(4096),
+		"rss_mb":       int64(5120),
+		MetaPools:      EncodePoolStates(make(PoolStates)),
 	}
 
 	assert.Equal(t, FrameTypeHeartbeat, frame.FrameType)
