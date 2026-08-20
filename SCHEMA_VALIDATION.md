@@ -49,7 +49,7 @@ Key methods:
 
 Updated validation infrastructure:
 - `InputValidator` - Enhanced with schema validation support
-- `OutputValidator` - Enhanced with schema validation support  
+- `OutputValidator` - Enhanced with schema validation support
 - `CapValidationCoordinator` - Centralized validation coordination
 - Integration with existing type and rule validation
 
@@ -99,7 +99,7 @@ if err != nil {
     // Handle schema validation error
 }
 
-// Validate outputs  
+// Validate outputs
 err = coordinator.ValidateOutput(cap.UrnString(), output)
 ```
 
@@ -134,7 +134,7 @@ Schema validation errors provide detailed information:
 if err != nil {
     if schemaErr, ok := err.(*sdk.SchemaValidationError); ok {
         fmt.Printf("Validation failed: %s\n", schemaErr.Details)
-        fmt.Printf("For argument: %s\n", schemaErr.Argument) 
+        fmt.Printf("For argument: %s\n", schemaErr.Argument)
         fmt.Printf("Value: %v\n", schemaErr.Value)
     }
 }

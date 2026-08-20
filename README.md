@@ -1,169 +1,95 @@
-# Cap URN - Go Implementation
+# CapDAG for Go
 
-Go implementation of Cap URN (Capability Uniform Resource Names), built on [Tagged URN](https://github.com/machinefabric/tagged-urn-go).
+This public module is the Go mirror of CapDAG. Use it for Go applications and
+cartridges that need the reference URN, definitions, dispatch, planning,
+Machine Notation, Bifaci, host, relay, and cartridge-runtime contracts.
 
-## Features
+Rust is the behavioral reference. Shared numbered tests carry the same meaning
+in every mirror that implements a feature; Go-specific implementation tests use
+the reserved implementation range.
 
-- **Required Direction Specifiers** - `in`/`out` tags for input/output media types
-- **Media URN Validation** - Validates direction spec values are valid Media URNs
-- **Special Pattern Values** - `*` (must-have-any), `?` (unspecified), `!` (must-not-have)
-- **Graded Specificity** - Exact values score higher than wildcards
-- **Cap Definitions** - Full capability definitions with arguments, output, and metadata
-- **Cap Matrix** - Registry for capability lookup and matching
-- **Cap Caller** - Fluent API for invoking capabilities
-- **Schema Validation** - JSON Schema validation for arguments and outputs
-
-## Installation
+## Install the module
 
 ```bash
 go get github.com/machinefabric/capdag-go
 ```
 
-## Quick Start
+The module requires Go 1.21 or newer.
+
+## Parse and build Cap URNs
 
 ```go
 package main
 
 import (
     "fmt"
-    "log"
-
-    "github.com/machinefabric/capdag-go"
+    capdag "github.com/machinefabric/capdag-go"
 )
 
 func main() {
-    // Parse a Cap URN
-    cap, err := capdag.NewCapUrnFromString(`cap:in="media:binary";extract;out="media:object"`)
+    parsed, err := capdag.NewCapUrnFromString(
+        `cap:disbind;in="media:ext=pdf";out="media:enc=utf-8;page"`,
+    )
     if err != nil {
-        log.Fatal(err)
+        panic(err)
     }
-    fmt.Println("Input:", cap.GetInSpec())                          // "media:binary"
-    fmt.Println("Output:", cap.GetOutSpec())                        // "media:object"
-    fmt.Println("Has extract marker:", cap.HasMarkerTag("extract")) // true
 
-    // Build a Cap URN
     built := capdag.NewCapUrnBuilder().
-        InSpec("media:void").
-        OutSpec("media:object").
-        Marker("generate").
-        Tag("target", "thumbnail").
+        InSpec("media:ext=pdf").
+        OutSpec("media:enc=utf-8;page").
+        Marker("disbind").
         MustBuild()
 
-    // Check matching
-    pattern, _ := capdag.NewCapUrnFromString(`cap:in="media:binary";extract;out="media:object"`)
-    if cap.Accepts(pattern) {
-        fmt.Println("Cap matches pattern")
-    }
-
-    // Get specificity (graded scoring)
-    fmt.Println("Specificity:", cap.Specificity())
+    fmt.Println(parsed.ToString() == built.ToString())
 }
 ```
 
-## Cap Definitions
+Treat the parsed values as opaque. Use CapDAG predicates for equivalence,
+conformance, dispatch, and ranking; do not route by splitting or comparing raw
+strings.
 
-```go
-// Create a full capability definition
-capDef := &capdag.Cap{
-    Urn:   cap,
-    Title: "PDF Text Extractor",
-    Args: []capdag.CapArg{
-        {Name: "pages", Type: "string", Description: "Page range (e.g., '1-5')"},
-    },
-    Output: &capdag.CapOutput{
-        Type:        "text",
-        Description: "Extracted text content",
-    },
-}
-```
+## Find the relevant API
 
-## Cap Matrix (Registry)
+The module is organized around the same conceptual boundaries as the
+[CapDAG specification](https://github.com/machinefabric/capdag/blob/main/docs/01-overview.md):
 
-```go
-// Create a capability registry
-matrix := capdag.NewCapMatrix()
+- `urn` and the root package provide Tagged, Media, and Cap URNs;
+- `cap` provides capability definitions, arguments, outputs, and callers;
+- `machine` and planner packages parse and plan Machine Notation;
+- `bifaci` provides frames, streams, flow control, runtimes, hosts, and relay
+  components; and
+- registry packages resolve versioned fabric and cartridge definitions.
 
-// Register a capability with its handler
-matrix.RegisterCapSet("my-cartridge", myHandler, []*capdag.Cap{capDef})
+API comments beside exported Go identifiers are the language-specific
+reference. The normative dispatch, effect, stream, and protocol semantics live
+in the Rust specification rather than in copied tables here.
 
-// Find matching capabilities
-caps, err := matrix.FindCapSets(`cap:in="media:binary";extract;out=*`)
+## Scaffold a Go cartridge
 
-// Find the best match by specificity
-host, cap, err := matrix.FindBestCapSet(requestUrn)
-```
-
-## API Reference
-
-### CapUrn
-
-| Function/Method | Description |
-|-----------------|-------------|
-| `NewCapUrnFromString(s)` | Parse Cap URN from string |
-| `NewCapUrnFromTags(tags)` | Create from tag map (must include in/out) |
-| `GetInSpec()` | Get input media URN |
-| `GetOutSpec()` | Get output media URN |
-| `GetTag(key)` | Get value for a tag key |
-| `WithTag(key, value)` | Return new CapUrn with tag added/updated |
-| `WithInSpec(spec)` | Return new CapUrn with changed input spec |
-| `WithOutSpec(spec)` | Return new CapUrn with changed output spec |
-| `Accepts(request)` | Check if Cap (as pattern) accepts a request |
-| `ConformsTo(pattern)` | Check if Cap conforms to a pattern |
-| `Specificity()` | Get graded specificity score |
-| `ToString()` | Get canonical string representation |
-
-### CapUrnBuilder
-
-| Method | Description |
-|--------|-------------|
-| `NewCapUrnBuilder()` | Create a new builder |
-| `InSpec(spec)` | Set input media URN (required) |
-| `OutSpec(spec)` | Set output media URN (required) |
-| `Tag(key, value)` | Add or update a tag (chainable) |
-| `Build()` | Build the CapUrn (returns error if invalid) |
-| `MustBuild()` | Build the CapUrn (panics if invalid) |
-
-## Matching Semantics
-
-| Pattern | Instance Missing | Instance=v | Instance=x (x≠v) |
-|---------|------------------|------------|------------------|
-| (missing) or `?` | Match | Match | Match |
-| `K=!` | Match | No Match | No Match |
-| `K=*` | No Match | Match | Match |
-| `K=v` | No Match | Match | No Match |
-
-## Graded Specificity
-
-| Value Type | Score |
-|------------|-------|
-| Exact value (`K=v`) | 3 |
-| Must-have-any (`K=*`) | 2 |
-| Must-not-have (`K=!`) | 1 |
-| Unspecified (`K=?`) or missing | 0 |
-
-## Error Codes
-
-| Code | Constant | Description |
-|------|----------|-------------|
-| 10 | `ErrorMissingInSpec` | Missing required `in` tag |
-| 11 | `ErrorMissingOutSpec` | Missing required `out` tag |
-| 12 | `ErrorInvalidMediaUrn` | Invalid Media URN in direction spec |
-
-For base Tagged URN error codes, see [Tagged URN documentation](https://github.com/machinefabric/tagged-urn-go).
-
-## Testing
+Every CapDAG CLI renders the same canonical starter project:
 
 ```bash
-go test -v ./...
+capdag new sentiment-tagger --go
+cd sentiment-tagger
+go mod tidy
+go build -buildvcs=false -o sentiment-tagger .
+capdag dev-install .
+echo "I love this" | capdag sentiment-tagger
 ```
 
-## Cross-Language Compatibility
+The generated README explains its model-backed peer call and development loop.
+See [Build and Run a Cartridge](https://github.com/machinefabric/capdag/blob/main/docs/18.2-getting-started-cartridge-development.md)
+for the language-neutral tutorial.
 
-This Go implementation produces identical results to:
-- [Rust reference implementation](https://github.com/machinefabric/capdag)
-- [JavaScript implementation](https://github.com/machinefabric/capdag-js)
-- [Objective-C implementation](https://github.com/machinefabric/capdag-objc)
+## Verify changes
 
-All implementations follow the same rules. See:
-- [Cap URN RULES.md](https://github.com/machinefabric/capdag/blob/main/docs/RULES.md) - Cap-specific rules
-- [Tagged URN RULES.md](https://github.com/machinefabric/tagged-urn-rs/blob/main/docs/RULES.md) - Base format rules
+```bash
+go test ./...
+```
+
+When changing shared behavior, port the reference's applicable substantive test
+with the same number and assertions.
+
+## License
+
+MIT

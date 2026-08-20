@@ -456,7 +456,7 @@ func Test6667_StrandInputSequence(t *testing.T) {
 
 // TEST6668: CapInputFile deserializes from JSON with source metadata fields
 func Test6668_CapInputFileDeserializationWithSourceMetadata(t *testing.T) {
-	jsonStr := `[{"file_path":"/Users/bahram/ws/prj/machinefabric/pdfcartridge/test_files/aws_in_action.pdf","media_urn":"media:ext=pdf","source_id":"1b964d3b-f409-4f51-8684-884348ec2501","source_type":"listing"}]`
+	jsonStr := `[{"file_path":"/fixtures/aws_in_action.pdf","media_urn":"media:ext=pdf","source_id":"1b964d3b-f409-4f51-8684-884348ec2501","source_type":"listing"}]`
 	var files []CapInputFile
 	if err := json.Unmarshal([]byte(jsonStr), &files); err != nil {
 		t.Fatalf("deserialization failed: %v", err)
@@ -620,7 +620,7 @@ func Test800_machine_input_vector(t *testing.T) {
 func Test801_cap_input_file_deserialization_from_dry_context(t *testing.T) {
 	jsonStr := `[
         {
-            "file_path": "/Users/bahram/ws/prj/machinefabric/pdfcartridge/test_files/aws_in_action.pdf",
+            "file_path": "/fixtures/aws_in_action.pdf",
             "media_urn": "media:ext=pdf",
             "source_id": "1b964d3b-f409-4f51-8684-884348ec2501",
             "source_type": "listing"
