@@ -1,6 +1,7 @@
 package bifaci
 
 import (
+	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -9,7 +10,9 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -201,8 +204,17 @@ type ManagedCartridge struct {
 	path     string
 	cmd      *exec.Cmd
 	writerCh chan *Frame
-	manifest []byte
-	limits   Limits
+	// stderrTail is the cartridge's stderr, drained CONTINUOUSLY by a
+	// goroutine for the process's whole life (mirrors the reference host's
+	// line-by-line forwarding). A pipe nobody reads fills its 64 KiB buffer
+	// and then blocks the cartridge's next write — inside whatever it was
+	// doing; /dev/null hides every complaint a living cartridge makes and
+	// every crash message a dying one leaves. The bounded tail is what the
+	// death report quotes.
+	stderrMu   sync.Mutex
+	stderrTail string
+	manifest   []byte
+	limits     Limits
 	// caps is the flat URN view derived from capGroups (kept in sync
 	// alongside it to avoid recomputing on every cap-table rebuild).
 	caps []string
@@ -1781,6 +1793,44 @@ func extractUint64FromMeta(meta map[string]interface{}, key string) (uint64, boo
 }
 
 // handleCartridgeDeath processes a cartridge death event.
+// stderrTailLimit bounds the stderr a cartridge's death report quotes.
+const stderrTailLimit = 2000
+
+func (c *ManagedCartridge) appendStderr(line string) {
+	c.stderrMu.Lock()
+	defer c.stderrMu.Unlock()
+	c.stderrTail += line + "\n"
+	if len(c.stderrTail) > stderrTailLimit {
+		c.stderrTail = c.stderrTail[len(c.stderrTail)-stderrTailLimit:]
+	}
+}
+
+func (c *ManagedCartridge) takeStderrTail() string {
+	c.stderrMu.Lock()
+	defer c.stderrMu.Unlock()
+	tail := c.stderrTail
+	c.stderrTail = ""
+	return tail
+}
+
+// drainCartridgeStderr reads a cartridge's stderr line by line for its whole
+// life — into the cartridge's bounded tail and the host's own stderr — and
+// returns at EOF (the process closed stderr, normally at death). Mirrors the
+// reference host's stderr forwarding task.
+func drainCartridgeStderr(cartridge *ManagedCartridge, stderr io.Reader) {
+	name := filepath.Base(cartridge.path)
+	scanner := bufio.NewScanner(stderr)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimRight(scanner.Text(), "\r")
+		if line == "" {
+			continue
+		}
+		cartridge.appendStderr(line)
+		fmt.Fprintf(os.Stderr, "[cartridge stderr] %s: %s\n", name, line)
+	}
+}
+
 func (h *CartridgeHost) handleCartridgeDeath(cartridgeIdx int, generation uint64, relayWriter *relayOutbound) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -1823,6 +1873,9 @@ func (h *CartridgeHost) handleCartridgeDeath(cartridgeIdx int, generation uint64
 	// engine either way. Mirrors Rust ShutdownReason::RosterRetired.
 	deathCode := "CARTRIDGE_DIED"
 	deathReason := fmt.Sprintf("cartridge %d died", cartridgeIdx)
+	if tail := cartridge.takeStderrTail(); tail != "" {
+		deathReason = fmt.Sprintf("cartridge %d died. stderr:\n%s", cartridgeIdx, tail)
+	}
 	if h.cartridges[cartridgeIdx].retired {
 		deathCode = "CARTRIDGE_RETIRED"
 		deathReason = fmt.Sprintf(
@@ -1938,12 +1991,21 @@ func (h *CartridgeHost) spawnCartridgeLocked(cartridgeIdx int) error {
 		cartridge.helloFailed = true
 		return fmt.Errorf("failed to create stdout pipe: %w", err)
 	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		cartridge.helloFailed = true
+		return fmt.Errorf("failed to create stderr pipe: %w", err)
+	}
 
 	if err := cmd.Start(); err != nil {
 		cartridge.helloFailed = true
 		return fmt.Errorf("failed to start cartridge: %w", err)
 	}
 	cartridge.cmd = cmd
+	cartridge.stderrMu.Lock()
+	cartridge.stderrTail = ""
+	cartridge.stderrMu.Unlock()
+	go drainCartridgeStderr(cartridge, stderr)
 
 	reader := NewFrameReader(stdout)
 	writer := NewFrameWriter(stdin)
