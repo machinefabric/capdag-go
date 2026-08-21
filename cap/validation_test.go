@@ -1,6 +1,7 @@
 package cap
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -366,4 +367,22 @@ func Test1297_rule11_non_void_input_with_stdin_passes(t *testing.T) {
 	)
 	err := ValidateCapArgs(cap)
 	assert.NoError(t, err, "Non-void-input cap with stdin source should pass: %v", err)
+}
+
+// TEST1964: a definition field this capdag does not know is a NEWER fabric,
+// not noise — parsing refuses it, naming the key, for arguments and outputs
+// alike. The field being dropped is how a cartridge built on an older capdag
+// once advertised a `streaming` input as bounded.
+func Test1964_unknown_definition_field_is_refused(t *testing.T) {
+	var arg CapArg
+	err := json.Unmarshal([]byte(`{"media_urn":"media:enc=utf-8","required":true,"sources":[{"stdin":"media:enc=utf-8"}],"chunking":"adaptive"}`), &arg)
+	require.Error(t, err, "unknown arg field must be refused")
+	assert.Contains(t, err.Error(), "chunking")
+	require.NoError(t, json.Unmarshal([]byte(`{"media_urn":"media:enc=utf-8","required":true,"sources":[{"stdin":"media:enc=utf-8"}],"streaming":true}`), &arg))
+	assert.True(t, arg.Streaming)
+
+	var out CapOutput
+	err = json.Unmarshal([]byte(`{"media_urn":"media:enc=utf-8","output_description":"x","windowed":true}`), &out)
+	require.Error(t, err, "unknown output field must be refused")
+	assert.Contains(t, err.Error(), "windowed")
 }

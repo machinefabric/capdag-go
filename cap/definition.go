@@ -114,9 +114,16 @@ type capArgJSON struct {
 	Metadata       *json.RawMessage `json:"metadata,omitempty"`
 }
 
+// UnmarshalJSON parses an argument definition. Unknown fields are REFUSED:
+// a key this type does not know is a fabric NEWER than this capdag — a
+// contract this build cannot honour. Dropping it would let a cartridge
+// advertise a contract the fabric never made (this is how a `streaming`
+// argument once went out as bounded). (matches Rust `deny_unknown_fields`)
 func (a *CapArg) UnmarshalJSON(data []byte) error {
 	var raw capArgJSON
-	if err := json.Unmarshal(data, &raw); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&raw); err != nil {
 		return err
 	}
 
@@ -340,6 +347,38 @@ type CapOutput struct {
 	// emission from an output that did not declare it.
 	Streaming bool `json:"streaming"`
 	Metadata  any  `json:"metadata,omitempty"`
+}
+
+type capOutputJSON struct {
+	MediaUrn          string           `json:"media_urn"`
+	OutputDescription string           `json:"output_description"`
+	IsSequence        bool             `json:"is_sequence"`
+	Streaming         bool             `json:"streaming"`
+	Metadata          *json.RawMessage `json:"metadata,omitempty"`
+}
+
+// UnmarshalJSON parses an output definition, refusing unknown fields for the
+// same reason as CapArg.UnmarshalJSON: an unknown key is a newer fabric.
+func (co *CapOutput) UnmarshalJSON(data []byte) error {
+	var raw capOutputJSON
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&raw); err != nil {
+		return err
+	}
+	co.MediaUrn = raw.MediaUrn
+	co.OutputDescription = raw.OutputDescription
+	co.IsSequence = raw.IsSequence
+	co.Streaming = raw.Streaming
+	co.Metadata = nil
+	if raw.Metadata != nil {
+		value, err := decodeArbitraryJSON(*raw.Metadata)
+		if err != nil {
+			return err
+		}
+		co.Metadata = value
+	}
+	return nil
 }
 
 // Resolve resolves the output's media URN through the FabricRegistry.
