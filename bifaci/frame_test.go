@@ -53,9 +53,10 @@ func Test172_frame_type_valid_range(t *testing.T) {
 		11: true,  // RELAY_STATE
 		12: true,  // CANCEL
 		13: true,  // CREDIT (protocol v4)
+		14: true,  // CLOSE_STREAM (the tap-off)
 	}
 
-	for i := uint8(0); i <= 13; i++ {
+	for i := uint8(0); i <= 14; i++ {
 		if expected, exists := validTypes[i]; exists && expected {
 			ft := FrameType(i)
 			if ft.String() == fmt.Sprintf("UNKNOWN(%d)", i) {
@@ -63,10 +64,12 @@ func Test172_frame_type_valid_range(t *testing.T) {
 			}
 		}
 	}
-	// 14 is one past Credit — must be invalid
-	ft14 := FrameType(14)
-	if ft14.String() != "UNKNOWN(14)" {
-		t.Errorf("Expected 14 to be invalid, got %s", ft14.String())
+	// 14 is CloseStream (the tap-off); 15 is one past it — must be invalid
+	if FrameType(14) != FrameTypeCloseStream {
+		t.Errorf("Expected 14 to be CloseStream, got %s", FrameType(14).String())
+	}
+	if FrameType(15).String() != "UNKNOWN(15)" {
+		t.Errorf("Expected 15 to be invalid, got %s", FrameType(15).String())
 	}
 	if FrameType(100).String() != "UNKNOWN(100)" {
 		t.Errorf("Expected 100 to be invalid")
@@ -848,9 +851,12 @@ func Test403_frame_type_one_past_cancel(t *testing.T) {
 	if FrameType(13) != FrameTypeCredit {
 		t.Errorf("13 must be Credit (v3), got %s", FrameType(13).String())
 	}
-	ft := FrameType(14)
-	if ft.String() != fmt.Sprintf("UNKNOWN(%d)", 14) {
-		t.Errorf("FrameType(14) must be unknown (past the last valid frame type), got %s", ft.String())
+	if FrameType(14) != FrameTypeCloseStream {
+		t.Errorf("FrameType(14) must be CloseStream, got %s", FrameType(14).String())
+	}
+	ft := FrameType(15)
+	if ft.String() != fmt.Sprintf("UNKNOWN(%d)", 15) {
+		t.Errorf("FrameType(15) must be unknown (past the last valid frame type), got %s", ft.String())
 	}
 	ft2 := FrameType(2)
 	if ft2.String() != fmt.Sprintf("UNKNOWN(%d)", 2) {

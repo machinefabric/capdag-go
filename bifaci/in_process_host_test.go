@@ -142,6 +142,99 @@ func Test6748_RoutesReqToHandler(t *testing.T) {
 	require.NoError(t, <-hostDone)
 }
 
+// TEST1961: the in-process host answers a Cancel in the cancel's OWN
+// attribution — ERR ABORTED/resource for a host abort (message carries the
+// reason), ERR ABORTED_COLLATERAL with the originating failure's class for
+// collateral, ERR CANCELLED/user for an operator's cancel, and ERR
+// CANCELLED/internal for an UNATTRIBUTED cancel, which still cancels. A
+// CloseStream is a no-op for a handler with no live feed: the request
+// continues and completes normally with END.
+func Test1961_cancel_terminal_carries_its_attribution(t *testing.T) {
+	capUrn := `cap:in="media:text";echo;out="media:text"`
+	run := func(t *testing.T, control *Frame) *Frame {
+		c := makeTestCap(t, capUrn)
+		handlers := []HandlerRegistration{{Name: "echo", Caps: []cap.Cap{c}, Handler: echoHandler{}}}
+		host := NewInProcessCartridgeHost(InProcessHostIdentityForTest("in-process-test"), handlers)
+		hostConn, testConn := createSocketPair(t)
+		defer hostConn.Close()
+		defer testConn.Close()
+		hostDone := make(chan error, 1)
+		go func() { hostDone <- host.Run(hostConn, hostConn) }()
+		reader := NewFrameReader(testConn)
+		writer := NewFrameWriter(testConn)
+		notify, err := reader.ReadFrame()
+		require.NoError(t, err)
+		require.Equal(t, FrameTypeRelayNotify, notify.FrameType)
+
+		// Open the request and its input stream, but do not END it — the
+		// handler is active when the control frame arrives.
+		rid := NewMessageIdRandom()
+		req := NewReq(rid, capUrn, []byte{}, "application/cbor")
+		xid := NewMessageIdFromUint(1)
+		req.RoutingId = &xid
+		require.NoError(t, writer.WriteFrame(req))
+		require.NoError(t, writer.WriteFrame(NewStreamStart(rid, "arg0", "media:text", nil)))
+
+		control.Id = rid
+		control.RoutingId = &xid
+		require.NoError(t, writer.WriteFrame(control))
+
+		var outcome *Frame
+		if control.FrameType == FrameTypeCloseStream {
+			// Finish the request: it was never cancelled.
+			payloadBytes := cborBytesPayload(t, []byte("still here"))
+			require.NoError(t, writer.WriteFrame(NewChunk(rid, "arg0", 0, payloadBytes, 0, ComputeChecksum(payloadBytes))))
+			require.NoError(t, writer.WriteFrame(NewStreamEnd(rid, "arg0", 1)))
+			require.NoError(t, writer.WriteFrame(NewEnd(rid, nil)))
+			for {
+				frame, err := reader.ReadFrame()
+				require.NoError(t, err)
+				require.True(t, frame.Id.Equals(rid))
+				require.NotEqual(t, FrameTypeErr, frame.FrameType, "a CloseStream never aborts")
+				outcome = frame
+				if frame.FrameType == FrameTypeEnd {
+					break
+				}
+			}
+		} else {
+			frame, err := reader.ReadFrame()
+			require.NoError(t, err)
+			require.True(t, frame.Id.Equals(rid))
+			outcome = frame
+		}
+		testConn.Close()
+		require.NoError(t, <-hostDone)
+		return outcome
+	}
+	cancel := func(reason CancelReason) *Frame { return NewCancelFrame(NewMessageIdFromUint(0), reason) }
+
+	errFrame := run(t, cancel(HostCancelReason(AttributionClassResource, "memory pressure relief", false)))
+	assert.Equal(t, FrameTypeErr, errFrame.FrameType)
+	assert.Equal(t, "ABORTED", errFrame.ErrorCode())
+	class, err := errFrame.AttributionClass()
+	require.NoError(t, err)
+	assert.Equal(t, AttributionClassResource, class)
+	assert.Contains(t, errFrame.ErrorMessage(), "memory pressure relief")
+
+	errFrame = run(t, cancel(CollateralCancelReason(AttributionClassInput, "step s1 failed")))
+	assert.Equal(t, "ABORTED_COLLATERAL", errFrame.ErrorCode())
+	class, _ = errFrame.AttributionClass()
+	assert.Equal(t, AttributionClassInput, class)
+
+	errFrame = run(t, cancel(UserCancelReason(false)))
+	assert.Equal(t, "CANCELLED", errFrame.ErrorCode())
+	class, _ = errFrame.AttributionClass()
+	assert.Equal(t, AttributionClassUser, class)
+
+	errFrame = run(t, cancel(UnattributedCancelReason(false)))
+	assert.Equal(t, "CANCELLED", errFrame.ErrorCode(), "an unattributed Cancel still cancels")
+	class, _ = errFrame.AttributionClass()
+	assert.Equal(t, AttributionClassInternal, class)
+
+	endFrame := run(t, NewCloseStreamFrame(NewMessageIdFromUint(0), nil))
+	assert.Equal(t, FrameTypeEnd, endFrame.FrameType)
+}
+
 // TEST6749: InProcessCartridgeHost handles identity verification (echo nonce)
 func Test6749_IdentityVerification(t *testing.T) {
 	host := NewInProcessCartridgeHost(InProcessHostIdentityForTest("in-process-test"), nil)

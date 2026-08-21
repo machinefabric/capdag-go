@@ -16,6 +16,7 @@ func Test1730_attribution_class_wire_tokens_round_trip(t *testing.T) {
 		AttributionClassResource,
 		AttributionClassEnvironment,
 		AttributionClassInternal,
+		AttributionClassUser,
 	} {
 		parsed, ok := AttributionClassFromWire(class.String())
 		assert.True(t, ok, "token %q must parse", class.String())
@@ -27,10 +28,12 @@ func Test1730_attribution_class_wire_tokens_round_trip(t *testing.T) {
 	assert.False(t, ok, "empty token must be rejected by the parse")
 }
 
-// TEST1731: only Input is permanent — the retry machinery keys on this.
-// (mirrors Rust ops/src/failure.rs TEST1731)
-func Test1731_only_input_is_permanent(t *testing.T) {
+// TEST1731: Input and User are permanent — the retry machinery keys on this
+// (a deterministic input failure, or a human's decision, is never retried
+// automatically). (mirrors Rust ops/src/failure.rs TEST1731)
+func Test1731_only_input_and_user_are_permanent(t *testing.T) {
 	assert.True(t, AttributionClassInput.IsPermanent())
+	assert.True(t, AttributionClassUser.IsPermanent())
 	assert.False(t, AttributionClassResource.IsPermanent())
 	assert.False(t, AttributionClassEnvironment.IsPermanent())
 	assert.False(t, AttributionClassInternal.IsPermanent())

@@ -807,6 +807,7 @@ var ReservedCliFlags = []string{"manifest", "--help", "--version", "-v", "-h"}
 //	RULE9: No two args may have same cli_flag
 //	RULE10: Reserved cli_flags rejected
 //	RULE11: Stdin source consistency with in= spec (void input must have no stdin; non-void must have at least one)
+//	RULE14: Only the main input argument may declare streaming=true
 func ValidateCapArgs(cap *Cap) error {
 	capUrn := cap.UrnString()
 	args := cap.GetArgs()
@@ -935,6 +936,26 @@ func ValidateCapArgs(cap *Cap) error {
 						Type:    "InvalidCapSchema",
 						CapUrn:  capUrn,
 						Message: fmt.Sprintf("RULE11: Cap has in='%s' but no args declare a stdin source — the main input is the value piped in on stdin, so at least one arg must accept stdin", cap.Urn.InSpec()),
+					}
+				}
+			}
+		}
+	}
+
+	// RULE14: Only the main input may stream. `streaming: true` declares that
+	// an argument is consumed without a length promise — a feed. Side
+	// arguments (options, model specs, prompts alongside the main input) are
+	// values the runtime demuxes whole; a feed there has no meaning and would
+	// let an unbounded stream reach a collector that must refuse it (L16).
+	if cap.Urn != nil {
+		if inMediaUrn, err := cap.Urn.InMediaUrn(); err == nil {
+			for i := range cap.Args {
+				if cap.Args[i].Streaming && !cap.Args[i].IsMainInput(inMediaUrn) {
+					return &ValidationError{
+						Type:   "InvalidCapSchema",
+						CapUrn: capUrn,
+						Message: fmt.Sprintf("RULE14: Argument '%s' declares streaming=true but is not the main input (no stdin source equivalent to in='%s') — only the main input may be consumed without a length promise",
+							cap.Args[i].MediaUrn, cap.Urn.InSpec()),
 					}
 				}
 			}

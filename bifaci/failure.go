@@ -1,6 +1,7 @@
 package bifaci
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 )
@@ -34,6 +35,10 @@ const (
 	// model download/integrity, cartridge process death). Transient by
 	// nature — retryable.
 	AttributionClassEnvironment
+	// AttributionClassUser: the USER decided it — an operator cancelled the
+	// run. Not a failure at all; never retried automatically, never a
+	// defect, and the one class under which "cancelled" is the truth.
+	AttributionClassUser
 )
 
 // String returns the wire token — used in the ERR frame meta, the
@@ -49,6 +54,8 @@ func (c AttributionClass) String() string {
 		return "environment"
 	case AttributionClassInternal:
 		return "internal"
+	case AttributionClassUser:
+		return "user"
 	default:
 		panic(fmt.Sprintf("BUG: AttributionClass %d not covered by String", uint8(c)))
 	}
@@ -66,17 +73,19 @@ func AttributionClassFromWire(token string) (AttributionClass, bool) {
 		return AttributionClassEnvironment, true
 	case "internal":
 		return AttributionClassInternal, true
+	case "user":
+		return AttributionClassUser, true
 	default:
 		return AttributionClassInternal, false
 	}
 }
 
 // IsPermanent reports whether retrying can NEVER succeed: the failure is a
-// deterministic function of the input. Resource/environment/internal stay
-// retryable (memory frees up, networks recover, races un-race).
-// (matches Rust AttributionClass::is_permanent)
+// deterministic function of the input, or the user chose to end it.
+// Resource/environment/internal stay retryable (memory frees up, networks
+// recover, races un-race). (matches Rust AttributionClass::is_permanent)
 func (c AttributionClass) IsPermanent() bool {
-	return c == AttributionClassInput
+	return c == AttributionClassInput || c == AttributionClassUser
 }
 
 // ClassifiedError is a handler failure carrying its FULL identity: the
@@ -170,4 +179,25 @@ func classifyHandlerError(err error) (code string, class AttributionClass, messa
 		return remote.Code, remote.Class, remote.Message, remote.ArgUrn
 	}
 	return "HANDLER_ERROR", AttributionClassInternal, err.Error(), nil
+}
+
+// MarshalJSON serializes an AttributionClass as its wire token — the snapshot
+// contract for mirrors and traces.
+func (c AttributionClass) MarshalJSON() ([]byte, error) {
+	return json.Marshal(c.String())
+}
+
+// UnmarshalJSON parses the wire token; an unknown token is an error, never a
+// substituted class.
+func (c *AttributionClass) UnmarshalJSON(data []byte) error {
+	var token string
+	if err := json.Unmarshal(data, &token); err != nil {
+		return err
+	}
+	parsed, ok := AttributionClassFromWire(token)
+	if !ok {
+		return fmt.Errorf("unknown attribution_class %q", token)
+	}
+	*c = parsed
+	return nil
 }

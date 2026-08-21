@@ -678,16 +678,26 @@ func (h *InProcessCartridgeHost) Run(localRead io.Reader, localWrite io.Writer) 
 				delete(active, key)
 			}
 
+		case FrameTypeCloseStream:
+			// An in-process handler holds no live feed taps: a CloseStream
+			// has nothing to close and never aborts the request — it is
+			// logged and the request continues.
+			fmt.Fprintf(os.Stderr, "[InProcessHost] CloseStream for request %s with no live feed — nothing to close, request continues\n", frame.Id.ToString())
+
 		case FrameTypeCancel:
 			targetRid := frame.Id
 			xid := frame.RoutingId
 			key := targetRid.ToString()
+			// The attribution rides in Meta like an ERR's; an unattributed
+			// Cancel is still a cancel.
+			reason, _ := frame.CancelReason()
 			// Drop active sender → handler's input recv returns closed.
 			if tx, ok := active[key]; ok {
 				close(tx)
 				delete(active, key)
 			}
-			errFrame := NewErr(targetRid, "CANCELLED", AttributionClassInternal, "Request cancelled", nil)
+			// Terminal ERR in the cancel's own attribution.
+			errFrame := NewErr(targetRid, reason.TerminalCode(), reason.TerminalClass(), reason.TerminalMessage(), nil)
 			errFrame.RoutingId = xid
 			writeTx <- *errFrame
 

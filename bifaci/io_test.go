@@ -2016,3 +2016,94 @@ func Test7008_extractUint64FromMeta_rejects_invalid_numeric_values(t *testing.T)
 		}
 	}
 }
+
+// TEST1954: a Cancel frame is attributed through Meta exactly like an ERR
+// frame — code / attribution_class / message — and every attributed reason
+// round-trips through the codec; the wire carries the class token under the
+// meta key, never a numeric frame key.
+func Test1954_cancel_attribution_roundtrips_in_meta(t *testing.T) {
+	for _, reason := range []CancelReason{
+		UserCancelReason(true),
+		CollateralCancelReason(AttributionClassResource, "step s3 (cap:x) failed: GPU_OUT_OF_MEMORY"),
+		HostCancelReason(AttributionClassEnvironment, "stale for 1800 s", false),
+	} {
+		frame := NewCancelFrame(NewMessageIdFromUint(7), reason)
+		encoded, err := EncodeFrame(frame)
+		if err != nil {
+			t.Fatalf("encode: %v", err)
+		}
+		decoded, err := DecodeFrame(encoded)
+		if err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		got, ok := decoded.CancelReason()
+		if !ok || !got.Equal(reason) {
+			t.Fatalf("reason mismatch: want %+v got %+v (ok=%v)", reason, got, ok)
+		}
+		if decoded.Meta["attribution_class"] != reason.Class.String() {
+			t.Fatalf("meta.attribution_class = %v, want %q", decoded.Meta["attribution_class"], reason.Class.String())
+		}
+		if decoded.Meta["code"] != *reason.Code {
+			t.Fatalf("meta.code = %v, want %q", decoded.Meta["code"], *reason.Code)
+		}
+	}
+	if !UserCancelReason(false).IsUser() || CollateralCancelReason(AttributionClassInput, "x").IsUser() {
+		t.Fatal("IsUser must single out the operator's cancel")
+	}
+}
+
+// TEST1955: a Cancel WITHOUT attribution is still a cancel — it encodes with
+// no Meta, decodes as UnattributedCancelReason, and its terminal reads
+// CANCELLED / internal; an unknown class token in Meta degrades to "no
+// class", never to a rejected frame (a cancel must always act). A CloseStream
+// frame is its own type and is never a cancel.
+func Test1955_unattributed_cancel_still_cancels_and_close_stream_is_not_a_cancel(t *testing.T) {
+	bare := NewCancelFrame(NewMessageIdFromUint(1), UnattributedCancelReason(false))
+	if bare.Meta != nil {
+		t.Fatal("an unattributed Cancel carries no Meta")
+	}
+	encoded, err := EncodeFrame(bare)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
+	}
+	decoded, err := DecodeFrame(encoded)
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	reason, ok := decoded.CancelReason()
+	if !ok || !reason.Equal(UnattributedCancelReason(false)) {
+		t.Fatalf("expected unattributed reason, got %+v", reason)
+	}
+	if reason.TerminalCode() != "CANCELLED" || reason.TerminalClass() != AttributionClassInternal || reason.TerminalMessage() != "Request cancelled" {
+		t.Fatalf("unexpected terminal identity: %q %v %q", reason.TerminalCode(), reason.TerminalClass(), reason.TerminalMessage())
+	}
+
+	odd := newFrame(FrameTypeCancel, NewMessageIdFromUint(2))
+	odd.Meta = map[string]interface{}{"attribution_class": "because", "message": "operator note"}
+	encoded, _ = EncodeFrame(odd)
+	decoded, err = DecodeFrame(encoded)
+	if err != nil {
+		t.Fatalf("a Cancel with an odd class token is never rejected: %v", err)
+	}
+	reason, _ = decoded.CancelReason()
+	if reason.Class != nil || reason.Message == nil || *reason.Message != "operator note" {
+		t.Fatalf("unexpected reason: %+v", reason)
+	}
+	if reason.TerminalMessage() != "Request cancelled: operator note" {
+		t.Fatalf("unexpected message: %q", reason.TerminalMessage())
+	}
+
+	sid := "mic"
+	closeFrame := NewCloseStreamFrame(NewMessageIdFromUint(3), &sid)
+	encoded, _ = EncodeFrame(closeFrame)
+	decoded, err = DecodeFrame(encoded)
+	if err != nil {
+		t.Fatalf("decode close_stream: %v", err)
+	}
+	if decoded.FrameType != FrameTypeCloseStream || decoded.StreamId == nil || *decoded.StreamId != "mic" {
+		t.Fatalf("close_stream did not round-trip: %+v", decoded)
+	}
+	if _, ok := decoded.CancelReason(); ok {
+		t.Fatal("a CloseStream is not a cancel")
+	}
+}

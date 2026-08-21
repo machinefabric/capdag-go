@@ -47,7 +47,7 @@ func dropReasonIndex(reason DropReason) int {
 const dropReasonCount = 5
 
 // frameTypeCount must equal len(FrameTypeAll); checked in init() below.
-const frameTypeCount = 13
+const frameTypeCount = 14
 
 func init() {
 	if len(DropReasonAll) != dropReasonCount {

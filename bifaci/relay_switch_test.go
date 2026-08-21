@@ -2847,7 +2847,7 @@ func Test7037_cancel_cascades_to_children_and_cleans_all_state(t *testing.T) {
 	sw.requests.LinkChild(parentKey, childKey)
 	sw.mu.Unlock()
 
-	sw.CancelRequest(parentRid, false)
+	sw.CancelRequest(parentRid, UserCancelReason(false))
 
 	// Parent's waiter observes ERR CANCELLED.
 	select {

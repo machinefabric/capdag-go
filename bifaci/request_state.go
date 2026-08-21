@@ -347,16 +347,25 @@ func (s *RequestState) record(direction FrameDirection, frame *Frame) {
 // TerminatedSummary is a summary of a finished request, retained in a
 // bounded ring for stats. (matches Rust TerminatedSummary)
 type TerminatedSummary struct {
-	Xid        string       `json:"xid"`
-	Rid        string       `json:"rid"`
-	Kind       TerminalKind `json:"kind"`
-	IsPeer     bool         `json:"is_peer"`
-	CapUrn     *string      `json:"cap_urn"`
-	LifetimeMs uint64       `json:"lifetime_ms"`
-	FramesIn   uint64       `json:"frames_in"`
-	FramesOut  uint64       `json:"frames_out"`
-	BytesIn    uint64       `json:"bytes_in"`
-	BytesOut   uint64       `json:"bytes_out"`
+	Xid  string       `json:"xid"`
+	Rid  string       `json:"rid"`
+	Kind TerminalKind `json:"kind"`
+	// CancelCode / CancelClass / CancelReason are WHY a Cancelled termination
+	// happened — the Cancel's attribution in the ERR vocabulary (the terminal
+	// code, always present for a cancelled kind; the class, absent for an
+	// unattributed cancel; the reason). Never present for any other kind.
+	// Surfaces read them to say "aborted — step X failed" instead of the one
+	// word "cancelled".
+	CancelCode   *string           `json:"cancel_code,omitempty"`
+	CancelClass  *AttributionClass `json:"cancel_class,omitempty"`
+	CancelReason *string           `json:"cancel_reason,omitempty"`
+	IsPeer       bool              `json:"is_peer"`
+	CapUrn       *string           `json:"cap_urn"`
+	LifetimeMs   uint64            `json:"lifetime_ms"`
+	FramesIn     uint64            `json:"frames_in"`
+	FramesOut    uint64            `json:"frames_out"`
+	BytesIn      uint64            `json:"bytes_in"`
+	BytesOut     uint64            `json:"bytes_out"`
 }
 
 // RecentTerminatedCap is how many terminated-request summaries the ring
@@ -462,7 +471,35 @@ func (t *RequestTable) XidForRid(rid MessageId) (MessageId, bool) {
 // returns, zero state for the key remains (L7). Returns nil if the key is
 // not live (already terminated — termination happens exactly once).
 // (matches Rust RequestTable::terminate)
+//
+// Cancelled terminations go through TerminateCancelled — a cancellation
+// without a cause is not a state this table represents.
 func (t *RequestTable) Terminate(key RequestKey, kind TerminalKind) *RequestState {
+	if kind == TerminalKindCancelled {
+		panic("RequestTable.Terminate: Cancelled terminations carry a cause — use TerminateCancelled")
+	}
+	return t.terminateWith(key, kind, nil, nil, nil)
+}
+
+// TerminateCancelled terminates a request as cancelled, recording WHY (the
+// Cancel frame's cause and detail) on its summary.
+// (matches Rust RequestTable::terminate_cancelled)
+func (t *RequestTable) TerminateCancelled(key RequestKey, reason CancelReason) *RequestState {
+	code := reason.TerminalCode()
+	var class *AttributionClass
+	if reason.Class != nil {
+		c := *reason.Class
+		class = &c
+	}
+	var message *string
+	if reason.Message != nil {
+		m := *reason.Message
+		message = &m
+	}
+	return t.terminateWith(key, TerminalKindCancelled, &code, class, message)
+}
+
+func (t *RequestTable) terminateWith(key RequestKey, kind TerminalKind, cancelCode *string, cancelClass *AttributionClass, cancelReason *string) *RequestState {
 	mk := key.mapKey()
 	e, ok := t.entries[mk]
 	if !ok {
@@ -496,16 +533,19 @@ func (t *RequestTable) Terminate(key RequestKey, kind TerminalKind) *RequestStat
 		t.recentTerminated = append([]TerminatedSummary{}, t.recentTerminated[1:]...)
 	}
 	summary := TerminatedSummary{
-		Xid:        key.Xid.ToString(),
-		Rid:        key.Rid.ToString(),
-		Kind:       kind,
-		IsPeer:     state.IsPeer,
-		CapUrn:     state.CapUrn,
-		LifetimeMs: uint64(time.Since(state.CreatedAt).Milliseconds()),
-		FramesIn:   framesIn,
-		FramesOut:  framesOut,
-		BytesIn:    bytesIn,
-		BytesOut:   bytesOut,
+		Xid:          key.Xid.ToString(),
+		Rid:          key.Rid.ToString(),
+		Kind:         kind,
+		CancelCode:   cancelCode,
+		CancelClass:  cancelClass,
+		CancelReason: cancelReason,
+		IsPeer:       state.IsPeer,
+		CapUrn:       state.CapUrn,
+		LifetimeMs:   uint64(time.Since(state.CreatedAt).Milliseconds()),
+		FramesIn:     framesIn,
+		FramesOut:    framesOut,
+		BytesIn:      bytesIn,
+		BytesOut:     bytesOut,
 	}
 	t.recentTerminated = append(t.recentTerminated, summary)
 	t.terminatedByKind[kind.AsStr()]++

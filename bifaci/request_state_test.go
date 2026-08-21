@@ -310,7 +310,7 @@ func Test7033_terminated_summaries_ring(t *testing.T) {
 		checksum := ComputeChecksum(payload)
 		chunk := NewChunk(NewMessageIdFromUint(n), "s", 0, payload, 0, checksum)
 		table.RecordFrame(k, FrameDirectionInbound, chunk)
-		require.NotNil(t, table.Terminate(k, TerminalKindCancelled))
+		require.NotNil(t, table.TerminateCancelled(k, UserCancelReason(false)))
 	}
 	snap := table.Snapshot()
 	require.Len(t, snap.RecentTerminated, RecentTerminatedCap)
@@ -318,6 +318,10 @@ func Test7033_terminated_summaries_ring(t *testing.T) {
 	assert.Equal(t, NewMessageIdFromUint(3).ToString(), snap.RecentTerminated[0].Rid)
 	last := snap.RecentTerminated[len(snap.RecentTerminated)-1]
 	assert.Equal(t, TerminalKindCancelled, last.Kind)
+	require.NotNil(t, last.CancelCode)
+	assert.Equal(t, "CANCELLED", *last.CancelCode)
+	require.NotNil(t, last.CancelClass)
+	assert.Equal(t, AttributionClassUser, *last.CancelClass)
 	assert.True(t, last.IsPeer)
 	assert.Equal(t, uint64(1), last.FramesIn)
 	assert.Equal(t, uint64(10), last.BytesIn)

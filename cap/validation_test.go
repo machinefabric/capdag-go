@@ -327,6 +327,35 @@ func Test1296_rule11_void_input_cli_flag_only_passes(t *testing.T) {
 	assert.NoError(t, err, "Void-input cap with only cli_flag sources should pass: %v", err)
 }
 
+// TEST1953: RULE14 — `streaming: true` is accepted on the main input (the
+// stdin arg equivalent to `in=`) and refused on any other argument: a side
+// option has no wire stream, so it has nothing to consume incrementally, and
+// the rule keeps the executor's hop rule one-dimensional.
+func Test1953_rule14_streaming_only_on_main_input(t *testing.T) {
+	main := NewCapArg("media:ext=pdf", true, []ArgSource{stdinSource("media:ext=pdf")})
+	main.Streaming = true
+	ok := makeTestCapWithUrnAndArgs(t,
+		`cap:in="media:ext=pdf";extract;out="media:enc=utf-8;ext=txt"`,
+		[]CapArg{main},
+	)
+	require.NoError(t, ValidateCapArgs(ok), "streaming main input must pass")
+	inStreams, outStreams := ok.StreamingShape()
+	assert.True(t, inStreams)
+	assert.False(t, outStreams)
+
+	main.Streaming = false
+	side := NewCapArg(standard.MediaString, false, []ArgSource{cliFlagSource("--lang")})
+	side.Streaming = true
+	bad := makeTestCapWithUrnAndArgs(t,
+		`cap:in="media:ext=pdf";extract;out="media:enc=utf-8;ext=txt"`,
+		[]CapArg{main, side},
+	)
+	err := ValidateCapArgs(bad)
+	require.Error(t, err, "streaming side option must be refused")
+	assert.Contains(t, err.Error(), "RULE14")
+	assert.Contains(t, err.Error(), standard.MediaString)
+}
+
 // TEST1297: RULE11 - non-void-input cap with stdin source passes
 func Test1297_rule11_non_void_input_with_stdin_passes(t *testing.T) {
 	cap := makeTestCapWithUrnAndArgs(t,

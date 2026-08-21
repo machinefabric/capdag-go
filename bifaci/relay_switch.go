@@ -1293,60 +1293,97 @@ func deliverExternal(ch chan<- Frame, frame Frame) bool {
 	}
 }
 
-// CancelRequest cancels a specific in-flight request by request ID.
+// StopRequestFeeds STOPs a feed-bearing request's live inputs (15.2 §Runs
+// Stop): sends a CloseStream FRAME to the request's destination WITHOUT
+// touching host-side request state. The cartridge runtime closes the
+// request's open taps and the request then ends NATURALLY — END after the
+// drain. Not a cancel in any form: contrast CancelRequest, which terminates
+// host state, cascades to children, and delivers a terminal ERR (the abort path).
 //
-//  1. Looks up RID → XID → routing destination.
-//  2. Terminates the request (Cancelled) FIRST — one atomic removal yields
-//     the destination, the children for the cascade, and the external
-//     channel for the final ERR (L7). A concurrent terminal for the same
-//     key loses the race and is simply a no-op here (Terminate returns nil).
-//  3. Sends a Cancel frame to the destination master.
-//  4. Recursively cancels the child peer calls recorded on the entry.
-//  5. Sends ERR "CANCELLED" to the external response channel if present.
-func (sw *RelaySwitch) CancelRequest(rid MessageId, forceKill bool) {
+// Returns whether the request was live and the stop was sent. A request the
+// switch does not know (already terminated) is not stopped, and the caller
+// must not claim that it was. (matches Rust RelaySwitch::stop_request_feeds)
+func (sw *RelaySwitch) StopRequestFeeds(rid MessageId) bool {
 	sw.mu.Lock()
 	defer sw.mu.Unlock()
-	sw.cancelRequestLocked(rid, forceKill)
+	xid, ok := sw.requests.XidForRid(rid)
+	if !ok {
+		return false
+	}
+	state := sw.requests.Get(RequestKey{Xid: xid, Rid: rid})
+	if state == nil {
+		return false
+	}
+	closeFrame := NewCloseStreamFrame(rid, nil)
+	closeFrame.RoutingId = &xid
+	return sw.masters[state.Routing.DestinationMasterIdx].socketWriter.WriteFrame(closeFrame) == nil
+}
+
+// CancelRequest cancels a specific in-flight request by request ID, for a
+// stated reason.
+//
+//  1. Terminates the request as cancelled WITH the reason FIRST — one atomic
+//     removal yields the destination, the children for the cascade, and the
+//     external channel for the final ERR (L7), and records the attribution
+//     on the summary. A concurrent terminal for the same key loses the race
+//     and is simply a no-op here (TerminateCancelled returns nil).
+//  2. Sends the Cancel frame (attribution in Meta, force_kill) to the
+//     destination master.
+//  3. Recursively cancels the child peer calls recorded on the entry, under
+//     the same reason.
+//  4. Sends the terminal ERR to the external response channel if present, in
+//     the reason's own words: CANCELLED/user for an operator's cancel,
+//     ABORTED_COLLATERAL with the originating failure's class for collateral,
+//     ABORTED with the host's class for a host abort — so "cancelled" is
+//     never said of an abort.
+//
+// The reason is optional attribution, never a precondition: an unattributed
+// reason cancels all the same. Closing a live input without cancelling is
+// StopRequestFeeds.
+func (sw *RelaySwitch) CancelRequest(rid MessageId, reason CancelReason) {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	sw.cancelRequestLocked(rid, reason)
 }
 
 // cancelRequestLocked must be called with sw.mu held. Recurses directly
 // (without re-locking) to cancel child peer calls.
-func (sw *RelaySwitch) cancelRequestLocked(rid MessageId, forceKill bool) {
+func (sw *RelaySwitch) cancelRequestLocked(rid MessageId, reason CancelReason) {
 	xid, ok := sw.requests.XidForRid(rid)
 	if !ok {
 		return
 	}
 	key := RequestKey{Xid: xid, Rid: rid}
 
-	state := sw.requests.Terminate(key, TerminalKindCancelled)
+	state := sw.requests.TerminateCancelled(key, reason)
 	if state == nil {
 		return
 	}
 
 	// Send Cancel frame to destination.
-	cancelFrame := NewCancelFrame(rid, forceKill)
+	cancelFrame := NewCancelFrame(rid, reason)
 	cancelFrame.RoutingId = &xid
 	_ = sw.masters[state.Routing.DestinationMasterIdx].socketWriter.WriteFrame(cancelFrame)
 
-	// Recursively cancel children.
+	// Recursively cancel children, under the same reason.
 	for _, child := range state.Children {
-		sw.cancelRequestLocked(child.Rid, forceKill)
+		sw.cancelRequestLocked(child.Rid, reason)
 	}
 
-	// Send ERR "CANCELLED" to the external response channel if present.
+	// Send the terminal ERR to the external response channel if present.
 	// Best-effort: the request is already gone, so a failed final delivery
 	// here is not itself counted as a drop — mirrors Rust's `let _ =
 	// tx.send(err_frame)` and Swift's `_ = channel(errFrame)`.
 	if state.ExternalChannel != nil {
-		errFrame := NewErr(rid, "CANCELLED", AttributionClassInternal, "Request cancelled", nil)
+		errFrame := NewErr(rid, reason.TerminalCode(), reason.TerminalClass(), reason.TerminalMessage(), nil)
 		errFrame.RoutingId = &xid
 		deliverExternal(state.ExternalChannel, *errFrame)
 	}
 }
 
-// CancelAllRequests cancels all external-origin (engine-initiated) in-flight requests.
-// Returns the list of cancelled request IDs.
-func (sw *RelaySwitch) CancelAllRequests(forceKill bool) []MessageId {
+// CancelAllRequests cancels all external-origin (engine-initiated) in-flight
+// requests, for a stated reason. Returns the list of cancelled request IDs.
+func (sw *RelaySwitch) CancelAllRequests(reason CancelReason) []MessageId {
 	sw.mu.Lock()
 	defer sw.mu.Unlock()
 
@@ -1359,7 +1396,7 @@ func (sw *RelaySwitch) CancelAllRequests(forceKill bool) []MessageId {
 	}
 
 	for _, rid := range rids {
-		sw.cancelRequestLocked(rid, forceKill)
+		sw.cancelRequestLocked(rid, reason)
 	}
 
 	return rids
@@ -1436,7 +1473,7 @@ func (sw *RelaySwitch) SendToMaster(frame *Frame, preferredCap *string) error {
 		return sw.masters[destIdx].socketWriter.WriteFrame(frame)
 
 	case FrameTypeStreamStart, FrameTypeChunk, FrameTypeStreamEnd,
-		FrameTypeEnd, FrameTypeErr, FrameTypeCancel, FrameTypeCredit:
+		FrameTypeEnd, FrameTypeErr, FrameTypeCancel, FrameTypeCloseStream, FrameTypeCredit:
 		// Continuation/control frames from the engine: look up XID from RID
 		// if missing, then the destination. Unknown RID is a hard error
 		// back to the caller: the engine is a direct API client and must
@@ -2069,7 +2106,7 @@ func (sw *RelaySwitch) handleMasterFrame(sourceIdx int, frame *Frame) (*Frame, e
 						// frames need no cancel: the entry is already
 						// terminated.
 						if !isTerminal {
-							sw.cancelRequestLocked(rid, false)
+							sw.cancelRequestLocked(rid, HostCancelReason(AttributionClassInternal, "response channel receiver gone: the caller abandoned the request", false))
 						}
 					}
 					return nil, nil
@@ -2116,10 +2153,11 @@ func (sw *RelaySwitch) handleMasterFrame(sourceIdx int, frame *Frame) (*Frame, e
 		}
 		return nil, nil
 
-	case FrameTypeCancel:
-		// Cancel from cartridge — route to destination like a continuation
-		// frame. Cartridge is cancelling its own peer call. Unknown RID
-		// means the request already completed: a well-defined no-op.
+	case FrameTypeCancel, FrameTypeCloseStream:
+		// Cancel / CloseStream from cartridge — route to destination like a
+		// continuation frame. Cartridge is cancelling (or closing the live
+		// input of) its own peer call. Unknown RID means the request already
+		// completed: a well-defined no-op.
 		rid := frame.Id
 		var xid MessageId
 		var ok bool

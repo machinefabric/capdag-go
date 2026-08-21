@@ -74,7 +74,13 @@ type CapArg struct {
 	// Emitted even when false, as the reference does: the manifest is compared
 	// across implementations and `omitempty` made Go's bytes differ from Rust's
 	// for the identical cap.
-	IsSequence     bool        `json:"is_sequence"`
+	IsSequence bool `json:"is_sequence"`
+	// Streaming declares that this argument is consumed WITHOUT a length
+	// promise: the cap processes items as they arrive and may be wired live
+	// to an unbounded producer. Orthogonal to IsSequence (cardinality), not
+	// part of the URN. Only the main input may stream (RULE14). Emitted even
+	// when false (manifest byte parity with the reference).
+	Streaming      bool        `json:"streaming"`
 	Sources        []ArgSource `json:"sources"`
 	ArgDescription *string     `json:"arg_description,omitempty"`
 	DefaultValue   any         `json:"default_value,omitempty"`
@@ -101,6 +107,7 @@ type capArgJSON struct {
 	MediaUrn       string           `json:"media_urn"`
 	Required       bool             `json:"required"`
 	IsSequence     bool             `json:"is_sequence"`
+	Streaming      bool             `json:"streaming"`
 	Sources        []ArgSource      `json:"sources"`
 	ArgDescription *string          `json:"arg_description,omitempty"`
 	DefaultValue   *json.RawMessage `json:"default_value,omitempty"`
@@ -116,6 +123,7 @@ func (a *CapArg) UnmarshalJSON(data []byte) error {
 	a.MediaUrn = raw.MediaUrn
 	a.Required = raw.Required
 	a.IsSequence = raw.IsSequence
+	a.Streaming = raw.Streaming
 	a.Sources = raw.Sources
 	a.ArgDescription = raw.ArgDescription
 	a.DefaultValue = nil
@@ -326,7 +334,12 @@ type CapOutput struct {
 	OutputDescription string `json:"output_description"`
 	// Emitted even when false — see CapArg.IsSequence.
 	IsSequence bool `json:"is_sequence"`
-	Metadata   any  `json:"metadata,omitempty"`
+	// Streaming declares that this output MAY be emitted without a length
+	// promise (unbounded). The executor feeds a non-streaming consumer the
+	// bounded whole after this cap ends; the runtime refuses an unbounded
+	// emission from an output that did not declare it.
+	Streaming bool `json:"streaming"`
+	Metadata  any  `json:"metadata,omitempty"`
 }
 
 // Resolve resolves the output's media URN through the FabricRegistry.
@@ -749,6 +762,40 @@ func (c *Cap) SequenceShape() (bool, bool) {
 		outputIsSequence = c.Output.IsSequence
 	}
 	return inputIsSequence, outputIsSequence
+}
+
+// MainInputArg returns the cap's main input argument — the arg whose stdin
+// source is equivalent to the URN's in= — or nil for a void-input cap.
+// Matches Rust: pub fn main_input_arg(&self) -> Option<&CapArg>
+func (c *Cap) MainInputArg() *CapArg {
+	inSpec, err := urn.NewMediaUrnFromString(c.Urn.InSpec())
+	if err != nil {
+		return nil
+	}
+	for i := range c.Args {
+		if c.Args[i].IsMainInput(inSpec) {
+			return &c.Args[i]
+		}
+	}
+	return nil
+}
+
+// StreamingShape returns the streaming contract of this cap's primary data
+// path: (inputStreams, outputStreams) — whether the main input is consumed
+// without a length promise and whether the output may be emitted without
+// one. Orthogonal to SequenceShape. The executor's hop rule reads it: a
+// streaming producer into a non-streaming consumer is a chain boundary.
+// Matches Rust: pub fn streaming_shape(&self) -> (bool, bool)
+func (c *Cap) StreamingShape() (bool, bool) {
+	inputStreams := false
+	if arg := c.MainInputArg(); arg != nil {
+		inputStreams = arg.Streaming
+	}
+	outputStreams := false
+	if c.Output != nil {
+		outputStreams = c.Output.Streaming
+	}
+	return inputStreams, outputStreams
 }
 
 // NeedsForeach reports whether a data position of cardinality sourceIsSequence

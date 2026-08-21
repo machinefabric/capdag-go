@@ -49,6 +49,12 @@ const (
 	// in-memory discriminant, the credit_dir/credit accessors, and the constructor
 	// that the CreditRouter and its parity tests exercise directly on Frame values.
 	FrameTypeCredit FrameType = 13
+	// FrameTypeCloseStream closes a request's live input stream(s) — the
+	// tap-off (15.2 §Runs Stop). The receiving runtime closes the request's
+	// open feed taps; the request drains and ends NATURALLY with END and
+	// complete outputs. Not a cancel: host-side request state is untouched.
+	// StreamId names one stream; absent means every live feed the request holds.
+	FrameTypeCloseStream FrameType = 14
 )
 
 // FrameTypeAll is all variants, for counter arrays and snapshot
@@ -67,6 +73,7 @@ var FrameTypeAll = []FrameType{
 	FrameTypeRelayState,
 	FrameTypeCancel,
 	FrameTypeCredit,
+	FrameTypeCloseStream,
 }
 
 // AsStr returns the stable snake_case name (the snapshot contract for
@@ -97,6 +104,8 @@ func (ft FrameType) AsStr() string {
 		return "relay_state"
 	case FrameTypeCancel:
 		return "cancel"
+	case FrameTypeCloseStream:
+		return "close_stream"
 	case FrameTypeCredit:
 		return "credit"
 	default:
@@ -132,6 +141,8 @@ func (ft FrameType) String() string {
 		return "RELAY_STATE"
 	case FrameTypeCancel:
 		return "CANCEL"
+	case FrameTypeCloseStream:
+		return "CLOSE_STREAM"
 	case FrameTypeCredit:
 		return "CREDIT"
 	default:
@@ -312,6 +323,141 @@ type Frame struct {
 	// flag and the constructors/accessor its parity tests exercise directly
 	// on Frame values.
 	Unbounded *bool
+}
+
+// CancelReason is WHY a request is being cancelled — the attribution a Cancel
+// frame carries in its Meta, in the SAME vocabulary as an ERR frame (code,
+// attribution_class, message; docs/failure-taxonomy.md). Every part is
+// optional: an unattributed Cancel still cancels. (matches Rust CancelReason)
+type CancelReason struct {
+	// Class is whose decision/fault the cancellation is: user for an
+	// operator's cancel, the ORIGINATING failure's class for a collateral
+	// teardown, environment/resource for a host's own abort. nil = unattributed.
+	Class *AttributionClass
+	// Code is the terminal code the request ends with (CANCELLED,
+	// ABORTED_COLLATERAL, ABORTED, …). nil = CANCELLED.
+	Code *string
+	// Message is the human reason: the failed step, the host's reason.
+	Message *string
+	// ForceKill kills the cartridge process instead of cancelling cooperatively.
+	ForceKill bool
+}
+
+const (
+	// CancelCodeCancelled is the terminal code of a cancel attributed to the operator.
+	CancelCodeCancelled = "CANCELLED"
+	// CancelCodeAbortedCollateral is the terminal code of a cancel that is collateral of a failure elsewhere in the run.
+	CancelCodeAbortedCollateral = "ABORTED_COLLATERAL"
+	// CancelCodeAborted is the terminal code of a cancel the host decided on its own.
+	CancelCodeAborted = "ABORTED"
+)
+
+func cancelStr(s string) *string { return &s }
+
+// UnattributedCancelReason cancels, and its terminal says only that.
+func UnattributedCancelReason(forceKill bool) CancelReason { return CancelReason{ForceKill: forceKill} }
+
+// UserCancelReason is the operator's cancel — the one reason that reads "cancelled".
+func UserCancelReason(forceKill bool) CancelReason {
+	class := AttributionClassUser
+	return CancelReason{Class: &class, Code: cancelStr(CancelCodeCancelled), Message: cancelStr("Cancelled by user"), ForceKill: forceKill}
+}
+
+// CollateralCancelReason: another step of the same run failed; the cancel
+// carries THAT failure's class and names it.
+func CollateralCancelReason(class AttributionClass, detail string) CancelReason {
+	return CancelReason{Class: &class, Code: cancelStr(CancelCodeAbortedCollateral), Message: cancelStr(detail)}
+}
+
+// HostCancelReason: the host aborted the run for a reason of its own; class is
+// the host's attribution of that reason (stale → environment, memory
+// pressure → resource).
+func HostCancelReason(class AttributionClass, detail string, forceKill bool) CancelReason {
+	return CancelReason{Class: &class, Code: cancelStr(CancelCodeAborted), Message: cancelStr(detail), ForceKill: forceKill}
+}
+
+// IsUser reports whether this reason is the operator's own cancel.
+func (r CancelReason) IsUser() bool { return r.Class != nil && *r.Class == AttributionClassUser }
+
+// TerminalCode is the terminal ERR code a request cancelled under this reason ends with.
+func (r CancelReason) TerminalCode() string {
+	if r.Code != nil {
+		return *r.Code
+	}
+	return CancelCodeCancelled
+}
+
+// TerminalClass is the terminal ERR class: the reason's own, or internal when
+// none was declared (unclassified means "ours").
+func (r CancelReason) TerminalClass() AttributionClass {
+	if r.Class != nil {
+		return *r.Class
+	}
+	return AttributionClassInternal
+}
+
+// TerminalMessage is the terminal ERR message for a request cancelled under
+// this reason. (matches Rust CancelReason::terminal_message)
+func (r CancelReason) TerminalMessage() string {
+	switch {
+	case r.Code == nil && r.Message != nil:
+		return "Request cancelled: " + *r.Message
+	case r.Code == nil:
+		return "Request cancelled"
+	case *r.Code == CancelCodeAbortedCollateral && r.Message != nil:
+		return "Request aborted as collateral of a failure elsewhere in the run: " + *r.Message
+	case *r.Code == CancelCodeAbortedCollateral:
+		return "Request aborted as collateral of a failure elsewhere in the run"
+	case *r.Code == CancelCodeAborted && r.Message != nil:
+		return "Request aborted by the host: " + *r.Message
+	case *r.Code == CancelCodeAborted:
+		return "Request aborted by the host"
+	case *r.Code == CancelCodeCancelled && r.Message != nil:
+		return *r.Message
+	case r.Message != nil:
+		return *r.Code + ": " + *r.Message
+	default:
+		return "Request cancelled (" + *r.Code + ")"
+	}
+}
+
+// Equal compares two reasons by value.
+func (r CancelReason) Equal(o CancelReason) bool {
+	eqStr := func(a, b *string) bool { return (a == nil && b == nil) || (a != nil && b != nil && *a == *b) }
+	eqClass := func(a, b *AttributionClass) bool {
+		return (a == nil && b == nil) || (a != nil && b != nil && *a == *b)
+	}
+	return r.ForceKill == o.ForceKill && eqStr(r.Code, o.Code) && eqStr(r.Message, o.Message) && eqClass(r.Class, o.Class)
+}
+
+// CancelReason returns the reason a Cancel frame carries (ok=false for a
+// non-Cancel frame). Read from Meta exactly as an ERR's attribution is; a
+// Cancel with no Meta is an unattributed cancel, never an error.
+func (f *Frame) CancelReason() (CancelReason, bool) {
+	if f.FrameType != FrameTypeCancel {
+		return CancelReason{}, false
+	}
+	r := CancelReason{}
+	if f.ForceKill != nil {
+		r.ForceKill = *f.ForceKill
+	}
+	text := func(key string) *string {
+		if f.Meta == nil {
+			return nil
+		}
+		if s, ok := f.Meta[key].(string); ok && s != "" {
+			return cancelStr(s)
+		}
+		return nil
+	}
+	r.Code = text("code")
+	r.Message = text("message")
+	if token := text("attribution_class"); token != nil {
+		if class, ok := AttributionClassFromWire(*token); ok {
+			r.Class = &class
+		}
+	}
+	return r, true
 }
 
 // New creates a new frame with required fields (matches Rust Frame::new)
@@ -561,11 +707,38 @@ func (f *Frame) ExitCode() *int64 {
 	return &code
 }
 
-// NewCancelFrame creates a CANCEL frame targeting the given request ID.
-// forceKill indicates whether the cartridge process should be force-killed.
-func NewCancelFrame(targetRid MessageId, forceKill bool) *Frame {
+// NewCancelFrame creates a CANCEL frame targeting the given request ID for
+// the given reason: the attribution (Meta code / attribution_class / message,
+// each written only when present) and the force-kill flag. A Cancel built
+// from UnattributedCancelReason carries no Meta and is still a cancel.
+// (matches Rust Frame::cancel)
+func NewCancelFrame(targetRid MessageId, reason CancelReason) *Frame {
 	frame := newFrame(FrameTypeCancel, targetRid)
+	forceKill := reason.ForceKill
 	frame.ForceKill = &forceKill
+	meta := map[string]interface{}{}
+	if reason.Code != nil {
+		meta["code"] = *reason.Code
+	}
+	if reason.Class != nil {
+		meta["attribution_class"] = reason.Class.String()
+	}
+	if reason.Message != nil {
+		meta["message"] = *reason.Message
+	}
+	if len(meta) > 0 {
+		frame.Meta = meta
+	}
+	return frame
+}
+
+// NewCloseStreamFrame creates a CLOSE_STREAM frame — the tap-off for a
+// request's live input (15.2 §Runs Stop). streamId names one stream; nil
+// closes every live feed the request holds. The request is not cancelled: it
+// drains and ends naturally. (matches Rust Frame::close_stream)
+func NewCloseStreamFrame(targetRid MessageId, streamId *string) *Frame {
+	frame := newFrame(FrameTypeCloseStream, targetRid)
+	frame.StreamId = streamId
 	return frame
 }
 
@@ -1036,7 +1209,7 @@ func (f *Frame) IsEof() bool {
 // (matches Rust Frame::is_flow_frame)
 func (f *Frame) IsFlowFrame() bool {
 	switch f.FrameType {
-	case FrameTypeHello, FrameTypeHeartbeat, FrameTypeRelayNotify, FrameTypeRelayState, FrameTypeCancel, FrameTypeCredit:
+	case FrameTypeHello, FrameTypeHeartbeat, FrameTypeRelayNotify, FrameTypeRelayState, FrameTypeCancel, FrameTypeCredit, FrameTypeCloseStream:
 		return false
 	default:
 		return true

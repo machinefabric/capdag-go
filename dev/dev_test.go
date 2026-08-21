@@ -448,6 +448,36 @@ func splitPin(text string) ([]uint64, string) {
 	return pin, strings.Join(lines, "\n")
 }
 
+// isCapdagDependencySource reports whether a manifest line is the capdag
+// dependency SOURCE: a path, git tag, module version or SwiftPM from: naming
+// capdag.
+func isCapdagDependencySource(line string) bool {
+	t := strings.TrimSpace(line)
+	return strings.Contains(t, "capdag") && (strings.Contains(t, "path") ||
+		strings.Contains(t, "git =") || strings.Contains(t, "tag =") ||
+		strings.Contains(t, "url:") || strings.Contains(t, "from:") ||
+		strings.HasPrefix(t, "require ") || strings.HasPrefix(t, "replace "))
+}
+
+// stripCapdagDependencySource strips the capdag dependency source from a
+// manifest: the dependency line(s), the comment lines that explain them, and
+// blank lines (the templates' conditional blocks differ in spacing). Other
+// files are returned untouched.
+func stripCapdagDependencySource(dest, text string) string {
+	if !(strings.HasSuffix(dest, "Cargo.toml") || strings.HasSuffix(dest, "go.mod") || strings.HasSuffix(dest, "Package.swift")) {
+		return text
+	}
+	var kept []string
+	for _, line := range strings.Split(text, "\n") {
+		t := strings.TrimSpace(line)
+		if t == "" || strings.HasPrefix(t, "#") || strings.HasPrefix(t, "//") || isCapdagDependencySource(t) {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	return strings.Join(kept, "\n") + "\n"
+}
+
 func joinVersion(version []uint64) string {
 	parts := make([]string, 0, len(version))
 	for _, value := range version {
@@ -469,15 +499,25 @@ func joinVersion(version []uint64) string {
 // scaffolded from it resolves. A NEWER pin is not, because it would name a
 // version this capdag has not reached, so the comparison is an ordering and not
 // "ignore the version".
+//
+// And ONE more: HOW the stub reaches capdag is environment, not contract. The
+// dependency line of a language manifest (tag / module version / SwiftPM from:
+// — or a path, were one ever rendered) and the comment lines explaining it are
+// removed by stripCapdagDependencySource before comparing. The VERSION on that
+// line is read first, and the ordering rule still applies to it.
 func assertStubMatches(t *testing.T, language, dest, vendored, canonical string) {
 	t.Helper()
 	if vendored == canonical {
 		return
 	}
+	// The pin is read from the dependency line BEFORE that line is stripped
+	// — the ordering rule below must keep seeing it.
 	vendoredPin, vendoredRest := splitPin(vendored)
 	canonicalPin, canonicalRest := splitPin(canonical)
+	vendoredRest = stripCapdagDependencySource(dest, vendoredRest)
+	canonicalRest = stripCapdagDependencySource(dest, canonicalRest)
 	if vendoredRest != canonicalRest {
-		t.Fatalf("%s: vendored %s differs from the canonical bytes in more than the pinned capdag version — re-vendor the stubs", language, dest)
+		t.Fatalf("%s: vendored %s differs from the canonical bytes in more than the capdag dependency source/version — re-vendor the stubs", language, dest)
 	}
 	if vendoredPin == nil || canonicalPin == nil {
 		t.Fatalf("%s: vendored %s differs from the canonical bytes and neither carries a version pin to explain it — re-vendor the stubs", language, dest)
