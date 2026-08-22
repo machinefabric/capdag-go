@@ -1218,6 +1218,96 @@ func Test134_AddMasterWithDuplicateHealthyIDErrors(t *testing.T) {
 	}
 }
 
+// TEST1965: attachment is decided by the SOCKET, not the health flag. A
+// slot whose identity probe is pending is unhealthy yet attached — its
+// socket is open — and reattaching over it would strand the host;
+// SlotAcceptsAttach says no and AddMaster refuses, so a host that asks
+// first never dials a slot it holds. Once the slave drops its socket
+// (reader EOF → the slot detaches) the same id reattaches in place.
+func Test1965_AttachDecidedBySocketLivenessNotHealth(t *testing.T) {
+	engineRead, slaveWrite := net.Pipe()
+	slaveRead, engineWrite := net.Pipe()
+	release := make(chan struct{})
+
+	go func() {
+		writer := NewFrameWriter(slaveWrite)
+		reader := NewFrameReader(slaveRead)
+		if !serveRelayHandshake(t, reader, writer, []string{testCapIdentity}) {
+			return
+		}
+		<-release
+		_ = slaveWrite.Close()
+		_ = slaveRead.Close()
+	}()
+
+	sw, err := NewRelaySwitch([]SocketPair{
+		{ID: "xpc-service", Read: engineRead, Write: engineWrite},
+	})
+	if err != nil {
+		t.Fatalf("NewRelaySwitch: %v", err)
+	}
+	if sw.SlotAcceptsAttach("xpc-service") {
+		t.Fatalf("a healthy attached slot must not accept a second attach")
+	}
+	if !sw.SlotAcceptsAttach("never-seen") {
+		t.Fatalf("an id with no slot is always attachable")
+	}
+
+	// Unhealthy but attached (the identity-probe-pending state): the
+	// health flag alone must not open the slot.
+	sw.mu.Lock()
+	sw.masters[0].healthy = false
+	sw.mu.Unlock()
+	if sw.SlotAcceptsAttach("xpc-service") {
+		t.Fatalf("an unhealthy slot whose socket is still open is still attached")
+	}
+	dummyRead, _ := net.Pipe()
+	dummyOther, _ := net.Pipe()
+	_, err = sw.AddMaster(SocketPair{ID: "xpc-service", Read: dummyRead, Write: dummyOther})
+	if err == nil {
+		t.Fatalf("attaching over an open socket must be refused")
+	}
+	if !strings.Contains(err.Error(), "attached but unhealthy") {
+		t.Fatalf("the refusal names the real state; got %q", err.Error())
+	}
+	sw.mu.Lock()
+	sw.masters[0].healthy = true
+	sw.mu.Unlock()
+
+	// The slave drops its socket: the reader exits, the slot detaches —
+	// without the pump having to run (the reader itself marks it).
+	close(release)
+	deadline := time.Now().Add(5 * time.Second)
+	for !sw.SlotAcceptsAttach("xpc-service") {
+		if time.Now().After(deadline) {
+			t.Fatalf("the slot must detach once its socket is gone")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	// Reattach in place.
+	engineRead2, slaveWrite2 := net.Pipe()
+	slaveRead2, engineWrite2 := net.Pipe()
+	go func() {
+		writer := NewFrameWriter(slaveWrite2)
+		reader := NewFrameReader(slaveRead2)
+		if !serveRelayHandshake(t, reader, writer, []string{testCapIdentity}) {
+			return
+		}
+		_, _ = reader.ReadFrame()
+	}()
+	idx, err := sw.AddMaster(SocketPair{ID: "xpc-service", Read: engineRead2, Write: engineWrite2})
+	if err != nil {
+		t.Fatalf("a detached slot reattaches: %v", err)
+	}
+	if idx != 0 || len(sw.masters) != 1 {
+		t.Fatalf("reattach must reuse slot 0; got idx %d, len %d", idx, len(sw.masters))
+	}
+	if sw.SlotAcceptsAttach("xpc-service") {
+		t.Fatalf("a reattached slot is attached again")
+	}
+}
+
 // TEST6745: RelaySwitch::new rejects duplicate ids in its cardinality list.
 func Test6745_RelaySwitchNewRejectsDuplicateIDs(t *testing.T) {
 	a, _ := net.Pipe()

@@ -49,7 +49,7 @@ func LookupCapFabricCap() *Cap {
 		standard.MediaFabricDefver,
 		false,
 		[]ArgSource{{CliFlag: StringPtr("--defver")}},
-		"Per-definition version under the caller's manifest snapshot. Absent ⇒ defver 0 (legacy v0 flat-path lookup).",
+		"Per-definition version under the caller's manifest snapshot, 1 or greater. Absent ⇒ resolved under the fabric manifest the lookup cartridge is pinned to; a URN that manifest does not list is not found.",
 	))
 	cap.Output = NewCapOutput(
 		standard.MediaCapDefinition,
@@ -82,7 +82,7 @@ func LookupMediaDefFabricCap() *Cap {
 		standard.MediaFabricDefver,
 		false,
 		[]ArgSource{{CliFlag: StringPtr("--defver")}},
-		"Per-definition version under the caller's manifest snapshot. Absent ⇒ defver 0 (legacy v0 flat-path lookup).",
+		"Per-definition version under the caller's manifest snapshot, 1 or greater. Absent ⇒ resolved under the fabric manifest the lookup cartridge is pinned to; a URN that manifest does not list is not found.",
 	))
 	cap.Output = NewCapOutput(
 		standard.MediaMediaDefinition,

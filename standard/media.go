@@ -350,7 +350,7 @@ const MediaMediaDefinition = "media:fmt=json;media-definition;record"
 
 // MediaFabricDefver is the media URN for a fabric registry per-definition version (defver).
 // Carried as data alongside a URN when a cap looks up a definition pinned to a specific
-// manifest snapshot. Absent ⇒ defver 0 (legacy v0 flat-path lookup).
+// manifest snapshot. Absent ⇒ resolved under the lookup cartridge's pinned fabric manifest.
 const MediaFabricDefver = "media:defver;enc=utf-8"
 
 // MediaCollectionList is the media URN for a list of collections

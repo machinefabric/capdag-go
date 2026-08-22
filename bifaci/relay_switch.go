@@ -353,6 +353,15 @@ type MasterConnection struct {
 	// MasterConnection.host_protocol_stats.
 	hostProtocolStats *HostProtocolStats
 	healthy           bool
+	// detached is true once the slot's CONNECTION is gone — its reader
+	// exited (EOF/error) or handleMasterDeath declared it dead — and
+	// false while a socket is attached, healthy or not. Attachment is
+	// decided by this, never by `healthy`: a slot with its identity
+	// probe pending is unhealthy yet attached, and reattaching over it
+	// would strand the host on the other end. Mirrors the Rust
+	// reference, which decides by the reader task's liveness. Mutated
+	// only under RelaySwitch.mu.
+	detached bool
 	// lastError carries the most recent attachment / identity-probe
 	// failure reason for this slot (nil when none). Set when a
 	// synchronous or deferred identity probe fails, cleared when a
@@ -710,14 +719,18 @@ func (sw *RelaySwitch) AddMaster(sockPair SocketPair) (int, error) {
 	existingIdx := -1
 	for i, m := range sw.masters {
 		if m.id == sockPair.ID {
-			if m.healthy {
+			if !m.detached {
+				state := "healthy"
+				if !m.healthy {
+					state = "attached but unhealthy"
+				}
 				sw.mu.Unlock()
 				return 0, &RelaySwitchError{
 					Type: RelaySwitchErrorTypeProtocol,
 					Message: fmt.Sprintf(
-						"AddMaster: id %q is already attached to a healthy slot at index %d — "+
+						"AddMaster: id %q is already attached to a %s slot at index %d — "+
 							"cardinality violation (each id may only be attached once at a time)",
-						sockPair.ID, i,
+						sockPair.ID, state, i,
 					),
 				}
 			}
@@ -803,6 +816,16 @@ func (sw *RelaySwitch) AddMaster(sockPair SocketPair) (int, error) {
 	idx := masterIdx
 	frameRx := sw.frameRx
 	go func() {
+		// On exit the slot is detached: the connection is gone whether
+		// or not the pump has processed the error yet, so a reattach
+		// for this id is legitimate from this moment.
+		defer func() {
+			sw.mu.Lock()
+			if idx < len(sw.masters) {
+				sw.masters[idx].detached = true
+			}
+			sw.mu.Unlock()
+		}()
 		for {
 			f, err := socketReader.ReadFrame()
 			if err != nil {
@@ -867,6 +890,7 @@ func (sw *RelaySwitch) AddMaster(sockPair SocketPair) (int, error) {
 		slot.hostProtocolStats = payload.HostProtocolStats
 		slot.healthy = healthyAtRegister
 		slot.lastError = identityFailure
+		slot.detached = false
 	}
 
 	if err := sw.configureMasterAdmissionLocked(masterIdx, payload.InstalledCartridges); err != nil {
@@ -1224,6 +1248,25 @@ func (sw *RelaySwitch) runIdentityProbeViaRelay(masterIdx int) error {
 	sw.mu.Unlock()
 
 	return probeErr
+}
+
+// SlotAcceptsAttach reports whether AddMaster(id) is legitimate RIGHT
+// NOW: no slot carries this id, or the slot's connection is gone. A host
+// that reconnects on every control-plane event must ask this BEFORE
+// dialling — AddMaster can only learn the answer after consuming a fresh
+// socket, and a socket dialled into an attached slot is a duplicate
+// connection the host side has to refuse. A slot that is merely
+// UNHEALTHY (identity probe pending or failed) with its socket open is
+// still attached. Mirrors Rust RelaySwitch::slot_accepts_attach.
+func (sw *RelaySwitch) SlotAcceptsAttach(id string) bool {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	for _, m := range sw.masters {
+		if m.id == id {
+			return m.detached
+		}
+	}
+	return true
 }
 
 // SetExpectedMasterCount declares how many cardinality slots the
@@ -2273,6 +2316,14 @@ func (sw *RelaySwitch) handleMasterDeath(masterIdx int) {
 	// failed here: it rides the admission grace window in case the master
 	// reconnects. Mirrors Rust's admission.disable_master on master death.
 	sw.admission.DisableMaster(masterIdx)
+
+	// The slot is DETACHED from here on, whatever the health flag said:
+	// the connection is declared dead, so the slot is reattachable to
+	// AddMaster / SlotAcceptsAttach. Before the already-handled
+	// short-circuit below — an unhealthy-but-attached slot (probe
+	// pending) whose socket then closes must detach too, or the host
+	// could never reconnect to it.
+	sw.masters[masterIdx].detached = true
 
 	if !sw.masters[masterIdx].healthy {
 		return
