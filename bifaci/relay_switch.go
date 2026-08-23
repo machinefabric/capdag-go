@@ -636,27 +636,6 @@ func NewRelaySwitch(sockets []SocketPair) (*RelaySwitch, error) {
 		})
 	}
 
-	// Phase 2: All masters verified — spawn reader goroutines.
-	for _, pr := range pendingReaders {
-		idx := pr.masterIdx
-		socketReader := pr.socketReader
-		go func() {
-			for {
-				frame, err := socketReader.ReadFrame()
-				if err != nil {
-					frameRx <- MasterFrame{MasterIdx: idx, Frame: nil, Err: err}
-					return
-				}
-				if frame == nil {
-					frameRx <- MasterFrame{MasterIdx: idx, Frame: nil, Err: fmt.Errorf("EOF")}
-					return
-				}
-
-				frameRx <- MasterFrame{MasterIdx: idx, Frame: frame, Err: nil}
-			}
-		}()
-	}
-
 	sw := &RelaySwitch{
 		masters:                      masters,
 		capTable:                     []CapTableEntry{},
@@ -668,6 +647,13 @@ func NewRelaySwitch(sockets []SocketPair) (*RelaySwitch, error) {
 		pendingProbes:                make(chan int, 256),
 		capWatch:                     newCapWatch(),
 		admission:                    NewAdmissionController(),
+	}
+
+	// Phase 2: All masters verified — spawn reader goroutines. The same
+	// reader AddMaster uses, so a dying socket detaches the slot the same
+	// way whichever path attached it.
+	for _, pr := range pendingReaders {
+		go sw.readMaster(pr.masterIdx, pr.socketReader)
 	}
 
 	// Seed admission from every master's initial inventory, so the very first
@@ -813,32 +799,7 @@ func (sw *RelaySwitch) AddMaster(sockPair SocketPair) (int, error) {
 	healthyAtRegister := identityFailure == nil
 
 	// Spawn reader goroutine bound to masterIdx.
-	idx := masterIdx
-	frameRx := sw.frameRx
-	go func() {
-		// On exit the slot is detached: the connection is gone whether
-		// or not the pump has processed the error yet, so a reattach
-		// for this id is legitimate from this moment.
-		defer func() {
-			sw.mu.Lock()
-			if idx < len(sw.masters) {
-				sw.masters[idx].detached = true
-			}
-			sw.mu.Unlock()
-		}()
-		for {
-			f, err := socketReader.ReadFrame()
-			if err != nil {
-				frameRx <- MasterFrame{MasterIdx: idx, Frame: nil, Err: err}
-				return
-			}
-			if f == nil {
-				frameRx <- MasterFrame{MasterIdx: idx, Frame: nil, Err: fmt.Errorf("EOF")}
-				return
-			}
-			frameRx <- MasterFrame{MasterIdx: idx, Frame: f, Err: nil}
-		}
-	}()
+	go sw.readMaster(masterIdx, socketReader)
 
 	// Commit the connection state into the slot.
 	sw.mu.Lock()
@@ -1558,6 +1519,36 @@ func (sw *RelaySwitch) SendToMaster(frame *Frame, preferredCap *string) error {
 			Type:    RelaySwitchErrorTypeProtocol,
 			Message: fmt.Sprintf("unexpected frame type from engine: %d", frame.FrameType),
 		}
+	}
+}
+
+// readMaster is the per-master reader goroutine: every frame the socket
+// yields goes to frameRx tagged with the slot index, and the first error or
+// EOF ends it. The moment the socket dies the slot is DETACHED — before the
+// death is handed to the pump, because that hand-off blocks until the pump
+// drains frameRx, and a reattach for this id is legitimate from the instant
+// the connection is gone, not from whenever the pump gets around to it.
+func (sw *RelaySwitch) readMaster(idx int, socketReader *FrameReader) {
+	detach := func() {
+		sw.mu.Lock()
+		if idx < len(sw.masters) {
+			sw.masters[idx].detached = true
+		}
+		sw.mu.Unlock()
+	}
+	for {
+		f, err := socketReader.ReadFrame()
+		if err != nil {
+			detach()
+			sw.frameRx <- MasterFrame{MasterIdx: idx, Frame: nil, Err: err}
+			return
+		}
+		if f == nil {
+			detach()
+			sw.frameRx <- MasterFrame{MasterIdx: idx, Frame: nil, Err: fmt.Errorf("EOF")}
+			return
+		}
+		sw.frameRx <- MasterFrame{MasterIdx: idx, Frame: f, Err: nil}
 	}
 }
 
