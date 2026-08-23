@@ -428,24 +428,41 @@ func firstTriple(line string) ([]uint64, int, int, bool) {
 	return nil, 0, 0, false
 }
 
-// splitPin separates a stub file into its capdag version pin and everything else.
-//
-// The pin appears once per stub, in the language's own dependency syntax:
-// `tag = "v1.2.3"` (Cargo), `capdag-go v1.2.3` (go.mod), `from: "1.2.3"`
-// (SwiftPM). Rather than teach this three grammars, the first dotted-triple on a
-// line that mentions capdag IS the pin.
-func splitPin(text string) ([]uint64, string) {
-	var pin []uint64
+// isPinLine reports whether a line's dotted triple is a STAMPED version, not
+// contract: one that names capdag (the dependency pin, in any language's
+// syntax), or the stub's own version — a manifest's `version = "…"` line, a
+// CapManifest `version: "…"` / `version="…"` argument, or a bare positional
+// `"N.N.N",` (the stub repo's release, stamped by the templates so a
+// scaffolded cartridge carries an accurate version). All move on every release
+// and none says anything about the stub.
+func isPinLine(line string) bool {
+	stripped := strings.TrimSpace(line)
+	if strings.Contains(line, "capdag") || strings.HasPrefix(stripped, "version") {
+		return true
+	}
+	bare := strings.TrimSpace(strings.TrimSuffix(stripped, ","))
+	if len(bare) < 2 || bare[0] != '"' || bare[len(bare)-1] != '"' {
+		return false
+	}
+	_, start, end, ok := firstTriple(bare)
+	return ok && start == 1 && end == len(bare)-1
+}
+
+// splitPins separates a stub file into its version pins (in order) and
+// everything else. Rather than teach this several grammars, the first
+// dotted-triple on every pin line (see isPinLine) IS a pin.
+func splitPins(text string) ([][]uint64, string) {
+	var pins [][]uint64
 	lines := strings.Split(text, "\n")
 	for i, line := range lines {
-		if pin == nil && strings.Contains(line, "capdag") {
+		if isPinLine(line) {
 			if numbers, start, end, ok := firstTriple(line); ok {
-				pin = numbers
+				pins = append(pins, numbers)
 				lines[i] = line[:start] + "<pin>" + line[end:]
 			}
 		}
 	}
-	return pin, strings.Join(lines, "\n")
+	return pins, strings.Join(lines, "\n")
 }
 
 // isCapdagDependencySource reports whether a manifest line is the capdag
@@ -512,24 +529,27 @@ func assertStubMatches(t *testing.T, language, dest, vendored, canonical string)
 	}
 	// The pin is read from the dependency line BEFORE that line is stripped
 	// — the ordering rule below must keep seeing it.
-	vendoredPin, vendoredRest := splitPin(vendored)
-	canonicalPin, canonicalRest := splitPin(canonical)
+	vendoredPins, vendoredRest := splitPins(vendored)
+	canonicalPins, canonicalRest := splitPins(canonical)
 	vendoredRest = stripCapdagDependencySource(dest, vendoredRest)
 	canonicalRest = stripCapdagDependencySource(dest, canonicalRest)
 	if vendoredRest != canonicalRest {
-		t.Fatalf("%s: vendored %s differs from the canonical bytes in more than the capdag dependency source/version — re-vendor the stubs", language, dest)
+		t.Fatalf("%s: vendored %s differs from the canonical bytes in more than the capdag dependency source and the stamped version pins — re-vendor the stubs", language, dest)
 	}
-	if vendoredPin == nil || canonicalPin == nil {
-		t.Fatalf("%s: vendored %s differs from the canonical bytes and neither carries a version pin to explain it — re-vendor the stubs", language, dest)
+	if len(vendoredPins) == 0 || len(vendoredPins) != len(canonicalPins) {
+		t.Fatalf("%s: vendored %s differs from the canonical bytes and the two sides do not carry the same version pins to explain it — re-vendor the stubs", language, dest)
 	}
-	for i := range vendoredPin {
-		if vendoredPin[i] == canonicalPin[i] {
-			continue
+	for p := range vendoredPins {
+		vendoredPin, canonicalPin := vendoredPins[p], canonicalPins[p]
+		for i := range vendoredPin {
+			if vendoredPin[i] == canonicalPin[i] {
+				continue
+			}
+			if vendoredPin[i] > canonicalPin[i] {
+				t.Fatalf("%s: vendored %s pins %s but the canonical stub is at %s — a stub may lag a release, never precede one",
+					language, dest, joinVersion(vendoredPin), joinVersion(canonicalPin))
+			}
+			break
 		}
-		if vendoredPin[i] > canonicalPin[i] {
-			t.Fatalf("%s: vendored %s pins capdag %s but capdag is %s — a stub may lag a release, never precede one",
-				language, dest, joinVersion(vendoredPin), joinVersion(canonicalPin))
-		}
-		return
 	}
 }
