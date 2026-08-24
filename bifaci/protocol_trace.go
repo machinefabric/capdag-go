@@ -11,7 +11,7 @@ import (
 // =============================================================================
 // Per-segment protocol trace sink for the reference runtime.
 //
-// The engine's dev trace (machfab's protocol_trace.go) samples a LONG-LIVED
+// The engine's dev trace (floom-engine's protocol_trace.go) samples a LONG-LIVED
 // relay switch every 2s and writes transition-deduped JSONL. The capdag CLI
 // runtime reuses a long-lived switch too, but the trace here is scoped PER
 // SEGMENT: the segment executor both SAMPLES the switch live during the
@@ -28,7 +28,7 @@ import (
 //
 // Lines are deduped by a transition fingerprint that EXCLUDES ever-advancing
 // clocks (ages/idle/lifetime), so an idle or stalled engine does not spam
-// identical samples — one line per protocol transition, mirroring machfab's
+// identical samples — one line per protocol transition, mirroring floom-engine's
 // trace_fingerprint.
 //
 // This is diagnostics the user explicitly asked for (a --trace/env path): the
@@ -116,7 +116,7 @@ type ProtocolTraceSink struct {
 // traceFingerprint computes the transition fingerprint: everything the
 // snapshot says that MATTERS, EXCLUDING the ever-advancing clocks (a
 // request's age_ms/idle_ms, a termination's lifetime_ms) which change every
-// sample and would defeat dedup. Mirrors machfab's protocol_trace.go
+// sample and would defeat dedup. Mirrors floom-engine's protocol_trace.go
 // trace_fingerprint so both traces dedup on the same notion of "a protocol
 // transition".
 func traceFingerprint(stats *RelaySwitchProtocolStats) string {

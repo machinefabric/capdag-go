@@ -1,5 +1,5 @@
 // Package capdag provides the fundamental cap URN system used across
-// all MACHFAB cartridges and candidates. It defines the formal structure for cap
+// all FLOOM_ENGINE cartridges and candidates. It defines the formal structure for cap
 // identifiers with flat tag-based naming, pattern matching, and graded specificity.
 //
 // Cap URN matching semantics:

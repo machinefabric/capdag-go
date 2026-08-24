@@ -183,7 +183,7 @@ func AssembleCborSequence(items [][]byte) ([]byte, error) {
 //
 // Contrast AssembleCborSequence, which requires each item to ALREADY be a complete
 // CBOR value (it validates rather than wraps) — the form used when the caller has
-// itself CBOR-encoded each item (e.g. machfab's file-item interpreter).
+// itself CBOR-encoded each item (e.g. floom-engine's file-item interpreter).
 //
 // Returns a CborUtilError with kind CborErrSerialize if an item cannot be
 // CBOR-serialized (practically never for a byte string).
