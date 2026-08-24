@@ -84,7 +84,7 @@ const (
 	// on disk and would otherwise have attached cleanly; the host
 	// treats it as if the binary were yanked out of the system.
 	// Re-enabling is a UI-driven operator action. Enforced at the
-	// host level (machfab-mac's XPC service); the engine doesn't act
+	// host level (macfloom's XPC service); the engine doesn't act
 	// on it differently from any other failed attachment, but
 	// preserves the kind so consumers can render the right reason
 	// and offer the right recovery action.
@@ -121,7 +121,7 @@ type CartridgeAttachmentError struct {
 
 // CartridgeLifecycle is the positive lifecycle phase that runs
 // BEFORE a cartridge becomes dispatchable. See
-// `machfab-mac/docs/cartridge state machine.md` for the canonical
+// `macfloom/docs/cartridge state machine.md` for the canonical
 // state diagram. Mutually exclusive with the AttachmentError on
 // InstalledCartridgeRecord: when the cartridge has a failed
 // terminal classification, AttachmentError is set and Lifecycle is
@@ -1250,7 +1250,7 @@ func (sw *RelaySwitch) SetExpectedMasterCount(expected int) {
 //
 // Cap-set non-emptiness is intentionally NOT required. A master can be
 // healthy and connected with zero caps while its cartridges are still
-// inspecting / verifying — see `machfab-mac/docs/cartridge state
+// inspecting / verifying — see `macfloom/docs/cartridge state
 // machine.md`. Tying readiness to caps would mean the splash screen
 // waits for every cartridge to clear inspection + verification, which
 // can take many seconds for large model cartridges + slow registry
