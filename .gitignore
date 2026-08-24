@@ -14,6 +14,15 @@ coverage.out
 /build/
 /dist/
 
+# The compiled binaries themselves. `go build` with no -o writes the binary
+# beside its source, named after the module — it is not a file with an
+# extension, so nothing above catches it, and both of these had been committed
+# that way (18 MB of build output in a source tree). The declared build writes
+# to the workspace's disposable build directory instead; these entries are what
+# stop a bare `go build` from putting one back.
+/capdag
+/examples/testcartridge/testcartridge
+
 # Dependency directories (uncomment if you vendor dependencies)
 vendor/
 Godeps/
