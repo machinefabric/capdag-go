@@ -848,7 +848,6 @@ func Test607_media_urns_for_extension_unknown(t *testing.T) {
 	assert.Contains(t, err.Error(), "zzzzunknown")
 }
 
-// TEST608: media_urns_for_extension returns URNs after adding a spec with extensions
 // TEST609: get_extension_mappings returns all registered extension→URN pairs.
 func Test609_get_extension_mappings(t *testing.T) {
 	registry := NewForTest()

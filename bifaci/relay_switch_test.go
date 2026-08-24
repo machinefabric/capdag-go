@@ -2558,12 +2558,6 @@ func Test7025_unroutable_flow_frame_is_counted_drop(t *testing.T) {
 	}
 }
 
-// TEST7035: After END, the switch holds zero state for the request —
-// entry, rid index, and response channel all released atomically, with
-// the terminal delivered and a terminated summary recorded.
-//
-// Uses a single capless connected master in place of the Rust reference's
-// zero-master switch — see TEST7025's doc comment.
 // TEST8114: A flow frame that CROSSED its request's terminal in flight is a
 // BENIGN straggler — the ordinary teardown race of credit-based flow control
 // must not pollute the routing-anomaly alarm, nor the drop counters at all:

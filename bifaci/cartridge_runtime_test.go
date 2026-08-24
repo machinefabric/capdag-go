@@ -3708,7 +3708,6 @@ func outputEmitterCapture(t *testing.T, streamID, mediaUrn string, maxChunk int,
 	return frames
 }
 
-// TEST539: OutputStream sends STREAM_START on first write
 // TEST8126: DeriveResponseMedia — the response label is the effect
 // inference over the declared input, per effect value; an unparseable
 // cap URN fails hard instead of falling back.
