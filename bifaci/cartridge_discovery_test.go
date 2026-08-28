@@ -82,8 +82,8 @@ func Test0091_missing_cartridge_json_is_manifest_invalid(t *testing.T) {
 	expectIncompatible(t, out, CartridgeAttachmentErrorKindManifestInvalid)
 }
 
-// TEST92: Channel mismatch is bad installation
-func Test0092_channel_mismatch_is_bad_installation(t *testing.T) {
+// TEST92: Channel mismatch is a misplaced install
+func Test0092_channel_mismatch_is_misplaced(t *testing.T) {
 	root := t.TempDir()
 	// Declares release but lives under nightly/ — host is nightly.
 	json := devCartridgeJSON("release", 1)
