@@ -266,3 +266,59 @@ func TestTest8157SignatureFormatDiscriminatorsComeFromTheLibrary(t *testing.T) {
 		t.Errorf("release-key certificate format is %q", ReleaseKeyCertFormat)
 	}
 }
+
+// TestTest8162AVerdictSaysTheSameThingAtADifferentTime — WHEN IS A VERDICT
+// NEWS? Both desktop clients re-verify their registries after every discovery
+// round and re-run discovery when the verdicts "changed". Change had to mean
+// "the registry said something different", and comparing whole verdicts cannot
+// mean that: they carry the moment of the check, so the same answer taken a
+// second later is a different value. That is the loop that left an engine
+// discovering cartridges forever.
+func TestTest8162AVerdictSaysTheSameThingAtADifferentTime(t *testing.T) {
+	earlier, err := NewVerifiedRegistryVerdict("https://r.example", 1756000000)
+	if err != nil {
+		t.Fatalf("verified verdict: %v", err)
+	}
+	later, err := NewVerifiedRegistryVerdict("https://r.example", 1756000931)
+	if err != nil {
+		t.Fatalf("verified verdict: %v", err)
+	}
+	if earlier == later {
+		t.Fatal("they are not the same value — one is a later check")
+	}
+	if !earlier.StatesTheSameAs(later) {
+		t.Fatal("but they say the same thing about the registry")
+	}
+
+	unreachable, err := NewStatedRegistryVerdict("https://r.example", RegistryVerdictStateUnreachable, "connection timed out", 1756000000)
+	if err != nil {
+		t.Fatalf("stated verdict: %v", err)
+	}
+	if earlier.StatesTheSameAs(unreachable) {
+		t.Fatal("unreachable is a different statement about the registry")
+	}
+
+	notFound, err := NewHTTPErrorRegistryVerdict("https://r.example", 404, "the registry answered HTTP 404", 1756000000)
+	if err != nil {
+		t.Fatalf("http error verdict: %v", err)
+	}
+	unavailable, err := NewHTTPErrorRegistryVerdict("https://r.example", 503, "the registry answered HTTP 503", 1756000000)
+	if err != nil {
+		t.Fatalf("http error verdict: %v", err)
+	}
+	// 404 and 503 are different situations with different remedies.
+	if notFound.StatesTheSameAs(unavailable) {
+		t.Fatal("two http errors with different statuses are different statements")
+	}
+	if earlier.StatesTheSameAs(notFound) {
+		t.Fatal("verified and an http error are different statements")
+	}
+
+	elsewhere, err := NewVerifiedRegistryVerdict("https://other.example/manifest", 1756000000)
+	if err != nil {
+		t.Fatalf("verified verdict: %v", err)
+	}
+	if earlier.StatesTheSameAs(elsewhere) {
+		t.Fatal("a verdict about another registry is not the same statement")
+	}
+}

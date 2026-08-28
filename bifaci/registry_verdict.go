@@ -396,6 +396,35 @@ func (v RegistryVerdict) Validate() error {
 // PermitsAttachment reports whether a cartridge from this registry may attach.
 func (v RegistryVerdict) PermitsAttachment() bool { return v.State.PermitsAttachment() }
 
+// StatesTheSameAs reports whether two verdicts say the same thing about the
+// registry.
+//
+// Not equality. A verdict carries CheckedAtUnixSeconds, which is provenance
+// about the CHECK and not about the registry — so a consumer asking "did this
+// change?" by comparing whole verdicts is told yes on every re-check, forever.
+// Both desktop clients asked exactly that to decide whether to re-run cartridge
+// discovery, and the answer drove a loop that left the engine discovering
+// cartridges and never reaching ready.
+func (v RegistryVerdict) StatesTheSameAs(other RegistryVerdict) bool {
+	if v.HTTPStatus == nil || other.HTTPStatus == nil {
+		if (v.HTTPStatus == nil) != (other.HTTPStatus == nil) {
+			return false
+		}
+	} else if *v.HTTPStatus != *other.HTTPStatus {
+		return false
+	}
+	if v.ChainFailure == nil || other.ChainFailure == nil {
+		if (v.ChainFailure == nil) != (other.ChainFailure == nil) {
+			return false
+		}
+	} else if *v.ChainFailure != *other.ChainFailure {
+		return false
+	}
+	return v.RegistryURL == other.RegistryURL &&
+		v.State == other.State &&
+		v.Detail == other.Detail
+}
+
 // UnmarshalJSON decodes and validates in one step: a contradictory verdict is
 // refused ON THE WAY IN, where the producer can still be named, rather than
 // surfacing later as an interface that says two things at once.
