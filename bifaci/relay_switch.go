@@ -70,15 +70,27 @@ const (
 	CartridgeAttachmentErrorKindIdentityRejected  CartridgeAttachmentErrorKind = "identity_rejected"
 	CartridgeAttachmentErrorKindEntryPointMissing CartridgeAttachmentErrorKind = "entry_point_missing"
 	CartridgeAttachmentErrorKindQuarantined       CartridgeAttachmentErrorKind = "quarantined"
-	// CartridgeAttachmentErrorKindBadInstallation: the on-disk install
+	// CartridgeAttachmentErrorKindMisplaced: the on-disk install
 	// context (slug folder, channel folder, name/version directory
 	// components) disagrees with what cartridge.json declares. The
 	// cartridge is structurally well-formed but cannot be trusted
 	// because its placement on disk does not match what it claims to
 	// be. Hosts grace-period the offending directory and then delete
 	// it; the record is surfaced so the operator sees what landed
-	// where before it disappears.
-	CartridgeAttachmentErrorKindBadInstallation CartridgeAttachmentErrorKind = "bad_installation"
+	// where before it disappears. Recovery is "reinstall".
+	//
+	// This was BadInstallation and meant two unrelated things: this one,
+	// and "the registry does not list this version" — now NotListed. One
+	// kind covering two situations with different remedies cannot state
+	// either of them.
+	CartridgeAttachmentErrorKindMisplaced CartridgeAttachmentErrorKind = "misplaced"
+	// CartridgeAttachmentErrorKindNotListed: the cartridge's registry
+	// verified, and does not list this (channel, id, version) — the
+	// artefact says it came from somewhere that has never heard of it.
+	// Distinct from RegistryUnverified, where the registry's answer could
+	// not be obtained or could not be trusted: there we do not know, here
+	// we do. Recovery is "wait for the publish, or rebuild as dev".
+	CartridgeAttachmentErrorKindNotListed CartridgeAttachmentErrorKind = "not_listed"
 	// CartridgeAttachmentErrorKindDisabled: the operator explicitly
 	// disabled this cartridge through the host UI. The cartridge is
 	// on disk and would otherwise have attached cleanly; the host
@@ -89,15 +101,18 @@ const (
 	// preserves the kind so consumers can render the right reason
 	// and offer the right recovery action.
 	CartridgeAttachmentErrorKindDisabled CartridgeAttachmentErrorKind = "disabled"
-	// CartridgeAttachmentErrorKindRegistryUnreachable: the cartridge
-	// declares a non-null registry_url, but the host could not reach
-	// that registry to verify the cartridge is listed. Distinct from
-	// BadInstallation (= registry confirmed the version is missing) —
-	// Unreachable means we don't know. Recovery action is "check
-	// network + retry" rather than "rebuild as dev". The cartridge
-	// is held back from attaching until verification succeeds; the
-	// UI shows the actionable reason.
-	CartridgeAttachmentErrorKindRegistryUnreachable CartridgeAttachmentErrorKind = "registry_unreachable"
+	// CartridgeAttachmentErrorKindRegistryUnverified: the cartridge
+	// declares a non-null registry_url and that registry's verdict is not
+	// Verified, so its provenance claim is unconfirmed and it is held back.
+	//
+	// WHY it is unconfirmed belongs to the REGISTRY, not to the cartridge:
+	// a RegistryVerdict is one fact per registry URL, shared by every
+	// cartridge from it, and consumers join on registry_url to state it
+	// once. This kind deliberately carries no reason of its own — the kind
+	// it replaces did, called itself RegistryUnreachable, and so reported a
+	// signature the build could not read as a network outage with "check
+	// your connection" as the remedy.
+	CartridgeAttachmentErrorKindRegistryUnverified CartridgeAttachmentErrorKind = "registry_unverified"
 	// CartridgeAttachmentErrorKindFabricManifestVersionMismatch: the
 	// cartridge was built against a different fabric registry manifest
 	// version than this engine is pinned to. Both engine and cartridge

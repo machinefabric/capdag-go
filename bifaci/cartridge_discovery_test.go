@@ -90,7 +90,7 @@ func Test0092_channel_mismatch_is_bad_installation(t *testing.T) {
 	installFixture(t, root, "dev", "nightly", "cart", "1.0.0", &json, "cart")
 	out, err := DiscoverCartridges(root, nightlyDevIdentity())
 	require.NoError(t, err)
-	expectIncompatible(t, out, CartridgeAttachmentErrorKindBadInstallation)
+	expectIncompatible(t, out, CartridgeAttachmentErrorKindMisplaced)
 }
 
 // TEST94: Fabric manifest mismatch is flagged
@@ -113,7 +113,7 @@ func Test0120_registry_url_under_dev_slug_is_rejected(t *testing.T) {
 	installFixture(t, root, "dev", "nightly", "cart", "1.0.0", &json, "cart")
 	out, err := DiscoverCartridges(root, nightlyDevIdentity())
 	require.NoError(t, err)
-	expectIncompatible(t, out, CartridgeAttachmentErrorKindBadInstallation)
+	expectIncompatible(t, out, CartridgeAttachmentErrorKindMisplaced)
 }
 
 // TEST1875: scan-all — a registry slug folder AND the dev slot present on disk are BOTH scanned, regardless of the host's own baked registry. The dev cartridge (null registry under dev/) and the registry cartridge (its url hashing to its slug folder) each reach their probe. Both fixtures lack a real bifaci binary, so both end at HandshakeFailed — proving discovery REACHED them (was not filtered out by a registry pin), which is the behavior under test. A registry-pin rejection would instead surface BadInstallation and never probe.
@@ -168,7 +168,7 @@ func Test1877_registry_cartridge_under_wrong_slug_is_bad_install(t *testing.T) {
 
 	out, err := DiscoverCartridges(root, nightlyDevIdentity())
 	require.NoError(t, err)
-	expectIncompatible(t, out, CartridgeAttachmentErrorKindBadInstallation)
+	expectIncompatible(t, out, CartridgeAttachmentErrorKindMisplaced)
 }
 
 // TEST1878: a cartridge marked `installed_from: bundle` with no baked hash in BUNDLED_CARTRIDGE_HASHES (the const is empty under plain `cargo test`) is rejected as BadInstallation — the bundled-integrity gate fires before the probe. Proves the verify is wired into discovery; a real bundle build bakes the hash so the matching directory passes. Non-macOS only: on macOS the baked-hash path is intentionally absent (OS code-signature is the guard), so a bundled cartridge is accepted there and would instead end at the probe.
@@ -185,7 +185,7 @@ func Test1878_bundled_cartridge_without_baked_hash_is_rejected(t *testing.T) {
 
 	out, err := DiscoverCartridges(root, nightlyDevIdentity())
 	require.NoError(t, err)
-	expectIncompatible(t, out, CartridgeAttachmentErrorKindBadInstallation)
+	expectIncompatible(t, out, CartridgeAttachmentErrorKindMisplaced)
 	require.NotNil(t, out[0].Error)
 	assert.Contains(t, out[0].Error.Message, "bundled cartridge integrity",
 		"message should name the bundled-integrity failure: %s", out[0].Error.Message)

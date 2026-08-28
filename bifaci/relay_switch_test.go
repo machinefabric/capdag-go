@@ -990,9 +990,10 @@ func Test6374_CartridgeAttachmentErrorKindMatchesProtoSnakeCase(t *testing.T) {
 		{CartridgeAttachmentErrorKindIdentityRejected, "identity_rejected"},
 		{CartridgeAttachmentErrorKindEntryPointMissing, "entry_point_missing"},
 		{CartridgeAttachmentErrorKindQuarantined, "quarantined"},
-		{CartridgeAttachmentErrorKindBadInstallation, "bad_installation"},
+		{CartridgeAttachmentErrorKindMisplaced, "misplaced"},
+		{CartridgeAttachmentErrorKindNotListed, "not_listed"},
 		{CartridgeAttachmentErrorKindDisabled, "disabled"},
-		{CartridgeAttachmentErrorKindRegistryUnreachable, "registry_unreachable"},
+		{CartridgeAttachmentErrorKindRegistryUnverified, "registry_unverified"},
 	}
 	for _, c := range cases {
 		if string(c.kind) != c.expected {
@@ -1015,9 +1016,10 @@ func Test6379_CartridgeAttachmentErrorJSONRoundTrips(t *testing.T) {
 		CartridgeAttachmentErrorKindIdentityRejected,
 		CartridgeAttachmentErrorKindEntryPointMissing,
 		CartridgeAttachmentErrorKindQuarantined,
-		CartridgeAttachmentErrorKindBadInstallation,
+		CartridgeAttachmentErrorKindMisplaced,
+		CartridgeAttachmentErrorKindNotListed,
 		CartridgeAttachmentErrorKindDisabled,
-		CartridgeAttachmentErrorKindRegistryUnreachable,
+		CartridgeAttachmentErrorKindRegistryUnverified,
 	}
 	for _, kind := range cases {
 		original := CartridgeAttachmentError{
@@ -1066,9 +1068,10 @@ func Test6423_CartridgeAttachmentErrorDecodesProtoSnakeCaseStrings(t *testing.T)
 		{"identity_rejected", CartridgeAttachmentErrorKindIdentityRejected},
 		{"entry_point_missing", CartridgeAttachmentErrorKindEntryPointMissing},
 		{"quarantined", CartridgeAttachmentErrorKindQuarantined},
-		{"bad_installation", CartridgeAttachmentErrorKindBadInstallation},
+		{"misplaced", CartridgeAttachmentErrorKindMisplaced},
+		{"not_listed", CartridgeAttachmentErrorKindNotListed},
 		{"disabled", CartridgeAttachmentErrorKindDisabled},
-		{"registry_unreachable", CartridgeAttachmentErrorKindRegistryUnreachable},
+		{"registry_unverified", CartridgeAttachmentErrorKindRegistryUnverified},
 	}
 	for _, c := range cases {
 		jsonStr := `{"kind":"` + c.raw + `","message":"x","detected_at_unix_seconds":1}`

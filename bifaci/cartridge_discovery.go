@@ -244,7 +244,7 @@ func scanChannelRoot(scanRoot, expectedSlug string, identity *DiscoveryIdentity,
 			kind := CartridgeAttachmentErrorKindManifestInvalid
 			var cje *CartridgeJsonError
 			if errors.As(err, &cje) && cje.Kind == CartridgeJsonErrorRegistrySlugMismatch {
-				kind = CartridgeAttachmentErrorKindBadInstallation
+				kind = CartridgeAttachmentErrorKindMisplaced
 			}
 			fmt.Fprintf(os.Stderr, "cartridge.json invalid or mis-placed under slug %q (%s) — surfacing as incompatible: %v\n", expectedSlug, versionDir, err)
 			*discovered = append(*discovered, DiscoveredCartridge{
@@ -272,7 +272,7 @@ func scanChannelRoot(scanRoot, expectedSlug string, identity *DiscoveryIdentity,
 				RegistryURL: cj.RegistryURL,
 				Version:     cj.Version,
 				Error: &CartridgeAttachmentError{
-					Kind: CartridgeAttachmentErrorKindBadInstallation,
+					Kind: CartridgeAttachmentErrorKindMisplaced,
 					Message: fmt.Sprintf(
 						"Channel mismatch: cartridge declares '%s' but host is pinned to '%s'. Release and nightly artefacts must not mix.",
 						cj.Channel, identity.Channel,
@@ -381,7 +381,7 @@ func scanChannelRoot(scanRoot, expectedSlug string, identity *DiscoveryIdentity,
 						RegistryURL: cj.RegistryURL,
 						Version:     cj.Version,
 						Error: &CartridgeAttachmentError{
-							Kind:                  CartridgeAttachmentErrorKindBadInstallation,
+							Kind:                  CartridgeAttachmentErrorKindMisplaced,
 							Message:               fmt.Sprintf("bundled cartridge integrity check failed: %s", reason),
 							DetectedAtUnixSeconds: detectedAt,
 						},
