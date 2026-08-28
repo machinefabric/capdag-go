@@ -78,6 +78,14 @@ const (
 	// updating the client, never by distrusting the registry and never by
 	// checking the network.
 	RegistryVerdictStateUnverifiable RegistryVerdictState = "unverifiable"
+	// RegistryVerdictStateUnenforced: this build bakes no trust anchors, so
+	// there is no regime to verify against and the manifest was accepted
+	// without proof. A development build, and only ever that. It permits
+	// attachment — a dev build has to work — and is a SEPARATE state rather
+	// than being reported as Verified, because "we checked and it passed" and
+	// "we did not check" are different facts, and a consumer that cannot tell
+	// them apart will one day ship the second believing the first.
+	RegistryVerdictStateUnenforced RegistryVerdictState = "unenforced"
 )
 
 // RegistryVerdictStates is every state, in declaration order.
@@ -91,6 +99,7 @@ var RegistryVerdictStates = []RegistryVerdictState{
 	RegistryVerdictStateUnsigned,
 	RegistryVerdictStateUntrusted,
 	RegistryVerdictStateUnverifiable,
+	RegistryVerdictStateUnenforced,
 }
 
 // Valid reports whether s is a state this build implements. An unknown state is
@@ -103,7 +112,7 @@ func (s RegistryVerdictState) Valid() bool {
 // registry in this state may attach. True for Verified alone: every other
 // state, the hopeful ones included, means the claim is unconfirmed.
 func (s RegistryVerdictState) PermitsAttachment() bool {
-	return s == RegistryVerdictStateVerified
+	return s == RegistryVerdictStateVerified || s == RegistryVerdictStateUnenforced
 }
 
 // IsTrustFailure reports whether this state is a refusal of an answer we DID
@@ -165,7 +174,7 @@ const (
 // Remedy is the one thing to do about a registry in this state.
 func (s RegistryVerdictState) Remedy() (RegistryRemedy, error) {
 	switch s {
-	case RegistryVerdictStateVerified:
+	case RegistryVerdictStateVerified, RegistryVerdictStateUnenforced:
 		return RegistryRemedyNone, nil
 	case RegistryVerdictStatePending:
 		return RegistryRemedyWait, nil
@@ -280,6 +289,14 @@ func NewVerifiedRegistryVerdict(registryURL string, checkedAtUnixSeconds int64) 
 	return v, v.Validate()
 }
 
+// NewUnenforcedRegistryVerdict: this build bakes no trust anchors, so the
+// manifest was accepted without proof — and says so rather than claiming it
+// verified.
+func NewUnenforcedRegistryVerdict(registryURL string, checkedAtUnixSeconds int64) (RegistryVerdict, error) {
+	v := RegistryVerdict{RegistryURL: registryURL, State: RegistryVerdictStateUnenforced, CheckedAtUnixSeconds: checkedAtUnixSeconds}
+	return v, v.Validate()
+}
+
 // NewPendingRegistryVerdict: no verdict yet. Carries no time, because nothing
 // has been checked.
 func NewPendingRegistryVerdict(registryURL string) (RegistryVerdict, error) {
@@ -295,7 +312,7 @@ func NewStatedRegistryVerdict(registryURL string, state RegistryVerdictState, de
 	switch state {
 	case RegistryVerdictStateOffline, RegistryVerdictStateUnreachable,
 		RegistryVerdictStateMalformed, RegistryVerdictStateUnsigned:
-	case RegistryVerdictStateVerified, RegistryVerdictStatePending:
+	case RegistryVerdictStateVerified, RegistryVerdictStatePending, RegistryVerdictStateUnenforced:
 		return RegistryVerdict{}, fmt.Errorf("a %q verdict states no failure, so it carries no detail (got %q)", string(state), detail)
 	case RegistryVerdictStateHTTPError:
 		return RegistryVerdict{}, fmt.Errorf("an 'http_error' verdict must carry the status the registry answered with")
@@ -342,7 +359,9 @@ func (v RegistryVerdict) Validate() error {
 	if !v.State.Valid() {
 		return fmt.Errorf("unknown registry verdict state %q", string(v.State))
 	}
-	statesNoFailure := v.State == RegistryVerdictStateVerified || v.State == RegistryVerdictStatePending
+	statesNoFailure := v.State == RegistryVerdictStateVerified ||
+		v.State == RegistryVerdictStatePending ||
+		v.State == RegistryVerdictStateUnenforced
 	if statesNoFailure && v.Detail != "" {
 		return fmt.Errorf("a %q verdict states no failure, so it carries no detail (got %q)", string(v.State), v.Detail)
 	}

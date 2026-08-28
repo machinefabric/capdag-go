@@ -17,7 +17,7 @@ const verdictTestNow int64 = 1_700_000_000
 func TestTest8150RegistryVerdictWireVocabularyIsClosed(t *testing.T) {
 	expected := []string{
 		"verified", "pending", "offline", "unreachable",
-		"http_error", "malformed", "unsigned", "untrusted", "unverifiable",
+		"http_error", "malformed", "unsigned", "untrusted", "unverifiable", "unenforced",
 	}
 	if len(RegistryVerdictStates) != len(expected) {
 		t.Fatalf("state count %d, want %d — the mirrors must carry the same vocabulary",
@@ -94,10 +94,18 @@ func TestTest8151UnreadableFormatIsUnverifiable(t *testing.T) {
 // included, which must never read as permission.
 func TestTest8152OnlyVerifiedPermitsAttachment(t *testing.T) {
 	for _, state := range RegistryVerdictStates {
-		want := state == RegistryVerdictStateVerified
+		want := state == RegistryVerdictStateVerified || state == RegistryVerdictStateUnenforced
 		if state.PermitsAttachment() != want {
 			t.Errorf("%q.PermitsAttachment() = %v, want %v", state, state.PermitsAttachment(), want)
 		}
+	}
+	// A DEV BUILD HAS TO WORK, and it says which of the two it is: "we checked
+	// and it passed" and "we did not check" are different facts.
+	if !RegistryVerdictStateUnenforced.PermitsAttachment() {
+		t.Error("a build with no trust anchors must still attach its cartridges")
+	}
+	if RegistryVerdictStateUnenforced.IsTrustFailure() || RegistryVerdictStateUnenforced.IsTransient() {
+		t.Error("unenforced is neither a refusal nor something a retry changes")
 	}
 }
 
