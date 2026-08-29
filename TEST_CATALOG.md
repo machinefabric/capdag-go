@@ -1,6 +1,6 @@
 # Test catalogue — capdag/capdag-go
 
-Generated from the catalogue table by `sdx catalog export`. Edit the tests, not this file.
+Generated from the test catalogue. Edit the tests, not this file.
 
 1304 tests: 1289 numbered, 15 unnumbered.
 
