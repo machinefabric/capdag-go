@@ -18,7 +18,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"time"
 )
@@ -38,6 +37,15 @@ type DiscoveryIdentity struct {
 	// {slug}/v{CartridgeRegistryVersion}/{channel}/…, pinned like the channel so
 	// a v1 host never scans a v2 cartridge tree.
 	CartridgeRegistryVersion uint32
+	// Bundle is what proves the bundled cartridges under the root being
+	// scanned. Carried rather than looked up, because verification is one act
+	// per discovery and because the caller is the only thing that knows what
+	// this root IS: a build's own bundled-cartridges tree carries a verified
+	// manifest, and the operator's installed-cartridges directory carries
+	// NoBundle — so a cartridge claiming to be bundled while sitting there is
+	// refused for exactly that reason instead of being hosted because nobody
+	// asked.
+	Bundle BundleProof
 }
 
 // Slug returns the on-disk top-level slug for THIS host's own baked registry
@@ -354,40 +362,35 @@ func scanChannelRoot(scanRoot, expectedSlug string, identity *DiscoveryIdentity,
 
 		// Bundled-cartridge integrity. A cartridge marked `installed_from: bundle`
 		// is shipped INSIDE this build, not user-installed, and has no upstream
-		// registry to verify against — so it needs its own integrity proof. The
-		// mechanism is platform-split:
+		// registry to verify against — so it needs its own integrity proof.
 		//
-		//   - macOS: the OS code-signature IS the guard (notarized .app); a
-		//     content hash would be re-broken by Apple's (re)signing, so macOS
-		//     does NOT bake or verify hashes — it trusts the signature, logged
-		//     as an explicit, visible rule.
-		//   - Linux/Windows: binaries are unsigned, so the integrity proof is a
-		//     content hash baked into the binary at build time
-		//     (BundledCartridgeHashes). The on-disk directory must hash to the
-		//     baked value; a mismatch or an entry absent from the baked set means
-		//     the shipped cartridge was tampered with or the build failed to
-		//     record it — surfaced incompatible + logged, never hosted.
+		// ONE mechanism, on every platform: the build's signed bundle manifest.
+		// The proof was established when this discovery started (see BundleProof);
+		// here it is applied to the cartridge in hand.
+		//
+		// This used to be platform-split, and macOS had no check of ours at all.
+		// The manifest is produced at the END of a build, after every platform
+		// signing step, which is what removed the ordering problem that split
+		// existed for. Apple's signature still matters, and it is what stops the
+		// operating system warning a user; it is not what decides whether code
+		// runs here.
 		if cj.InstalledFrom != nil && *cj.InstalledFrom == CartridgeInstallSourceBundle {
-			if runtime.GOOS == "darwin" {
-				fmt.Fprintf(os.Stderr, "bundled cartridge integrity on macOS is the OS code-signature (notarized .app); baked-hash verification is intentionally skipped: %s %s\n", cj.Name, cj.Version)
-			} else {
-				if reason := verifyBundledCartridgeHash(cj.Name, cj.Version, versionDir); reason != "" {
-					fmt.Fprintf(os.Stderr, "bundled cartridge hash verification failed — surfacing as incompatible: %s %s: %s\n", cj.Name, cj.Version, reason)
-					*discovered = append(*discovered, DiscoveredCartridge{
-						Kind:        DiscoveredCartridgeIncompatible,
-						VersionDir:  versionDir,
-						Id:          cj.Name,
-						Channel:     CartridgeChannel(cj.Channel),
-						RegistryURL: cj.RegistryURL,
-						Version:     cj.Version,
-						Error: &CartridgeAttachmentError{
-							Kind:                  CartridgeAttachmentErrorKindMisplaced,
-							Message:               fmt.Sprintf("bundled cartridge integrity check failed: %s", reason),
-							DetectedAtUnixSeconds: detectedAt,
-						},
-					})
-					continue
-				}
+			if reason := identity.Bundle.Check(cj.Name, cj.Version, versionDir); reason != "" {
+				fmt.Fprintf(os.Stderr, "bundled cartridge is not proven by this build's signed bundle manifest — surfacing as incompatible: %s %s: %s\n", cj.Name, cj.Version, reason)
+				*discovered = append(*discovered, DiscoveredCartridge{
+					Kind:        DiscoveredCartridgeIncompatible,
+					VersionDir:  versionDir,
+					Id:          cj.Name,
+					Channel:     CartridgeChannel(cj.Channel),
+					RegistryURL: cj.RegistryURL,
+					Version:     cj.Version,
+					Error: &CartridgeAttachmentError{
+						Kind:                  CartridgeAttachmentErrorKindMisplaced,
+						Message:               fmt.Sprintf("bundled cartridge integrity check failed: %s", reason),
+						DetectedAtUnixSeconds: detectedAt,
+					},
+				})
+				continue
 			}
 		}
 
@@ -426,31 +429,3 @@ func scanChannelRoot(scanRoot, expectedSlug string, identity *DiscoveryIdentity,
 	return nil
 }
 
-// verifyBundledCartridgeHash verifies a bundled cartridge's on-disk content
-// against the hash baked into this binary at build time. Returns "" when the
-// directory hashes to the expected value for (name, version); a non-empty
-// reason string when the pair is absent from the baked set or the hash differs.
-//
-// Non-macOS only: macOS bundled-cartridge integrity is the OS code-signature
-// (see the discovery call site), so the binary there neither bakes nor checks
-// these hashes.
-func verifyBundledCartridgeHash(name, version, versionDir string) string {
-	expected, ok := bundledCartridgeExpectedHash(name, version)
-	if !ok {
-		return fmt.Sprintf(
-			"no baked hash for bundled cartridge %s %s — this build did not record it (MFR_BUNDLED_CARTRIDGE_HASHES)",
-			name, version,
-		)
-	}
-	actual, err := HashCartridgeDirectory(versionDir)
-	if err != nil {
-		return fmt.Sprintf("failed to hash bundled cartridge directory: %v", err)
-	}
-	if actual == expected {
-		return ""
-	}
-	return fmt.Sprintf(
-		"content hash mismatch — baked %s, on-disk %s; the shipped cartridge differs from what this build was compiled to ship",
-		expected, actual,
-	)
-}

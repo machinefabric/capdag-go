@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -18,7 +18,24 @@ func nightlyDevIdentity() *DiscoveryIdentity {
 		RegistryURL:              nil,
 		FabricManifestVersion:    1,
 		CartridgeRegistryVersion: CartridgeRegistryVersion,
+		// A root that ships no bundle. Every test that is not ABOUT the bundle
+		// scans a tree nothing built, so a cartridge claiming to be bundled
+		// there is in the wrong place — which is what this says.
+		Bundle: NoBundle("this directory is not a build's bundle"),
 	}
+}
+
+// bundledIdentity is an identity whose bundled cartridges are proven by
+// manifest.
+//
+// The manifest is built here rather than verified, because what is under test
+// is what discovery DOES with a proof. This mirror carries no chain
+// verification at all — the Rust library is the only implementation of it —
+// which is exactly why the proof is a parameter.
+func bundledIdentity(manifest BundleManifest) *DiscoveryIdentity {
+	identity := nightlyDevIdentity()
+	identity.Bundle = ProvenBundle(manifest)
+	return identity
 }
 
 // installFixture lays down
@@ -123,12 +140,8 @@ func Test1875_scan_all_reaches_both_dev_and_registry_slugs(t *testing.T) {
 	rslug := registrySlugFor(url)
 	other := "https://other.example.com/manifest"
 	// Host baked for a DIFFERENT registry than the on-disk registry cartridge.
-	host := &DiscoveryIdentity{
-		Channel:                  CartridgeChannelNightly,
-		RegistryURL:              &other,
-		FabricManifestVersion:    1,
-		CartridgeRegistryVersion: CartridgeRegistryVersion,
-	}
+	host := nightlyDevIdentity()
+	host.RegistryURL = &other
 	devJSON := devCartridgeJSON("nightly", 1)
 	installFixture(t, root, "dev", "nightly", "devcart", "1.0.0", &devJSON, "cart")
 	regJSON := registryCartridgeJSON(url, "nightly", 1)
@@ -171,16 +184,23 @@ func Test1877_registry_cartridge_under_wrong_slug_is_bad_install(t *testing.T) {
 	expectIncompatible(t, out, CartridgeAttachmentErrorKindMisplaced)
 }
 
-// TEST1878: a cartridge marked `installed_from: bundle` with no baked hash in BUNDLED_CARTRIDGE_HASHES (the const is empty under plain `cargo test`) is rejected as BadInstallation — the bundled-integrity gate fires before the probe. Proves the verify is wired into discovery; a real bundle build bakes the hash so the matching directory passes. Non-macOS only: on macOS the baked-hash path is intentionally absent (OS code-signature is the guard), so a bundled cartridge is accepted there and would instead end at the probe.
-func Test1878_bundled_cartridge_without_baked_hash_is_rejected(t *testing.T) {
-	if runtime.GOOS == "darwin" {
-		t.Skip("macOS bundled-cartridge integrity is the OS code-signature; baked-hash gate is intentionally absent")
-	}
+// bundledCartridgeJSON is the cartridge.json of a bundled cartridge in the dev
+// slot: placement is self-consistent (null registry → dev slug), so it passes
+// every earlier check and reaches the bundled-integrity gate.
+func bundledCartridgeJSON() string {
+	return `{"name":"cart","version":"1.0.0","channel":"nightly","registry_url":null,"entry":"cart","installed_at":"2024-01-01T00:00:00Z","installed_from":"bundle","fabric_manifest_version":1}`
+}
+
+// TEST1878: a bundled cartridge in a root that proves nothing is refused — on
+// every platform.
+//
+// This is the check macOS did not have. The old rule was platform-split: Linux
+// and Windows verified a baked content hash and macOS verified nothing of ours,
+// trusting Gatekeeper instead — so this test skipped itself on darwin. It runs
+// everywhere now because the guard does.
+func Test1878_a_bundled_cartridge_is_refused_where_nothing_proves_it(t *testing.T) {
 	root := t.TempDir()
-	// Dev slug (null registry) but installed_from=bundle — placement is
-	// self-consistent (null→dev), so it passes read_from_dir and reaches the
-	// bundled-hash gate, which has no baked entry → BadInstallation.
-	json := `{"name":"cart","version":"1.0.0","channel":"nightly","registry_url":null,"entry":"cart","installed_at":"2024-01-01T00:00:00Z","installed_from":"bundle","fabric_manifest_version":1}`
+	json := bundledCartridgeJSON()
 	installFixture(t, root, "dev", "nightly", "cart", "1.0.0", &json, "cart")
 
 	out, err := DiscoverCartridges(root, nightlyDevIdentity())
@@ -189,4 +209,51 @@ func Test1878_bundled_cartridge_without_baked_hash_is_rejected(t *testing.T) {
 	require.NotNil(t, out[0].Error)
 	assert.Contains(t, out[0].Error.Message, "bundled cartridge integrity",
 		"message should name the bundled-integrity failure: %s", out[0].Error.Message)
+}
+
+// TEST1928: a bundled cartridge the manifest records passes, and one it records
+// differently does not.
+//
+// The other half of TEST1878, and the one that proves the gate is a real check
+// rather than a refusal of everything: the same tree, the same cartridge, and
+// the only difference is what the build recorded about it. A gate that always
+// said no would pass TEST1878 alone.
+func Test1928_a_bundled_cartridge_passes_exactly_when_the_manifest_records_it(t *testing.T) {
+	root := t.TempDir()
+	json := bundledCartridgeJSON()
+	installFixture(t, root, "dev", "nightly", "cart", "1.0.0", &json, "cart")
+
+	versionDir := filepath.Join(
+		root, "dev", fmt.Sprintf("v%d", CartridgeRegistryVersion), "nightly", "cart", "1.0.0",
+	)
+	recorded, err := HashCartridgeDirectory(versionDir)
+	require.NoError(t, err)
+
+	listed := func(sha256 string) *DiscoveryIdentity {
+		return bundledIdentity(NewBundleManifest("dev", []BundledCartridge{{
+			Name:    "cart",
+			Version: "1.0.0",
+			Channel: "nightly",
+			SHA256:  sha256,
+		}}))
+	}
+
+	// Recorded as it is on disk: past the gate. It still ends at the HELLO
+	// probe, because the fixture's entry point is not a cartridge — what
+	// matters is that the failure is no longer the integrity one.
+	out, err := DiscoverCartridges(root, listed(recorded))
+	require.NoError(t, err)
+	require.Len(t, out, 1)
+	require.NotNil(t, out[0].Error)
+	assert.NotContains(t, out[0].Error.Message, "bundled cartridge integrity",
+		"a cartridge the manifest records must get past the integrity gate: %s", out[0].Error.Message)
+
+	// Recorded as something else — the cartridge was changed after the build
+	// recorded it.
+	out, err = DiscoverCartridges(root, listed(strings.Repeat("f", 64)))
+	require.NoError(t, err)
+	expectIncompatible(t, out, CartridgeAttachmentErrorKindMisplaced)
+	require.NotNil(t, out[0].Error)
+	assert.Contains(t, out[0].Error.Message, "bundled cartridge integrity",
+		"a cartridge that differs from the manifest must be refused: %s", out[0].Error.Message)
 }
