@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"os"
 	"sync"
-	"syscall"
 	"testing"
 
 	cbor2 "github.com/fxamacker/cbor/v2"
@@ -238,25 +236,6 @@ func createPipePair(t *testing.T) (hostWrite, cartridgeRead, cartridgeWrite, hos
 	hostWriteConn, cartridgeReadConn := createSocketPair(t)
 	cartridgeWriteConn, hostReadConn := createSocketPair(t)
 	return hostWriteConn, cartridgeReadConn, cartridgeWriteConn, hostReadConn
-}
-
-func createSocketPair(t *testing.T) (net.Conn, net.Conn) {
-	// Use socketpair for bidirectional communication
-	fds, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
-	require.NoError(t, err)
-
-	file1 := os.NewFile(uintptr(fds[0]), "socket1")
-	file2 := os.NewFile(uintptr(fds[1]), "socket2")
-
-	conn1, err := net.FileConn(file1)
-	require.NoError(t, err)
-	conn2, err := net.FileConn(file2)
-	require.NoError(t, err)
-
-	file1.Close()
-	file2.Close()
-
-	return conn1, conn2
 }
 
 // TEST284: Handshake exchanges HELLO frames, negotiates limits

@@ -16,7 +16,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"time"
@@ -102,7 +101,7 @@ func unixSecondsNow() int64 {
 // spawn, fails HELLO, or returns an unparseable manifest is an error — the
 // caller surfaces it as HandshakeFailed.
 func ProbeCartridgeCapGroups(path string) ([]CapGroup, error) {
-	cmd := exec.Command(path)
+	cmd := Command(path)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, fmt.Errorf("cartridge %q stdin pipe: %w", path, err)

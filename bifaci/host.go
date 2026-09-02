@@ -1980,7 +1980,7 @@ func (h *CartridgeHost) spawnCartridgeLocked(cartridgeIdx int) error {
 	}
 	generation := cartridge.generation + 1
 
-	cmd := exec.Command(cartridge.path)
+	cmd := Command(cartridge.path)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		cartridge.helloFailed = true

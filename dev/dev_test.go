@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -66,8 +67,28 @@ func Test7154_scaffold_writes_a_runnable_project_in_every_language(t *testing.T)
 			}
 			sources.Write(body)
 
-			if file.Executable && info.Mode().Perm()&0o111 == 0 {
-				t.Fatalf("%s: %q is declared executable but is not", language.ID, dest)
+			// What `Executable` means is "the host can start this", and the
+			// two platforms establish that differently. A Unix host runs the
+			// file, so it needs the bit. NTFS has no such bit — Go reports
+			// 0666 for every file it holds — so asserting one there failed for
+			// a project that was perfectly launchable, and would have gone on
+			// failing however the scaffold was written.
+			//
+			// On Windows the same claim is that the launcher resolves an
+			// interpreter for it, which is what actually starts a `.py` on a
+			// platform with no shebang.
+			if file.Executable {
+				if runtime.GOOS == "windows" {
+					program, leading := bifaci.Launcher(dest)
+					if program == dest || len(leading) == 0 {
+						t.Fatalf(
+							"%s: %q is declared executable and Windows cannot start it: "+
+								"no interpreter is resolved for %q",
+							language.ID, dest, filepath.Ext(dest))
+					}
+				} else if info.Mode().Perm()&0o111 == 0 {
+					t.Fatalf("%s: %q is declared executable but is not", language.ID, dest)
+				}
 			}
 		}
 
@@ -109,13 +130,21 @@ func Test7155_scaffold_guards(t *testing.T) {
 	}
 }
 
-// writeStubEntry writes a cartridge entry (a bash script) that prints a canned
-// CapManifest on `manifest`, exercising the capdag-side staging/parsing/
-// resolution without any language runtime.
+// writeStubEntry writes a cartridge entry that prints a canned CapManifest on
+// `manifest`, exercising the capdag-side staging/parsing/resolution without any
+// cartridge runtime.
 //
 // It is written at the PYTHON entry because that is the one language whose entry
-// is a source file with no build step, so a bash script standing in for it is
-// discovered by exactly the same path a real project would be.
+// is a source file with no build step, so a stand-in is discovered by exactly
+// the same path a real project would be.
+//
+// A PYTHON stand-in, not a bash one. It used to be a bash script named
+// `cartridge.py`, which worked because the shebang decided what ran it — and
+// the shebang is precisely the mechanism that does not exist on Windows, where
+// the entry is refused with `%1 is not a valid Win32 application`. The launcher
+// resolves the interpreter from the extension now, so a file claiming to be
+// Python is run as Python everywhere, and a stand-in that lied about its
+// language would be testing a path no real cartridge takes.
 func writeStubEntry(t *testing.T, dir, name, alias, capURN string) string {
 	t.Helper()
 	python := Language("python")
@@ -129,7 +158,14 @@ func writeStubEntry(t *testing.T, dir, name, alias, capURN string) string {
 			`{"urn":"cap:effect=none","title":"Identity","aliases":["identity"]},`+
 			`{"urn":"%s","title":"%s","aliases":["%s"]}]}]}`,
 		name, urnJSON, name, alias)
-	script := "#!/usr/bin/env bash\nif [ \"$1\" = manifest ]; then\n  cat <<'EOF'\n" + manifest + "\nEOF\nfi\n"
+	// `strconv.Quote` because the manifest is JSON: Go and Python agree on
+	// how to escape a quote and a backslash inside a double-quoted string,
+	// so one quoting produces a literal both languages read the same way.
+	script := "#!/usr/bin/env python3\n" +
+		"import sys\n" +
+		"MANIFEST = " + strconv.Quote(manifest) + "\n" +
+		"if len(sys.argv) > 1 and sys.argv[1] == \"manifest\":\n" +
+		"    sys.stdout.write(MANIFEST)\n"
 
 	path := filepath.Join(dir, Entry(python, filepath.Base(dir)))
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

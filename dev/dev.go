@@ -255,7 +255,7 @@ func ProjectEntry(projectDir string) (string, error) {
 	name := projectName(projectDir)
 	var found []string
 	for i := range StubLanguages {
-		candidate := filepath.Join(projectDir, Entry(&StubLanguages[i], name))
+		candidate := filepath.Join(projectDir, EntryFile(&StubLanguages[i], name))
 		if info, err := os.Stat(candidate); err == nil && info.Mode().IsRegular() {
 			found = append(found, candidate)
 		}
@@ -281,7 +281,7 @@ func ProjectEntry(projectDir string) (string, error) {
 // lets capdag read a Python project's manifest from Go without knowing or
 // caring which language wrote it.
 func ReadEntryManifest(entry string) (*bifaci.CapManifest, error) {
-	out, err := exec.Command(entry, "manifest").Output()
+	out, err := Command(entry, "manifest").Output()
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
