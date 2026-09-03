@@ -2,7 +2,11 @@ package bifaci
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -148,4 +152,43 @@ func Test1514_install_source_vocabulary_tolerance(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(rewritten), `"installed_from":"quantum_courier"`,
 		"unknown spellings round-trip verbatim")
+}
+
+// TEST11765: the executable check is not asked on Windows.
+//
+// NTFS has no execute bit — Go reports 0666 for every ordinary file — so a
+// mode check refused every cartridge there, always, with "entry point is not
+// executable" about a file that runs perfectly well. The Rust reference guards
+// this with #[cfg(unix)]; the mirrors follow the reference.
+func Test11765_the_executable_bit_is_a_unix_question(t *testing.T) {
+	dir := t.TempDir()
+	entry := filepath.Join(dir, "cartridge.py")
+	// 0644: readable, and not executable by anybody. On Unix that is a
+	// refusal; on Windows it is what every file looks like.
+	if err := os.WriteFile(entry, []byte("#!/usr/bin/env python3\n"), 0o644); err != nil {
+		t.Fatalf("writing the entry point: %v", err)
+	}
+	jsonPath := filepath.Join(dir, "cartridge.json")
+	body := `{"schema_version":1,"name":"greeter","version":"0.1.0",` +
+		`"entry":"cartridge.py","registry_url":"https://example.invalid/r",` +
+		`"installed_from":"build","fabric_manifest_version":1}`
+	if err := os.WriteFile(jsonPath, []byte(body), 0o644); err != nil {
+		t.Fatalf("writing cartridge.json: %v", err)
+	}
+
+	registry := "https://example.invalid/r"
+	_, err := ReadCartridgeJsonFromDir(dir, SlugFor(&registry))
+	if runtime.GOOS == "windows" {
+		if err != nil {
+			t.Fatalf("a non-executable mode must not refuse a cartridge on Windows, "+
+				"where no file has one: %v", err)
+		}
+		return
+	}
+	var cartridgeErr *CartridgeJsonError
+	if !errors.As(err, &cartridgeErr) ||
+		cartridgeErr.Kind != CartridgeJsonErrorEntryPointNotExecutable {
+		t.Fatalf("on %s a non-executable entry point must be refused, got %v",
+			runtime.GOOS, err)
+	}
 }

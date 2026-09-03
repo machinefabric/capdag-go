@@ -20,6 +20,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -385,8 +386,18 @@ func ReadCartridgeJsonFromDir(versionDir, expectedSlug string) (*CartridgeJson, 
 		}
 	}
 
-	// Validate entry point is executable (Unix)
-	if info.Mode()&0o111 == 0 {
+	// Validate entry point is executable — on the platforms that HAVE the
+	// question.
+	//
+	// NTFS has no execute bit: Go reports 0666 for every ordinary file on
+	// Windows, so this refused every cartridge there, always, with "entry
+	// point is not executable" about a file that runs perfectly well. What
+	// decides whether a program can be started on Windows is its extension
+	// and the loader, neither of which a mode bit describes.
+	//
+	// The Rust reference guards this with `#[cfg(unix)]` for the same reason,
+	// and the mirrors follow the reference.
+	if runtime.GOOS != "windows" && info.Mode()&0o111 == 0 {
 		return nil, &CartridgeJsonError{
 			Kind:  CartridgeJsonErrorEntryPointNotExecutable,
 			Path:  jsonPath,
