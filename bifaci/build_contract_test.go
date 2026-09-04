@@ -21,6 +21,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/machinefabric/capdag-go/bifaci"
 )
 
 // The ldflag variable names are read out of the build script rather than
@@ -78,7 +80,11 @@ func pick(t *testing.T, names []string, suffix string) string {
 // returns the binary path.
 func buildFixture(t *testing.T, ldflags string) string {
 	t.Helper()
-	out := filepath.Join(t.TempDir(), "buildcontract")
+	// The platform's executable suffix, because the fixture is BUILT here and
+	// then RUN. Go writes whatever `-o` names, but Windows resolves an
+	// executable by extension: an extensionless binary built fine and then
+	// could not be started at all.
+	out := filepath.Join(t.TempDir(), "buildcontract"+bifaci.ExecutableSuffix())
 	args := []string{"build", "-o", out}
 	if ldflags != "" {
 		args = append(args, "-ldflags="+ldflags)

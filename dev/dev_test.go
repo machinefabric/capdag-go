@@ -281,7 +281,12 @@ func Test7159_two_entries_is_ambiguous_not_a_coin_flip(t *testing.T) {
 
 	written := 0
 	for i := range StubLanguages {
-		entry := filepath.Join(proj, Entry(&StubLanguages[i], "twoheaded"))
+		// EntryFile, not Entry: a compiled entry is spelled with the platform's
+		// executable suffix on disk, and that is the spelling ProjectEntry looks
+		// for. Writing the declared spelling left the Windows candidate missing,
+		// so only one of the two entries was found and the ambiguity this test
+		// exists to prove never arose.
+		entry := filepath.Join(proj, EntryFile(&StubLanguages[i], "twoheaded"))
 		if err := os.MkdirAll(filepath.Dir(entry), 0o755); err != nil {
 			t.Fatalf("creating entry dir: %v", err)
 		}
