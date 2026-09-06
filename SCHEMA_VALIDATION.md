@@ -1,4 +1,4 @@
-# JSON Schema Validation for capdag-go and capdag-cartridge-sdk-go
+# JSON Schema Validation for capdag-go
 
 This document describes the comprehensive JSON Schema validation system implemented for the Go SDKs to match the capabilities of the Rust implementation.
 
@@ -58,7 +58,7 @@ New validation error type:
 
 ### 4. Cartridge SDK Integration
 
-**File: `capdag-cartridge-sdk-go/sdk.go`**
+**File: `capdag-go/llm/protocol.go`**
 
 Re-exported all new types and constructors:
 - Schema validation types (`SchemaValidator`, `SchemaValidationError`, etc.)
@@ -71,7 +71,7 @@ Re-exported all new types and constructors:
 ### Basic Schema Validation
 
 ```go
-import sdk "github.com/machinefabric/capdag-cartridge-sdk-go"
+import "github.com/machinefabric/capdag-go/cap"
 
 // Create capability with embedded schema
 schema := map[string]interface{}{
@@ -83,14 +83,14 @@ schema := map[string]interface{}{
     "required": []interface{}{"name", "age"},
 }
 
-arg := sdk.NewCapArgumentWithSchema("user_data", sdk.ArgumentTypeObject, "User data", "--user", schema)
+arg := cap.NewCapArgumentWithSchema("user_data", cap.ArgumentTypeObject, "User data", "--user", schema)
 ```
 
 ### Validation Coordinator
 
 ```go
 // Create validation coordinator
-coordinator := sdk.NewCapValidationCoordinator()
+coordinator := cap.NewCapValidationCoordinator()
 coordinator.RegisterCap(cap)
 
 // Validate inputs
@@ -107,11 +107,11 @@ err = coordinator.ValidateOutput(cap.UrnString(), output)
 
 ```go
 // Create resolver for external schemas
-resolver := sdk.NewFileSchemaResolver("/path/to/schemas")
-validator := sdk.NewSchemaValidatorWithResolver(resolver)
+resolver := cap.NewFileSchemaResolver("/path/to/schemas")
+validator := cap.NewSchemaValidatorWithResolver(resolver)
 
 // Create argument with schema reference
-arg := sdk.NewCapArgumentWithSchemaRef("config", sdk.ArgumentTypeObject, "Configuration", "--config", "config.schema.json")
+arg := cap.NewCapArgumentWithSchemaRef("config", cap.ArgumentTypeObject, "Configuration", "--config", "config.schema.json")
 ```
 
 ## Integration with Existing Systems
@@ -121,7 +121,7 @@ arg := sdk.NewCapArgumentWithSchemaRef("config", sdk.ArgumentTypeObject, "Config
 The `CapCaller` has been updated to automatically use schema validation:
 
 ```go
-caller := sdk.NewCapCaller(capUrn, host, capDefinition)
+caller := cap.NewCapCaller(capUrn, host, capDefinition)
 response, err := caller.Call(ctx, args, namedArgs, nil)
 // Automatically validates inputs and outputs against schemas
 ```
@@ -132,7 +132,7 @@ Schema validation errors provide detailed information:
 
 ```go
 if err != nil {
-    if schemaErr, ok := err.(*sdk.SchemaValidationError); ok {
+    if schemaErr, ok := err.(*cap.SchemaValidationError); ok {
         fmt.Printf("Validation failed: %s\n", schemaErr.Details)
         fmt.Printf("For argument: %s\n", schemaErr.Argument)
         fmt.Printf("Value: %v\n", schemaErr.Value)
@@ -193,10 +193,10 @@ After implementation, developers can:
 
 ```go
 // Create capability with embedded schema
-arg := sdk.NewCapArgumentWithSchema("user_data", sdk.ArgumentTypeObject, "User data", "--user", schema)
+arg := cap.NewCapArgumentWithSchema("user_data", cap.ArgumentTypeObject, "User data", "--user", schema)
 
 // Validation automatically checks JSON objects against schemas
-validator := sdk.NewSchemaValidator()
+validator := cap.NewSchemaValidator()
 err := validator.ValidateArgument(arg, jsonValue) // Returns detailed schema errors
 
 // Integration with caller system
