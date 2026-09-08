@@ -3808,47 +3808,43 @@ func contains(s string, c byte) bool {
 	return false
 }
 
-// readStdinIfAvailable reads stdin if data is available (non-blocking check).
-// Returns nil immediately if stdin is a terminal or no data is ready.
+// readStdinIfAvailable reads piped stdin, or nil when there is none.
+//
+// Mirrors capdag/src/bifaci/cartridge_runtime.rs::read_piped_stdin, and the
+// mirroring is the point: a character device means a terminal and so nothing
+// piped; anything else is read to the end.
+//
+// This used to race. It read stdin on a goroutine and gave up after 100ms,
+// calling that "no stdin data" — so whether a cartridge saw its input depended
+// on whether the producer got its first bytes out inside a tenth of a second.
+// A pipe fed by a slower process, a large file, or simply a loaded machine
+// silently delivered nothing, and the cap then refused with a required
+// argument missing that the caller had supplied. It passed constantly under
+// test because a local `echo` is fast, which is the worst way for a race to
+// behave.
+//
+// There is nothing to be non-blocking about: a cartridge invoked with stdin
+// redirected is being given input, and one invoked from a terminal is not.
 func (pr *CartridgeRuntime) readStdinIfAvailable() ([]byte, error) {
-	// Check if stdin is a terminal (interactive)
 	stat, err := os.Stdin.Stat()
 	if err != nil {
 		return nil, err
 	}
 
-	// Don't read from stdin if it's a terminal (interactive)
+	// A character device is a terminal: nobody piped anything, and reading
+	// would block on a person who is not there to type.
 	if (stat.Mode() & os.ModeCharDevice) != 0 {
 		return nil, nil
 	}
 
-	// Non-blocking check: try reading with immediate timeout
-	// Use a goroutine with select and timeout to avoid blocking
-	type result struct {
-		data []byte
-		err  error
+	data, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return nil, err
 	}
-
-	done := make(chan result, 1)
-	go func() {
-		data, err := io.ReadAll(os.Stdin)
-		done <- result{data, err}
-	}()
-
-	// Wait up to 100ms for data - if nothing arrives, assume no stdin data
-	select {
-	case res := <-done:
-		if res.err != nil {
-			return nil, res.err
-		}
-		if len(res.data) == 0 {
-			return nil, nil
-		}
-		return res.data, nil
-	case <-time.After(100 * time.Millisecond):
-		// No data ready - return nil immediately
+	if len(data) == 0 {
 		return nil, nil
 	}
+	return data, nil
 }
 
 // containsAny checks if string contains any of the given characters

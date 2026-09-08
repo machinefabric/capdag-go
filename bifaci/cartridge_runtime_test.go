@@ -5070,3 +5070,95 @@ func Test1531_available_self_report_and_snapshot_queued_attribution(t *testing.T
 		t.Fatalf("self-report on an unknown pool must refuse, naming it: %v", err)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Reading piped stdin.
+//
+// Every stdin test above hands buildPayloadFromCLI a stdinData argument
+// directly, which is why the reader that PRODUCES it went wrong unnoticed: it
+// read stdin on a goroutine and gave up after 100ms, calling that "no stdin
+// data". Whether a cartridge saw its input therefore depended on whether the
+// producer got its first bytes out inside a tenth of a second.
+//
+// A local `echo` always wins that race, so it passed constantly under test and
+// would drop the input of any slower producer — a large file, a pipe fed by
+// another program, a loaded machine. That is the worst way for a race to
+// behave: invisible where it is tested and silent where it is not.
+//
+// These replace os.Stdin with a real pipe, including one that is deliberately
+// slow, so the race is reproduced rather than reasoned about.
+// ---------------------------------------------------------------------------
+
+// withStdin points os.Stdin at a pipe fed by `write`, and restores it after.
+func withStdin(t *testing.T, write func(w *os.File)) ([]byte, error) {
+	t.Helper()
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("cannot make a pipe: %v", err)
+	}
+	saved := os.Stdin
+	os.Stdin = reader
+	t.Cleanup(func() {
+		os.Stdin = saved
+		reader.Close()
+	})
+	go func() {
+		write(writer)
+		writer.Close()
+	}()
+	runtime := &CartridgeRuntime{}
+	return runtime.readStdinIfAvailable()
+}
+
+// Test11871_PipedStdinIsRead: input that arrives at once is read.
+func Test11871_PipedStdinIsRead(t *testing.T) {
+	data, err := withStdin(t, func(w *os.File) {
+		w.WriteString("I love this")
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(data) != "I love this" {
+		t.Fatalf("got %q, want %q", data, "I love this")
+	}
+}
+
+// Test11872_SlowProducerIsNotDropped: input that takes longer than the old
+// 100ms window is still read.
+//
+// The regression guard. With the timeout in place this returns nil and the cap
+// then refuses with a required argument missing that the caller supplied — the
+// exact failure, from the exact cause, with nothing platform-specific about it.
+func Test11872_SlowProducerIsNotDropped(t *testing.T) {
+	data, err := withStdin(t, func(w *os.File) {
+		// Comfortably past the window that used to be treated as "no data",
+		// and short enough that the suite does not notice.
+		time.Sleep(300 * time.Millisecond)
+		w.WriteString("worth waiting for")
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(data) != "worth waiting for" {
+		t.Fatalf(
+			"a producer slower than 100ms had its input dropped: got %q. "+
+				"Readiness is not the question — a redirected stdin is input, "+
+				"however long it takes to arrive.",
+			data,
+		)
+	}
+}
+
+// Test11873_AnEmptyPipeIsNoInput: `cartridge < /dev/null` supplied nothing.
+//
+// Returning an empty slice would fill a required argument with emptiness and
+// carry the cap past the check that exists to catch exactly that.
+func Test11873_AnEmptyPipeIsNoInput(t *testing.T) {
+	data, err := withStdin(t, func(w *os.File) {})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if data != nil {
+		t.Fatalf("an empty pipe is no input, got %q", data)
+	}
+}
