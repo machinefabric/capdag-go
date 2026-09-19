@@ -197,10 +197,36 @@ func Test1961_cancel_terminal_carries_its_attribution(t *testing.T) {
 				}
 			}
 		} else {
-			frame, err := reader.ReadFrame()
-			require.NoError(t, err)
-			require.True(t, frame.Id.Equals(rid))
-			outcome = frame
+			// Read until the TERMINAL frame, the way the CloseStream branch
+			// above already does. A cancel's terminal is the ERR, and it is
+			// not necessarily the first thing the host writes: the handler is
+			// live when the cancel arrives, so its output STREAM_START can be
+			// on the wire first.
+			//
+			// Taking the first frame made this test flaky, and flaky in a way
+			// that read as a broken cancel path. A STREAM_START carries no
+			// error code and no attribution, so the assertions reported
+			//
+			//     expected: "ABORTED_COLLATERAL"  actual: ""
+			//     expected: 0x1 (Input)           actual: 0x0 (Internal)
+			//
+			// which is what an unattributed reason looks like -- and sent the
+			// investigation through every layer of the cancel machinery, all
+			// of which was correct. Instrumented, one run in forty-eight got
+			// STREAM_START where the other forty-seven got the ERR.
+			for {
+				frame, err := reader.ReadFrame()
+				require.NoError(t, err)
+				require.True(t, frame.Id.Equals(rid))
+				outcome = frame
+				// ERR only. The handler is live when the cancel arrives, so
+				// its own END can reach the wire first — breaking on it
+				// stopped at a frame that carries no code and reported the
+				// same empty-attribution failure this loop exists to fix.
+				if frame.FrameType == FrameTypeErr {
+					break
+				}
+			}
 		}
 		testConn.Close()
 		require.NoError(t, <-hostDone)

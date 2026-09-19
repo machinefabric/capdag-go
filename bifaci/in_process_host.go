@@ -566,6 +566,11 @@ func (h *InProcessCartridgeHost) Run(localRead io.Reader, localWrite io.Writer) 
 	// Writer runs in a separate goroutine with SeqAssigner.
 	writeTx := make(chan Frame, 256)
 	var writerWg sync.WaitGroup
+	// Handlers run in their own goroutines and write to `writeTx`. Shutdown
+	// closes that channel, so it has to wait for them: a `send on closed
+	// channel` panic in a cartridge host takes the process with it, and the
+	// handler doing the sending has done nothing wrong.
+	var handlerWg sync.WaitGroup
 	writerWg.Add(1)
 	go func() {
 		defer writerWg.Done()
@@ -654,7 +659,15 @@ func (h *InProcessCartridgeHost) Run(localRead io.Reader, localWrite io.Writer) 
 			output := newResponseWriter(rid, xid, writeTx, maxChunk)
 			capUrnOwned := capUrn
 			peer := PeerInvoker(&noPeerInvoker{})
-			go handler.HandleRequest(capUrnOwned, inputTx, output, peer)
+			// Tracked, because the handler writes to `writeTx` and shutdown
+			// closes it. Spawned untracked, a handler still mid-response when
+			// the read loop ended sent on a closed channel and took the whole
+			// process down with `panic: send on closed channel`.
+			handlerWg.Add(1)
+			go func() {
+				defer handlerWg.Done()
+				handler.HandleRequest(capUrnOwned, inputTx, output, peer)
+			}()
 
 		case FrameTypeStreamStart, FrameTypeChunk, FrameTypeStreamEnd, FrameTypeLog:
 			// Continuation frames: forward to active request.
@@ -746,6 +759,11 @@ func (h *InProcessCartridgeHost) Run(localRead io.Reader, localWrite io.Writer) 
 		close(tx)
 		delete(active, key)
 	}
+
+	// And WAIT for them, before closing what they write to. Closing their
+	// inputs tells a handler to stop; it does not mean it has stopped, and one
+	// part way through emitting a response still holds `writeTx`.
+	handlerWg.Wait()
 
 	close(writeTx)
 	writerWg.Wait()
