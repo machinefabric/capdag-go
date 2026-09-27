@@ -1,11 +1,11 @@
 module github.com/machinefabric/capdag-go
 
-// version: 1.447.38
+// version: 1.448.41
 
 go 1.21
 
 require (
-	github.com/machinefabric/tagged-urn-go v0.0.0
+	github.com/machinefabric/tagged-urn-go v1.35.108
 	github.com/jowharshamshiri/ops-go v1.21.109
 	github.com/fxamacker/cbor/v2 v2.9.0
 	github.com/google/uuid v1.6.0
@@ -22,8 +22,3 @@ require (
 	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-// MFR_LOCAL_LIBS: the working copy in this workspace rather than a published
-// tag. The require above carries the v0.0.0 placeholder a replaced module
-// takes. Re-render without it before committing or releasing.
-replace github.com/machinefabric/tagged-urn-go => ../../tagged-urn/tagged-urn-go
