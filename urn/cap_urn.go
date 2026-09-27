@@ -21,6 +21,7 @@ import (
 	"sort"
 	"strings"
 
+	capformal "github.com/machinefabric/capdag-go/formal"
 	taggedurn "github.com/machinefabric/tagged-urn-go"
 )
 
@@ -82,6 +83,11 @@ type CapUrn struct {
 	effect string
 	// tags are additional tags that define this cap (not including in/out/effect)
 	tags map[string]string
+	// formal is the same cap on the proved model's side: its three URNs and its
+	// effect. Dispatch, acceptance, equivalence and specificity are asked of it,
+	// through code generated from ../formal (package formal). Built once, by
+	// assemble, so it can never describe a different cap from the fields beside it.
+	formal capformal.WfCap
 }
 
 // CapUrnError represents errors that can occur during cap URN operations
@@ -137,6 +143,58 @@ func normalizeEffectValue(raw *string) (string, error) {
 			),
 		}
 	}
+}
+
+// assemble is the one way a CapUrn is made: the fields, the model's value built from
+// exactly them, and the admissibility check — so no constructor or edit can produce a
+// cap whose model value describes something else.
+func assemble(inSpec, outSpec, effect string, tags map[string]string) (*CapUrn, error) {
+	inMedia, err := NewMediaUrnFromString(inSpec)
+	if err != nil {
+		return nil, &CapUrnError{Code: ErrorInvalidMediaUrn, Message: fmt.Sprintf("Invalid media URN for in spec '%s': %v", inSpec, err)}
+	}
+	outMedia, err := NewMediaUrnFromString(outSpec)
+	if err != nil {
+		return nil, &CapUrnError{Code: ErrorInvalidMediaUrn, Message: fmt.Sprintf("Invalid media URN for out spec '%s': %v", outSpec, err)}
+	}
+	var formalEffect capformal.Effect
+	switch CapEffect(effect) {
+	case CapEffectDeclared:
+		formalEffect = capformal.EffectDeclared{}
+	case CapEffectNone:
+		formalEffect = capformal.EffectNone{}
+	case CapEffectPatch:
+		formalEffect = capformal.EffectPatch{}
+	case CapEffectAny:
+		formalEffect = capformal.EffectUnspecified{}
+	default:
+		return nil, &CapUrnError{Code: ErrorInvalidEffect, Message: fmt.Sprintf("effect '%s' is not declared, none, patch or ?", effect)}
+	}
+	cap := &CapUrn{
+		inSpec:  inSpec,
+		outSpec: outSpec,
+		effect:  effect,
+		tags:    tags,
+		formal: capformal.WfCap{
+			Input:  inMedia.inner.Formal(),
+			Output: outMedia.inner.Formal(),
+			Other:  taggedurn.NewTaggedUrnFromTags("cap", tags).Formal(),
+			Effect: formalEffect,
+		},
+	}
+	if err := cap.validateAdmissible(); err != nil {
+		return nil, err
+	}
+	return cap, nil
+}
+
+// decided is the model's answer, or a panic: a call into the generated program fails
+// only when the runtime does, never on a cap this package built.
+func decided[T any](answer T, err error) T {
+	if err != nil {
+		panic(fmt.Sprintf("capdag: the model could not decide: %v", err))
+	}
+	return answer
 }
 
 func validateNonStructuralTags(tags map[string]string) error {
@@ -313,11 +371,7 @@ func NewCapUrnFromString(s string) (*CapUrn, error) {
 	if err := validateNonStructuralTags(tags); err != nil {
 		return nil, err
 	}
-	cap := &CapUrn{inSpec: inSpec, outSpec: outSpec, effect: effect, tags: tags}
-	if err := cap.validateAdmissible(); err != nil {
-		return nil, err
-	}
-	return cap, nil
+	return assemble(inSpec, outSpec, effect, tags)
 }
 
 // NewCapUrnFromTags creates a cap URN from tags that must contain 'in' and 'out'
@@ -398,11 +452,7 @@ func NewCapUrnFromTags(tags map[string]string) (*CapUrn, error) {
 	if err := validateNonStructuralTags(result); err != nil {
 		return nil, err
 	}
-	cap := &CapUrn{inSpec: inSpec, outSpec: outSpec, effect: effect, tags: result}
-	if err := cap.validateAdmissible(); err != nil {
-		return nil, err
-	}
-	return cap, nil
+	return assemble(inSpec, outSpec, effect, result)
 }
 
 // NewCapUrn creates a cap URN from direction specs and additional tags
@@ -466,16 +516,7 @@ func NewCapUrnWithEffect(inSpec, outSpec, effect string, tags map[string]string)
 	if err := validateNonStructuralTags(normalizedTags); err != nil {
 		return nil, err
 	}
-	cap := &CapUrn{
-		inSpec:  inMedia.String(),
-		outSpec: outMedia.String(),
-		effect:  effectValue,
-		tags:    normalizedTags,
-	}
-	if err := cap.validateAdmissible(); err != nil {
-		return nil, err
-	}
-	return cap, nil
+	return assemble(inMedia.String(), outMedia.String(), effectValue, normalizedTags)
 }
 
 // InSpec returns the input spec ID
@@ -759,85 +800,18 @@ func (c *CapUrn) WithoutTag(key string) *CapUrn {
 	return result
 }
 
-// Accepts checks if this cap (pattern/handler) accepts the given request (instance).
+// Accepts reports whether this cap, as a PATTERN, accepts request as an instance: the
+// request's input refines this cap's, this cap's output refines the request's, the
+// effect matches (this cap's ?effect matching any), and the request's cap-tags refine
+// this cap's.
 //
-// Direction specs use semantic TaggedUrn matching via MediaUrn:
-// - Input: `cap_in.accepts(request_in)` — does request's data satisfy cap's input requirement?
-// - Output: `request_out.accepts(cap_out)` — does cap's output satisfy what request expects?
-//
-// For other tags: cap satisfies request's tag constraints.
-// Missing cap tags are wildcards (cap accepts any value for that tag).
+// Decided by the proved model (CapDAG.Exec.accepts). The cap-tag axis runs opposite to
+// IsDispatchable's: this is the pattern relation, dispatch is the routing one.
 func (c *CapUrn) Accepts(request *CapUrn) bool {
 	if request == nil {
 		return true
 	}
-
-	// Input direction: self.in_spec is pattern, request.in_spec is instance
-	// "media:" on the PATTERN side means "I accept any input" — skip check.
-	// "media:" on the INSTANCE side is just the least specific — still check.
-	if c.inSpec != "media:" {
-		capIn, err := NewMediaUrnFromString(c.inSpec)
-		if err != nil {
-			panic(fmt.Sprintf("CU2: cap in_spec '%s' is not a valid MediaUrn: %v", c.inSpec, err))
-		}
-		requestIn, err := NewMediaUrnFromString(request.inSpec)
-		if err != nil {
-			panic(fmt.Sprintf("CU2: request in_spec '%s' is not a valid MediaUrn: %v", request.inSpec, err))
-		}
-		if !capIn.Accepts(requestIn) {
-			return false
-		}
-	}
-
-	// Output direction: the handler's output must refine the request's. No
-	// case for `media:` here: a handler whose output is `media:` promises no
-	// particular output, as in dispatch. Skipping the axis for it made
-	// acceptance non-transitive (capdag/formal,
-	// Legacy.accepts_skipping_top_output_not_transitive).
-	{
-		capOut, err := NewMediaUrnFromString(c.outSpec)
-		if err != nil {
-			panic(fmt.Sprintf("CU2: cap out_spec '%s' is not a valid MediaUrn: %v", c.outSpec, err))
-		}
-		requestOut, err := NewMediaUrnFromString(request.outSpec)
-		if err != nil {
-			panic(fmt.Sprintf("CU2: request out_spec '%s' is not a valid MediaUrn: %v", request.outSpec, err))
-		}
-		if !capOut.ConformsTo(requestOut) {
-			return false
-		}
-	}
-
-	if c.effect != string(CapEffectAny) && c.effect != request.effect {
-		return false
-	}
-
-	// Y-axis: every tag's per-key match runs through the six-form
-	// truth table (taggedurn.ValuesMatch). Walk the union of all
-	// keys appearing on either side so missing-on-pattern and
-	// missing-on-instance cells both get evaluated.
-	allKeys := make(map[string]struct{}, len(c.tags)+len(request.tags))
-	for k := range c.tags {
-		allKeys[k] = struct{}{}
-	}
-	for k := range request.tags {
-		allKeys[k] = struct{}{}
-	}
-	for key := range allKeys {
-		var pattPtr, instPtr *string
-		if v, ok := c.tags[key]; ok {
-			vCopy := v
-			pattPtr = &vCopy
-		}
-		if v, ok := request.tags[key]; ok {
-			vCopy := v
-			instPtr = &vCopy
-		}
-		if !taggedurn.ValuesMatch(instPtr, pattPtr) {
-			return false
-		}
-	}
-	return true
+	return decided(capformal.Accepts(c.formal, request.formal))
 }
 
 // ConformsTo checks if this cap conforms to another cap's constraints.
@@ -846,123 +820,37 @@ func (c *CapUrn) ConformsTo(cap *CapUrn) bool {
 	return cap.Accepts(c)
 }
 
-// Both directional axes are TYPES, compared by refinement and nothing else
-// (capdag/formal, `dispatch`). A request whose input is `media:` may send
-// anything, so only a candidate that accepts anything serves it: reading it
-// as "don't care" served it with a PDF-only cap, and dispatch stopped
-// composing — a cap could serve a request that could serve another, and not
-// serve that one. And top-ness is a meaning, not a spelling: `media:?ext`
-// constrains nothing exactly as `media:` does, and a comparison against the
-// string "media:" answered differently for the two.
-
-// inputDispatchable: input is CONTRAVARIANT — the request's input must
-// refine the candidate's.
-func (c *CapUrn) inputDispatchable(request *CapUrn) bool {
-	reqIn, err := NewMediaUrnFromString(request.inSpec)
-	if err != nil {
-		return false
-	}
-	candIn, err := NewMediaUrnFromString(c.inSpec)
-	if err != nil {
-		return false
-	}
-	return reqIn.ConformsTo(candIn)
-}
-
-// outputDispatchable: output is COVARIANT — the candidate's output must
-// refine the request's.
-func (c *CapUrn) outputDispatchable(request *CapUrn) bool {
-	reqOut, err := NewMediaUrnFromString(request.outSpec)
-	if err != nil {
-		return false
-	}
-	candOut, err := NewMediaUrnFromString(c.outSpec)
-	if err != nil {
-		return false
-	}
-	return candOut.ConformsTo(reqOut)
-}
-
-// capTagsDispatchable checks if candidate's cap-tags are dispatchable for request's cap-tags.
+// IsDispatchable reports whether this candidate can serve request — the PRIMARY
+// predicate for routing and dispatch.
 //
-// Every explicit request tag must be satisfied by candidate.
-// Candidate may have extra tags (refinement is OK).
-// Wildcard (*) in request means any value acceptable.
-// Wildcard (*) in candidate means candidate can handle any value.
-func (c *CapUrn) capTagsDispatchable(request *CapUrn) bool {
-	allKeys := make(map[string]struct{}, len(c.tags)+len(request.tags))
-	for key := range c.tags {
-		allKeys[key] = struct{}{}
-	}
-	for key := range request.tags {
-		allKeys[key] = struct{}{}
-	}
-	for key := range allKeys {
-		var pattPtr, instPtr *string
-		if v, ok := request.tags[key]; ok {
-			vCopy := v
-			pattPtr = &vCopy
-		}
-		if v, ok := c.tags[key]; ok {
-			vCopy := v
-			instPtr = &vCopy
-		}
-		if !taggedurn.ValuesMatch(instPtr, pattPtr) {
-			return false
-		}
-	}
-	return true
-}
-
-func (c *CapUrn) effectDispatchable(request *CapUrn) bool {
-	return request.effect == string(CapEffectAny) || c.effect == request.effect
-}
-
-// IsDispatchable checks if this candidate can dispatch (handle) the given request.
+// Decided by the proved model (CapDAG.Exec.dispatch): every axis is a type. The
+// request's input refines the candidate's (a candidate may accept more), the
+// candidate's output refines the request's (it must produce at least what is needed),
+// the effect matches unless the request says ?effect, and the candidate's cap-tags
+// refine the request's (it satisfies every tag the request states, and may add more).
 //
-// This is the PRIMARY predicate for routing/dispatch decisions.
+// media: on a request's input is a type — "may send anything" — so only a candidate
+// that accepts anything serves it. That is what makes dispatch compose.
 //
-// A candidate is dispatchable for a request iff:
-// 1. Input axis: candidate can handle request's input (contravariant)
-// 2. Output axis: candidate meets request's output needs (covariant)
-// 3. Cap-tags: candidate satisfies all explicit request tags, may add more
-//
-// Key insight: This is NOT symmetric.
+// Not symmetric: a.IsDispatchable(b) says nothing about the reverse.
 func (c *CapUrn) IsDispatchable(request *CapUrn) bool {
 	if request == nil {
 		return true
 	}
-	if !c.inputDispatchable(request) {
-		return false
-	}
-	if !c.outputDispatchable(request) {
-		return false
-	}
-	if !c.effectDispatchable(request) {
-		return false
-	}
-	if !c.capTagsDispatchable(request) {
-		return false
-	}
-	return true
+	return decided(capformal.Dispatch(c.formal, request.formal))
 }
 
-// IsComparable checks if two cap URNs are comparable in the order-theoretic sense.
-//
-// Two URNs are comparable if either one accepts (subsumes) the other.
-// This is the symmetric closure of the Accepts relation.
-// Matches Rust's is_comparable which uses accepts, not is_dispatchable.
+// IsComparable checks if two cap URNs are comparable in the order-theoretic sense:
+// either one accepts the other. Decided by the proved model (CapDAG.Exec.comparable).
 func (c *CapUrn) IsComparable(other *CapUrn) bool {
-	return c.Accepts(other) || other.Accepts(c)
+	return decided(capformal.Comparable(c.formal, other.formal))
 }
 
-// IsEquivalent checks if two cap URNs are equivalent in the order-theoretic sense.
-//
-// Two URNs are equivalent if each accepts (subsumes) the other.
-// This means they have the same position in the specificity lattice.
-// Matches Rust's is_equivalent which uses accepts, not is_dispatchable.
+// IsEquivalent checks if two cap URNs are equivalent in the order-theoretic sense:
+// each accepts the other, so they have the same position in the specificity lattice.
+// Decided by the proved model (CapDAG.Exec.equivalent).
 func (c *CapUrn) IsEquivalent(other *CapUrn) bool {
-	return c.Accepts(other) && other.Accepts(c)
+	return decided(capformal.Equivalent(c.formal, other.formal))
 }
 
 // AcceptsStr checks if this cap (handler) accepts a request given as a string.
@@ -1097,27 +985,14 @@ const (
 // intent: producing different things is the largest semantic
 // difference between two caps; consuming different things is next;
 // descriptive y-axis metadata is last.
+//
+// Computed by the proved model (CapDAG.Exec.specificity).
 func (c *CapUrn) Specificity() int {
-	inMedia, err := NewMediaUrnFromString(c.inSpec)
-	if err != nil {
-		panic(fmt.Sprintf("CU2: in_spec '%s' is not a valid MediaUrn: %v", c.inSpec, err))
+	score := decided(capformal.Specificity(c.formal))
+	if !score.IsInt64() {
+		panic(fmt.Sprintf("capdag: the specificity of %s does not fit an int: %s", c, score))
 	}
-	outMedia, err := NewMediaUrnFromString(c.outSpec)
-	if err != nil {
-		panic(fmt.Sprintf("CU2: out_spec '%s' is not a valid MediaUrn: %v", c.outSpec, err))
-	}
-
-	yScore := 0
-	for _, value := range c.tags {
-		yScore += taggedurn.ScoreTagValue(value)
-	}
-	return WeightOut*outMedia.Specificity() + WeightIn*inMedia.Specificity() + yScore
-}
-
-// scoreTagValue: kept for callers that need the raw scorer; delegates
-// to the canonical implementation in tagged_urn.
-func scoreTagValue(value string) int {
-	return taggedurn.ScoreTagValue(value)
+	return int(score.Int64())
 }
 
 // IsMoreSpecificThan checks if this cap is more specific than another
@@ -1312,6 +1187,7 @@ func (c *CapUrn) UnmarshalJSON(data []byte) error {
 	c.outSpec = capUrn.outSpec
 	c.effect = capUrn.effect
 	c.tags = capUrn.tags
+	c.formal = capUrn.formal
 	return nil
 }
 
