@@ -789,10 +789,12 @@ func (c *CapUrn) Accepts(request *CapUrn) bool {
 		}
 	}
 
-	// Output direction: self.out_spec is pattern, request.out_spec is instance
-	// "media:" on the PATTERN side means "I accept any output" — skip check.
-	// "media:" on the INSTANCE side is just the least specific — still check.
-	if c.outSpec != "media:" {
+	// Output direction: the handler's output must refine the request's. No
+	// case for `media:` here: a handler whose output is `media:` promises no
+	// particular output, as in dispatch. Skipping the axis for it made
+	// acceptance non-transitive (capdag/formal,
+	// Legacy.accepts_skipping_top_output_not_transitive).
+	{
 		capOut, err := NewMediaUrnFromString(c.outSpec)
 		if err != nil {
 			panic(fmt.Sprintf("CU2: cap out_spec '%s' is not a valid MediaUrn: %v", c.outSpec, err))
@@ -844,23 +846,18 @@ func (c *CapUrn) ConformsTo(cap *CapUrn) bool {
 	return cap.Accepts(c)
 }
 
-// inputDispatchable checks if candidate's input is dispatchable for request's input.
-//
-// Input is CONTRAVARIANT: candidate with looser input constraint can handle
-// request with stricter input. media: is the identity (top) and means
-// "unconstrained" — vacuously true on either side.
+// Both directional axes are TYPES, compared by refinement and nothing else
+// (capdag/formal, `dispatch`). A request whose input is `media:` may send
+// anything, so only a candidate that accepts anything serves it: reading it
+// as "don't care" served it with a PDF-only cap, and dispatch stopped
+// composing — a cap could serve a request that could serve another, and not
+// serve that one. And top-ness is a meaning, not a spelling: `media:?ext`
+// constrains nothing exactly as `media:` does, and a comparison against the
+// string "media:" answered differently for the two.
+
+// inputDispatchable: input is CONTRAVARIANT — the request's input must
+// refine the candidate's.
 func (c *CapUrn) inputDispatchable(request *CapUrn) bool {
-	// Request wildcard: any candidate input is fine
-	if request.inSpec == "media:" {
-		return true
-	}
-
-	// Candidate wildcard: candidate accepts any input
-	if c.inSpec == "media:" {
-		return true
-	}
-
-	// Both specific: request input must conform to candidate input requirement
 	reqIn, err := NewMediaUrnFromString(request.inSpec)
 	if err != nil {
 		return false
@@ -869,27 +866,12 @@ func (c *CapUrn) inputDispatchable(request *CapUrn) bool {
 	if err != nil {
 		return false
 	}
-
 	return reqIn.ConformsTo(candIn)
 }
 
-// outputDispatchable checks if candidate's output is dispatchable for request's output.
-//
-// Output is COVARIANT: candidate must produce at least what request needs.
-// Candidate out=media: + request specific: FAIL (cannot guarantee).
-// This is asymmetric with input.
+// outputDispatchable: output is COVARIANT — the candidate's output must
+// refine the request's.
 func (c *CapUrn) outputDispatchable(request *CapUrn) bool {
-	// Request wildcard: any candidate output is fine
-	if request.outSpec == "media:" {
-		return true
-	}
-
-	// Candidate wildcard: cannot guarantee specific output request needs
-	if c.outSpec == "media:" {
-		return false
-	}
-
-	// Both specific: candidate output must conform to request output
 	reqOut, err := NewMediaUrnFromString(request.outSpec)
 	if err != nil {
 		return false
@@ -898,7 +880,6 @@ func (c *CapUrn) outputDispatchable(request *CapUrn) bool {
 	if err != nil {
 		return false
 	}
-
 	return candOut.ConformsTo(reqOut)
 }
 

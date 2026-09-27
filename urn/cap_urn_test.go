@@ -847,7 +847,10 @@ func Test042_matching_semantics_cap_has_extra_tag(t *testing.T) {
 	assert.True(t, cap.Accepts(request2), "Request with all required tags is accepted")
 }
 
-// TEST43: Matching semantics - request wildcard matches specific cap value
+// TEST43: Matching semantics - a request's wildcard is not a promise of a value
+//
+// "some ext" is not a pdf, so a pdf pattern does not accept it; "some ext"
+// accepts a pdf (tagged-urn formal, `tagMatch_iff_allows`).
 func Test043_matching_semantics_request_has_wildcard(t *testing.T) {
 	cap, err := NewCapUrnFromString(testUrn("generate;ext=pdf"))
 	require.NoError(t, err)
@@ -855,7 +858,8 @@ func Test043_matching_semantics_request_has_wildcard(t *testing.T) {
 	request, err := NewCapUrnFromString(testUrn("generate;ext=*"))
 	require.NoError(t, err)
 
-	assert.True(t, cap.Accepts(request), "Test 4: Request wildcard should match")
+	assert.False(t, cap.Accepts(request), "a pdf pattern does not accept \"some ext\"")
+	assert.True(t, request.Accepts(cap), "\"some ext\" accepts a pdf")
 }
 
 // TEST44: Matching semantics - cap wildcard matches specific request value
@@ -913,7 +917,13 @@ func Test047_matching_semantics_thumbnail_void_input(t *testing.T) {
 	assert.True(t, capWithWildcard.Accepts(request), "Cap with ext=* also accepts request with ext=wav")
 }
 
-// TEST48: Matching semantics - wildcard direction matches anything
+// TEST48: A handler whose output is `media:` promises no particular output
+//
+// A generic INPUT accepts any request input; a generic OUTPUT guarantees
+// nothing, so it does not satisfy a request that needs a record — the same
+// rule dispatch applies. Skipping the output axis for a `media:` handler
+// made acceptance non-transitive (capdag/formal,
+// Legacy.accepts_skipping_top_output_not_transitive).
 func Test048_matching_semantics_wildcard_direction_matches_anything(t *testing.T) {
 	cap, err := NewCapUrnFromString("cap:generate")
 	require.NoError(t, err)
@@ -921,7 +931,12 @@ func Test048_matching_semantics_wildcard_direction_matches_anything(t *testing.T
 	request, err := NewCapUrnFromString(`cap:in="media:string";generate;out="media:object;record";ext=pdf`)
 	require.NoError(t, err)
 
-	assert.True(t, cap.Accepts(request), "Generic declared directions should accept a more specific matching request")
+	assert.False(t, cap.Accepts(request), "a media:-output handler does not promise the record the request needs")
+
+	anyOutputRequest, err := NewCapUrnFromString(`cap:in="media:string";generate;ext=pdf`)
+	require.NoError(t, err)
+	assert.True(t, cap.Accepts(anyOutputRequest),
+		"a generic handler accepts a more specific request that asks for no particular output")
 
 	request2, err := NewCapUrnFromString(`cap:in="media:string";extract;out="media:object;record"`)
 	require.NoError(t, err)
@@ -1211,16 +1226,29 @@ func Test6609_wildcard_empty_cap_defaults_to_media_wildcard(t *testing.T) {
 	assert.Equal(t, ErrorIllegalDeclaration, capError.Code)
 }
 
-// TEST6614: Legal generic cap with marker-only y-axis matches specific caps
+// TEST6614: A generic handler accepts a more specific request only where it
+// promises enough
+//
+// `cap:raw` takes any input and promises no particular output. It accepts a
+// request that sends something specific; it does not accept one that needs
+// `media:text` out, since a `media:` output guarantees nothing (the rule
+// dispatch applies). Skipping the output axis for a `media:` handler made
+// acceptance non-transitive (capdag/formal,
+// Legacy.accepts_skipping_top_output_not_transitive).
 func Test6614_wildcard_accepts_specific(t *testing.T) {
 	wildcard, err := NewCapUrnFromString("cap:raw")
 	require.NoError(t, err)
 
-	specific, err := NewCapUrnFromString("cap:out=media:text;raw")
+	specificOut, err := NewCapUrnFromString("cap:out=media:text;raw")
+	require.NoError(t, err)
+	specificIn, err := NewCapUrnFromString("cap:in=media:text;raw")
 	require.NoError(t, err)
 
-	assert.True(t, wildcard.Accepts(specific), "Wildcard should accept specific")
-	assert.True(t, specific.ConformsTo(wildcard), "Specific should conform to wildcard")
+	assert.False(t, wildcard.Accepts(specificOut), "a media:-output handler does not promise text out")
+	assert.True(t, specificOut.Accepts(wildcard),
+		"a handler producing text satisfies a request that asks for no particular output")
+	assert.True(t, wildcard.Accepts(specificIn), "a handler taking any input accepts a request that sends text")
+	assert.True(t, specificIn.ConformsTo(wildcard), "the text-sending request conforms to the generic handler")
 }
 
 // TEST6615: Specificity - marker-only wildcard scores on y-axis only
@@ -1299,14 +1327,24 @@ func Test824_dispatch_contravariant_input(t *testing.T) {
 	assert.True(t, candidate.IsDispatchable(request))
 }
 
-// TEST825: is_dispatchable — request with unconstrained input dispatches to specific candidate media: on the request input axis means "unconstrained" — vacuously true
+// TEST825: a request that may send anything is served only by a candidate
+// that accepts anything
+//
+// `media:` on a request's input is a type — "any A" — not a wildcard that
+// switches the axis off. Read as "don't care", a PDF-only candidate served
+// it, and dispatch stopped composing: the PDF-only cap served that request,
+// which served an image request, which the PDF-only cap did not serve
+// (capdag/formal, Legacy.wildcard_input_not_transitive).
 func Test825_dispatch_request_unconstrained_input(t *testing.T) {
-	candidate, err := NewCapUrnFromString(`cap:in="media:ext=pdf";analyze;out="media:record;enc=utf-8"`)
+	pdfOnly, err := NewCapUrnFromString(`cap:in="media:ext=pdf";analyze;out="media:record;enc=utf-8"`)
+	require.NoError(t, err)
+	acceptsAnything, err := NewCapUrnFromString(`cap:in="media:";analyze;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
 	request, err := NewCapUrnFromString(`cap:in="media:";analyze;out="media:record;enc=utf-8"`)
 	require.NoError(t, err)
-	assert.True(t, candidate.IsDispatchable(request),
-		"Request in=media: is unconstrained — axis is vacuously true")
+	assert.False(t, pdfOnly.IsDispatchable(request),
+		"a PDF-only candidate cannot take whatever the request may send")
+	assert.True(t, acceptsAnything.IsDispatchable(request))
 }
 
 // TEST826: is_dispatchable — candidate output must satisfy request output (covariance)
@@ -1884,15 +1922,18 @@ func Test1835_canonicalize_must_not_have(t *testing.T) {
 	}
 }
 
-// TEST1842: Full 6×6 truth table — every cell must match the matrix in 04-PREDICATES.md §2.5. Treats prefix `cap:` as the host for a single-key URN (key `x`), pairing every instance form with every pattern form.
+// TEST1842: Full 6×6 truth table — every cell must match rule B, the matrix capdag/formal proves. Treats prefix `cap:` as the host for a single-key URN (key `x`), pairing every instance form with every pattern form.
 func Test1842_truth_table_full_cross_product(t *testing.T) {
 	forms := []string{"", "?x", "x?=v", "x", "x!=v", "x=v", "!x"}
 	expected := [7][7]bool{
+		// Each form means the set of states it allows, on either side; an
+		// instance is accepted when its set lies inside the pattern's
+		// (tagged-urn formal, `tagMatch_iff_allows`).
 		//         miss   ?x    x?=v   x      x!=v   x=v    !x
-		/*miss*/ {true, true, true, false, false, false, true},
-		/*?x*/ {true, true, true, true, true, true, true},
-		/*x?=v*/ {true, true, true, false, false, false, true},
-		/*x*/ {true, true, true, true, true, true, false},
+		/*miss*/ {true, true, false, false, false, false, false},
+		/*?x*/ {true, true, false, false, false, false, false},
+		/*x?=v*/ {true, true, true, false, false, false, false},
+		/*x*/ {true, true, false, true, false, false, false},
 		/*x!=v*/ {true, true, true, true, true, false, false},
 		/*x=v*/ {true, true, false, true, false, true, false},
 		/*!x*/ {true, true, true, false, false, false, true},
@@ -2016,15 +2057,28 @@ func Test644_wildcard_006_specific_in_wildcard_out_is_illegal(t *testing.T) {
 	assertIllegalDeclaration(t, "cap:in=media:;out=*")
 }
 
-// TEST648: Wildcard in/out match specific caps
+// TEST648: A generic handler accepts a more specific request only where it
+// promises enough
+//
+// `cap:raw` takes any input and promises no particular output. It accepts a
+// request that sends something specific; it does not accept one that needs
+// `media:text` out, since a `media:` output guarantees nothing (the rule
+// dispatch applies). Skipping the output axis for a `media:` handler made
+// acceptance non-transitive (capdag/formal,
+// Legacy.accepts_skipping_top_output_not_transitive).
 func Test648_wildcard_010_wildcard_accepts_specific(t *testing.T) {
 	wildcard, err := NewCapUrnFromString("cap:raw")
 	require.NoError(t, err)
-	specific, err := NewCapUrnFromString("cap:out=media:text;raw")
+	specificOut, err := NewCapUrnFromString("cap:out=media:text;raw")
+	require.NoError(t, err)
+	specificIn, err := NewCapUrnFromString("cap:in=media:text;raw")
 	require.NoError(t, err)
 
-	assert.True(t, wildcard.Accepts(specific), "Wildcard should accept specific cap")
-	assert.True(t, specific.ConformsTo(wildcard), "Specific should conform to wildcard")
+	assert.False(t, wildcard.Accepts(specificOut), "a media:-output handler does not promise text out")
+	assert.True(t, specificOut.Accepts(wildcard),
+		"a handler producing text satisfies a request that asks for no particular output")
+	assert.True(t, wildcard.Accepts(specificIn), "a handler taking any input accepts a request that sends text")
+	assert.True(t, specificIn.ConformsTo(wildcard), "the text-sending request conforms to the generic handler")
 }
 
 // TEST649: Specificity - wildcard has 0, specific has tag count
