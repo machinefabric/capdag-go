@@ -7,7 +7,7 @@ go 1.22
 // Dispatch, acceptance and specificity are decided by code generated from ../formal
 // (package formal), which runs on lungo's runtime through lungo-go, at exactly the lungo
 // release that generated it; its URNs are tagged-urn-go's.
-require github.com/machinefabric/lungo-go v{% if env.MFR_LOCAL_LIBS %}0.0.0{% else %}{{ projects.lungo.latest_remote_version }}{% endif %}
+require github.com/machinefabric/lungo-go v{% if env.MFR_LOCAL_LIBS %}0.0.0{% else %}{{ projects.lungo.version }}{% endif %}
 
 require (
 	github.com/machinefabric/tagged-urn-go v{% if env.MFR_LOCAL_LIBS %}0.0.0{% else %}{{ projects.tagged_urn_go.latest_remote_version }}{% endif %}
