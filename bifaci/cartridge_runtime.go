@@ -2247,7 +2247,7 @@ func extractEffectivePayload(payload []byte, contentType string, capDef *cap.Cap
 			return nil, fmt.Errorf("Invalid argument media URN '%s': %w", urnStr, parseErr)
 		}
 
-		if !filePathBase.Accepts(argUrn) {
+		if !argUrn.Satisfies(filePathBase) {
 			continue
 		}
 
@@ -2559,7 +2559,7 @@ func buildCliForeachIterations(rawPayload []byte, capDef *cap.Cap) ([][]byte, er
 		if parseErr != nil {
 			return nil, fmt.Errorf("Invalid argument media URN '%s': %w", urnStr, parseErr)
 		}
-		if !filePathBase.Accepts(argUrn) {
+		if !argUrn.Satisfies(filePathBase) {
 			continue
 		}
 

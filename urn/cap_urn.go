@@ -800,39 +800,46 @@ func (c *CapUrn) WithoutTag(key string) *CapUrn {
 	return result
 }
 
-// Accepts reports whether this cap, as a PATTERN, accepts request as an instance: the
-// request's input refines this cap's, this cap's output refines the request's, the
-// effect matches (this cap's ?effect matching any), and the request's cap-tags refine
-// this cap's.
+// Accepts reports whether cap fits this cap read as a PATTERN over caps — what a
+// search asks: cap's input is within this pattern's, its output covers the
+// pattern's, its effect is the pattern's (a pattern's ?effect fits any), and its
+// cap-tags — complete: a cap has the tags it has — satisfy the pattern's.
 //
-// Decided by the proved model (CapDAG.Exec.accepts). The cap-tag axis runs opposite to
-// IsDispatchable's: this is the pattern relation, dispatch is the routing one.
-func (c *CapUrn) Accepts(request *CapUrn) bool {
-	if request == nil {
+// A side the pattern leaves open is not asked about. `cap:candle` fits every cap
+// tagged candle, whatever it takes and gives: its open output is "not
+// established", not the type "anything".
+//
+// Decided by the proved model (CapDAG.Exec.accepts, which is CapDAG.fits). For a
+// question no cap URN can spell — "what gives this, whatever it takes" — ask a
+// CapQuery.
+func (c *CapUrn) Accepts(cap *CapUrn) bool {
+	if cap == nil {
 		return true
 	}
-	return decided(capformal.Accepts(c.formal, request.formal))
+	return decided(capformal.Accepts(c.formal, cap.formal))
 }
 
-// ConformsTo checks if this cap conforms to another cap's constraints.
-// Equivalent to cap.Accepts(self).
-func (c *CapUrn) ConformsTo(cap *CapUrn) bool {
-	return cap.Accepts(c)
+// ConformsTo reports whether this cap fits pattern: pattern.Accepts(self).
+func (c *CapUrn) ConformsTo(pattern *CapUrn) bool {
+	return pattern.Accepts(c)
 }
 
-// IsDispatchable reports whether this candidate can serve request — the PRIMARY
-// predicate for routing and dispatch.
+// IsDispatchable reports whether this candidate SERVES request — the predicate
+// routing and dispatch act on.
 //
-// Decided by the proved model (CapDAG.Exec.dispatch): every axis is a type. The
-// request's input refines the candidate's (a candidate may accept more), the
-// candidate's output refines the request's (it must produce at least what is needed),
-// the effect matches unless the request says ?effect, and the candidate's cap-tags
-// refine the request's (it satisfies every tag the request states, and may add more).
+// The candidate takes at least what the request sends, gives at least what the
+// request needs, has the effect asked for unless the request says ?effect, and
+// has the cap-tags asked for — its own tags being complete, so a request for
+// `!x` is served by a candidate that does not mention x, and a candidate may
+// carry tags the request does not ask about.
 //
-// media: on a request's input is a type — "may send anything" — so only a candidate
-// that accepts anything serves it. That is what makes dispatch compose.
+// An input the request leaves open is not established: the caller has not said
+// what it will send, and every candidate passes that side. That is "some input",
+// not "any input" — media: on a CANDIDATE's input does mean it takes anything.
 //
-// Not symmetric: a.IsDispatchable(b) says nothing about the reverse.
+// This is a guarantee. What only could serve does not; see MayDispatch and
+// CapQuery.Grade. Decided by the proved model (CapDAG.Exec.dispatch, which is
+// CapDAG.serves). Not symmetric.
 func (c *CapUrn) IsDispatchable(request *CapUrn) bool {
 	if request == nil {
 		return true
@@ -840,15 +847,34 @@ func (c *CapUrn) IsDispatchable(request *CapUrn) bool {
 	return decided(capformal.Dispatch(c.formal, request.formal))
 }
 
-// IsComparable checks if two cap URNs are comparable in the order-theoretic sense:
-// either one accepts the other. Decided by the proved model (CapDAG.Exec.comparable).
+// MayDispatch reports whether this candidate COULD serve request: not
+// guaranteed, not excluded. For exploring what the fabric might do — never for
+// routing a call, which must be served.
+func (c *CapUrn) MayDispatch(request *CapUrn) bool {
+	return decided(capformal.MayDispatch(c.formal, request.formal))
+}
+
+// FlowsInto reports whether what this cap gives, next takes: the edge of a route.
+func (c *CapUrn) FlowsInto(next *CapUrn) bool {
+	return decided(capformal.Flows(c.formal, next.formal))
+}
+
+// MayFlowInto reports whether what this cap gives COULD be something next takes:
+// an edge a search may explore and a run has to check.
+func (c *CapUrn) MayFlowInto(next *CapUrn) bool {
+	return decided(capformal.MayFlow(c.formal, next.formal))
+}
+
+// IsComparable reports whether the two caps are on one chain: one stands in for
+// the other on every side. Both are read as descriptions — nothing is unknown.
 func (c *CapUrn) IsComparable(other *CapUrn) bool {
 	return decided(capformal.Comparable(c.formal, other.formal))
 }
 
-// IsEquivalent checks if two cap URNs are equivalent in the order-theoretic sense:
-// each accepts the other, so they have the same position in the specificity lattice.
-// Decided by the proved model (CapDAG.Exec.equivalent).
+// IsEquivalent reports whether the two are the SAME cap: equivalent on every
+// side, the effects agreeing. What resolving a name to its cap asks. Nothing is
+// read as unknown: a cap that promises no particular output is not the same cap
+// as one that promises pages, though as a pattern it fits it.
 func (c *CapUrn) IsEquivalent(other *CapUrn) bool {
 	return decided(capformal.Equivalent(c.formal, other.formal))
 }
@@ -874,7 +900,9 @@ func (c *CapUrn) InferRuntimeOutputMedia(runtimeInput *MediaUrn) (*MediaUrn, err
 	if runtimeInput == nil {
 		return nil, &CapUrnError{Code: ErrorInvalidEffectApply, Message: "cannot infer runtime output for nil runtime input"}
 	}
-	if !runtimeInput.ConformsTo(declaredIn) {
+	// A runtime media URN is the media of a value that exists, so it is read
+	// complete: it SATISFIES the declared type, or does not.
+	if !runtimeInput.Satisfies(declaredIn) {
 		return nil, &CapUrnError{
 			Code:    ErrorInvalidEffectApply,
 			Message: fmt.Sprintf("Runtime input '%s' does not conform to declared input '%s'", runtimeInput, declaredIn),
@@ -900,7 +928,7 @@ func (c *CapUrn) InferRuntimeOutputMedia(runtimeInput *MediaUrn) (*MediaUrn, err
 		return nil, &CapUrnError{Code: ErrorInvalidEffectApply, Message: "Cannot infer runtime output for an unconstrained effect request"}
 	}
 
-	if !runtimeOut.ConformsTo(declaredOut) {
+	if !runtimeOut.Satisfies(declaredOut) {
 		return nil, &CapUrnError{
 			Code:    ErrorInvalidEffectApply,
 			Message: fmt.Sprintf("Inferred runtime output '%s' does not conform to declared output '%s'", runtimeOut, declaredOut),
@@ -946,7 +974,7 @@ func (c *CapUrn) IsConformantRuntimeOutput(runtimeInput, runtimeOutput *MediaUrn
 	case CapEffectNone, CapEffectPatch:
 		return runtimeOutput.IsEquivalent(inferred), nil
 	case CapEffectDeclared:
-		return runtimeOutput.ConformsTo(inferred), nil
+		return runtimeOutput.Satisfies(inferred), nil
 	case CapEffectAny:
 		return false, &CapUrnError{Code: ErrorInvalidEffectApply, Message: "Cannot audit an emission against an unconstrained effect request"}
 	}

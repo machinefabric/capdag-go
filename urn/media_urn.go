@@ -177,6 +177,50 @@ func (m *MediaUrn) ConformsTo(pattern *MediaUrn) bool {
 	return match
 }
 
+// Meets reports whether this media type and other COULD describe the same
+// value: not a guarantee (ConformsTo), and not excluded. `media:ext` meets
+// `media:ext=pdf`; `media:ext=pdf` does not meet `media:ext=png`.
+func (m *MediaUrn) Meets(other *MediaUrn) bool {
+	if m.inner == nil || other == nil || other.inner == nil {
+		return false
+	}
+	match, err := m.inner.Meets(other.inner)
+	if err != nil {
+		return false
+	}
+	return match
+}
+
+// Satisfies reports whether a VALUE whose media this is satisfies the type
+// pattern.
+//
+// ConformsTo compares two types, and a type that does not mention a key says
+// nothing about it. A value that exists is complete: the tags it does not have,
+// it does not have. Use this where the receiver is the media of actual data — a
+// stream that arrived, an output that was produced.
+func (m *MediaUrn) Satisfies(pattern *MediaUrn) bool {
+	if m.inner == nil || pattern == nil || pattern.inner == nil {
+		return false
+	}
+	match, err := m.inner.Satisfies(pattern.inner)
+	if err != nil {
+		return false
+	}
+	return match
+}
+
+// MaySatisfy reports whether a value whose media this is COULD satisfy pattern.
+func (m *MediaUrn) MaySatisfy(pattern *MediaUrn) bool {
+	if m.inner == nil || pattern == nil || pattern.inner == nil {
+		return false
+	}
+	match, err := m.inner.MaySatisfy(pattern.inner)
+	if err != nil {
+		return false
+	}
+	return match
+}
+
 // IsComparable checks if two media URNs are comparable in the order-theoretic sense.
 // Two URNs are comparable if either one accepts (subsumes) the other.
 // Use for discovery/validation: are they on the same specialization chain?

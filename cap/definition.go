@@ -583,22 +583,20 @@ func NewCapWithMetadata(urn *urn.CapUrn, title string, aliases []string, metadat
 	}
 }
 
-// MatchesRequest checks if this cap matches a request string.
-// Uses routing direction: request is the pattern, cap is the instance.
-// request.Accepts(cap) — request only specifies constraints; cap must satisfy them.
+// MatchesRequest reports whether this cap, as a candidate, can serve the request
+// given as a string (CapUrn.IsDispatchable).
 func (c *Cap) MatchesRequest(request string) bool {
 	requestId, err := urn.NewCapUrnFromString(request)
 	if err != nil {
 		return false
 	}
-	return requestId.Accepts(c.Urn)
+	return c.Urn.IsDispatchable(requestId)
 }
 
-// AcceptsRequest checks if this cap matches a request.
-// Uses routing direction: request is the pattern, cap is the instance.
-// request.Accepts(cap) — request specifies constraints; cap must satisfy them.
+// AcceptsRequest reports whether this cap, as a candidate, can serve the request
+// (CapUrn.IsDispatchable).
 func (c *Cap) AcceptsRequest(request *urn.CapUrn) bool {
-	return request.Accepts(c.Urn)
+	return c.Urn.IsDispatchable(request)
 }
 
 // IsMoreSpecificThan checks if this cap is more specific than another for a given request.

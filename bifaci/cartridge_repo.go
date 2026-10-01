@@ -888,12 +888,13 @@ func (s *CartridgeRepoServer) GetCartridgesByCategory(category string) ([]Cartri
 // GetCartridgesByCap returns cartridges that provide a specific cap.
 //
 // The request URN is parsed via NewCapUrnFromString; each declared
-// cartridge cap is parsed and matched with ConformsTo: cap dispatch is
-// the partial-order question "does the declared cap conform to (i.e.
-// refine, equal, or be more specific than) the requested pattern?".
-// Only `in` and `out` tags are functionally meaningful — the `op` tag
-// has no role in the predicate. Malformed input or declared URNs are
-// returned as ParseError, never silently ignored.
+// cartridge cap is parsed too and asked IsDispatchable — "can this declared
+// candidate serve the request?" (it takes at least what is sent, gives at
+// least what is needed, has the tags asked for; a side the request leaves
+// open is not asked about). This is deliberately looser than the equivalence
+// used to resolve an alias to its exact cap: here everything capable is
+// enumerated. Malformed input or declared URNs are returned as ParseError,
+// never silently ignored.
 func (s *CartridgeRepoServer) GetCartridgesByCap(capUrn string) ([]CartridgeInfo, error) {
 	requested, err := urn.NewCapUrnFromString(capUrn)
 	if err != nil {
@@ -917,7 +918,8 @@ func (s *CartridgeRepoServer) GetCartridgesByCap(capUrn string) ([]CartridgeInfo
 					c.Id, c.Channel, cap.Urn, perr,
 				))
 			}
-			if declared.ConformsTo(requested) {
+			// Everything capable: the declared cap SERVES the request.
+			if declared.IsDispatchable(requested) {
 				results = append(results, c)
 				break
 			}
