@@ -5,6 +5,14 @@ github.com/fxamacker/cbor/v2 v2.9.0 h1:NpKPmjDBgUfBms6tr6JZkTHtfFGcMKsw3eGcmD/sa
 github.com/fxamacker/cbor/v2 v2.9.0/go.mod h1:vM4b+DJCtHn+zz7h3FFp/hDAI9WNWCsZj23V5ytsSxQ=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
 github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
+github.com/jowharshamshiri/ops-go v1.21.109 h1:gjmkBsY6LQNlprhHC1HBVyQEkmGEAtfA669DjhW3HWg=
+github.com/jowharshamshiri/ops-go v1.21.109/go.mod h1:0Kv1fYwgpqCyHQBumxjOGyrqYI/mW6Srvc8nxA/EJhs=
+github.com/machinefabric/lungo-go v1.77.3244 h1:/tzLktiPtsFAKsL5MG+j3w2EtN2a/qO4XwVAKL4cGUY=
+github.com/machinefabric/lungo-go v1.77.3244/go.mod h1:arO3X8HvgzGSjh0Re35PsKpCjy58jc7g14i48vQvYEI=
+github.com/machinefabric/lungo-go v1.78.3254 h1:xWNXyACQfTjshQgd5R7/FLzNEnmLGMF3tzAP9Ejc6LQ=
+github.com/machinefabric/lungo-go v1.78.3254/go.mod h1:yXXsGau7ww37IBgFrkuli1854jLhff2BFaSlkqACoto=
+github.com/machinefabric/tagged-urn-go v1.35.108 h1:vbO7EJO6hHAwEo1lFVM2S1F7Jnj5tIR9pxeWJVSvVuU=
+github.com/machinefabric/tagged-urn-go v1.35.108/go.mod h1:XavDOVT6ljMmEd4AVRTy+rhf+TsLnBGn3N8cE+O/3X0=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
