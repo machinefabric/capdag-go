@@ -581,7 +581,7 @@ func (h *InProcessCartridgeHost) Run(localRead io.Reader, localWrite io.Writer) 
 			if err := writer.WriteFrame(&frame); err != nil {
 				return
 			}
-			if frame.FrameType == FrameTypeEnd || frame.FrameType == FrameTypeErr {
+			if frame.FrameType.IsTerminal() {
 				seqAssigner.Remove(FlowKeyFromFrame(&frame))
 			}
 		}

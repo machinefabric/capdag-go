@@ -1,5 +1,7 @@
 package bifaci
 
+import "fmt"
+
 // DefaultMaxReorderBuffer is the default reorder buffer size (64 slots)
 const DefaultMaxReorderBuffer int = 64
 
@@ -28,14 +30,28 @@ func DefaultLimits() Limits {
 	}
 }
 
-// NegotiateLimits returns the minimum of two limit sets
-func NegotiateLimits(a, b Limits) Limits {
+// NegotiateLimits returns the limits two ends share: the smaller of each
+// proposal. The credit window is the proved model's decision
+// (NegotiateInitialCredit): a window that negotiates to zero is refused,
+// because no stream could ever move under it.
+func NegotiateLimits(a, b Limits) (Limits, error) {
+	if a.InitialCredit < 0 || b.InitialCredit < 0 {
+		return Limits{}, fmt.Errorf(
+			"protocol violation: initial_credit is negative (ours %d, theirs %d)",
+			a.InitialCredit, b.InitialCredit)
+	}
+	window, ok := NegotiateInitialCredit(uint64(a.InitialCredit), uint64(b.InitialCredit))
+	if !ok {
+		return Limits{}, fmt.Errorf(
+			"protocol violation: initial_credit negotiates to zero (ours %d, theirs %d) — a stream needs a window of at least one chunk",
+			a.InitialCredit, b.InitialCredit)
+	}
 	return Limits{
 		MaxFrame:         min(a.MaxFrame, b.MaxFrame),
 		MaxChunk:         min(a.MaxChunk, b.MaxChunk),
 		MaxReorderBuffer: min(a.MaxReorderBuffer, b.MaxReorderBuffer),
-		InitialCredit:    min(a.InitialCredit, b.InitialCredit),
-	}
+		InitialCredit:    int(window),
+	}, nil
 }
 
 func min(a, b int) int {

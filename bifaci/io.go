@@ -196,9 +196,7 @@ func HandshakeAccept(reader *FrameReader, writer *FrameWriter, manifestData []by
 	}
 
 	// 4. Negotiate limits (min of both sides)
-	negotiated := NegotiateLimits(DefaultLimits(), hostLimits)
-
-	return negotiated, nil
+	return NegotiateLimits(DefaultLimits(), hostLimits)
 }
 
 // HandshakeInitiate performs handshake from host side. Returns the
@@ -257,7 +255,10 @@ func HandshakeInitiate(reader *FrameReader, writer *FrameWriter) ([]byte, Limits
 	}
 
 	// 5. Negotiate limits
-	negotiated := NegotiateLimits(DefaultLimits(), cartridgeLimits)
+	negotiated, err := NegotiateLimits(DefaultLimits(), cartridgeLimits)
+	if err != nil {
+		return nil, Limits{}, nil, err
+	}
 
 	return manifestData, negotiated, poolStates, nil
 }

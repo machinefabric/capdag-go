@@ -2,9 +2,11 @@ package bifaci
 
 import (
 	"fmt"
-	"math"
 	"sync"
 	"time"
+
+	model "github.com/machinefabric/capdag-go/formal"
+	lungo "github.com/machinefabric/lungo-go"
 )
 
 // =============================================================================
@@ -37,6 +39,19 @@ func (e *CreditClosed) Error() string {
 	return fmt.Sprintf("credit gate closed: %s", e.Reason)
 }
 
+// NegotiateInitialCredit is the credit window two ends start every stream
+// with (L9): the smaller of the two proposals, decided by the proved model.
+// ok is false when the window would be zero — under a zero window no chunk
+// could be sent and, with nothing consumed, none would ever be granted: every
+// stream would stop at its first chunk, for good.
+func NegotiateInitialCredit(ours, theirs uint64) (window uint64, ok bool) {
+	negotiated := decided(model.Negotiate(nat(ours), nat(theirs)))
+	if !negotiated.Valid {
+		return 0, false
+	}
+	return count(negotiated.Value), true
+}
+
 // CreditGate is a replenishable per-stream credit window for one sender.
 //
 //   - Acquire(1) before each CHUNK: returns immediately while the window is
@@ -44,11 +59,13 @@ func (e *CreditClosed) Error() string {
 //   - Grant(n) when a CREDIT frame arrives: wakes waiters.
 //   - Close(reason) on request terminal/cancel: releases all waiters with
 //     CreditClosed (L13 — a credit-blocked sender must never hang).
+//
+// What an acquire, a grant and a close do to the window is the proved
+// model's decision (formal/CapDAG/Bifaci/Credit.lean); the gate keeps the
+// window and wakes whoever waits on it.
 type CreditGate struct {
-	mu          sync.Mutex
-	available   uint64
-	closed      bool
-	closeReason string
+	mu    sync.Mutex
+	state model.Gate
 	// wake is closed (and replaced with a fresh channel) by Grant and Close to
 	// broadcast to every goroutine parked in Acquire. A waiter captures the
 	// current channel value BEFORE releasing the lock, so a grant/close that
@@ -62,8 +79,23 @@ type CreditGate struct {
 // NewCreditGate creates a CreditGate with the given initial credit window.
 func NewCreditGate(initialCredit uint64) *CreditGate {
 	return &CreditGate{
-		available: initialCredit,
-		wake:      make(chan struct{}),
+		state: decided(model.GateOpened(nat(initialCredit))),
+		wake:  make(chan struct{}),
+	}
+}
+
+// acquireLocked asks the model for n credits. Caller must hold g.mu.
+func (g *CreditGate) acquireLocked(n uint64) (bool, error) {
+	switch answer := decided(model.GateAcquire(g.state, nat(n))).(type) {
+	case model.AcquireAcquired:
+		g.state = answer.Gate
+		return true, nil
+	case model.AcquireWait:
+		return false, nil
+	case model.AcquireClosed:
+		return false, &CreditClosed{Reason: answer.Reason}
+	default:
+		panic(fmt.Sprintf("BUG: unknown answer to an acquire: %T", answer))
 	}
 }
 
@@ -72,15 +104,10 @@ func NewCreditGate(initialCredit uint64) *CreditGate {
 func (g *CreditGate) Acquire(n uint64) error {
 	for {
 		g.mu.Lock()
-		if g.closed {
-			reason := g.closeReason
+		acquired, err := g.acquireLocked(n)
+		if err != nil || acquired {
 			g.mu.Unlock()
-			return &CreditClosed{Reason: reason}
-		}
-		if g.available >= n {
-			g.available -= n
-			g.mu.Unlock()
-			return nil
+			return err
 		}
 		wake := g.wake
 		g.mu.Unlock()
@@ -93,14 +120,7 @@ func (g *CreditGate) Acquire(n uint64) error {
 func (g *CreditGate) TryAcquire(n uint64) (bool, error) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	if g.closed {
-		return false, &CreditClosed{Reason: g.closeReason}
-	}
-	if g.available >= n {
-		g.available -= n
-		return true, nil
-	}
-	return false, nil
+	return g.acquireLocked(n)
 }
 
 // BlockingAcquire is a blocking acquire for non-goroutine-friendly contexts
@@ -124,15 +144,7 @@ func (g *CreditGate) BlockingAcquire(n uint64) error {
 // after close are no-ops.
 func (g *CreditGate) Grant(n uint64) {
 	g.mu.Lock()
-	if g.closed {
-		g.mu.Unlock()
-		return // grants after close are no-ops
-	}
-	if n > math.MaxUint64-g.available {
-		g.available = math.MaxUint64 // saturating add
-	} else {
-		g.available += n
-	}
+	_ = n
 	old := g.wake
 	g.wake = make(chan struct{})
 	g.mu.Unlock()
@@ -142,12 +154,7 @@ func (g *CreditGate) Grant(n uint64) {
 // Close closes the gate: all current and future acquires fail with CreditClosed.
 func (g *CreditGate) Close(reason string) {
 	g.mu.Lock()
-	if g.closed {
-		g.mu.Unlock()
-		return
-	}
-	g.closed = true
-	g.closeReason = reason
+	g.state = decided(model.Close(g.state, reason))
 	old := g.wake
 	g.wake = make(chan struct{})
 	g.mu.Unlock()
@@ -158,14 +165,100 @@ func (g *CreditGate) Close(reason string) {
 func (g *CreditGate) Available() uint64 {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	return g.available
+	return saturated(g.state.Available)
 }
 
 // IsClosed returns whether the gate has been closed.
 func (g *CreditGate) IsClosed() bool {
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	return g.closed
+	return g.state.Closed.Valid
+}
+
+// =============================================================================
+// CreditWindow is the receiving end of one stream's credit window: what is
+// left of what the sender was granted, and what this end has consumed and not
+// yet granted back.
+//
+//   - Arrive() for each CHUNK: false is a CREDIT_VIOLATION — the sender sent
+//     past its window (L12).
+//   - Consumed() once the chunk is consumed: the grant that is now due, 0 when
+//     the batch has not built up yet (L10: half the window, at least 1).
+//   - Flush() when nothing more will be consumed for a while: whatever is
+//     pending is granted, so a sender never waits on a batch that will not
+//     fill.
+//   - Continued() for a chunk that only continues an item: granted back at
+//     once, since nothing can consume it before the item is whole.
+//
+// Every decision is the proved model's (formal/CapDAG/Bifaci/Credit.lean).
+// =============================================================================
+type CreditWindow struct {
+	mu    sync.Mutex
+	state model.Window
+}
+
+// NewCreditWindow opens a window of the negotiated initial credit.
+func NewCreditWindow(initialCredit uint64) *CreditWindow {
+	return &CreditWindow{state: decided(model.WindowOpened(nat(initialCredit)))}
+}
+
+// Arrive accounts for one arriving CHUNK. False: the chunk is beyond the
+// granted window, and the window is unchanged.
+func (w *CreditWindow) Arrive() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	switch arrival := decided(model.WindowArrive(w.state)).(type) {
+	case model.CreditArrivalAccepted:
+		w.state = arrival.Window
+		return true
+	case model.CreditArrivalViolation:
+		return false
+	default:
+		panic(fmt.Sprintf("BUG: unknown answer to an arrival: %T", arrival))
+	}
+}
+
+func (w *CreditWindow) granted(step model.Granted) uint64 {
+	w.state = step.Window
+	return count(step.Grant)
+}
+
+// Consumed accounts for one consumed chunk and returns the grant now due (0:
+// none yet).
+func (w *CreditWindow) Consumed() uint64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.granted(decided(model.Consume(w.state)))
+}
+
+// Flush returns the grant for everything consumed and not yet granted (0:
+// nothing is pending).
+func (w *CreditWindow) Flush() uint64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.granted(decided(model.Flush(w.state)))
+}
+
+// Continued accounts for a chunk that continues an item and returns the grant
+// that gives it back at once.
+func (w *CreditWindow) Continued() uint64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.granted(decided(model.Continued(w.state)))
+}
+
+// Remaining is how many more chunks the sender may send before a grant.
+func (w *CreditWindow) Remaining() uint64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return saturated(w.state.Remaining)
+}
+
+// Pending is how many chunks were consumed and not yet granted back.
+func (w *CreditWindow) Pending() uint64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return count(w.state.Pending)
 }
 
 // =============================================================================
@@ -243,30 +336,32 @@ func (r *CreditRouter) Grant(frame *Frame) bool {
 		return false
 	}
 
+	// Which of the request's streams the grant is for is the model's
+	// decision: the one it names, or — naming none — the only one there is.
+	ridStr := frame.Id.ToString()
+	named := lungo.None[string]()
+	if frame.StreamId != nil {
+		named = lungo.Some(*frame.StreamId)
+	}
 	r.mu.Lock()
-	if gate, ok := r.gates[creditGateKeyFor(frame.Id, frame.StreamId)]; ok {
-		r.mu.Unlock()
-		gate.Grant(*credits)
-		return true
+	var streams []lungo.Option[string]
+	for key := range r.gates {
+		if key.rid != ridStr {
+			continue
+		}
+		if key.hasStream {
+			streams = append(streams, lungo.Some(key.streamID))
+		} else {
+			streams = append(streams, lungo.None[string]())
+		}
 	}
 	var matched *CreditGate
-	if frame.StreamId == nil {
-		// No stream_id on the grant: match the request's sole gate if exactly one.
-		ridStr := frame.Id.ToString()
-		count := 0
-		for key, gate := range r.gates {
-			if key.rid == ridStr {
-				count++
-				if count > 1 {
-					matched = nil
-					break
-				}
-				matched = gate
-			}
+	if target := decided(model.GrantTarget(streams, named)); target.Valid {
+		key := creditGateKey{rid: ridStr}
+		if target.Value.Valid {
+			key = creditGateKey{rid: ridStr, hasStream: true, streamID: target.Value.Value}
 		}
-		if count != 1 {
-			matched = nil
-		}
+		matched = r.gates[key]
 	}
 	r.mu.Unlock()
 

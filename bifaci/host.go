@@ -512,6 +512,21 @@ func (h *CartridgeHost) recentlyReleasedRid(rid string) bool {
 	return false
 }
 
+// accountUnroutedFrame accounts a frame that found no routing entry, for
+// what the proved model says it is: a benign straggler when its entry was
+// released by a terminal lately (counted per frame type, never a drop), a
+// no_route drop otherwise. Caller holds the host lock.
+func (h *CartridgeHost) accountUnroutedFrame(frame *Frame) {
+	switch DispositionOf(false, h.recentlyReleasedRid(frame.Id.ToString())) {
+	case DispositionStraggler:
+		h.stragglers.Record(frame.FrameType)
+	case DispositionNoRoute:
+		h.drops.Record(DropReasonNoRoute, frame.FrameType)
+	case DispositionRoute:
+		panic("BUG: a frame with no routing entry cannot be routed")
+	}
+}
+
 func (h *CartridgeHost) touchOutgoingRid(rid string) {
 	h.routingTouchSeq++
 	h.outgoingRidsTouched[rid] = h.routingTouchSeq
@@ -1543,15 +1558,11 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 			// RID this host never routed is a genuine anomaly
 			// (no_route drop). Counted either way (L6/L8), never a
 			// silent loss — and never conflated.
-			if h.recentlyReleasedRid(frame.Id.ToString()) {
-				h.stragglers.Record(frame.FrameType)
-			} else {
-				h.drops.Record(DropReasonNoRoute, frame.FrameType)
-			}
+			h.accountUnroutedFrame(frame)
 			return nil
 		}
 
-		isTerminal := frame.FrameType == FrameTypeEnd || frame.FrameType == FrameTypeErr
+		isTerminal := frame.FrameType.IsTerminal()
 
 		if err := h.sendToCartridge(cartridgeIdx, frame); err != nil {
 			// Cartridge died while we were routing a body- or
@@ -1632,11 +1643,7 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 			// A LOG that crossed its peer request's terminal is a benign
 			// straggler (never a drop); one for a RID never routed here
 			// is a genuine no_route drop — counted, never silent (L8).
-			if h.recentlyReleasedRid(frame.Id.ToString()) {
-				h.stragglers.Record(frame.FrameType)
-			} else {
-				h.drops.Record(DropReasonNoRoute, frame.FrameType)
-			}
+			h.accountUnroutedFrame(frame)
 		}
 		return nil
 	}
@@ -1737,7 +1744,7 @@ func (h *CartridgeHost) handleCartridgeFrame(cartridgeIdx int, frame *Frame, rel
 		// Continuation frames (StreamStart/Chunk/StreamEnd/End/Err/Log).
 		// Forward as-is, with whatever XID the cartridge stamped (it
 		// echoes back the XID it received on the inbound REQ).
-		isTerminal := frame.FrameType == FrameTypeEnd || frame.FrameType == FrameTypeErr
+		isTerminal := frame.FrameType.IsTerminal()
 		if isTerminal && frame.RoutingId != nil {
 			// The handler's RESPONSE terminal is the request's true end
 			// at this host (v4): once the body has completed too,

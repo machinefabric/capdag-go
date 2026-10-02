@@ -926,11 +926,14 @@ func (sw *RelaySwitch) Limits() Limits {
 // routing anomaly, counted as a no_route drop. Caller holds sw.mu.
 // (matches Rust RelaySwitch::account_unrouted_frame)
 func (sw *RelaySwitch) accountUnroutedFrameLocked(frame *Frame) {
-	if sw.requests.RecentlyTerminatedRid(frame.Id) {
+	switch DispositionOf(false, sw.requests.RecentlyTerminatedRid(frame.Id)) {
+	case DispositionStraggler:
 		sw.stragglers.Record(frame.FrameType)
-		return
+	case DispositionNoRoute:
+		sw.drops.Record(DropReasonNoRoute, frame.FrameType)
+	case DispositionRoute:
+		panic("BUG: a frame with no routing state cannot be routed")
 	}
-	sw.drops.Record(DropReasonNoRoute, frame.FrameType)
 }
 
 // masterInitialCreditLocked is the destination master's negotiated initial
@@ -1718,12 +1721,7 @@ func poolCapacities(stats *CartridgeRuntimeStats, cartridgeID string) (map[strin
 	}
 	capacities := make(map[string]uint64, len(stats.Pools))
 	for name, state := range stats.Pools {
-		if !stats.Running && name == PoolAll {
-			capacities[name] = 1
-			continue
-		}
-		s := state
-		capacities[name] = s.Effective()
+		capacities[name] = AdvertisedCapacity(stats.Running, name, state)
 	}
 	return capacities, nil
 }
@@ -1832,28 +1830,21 @@ func admissionChain(install AdmissionKey, stats *CartridgeRuntimeStats, register
 		}
 	}
 	canonical := parsed.String()
-	names := ChainFromStates(stats.Pools, canonical)
-	if len(names) == 0 || names[0] != canonical || names[len(names)-1] != PoolAll {
+	names, err := ChainFromStates(stats.Pools, canonical)
+	if err != nil {
 		return nil, &RelaySwitchError{
 			Type: RelaySwitchErrorTypeProtocol,
 			Message: fmt.Sprintf(
-				"cartridge '%s' advertises cap '%s' with no pool coverage — its pool map is missing the cap's singleton or the '%s' pool",
-				cartridgeID, canonical, PoolAll),
+				"cartridge '%s' advertises cap '%s' with no pool coverage — %v",
+				cartridgeID, canonical, err),
 		}
 	}
 	chain := make([]admissionChainEntry, 0, len(names))
 	for _, name := range names {
-		var effective uint64
-		if !stats.Running && name == PoolAll {
-			// The cold-start canary clamp — see poolCapacities.
-			effective = 1
-		} else {
-			state := stats.Pools[name]
-			effective = state.Effective()
-		}
 		chain = append(chain, admissionChainEntry{
-			Key:      PoolKey{Install: install, Pool: name},
-			Capacity: effective,
+			Key: PoolKey{Install: install, Pool: name},
+			// The cold-start canary included — see poolCapacities.
+			Capacity: AdvertisedCapacity(stats.Running, name, stats.Pools[name]),
 		})
 	}
 	return chain, nil
@@ -2112,7 +2103,7 @@ func (sw *RelaySwitch) handleMasterFrame(sourceIdx int, frame *Frame) (*Frame, e
 			xid := *frame.RoutingId
 			rid := frame.Id
 			key := RequestKey{Xid: xid, Rid: rid}
-			isTerminal := frame.FrameType == FrameTypeEnd || frame.FrameType == FrameTypeErr
+			kind, isTerminal := TerminalKindOfFrame(frame.FrameType)
 
 			// Record flow stats, resolve the return path, and — on
 			// terminal — remove the whole entry atomically (L7). A frame
@@ -2122,10 +2113,6 @@ func (sw *RelaySwitch) handleMasterFrame(sourceIdx int, frame *Frame) (*Frame, e
 
 			var state *RequestState
 			if isTerminal {
-				kind := TerminalKindEnd
-				if frame.FrameType == FrameTypeErr {
-					kind = TerminalKindErr
-				}
 				state = sw.requests.Terminate(key, kind)
 				if state == nil {
 					// Classify by the terminated ring: a frame for a

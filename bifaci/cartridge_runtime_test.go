@@ -4462,12 +4462,15 @@ func startTestCartridge(t *testing.T, rt *CartridgeRuntime, initialCredit int) (
 	if resp.FrameType != FrameTypeHello {
 		t.Fatalf("expected HELLO response, got %v", resp.FrameType)
 	}
-	negotiated := NegotiateLimits(DefaultLimits(), Limits{
+	negotiated, err := NegotiateLimits(DefaultLimits(), Limits{
 		MaxFrame:         DefaultMaxFrame,
 		MaxChunk:         DefaultMaxChunk,
 		MaxReorderBuffer: DefaultMaxReorderBuffer,
 		InitialCredit:    initialCredit,
 	})
+	if err != nil {
+		t.Fatalf("failed to negotiate limits: %v", err)
+	}
 
 	outFrames := make(chan Frame, 4096)
 	go func() {
@@ -4890,6 +4893,24 @@ func poolTestRequest(pattern string) *liveHandlerRequest {
 	}
 }
 
+// admittedOnArrival is a request for pattern arriving: whether it was
+// admitted at once.
+func admittedOnArrival(pools *runtimePools, pattern string) bool {
+	admitted, _ := pools.arrive(poolTestRequest(pattern))
+	return admitted
+}
+
+// queuedOnArrival is a request for pattern arriving that must wait: its
+// position in line.
+func queuedOnArrival(t *testing.T, pools *runtimePools, pattern string) int {
+	t.Helper()
+	admitted, position := pools.arrive(poolTestRequest(pattern))
+	if admitted {
+		t.Fatalf("a request for '%s' was admitted, not queued", pattern)
+	}
+	return position
+}
+
 // TEST1527: runtimePools materializes one singleton per registered
 // pattern, every declared shared pool, and `all` — and a declaration
 // referencing a cap no handler serves is a hard cartridge-author error,
@@ -4940,23 +4961,20 @@ func Test1528_singleton_queue_isolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("valid declarations must materialize: %v", err)
 	}
-	if !pools.tryAdmit(poolTestCapA) {
+	if !admittedOnArrival(pools, poolTestCapA) {
 		t.Fatal("first dispatch admits")
 	}
-	if pools.tryAdmit(poolTestCapA) {
-		t.Fatal("singleton capacity 1 is full")
+	if position := queuedOnArrival(t, pools, poolTestCapA); position != 1 {
+		t.Fatalf("singleton capacity 1 is full; queue position is 1-based for the LOG, got %d", position)
 	}
-	if position := pools.enqueue(poolTestRequest(poolTestCapA)); position != 1 {
-		t.Fatalf("queue position is 1-based for the LOG, got %d", position)
-	}
-	if !pools.tryAdmit(poolTestCapB) {
+	if !admittedOnArrival(pools, poolTestCapB) {
 		t.Fatal("a saturated sibling must not block this cap")
 	}
-	if pools.popAdmissible() != nil {
+	if pools.admitNext() != nil {
 		t.Fatal("nothing is admissible while the singleton is full")
 	}
 	pools.release(poolTestCapA)
-	admitted := pools.popAdmissible()
+	admitted := pools.admitNext()
 	if admitted == nil || admitted.pattern != poolTestCapA {
 		t.Fatal("the release must admit the queued request")
 	}
@@ -4975,19 +4993,23 @@ func Test1529_shared_pool_release_admits_in_global_arrival_order(t *testing.T) {
 	if err != nil {
 		t.Fatalf("valid declarations must materialize: %v", err)
 	}
-	if !pools.tryAdmit(poolTestCapA) {
+	if !admittedOnArrival(pools, poolTestCapA) {
 		t.Fatal("gpu slot taken")
 	}
-	// B arrives before A — the global ticket must remember that even
+	// B arrives before A — the order of arrival must be remembered even
 	// though "cap:pool-a" sorts first.
-	pools.enqueue(poolTestRequest(poolTestCapB))
-	pools.enqueue(poolTestRequest(poolTestCapA))
+	if position := queuedOnArrival(t, pools, poolTestCapB); position != 1 {
+		t.Fatalf("first in its cap's line, got %d", position)
+	}
+	if position := queuedOnArrival(t, pools, poolTestCapA); position != 1 {
+		t.Fatalf("a position is among the requests waiting on the same cap, got %d", position)
+	}
 	pools.release(poolTestCapA)
-	first := pools.popAdmissible()
+	first := pools.admitNext()
 	if first == nil || first.pattern != poolTestCapB {
 		t.Fatal("arrival order, not cap order")
 	}
-	if pools.popAdmissible() != nil {
+	if pools.admitNext() != nil {
 		t.Fatal("gpu capacity 1 admits exactly one")
 	}
 }
@@ -5012,10 +5034,10 @@ func Test1530_apply_desired_is_atomic_and_immediate(t *testing.T) {
 	if err := pools.applyDesired(map[string]uint64{poolTestCapA: 2}); err != nil {
 		t.Fatalf("valid batch applies: %v", err)
 	}
-	if !pools.tryAdmit(poolTestCapA) || !pools.tryAdmit(poolTestCapA) {
+	if !admittedOnArrival(pools, poolTestCapA) || !admittedOnArrival(pools, poolTestCapA) {
 		t.Fatal("raise admits immediately")
 	}
-	if pools.tryAdmit(poolTestCapA) {
+	if admittedOnArrival(pools, poolTestCapA) {
 		t.Fatal("raised bound still bounds")
 	}
 }
@@ -5038,13 +5060,11 @@ func Test1531_available_self_report_and_snapshot_queued_attribution(t *testing.T
 	if err := pools.setAvailable("gpu", 1); err != nil {
 		t.Fatalf("gpu is a declared pool: %v", err)
 	}
-	if !pools.tryAdmit(poolTestCapA) {
+	if !admittedOnArrival(pools, poolTestCapA) {
 		t.Fatal("first admit")
 	}
-	if pools.tryAdmit(poolTestCapB) {
-		t.Fatal("the self-report must bound admission below configured")
-	}
-	pools.enqueue(poolTestRequest(poolTestCapB))
+	// The self-report must bound admission below configured.
+	queuedOnArrival(t, pools, poolTestCapB)
 
 	snapshot := pools.snapshot()
 	if snapshot["gpu"].Available == nil || *snapshot["gpu"].Available != 1 {
@@ -5063,8 +5083,8 @@ func Test1531_available_self_report_and_snapshot_queued_attribution(t *testing.T
 	if err := pools.setAvailable("gpu", 0); err != nil {
 		t.Fatalf("gpu is a declared pool: %v", err)
 	}
-	if !pools.tryAdmit(poolTestCapB) {
-		t.Fatal("clearing the self-limit (0 = unlimited) restores min(configured, inf) = 2")
+	if lifted := pools.admitNext(); lifted == nil || lifted.pattern != poolTestCapB {
+		t.Fatal("clearing the self-limit (0 = unlimited) restores min(configured, inf) = 2: the request it held back goes")
 	}
 	if err := pools.setAvailable("cap:ghost", 1); err == nil || !strings.Contains(err.Error(), "cap:ghost") {
 		t.Fatalf("self-report on an unknown pool must refuse, naming it: %v", err)

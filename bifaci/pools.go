@@ -31,11 +31,13 @@ package bifaci
 import (
 	"encoding/json"
 	"fmt"
-	"math"
+	"math/big"
 	"slices"
 	"sort"
 
+	model "github.com/machinefabric/capdag-go/formal"
 	"github.com/machinefabric/capdag-go/urn"
+	lungo "github.com/machinefabric/lungo-go"
 )
 
 // PoolAll is the reserved pool containing every cap. Always exists; default
@@ -91,24 +93,26 @@ func (p *PoolState) Effective() uint64 {
 }
 
 // EffectiveCapacity is min(configured, available) under the 0-as-unlimited
-// convention. (matches Rust effective_capacity)
+// convention — the proved model's `effective`
+// (formal/CapDAG/Bifaci/Pools.lean). (matches Rust effective_capacity)
 func EffectiveCapacity(configured uint64, available *uint64) uint64 {
-	c := configured
-	if c == CapacityUnlimited {
-		c = math.MaxUint64
+	return count(decided(model.Effective(nat(configured), optionalNat(available))))
+}
+
+// AdvertisedCapacity is the limit a relay switch admits against for one pool
+// of a cartridge. A cartridge that is not running yet is given ONE request,
+// through `all` — the cold-start canary: the first body proves the spawn
+// before the capacities the process will advertise are believed.
+// (matches Rust advertised_capacity)
+func AdvertisedCapacity(running bool, pool string, state PoolState) uint64 {
+	return count(decided(model.Advertised(running, pool, nat(state.Configured), optionalNat(state.Available))))
+}
+
+func optionalNat(n *uint64) lungo.Option[*big.Int] {
+	if n == nil {
+		return lungo.None[*big.Int]()
 	}
-	a := uint64(math.MaxUint64)
-	if available != nil && *available != CapacityUnlimited {
-		a = *available
-	}
-	effective := c
-	if a < effective {
-		effective = a
-	}
-	if effective == math.MaxUint64 {
-		return CapacityUnlimited
-	}
-	return effective
+	return lungo.Some(nat(*n))
 }
 
 // PoolStates is the full pool-state map of one cartridge process, keyed by
@@ -249,36 +253,40 @@ func (d *PoolDeclarations) DeclaredStates(declaredCaps []*urn.CapUrn) PoolStates
 // pool, every declared pool containing it, then `all`. cap must be the
 // canonical URN string. (matches Rust PoolDeclarations::chain_for)
 func (d *PoolDeclarations) ChainFor(cap string) []string {
-	chain := []string{cap}
+	shared := make([]lungo.Pair[string, []string], 0, len(d.Pools))
 	for _, name := range sortedKeys(d.Pools) {
-		if slices.Contains(d.Pools[name], cap) {
-			chain = append(chain, name)
-		}
+		shared = append(shared, lungo.Pair[string, []string]{First: name, Second: d.Pools[name]})
 	}
-	return append(chain, PoolAll)
+	return poolChain(cap, shared)
+}
+
+// poolChain is a cap's chain, by the proved model: its own pool, the shared
+// pools it is a member of (in the order given), then `all`.
+func poolChain(cap string, shared []lungo.Pair[string, []string]) []string {
+	return decided(model.Chain(cap, shared))
 }
 
 // ChainFromStates is the chain of one cap over a MATERIALIZED state map
 // (roster / heartbeat truth): the singleton pool, every pool listing the
-// cap as a member, then `all`. Order: singleton, declared pools in sorted
-// order, `all`. (matches Rust chain_from_states)
-func ChainFromStates(states PoolStates, cap string) []string {
-	var chain []string
-	if _, ok := states[cap]; ok {
-		chain = append(chain, cap)
-	}
+// cap as a member (in sorted order), then `all`. The error names the first
+// pool of the chain the map does not have: a cap its cartridge's pool map
+// does not cover is refused, never admitted through whatever part of its
+// chain happens to be there. (matches Rust chain_from_states)
+func ChainFromStates(states PoolStates, cap string) ([]string, error) {
+	var shared []lungo.Pair[string, []string]
 	for _, name := range sortedKeys(states) {
 		if name == PoolAll || name == cap {
 			continue
 		}
-		if slices.Contains(states[name].Caps, cap) {
-			chain = append(chain, name)
+		shared = append(shared, lungo.Pair[string, []string]{First: name, Second: states[name].Caps})
+	}
+	names := poolChain(cap, shared)
+	for _, name := range names {
+		if _, ok := states[name]; !ok {
+			return nil, fmt.Errorf("its pool map has no '%s' pool", name)
 		}
 	}
-	if _, ok := states[PoolAll]; ok {
-		chain = append(chain, PoolAll)
-	}
-	return chain
+	return names, nil
 }
 
 // EncodePoolStates encodes a pool-state map for frame meta (JSON bytes —

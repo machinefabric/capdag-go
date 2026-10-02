@@ -67,7 +67,19 @@ func Test1521_declared_states_materialize_every_pool(t *testing.T) {
 	// The chain: singleton, declared pools containing the cap, all.
 	assert.Equal(t, []string{generate, "gpu", PoolAll}, validated.ChainFor(generate))
 	// And the same chain derived from the materialized states.
-	assert.Equal(t, []string{generate, "gpu", PoolAll}, ChainFromStates(states, generate))
+	chain, err := ChainFromStates(states, generate)
+	require.NoError(t, err)
+	assert.Equal(t, []string{generate, "gpu", PoolAll}, chain)
+	// A map that does not cover the cap is refused naming what is missing,
+	// not answered with the part of the chain that happens to be there.
+	uncovered := PoolStates{}
+	for name, state := range states {
+		if name != PoolAll {
+			uncovered[name] = state
+		}
+	}
+	_, err = ChainFromStates(uncovered, generate)
+	require.ErrorContains(t, err, PoolAll)
 }
 
 // TEST1522: pool declarations are validated hard — reserved name, a pool

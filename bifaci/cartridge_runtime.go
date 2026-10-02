@@ -15,8 +15,10 @@ import (
 	cborlib "github.com/fxamacker/cbor/v2"
 
 	"github.com/machinefabric/capdag-go/cap"
+	model "github.com/machinefabric/capdag-go/formal"
 	"github.com/machinefabric/capdag-go/standard"
 	"github.com/machinefabric/capdag-go/urn"
+	lungo "github.com/machinefabric/lungo-go"
 )
 
 // MediaFilePath is the canonical file-path media URN. There is a single
@@ -372,45 +374,45 @@ func (ps *ProgressSender) Log(level string, class AttributionClass, message stri
 // Handler has full streaming control - decides when to consume frames and when to produce output.
 type HandlerFunc func(frames <-chan Frame, emitter StreamEmitter, peer PeerInvoker) error
 
-// runtimePool is one materialized concurrency pool (see pools.go).
-// (matches Rust RuntimePool)
-type runtimePool struct {
+// poolMeta is the three numbers a pool carries on the wire, and its members.
+type poolMeta struct {
 	declared   uint64
 	configured uint64
 	// available is the cartridge self-report; nil = static (the normal
 	// case). Written only through PoolHandle.Set.
 	available *uint64
-	active    uint64
 	// members lists member patterns (shared pools and `all`); singletons
 	// empty.
 	members []string
 }
 
-func (p *runtimePool) effective() uint64 {
+func (p *poolMeta) effective() uint64 {
 	return EffectiveCapacity(p.configured, p.available)
-}
-
-func (p *runtimePool) hasRoom() bool {
-	effective := p.effective()
-	return effective == CapacityUnlimited || p.active < effective
 }
 
 // runtimePools is the runtime's materialized concurrency pools (see
 // pools.go): one singleton pool per registered handler pattern, every
-// declared shared pool from the manifest, and `all`. The owning poolsCell's
-// mutex guards capacities, active counts, and queues together so admission
-// is one atomic decision. (matches Rust RuntimePools)
+// declared shared pool from the manifest, and `all`.
+//
+// Who is admitted, and when, is the proved model's decision
+// (formal/CapDAG/Bifaci/Pools.lean): state is its picture of this cartridge —
+// each pool's limit and how many requests hold a slot in it, and the line of
+// waiters in order of arrival. A request is admitted through EVERY pool in
+// its chain or it waits, never half-admitted; and whenever anything changes,
+// the first waiter whose whole chain has room goes next. This struct keeps
+// what the model has no use for: the three numbers each pool carries on the
+// wire, and the queued requests themselves. The owning poolsCell's mutex
+// guards it all, so admission is one atomic decision. (matches Rust
+// RuntimePools)
 type runtimePools struct {
-	pools map[string]*runtimePool
+	state model.State
+	// meta is each pool's wire numbers and members, by pool name.
+	meta map[string]*poolMeta
 	// chains maps registered handler pattern (canonical) → its pool chain
 	// in admission order: singleton, declared pools containing it, `all`.
 	chains map[string][]string
-	// queues are the singleton queues — queues lead to pools. Keyed by
-	// registered pattern.
-	queues map[string][]*liveHandlerRequest
-	// nextTicket is the global FIFO ticket counter: cross-cap admission on
-	// a shared-pool release is arrival-ordered, never cap-biased.
-	nextTicket uint64
+	// waiting is the requests in line, by the ticket the model gave each.
+	waiting map[uint64]*liveHandlerRequest
 }
 
 // newRuntimePools materializes the pools from the registered handler
@@ -445,13 +447,16 @@ func newRuntimePools(handlerPatterns []string, declarations *PoolDeclarations) (
 		return canon, nil
 	}
 
-	pools := make(map[string]*runtimePool)
-	queues := make(map[string][]*liveHandlerRequest)
+	// Singletons in registration order, declared pools in name order, then
+	// `all`: the order the pools are listed in everywhere after.
+	var order []string
+	meta := make(map[string]*poolMeta)
 	for _, pattern := range patterns {
 		declared := declarations.Capacities[pattern]
-		pools[pattern] = &runtimePool{declared: declared, configured: declared}
-		queues[pattern] = nil
+		meta[pattern] = &poolMeta{declared: declared, configured: declared}
+		order = append(order, pattern)
 	}
+	var shared []lungo.Pair[string, []string]
 	for _, name := range sortedKeys(declarations.Pools) {
 		members := declarations.Pools[name]
 		var resolved []string
@@ -463,13 +468,15 @@ func newRuntimePools(handlerPatterns []string, declarations *PoolDeclarations) (
 			resolved = append(resolved, canon)
 		}
 		declared := declarations.Capacities[name]
-		pools[name] = &runtimePool{declared: declared, configured: declared, members: resolved}
+		meta[name] = &poolMeta{declared: declared, configured: declared, members: resolved}
+		order = append(order, name)
+		shared = append(shared, lungo.Pair[string, []string]{First: name, Second: resolved})
 	}
 	for key := range declarations.Capacities {
 		if key == PoolAll {
 			continue
 		}
-		if _, isPool := pools[key]; isPool {
+		if _, isPool := meta[key]; isPool {
 			continue
 		}
 		if parsed, err := urn.NewCapUrnFromString(key); err == nil && slices.Contains(patterns, parsed.String()) {
@@ -480,27 +487,29 @@ func newRuntimePools(handlerPatterns []string, declarations *PoolDeclarations) (
 			key, PoolAll)
 	}
 	allDeclared := declarations.Capacities[PoolAll]
-	pools[PoolAll] = &runtimePool{
+	meta[PoolAll] = &poolMeta{
 		declared:   allDeclared,
 		configured: allDeclared,
 		members:    append([]string(nil), patterns...),
 	}
+	order = append(order, PoolAll)
+
+	state := decided(model.Empty())
+	for _, name := range order {
+		state = decided(model.SetCapacity(state, name, nat(meta[name].effective())))
+	}
 
 	chains := make(map[string][]string)
 	for _, pattern := range patterns {
-		chain := []string{pattern}
-		for _, name := range sortedKeys(pools) {
-			if name == PoolAll || name == pattern {
-				continue
-			}
-			if slices.Contains(pools[name].members, pattern) {
-				chain = append(chain, name)
-			}
-		}
-		chains[pattern] = append(chain, PoolAll)
+		chains[pattern] = poolChain(pattern, shared)
 	}
 
-	return &runtimePools{pools: pools, chains: chains, queues: queues}, nil
+	return &runtimePools{
+		state:   state,
+		meta:    meta,
+		chains:  chains,
+		waiting: make(map[uint64]*liveHandlerRequest),
+	}, nil
 }
 
 func (rp *runtimePools) chain(pattern string) []string {
@@ -511,75 +520,55 @@ func (rp *runtimePools) chain(pattern string) []string {
 	return chain
 }
 
-func (rp *runtimePools) chainHasRoom(pattern string) bool {
-	for _, pool := range rp.chain(pattern) {
-		if !rp.pools[pool].hasRoom() {
-			return false
-		}
+// arrive is a request arriving: admitted at once through its cap's whole
+// chain when every pool of it has room and nobody in line could go instead,
+// and otherwise in line. position is its place (from 1) among the requests
+// waiting on its own cap.
+func (rp *runtimePools) arrive(request *liveHandlerRequest) (admitted bool, position int) {
+	switch arrival := decided(model.StateArrive(rp.state, rp.chain(request.pattern))).(type) {
+	case model.PoolsArrivalAdmitted:
+		rp.state = arrival.State
+		return true, 0
+	case model.PoolsArrivalQueued:
+		rp.state = arrival.State
+		request.ticket = count(arrival.Ticket)
+		rp.waiting[request.ticket] = request
+		return false, int(count(arrival.Position))
+	case model.PoolsArrivalUnknownPool:
+		panic(fmt.Sprintf("BUG: a registered pattern's chain names only this runtime's pools, not '%s'", arrival.Name))
+	default:
+		panic(fmt.Sprintf("BUG: unknown answer to an arrival: %T", arrival))
 	}
-	return true
-}
-
-// tryAdmit admits one dispatch of pattern if its whole chain has room.
-func (rp *runtimePools) tryAdmit(pattern string) bool {
-	if !rp.chainHasRoom(pattern) {
-		return false
-	}
-	for _, pool := range rp.chain(pattern) {
-		rp.pools[pool].active++
-	}
-	return true
 }
 
 // release releases one dispatch of pattern across its chain.
 func (rp *runtimePools) release(pattern string) {
-	for _, pool := range rp.chain(pattern) {
-		slot := rp.pools[pool]
-		if slot.active == 0 {
-			panic(fmt.Sprintf("pool '%s' released below zero active", pool))
+	chain := rp.chain(pattern)
+	for _, name := range chain {
+		for _, pool := range rp.state.Pools {
+			if pool.Name == name && pool.Active.Sign() == 0 {
+				panic(fmt.Sprintf("pool '%s' released below zero active", name))
+			}
 		}
-		slot.active--
 	}
+	rp.state = decided(model.Release(rp.state, chain))
 }
 
-// enqueue queues a request on its cap's singleton queue, returning its
-// queue position (1-based) for the "queued" LOG.
-func (rp *runtimePools) enqueue(request *liveHandlerRequest) int {
-	request.ticket = rp.nextTicket
-	rp.nextTicket++
-	if _, ok := rp.queues[request.pattern]; !ok {
-		panic(fmt.Sprintf("no singleton queue for pattern '%s'", request.pattern))
-	}
-	rp.queues[request.pattern] = append(rp.queues[request.pattern], request)
-	return len(rp.queues[request.pattern])
-}
-
-// popAdmissible pops-and-admits the oldest queued request whose chain has
-// room — arrival-ordered across all caps by the global ticket.
-func (rp *runtimePools) popAdmissible() *liveHandlerRequest {
-	bestPattern := ""
-	var bestTicket uint64
-	found := false
-	for _, pattern := range sortedKeys(rp.queues) {
-		queue := rp.queues[pattern]
-		if len(queue) == 0 {
-			continue
-		}
-		front := queue[0]
-		if rp.chainHasRoom(pattern) && (!found || front.ticket < bestTicket) {
-			found = true
-			bestPattern = pattern
-			bestTicket = front.ticket
-		}
-	}
-	if !found {
+// admitNext admits whoever is next: the request that has waited longest
+// among those whose whole chain has room — in order of arrival across all
+// caps, never cap-biased. nil when nobody in line can be admitted.
+func (rp *runtimePools) admitNext() *liveHandlerRequest {
+	next := decided(model.AdmitNext(rp.state))
+	if !next.Valid {
 		return nil
 	}
-	request := rp.queues[bestPattern][0]
-	rp.queues[bestPattern] = rp.queues[bestPattern][1:]
-	for _, pool := range rp.chain(bestPattern) {
-		rp.pools[pool].active++
+	rp.state = next.Value.Second
+	ticket := count(next.Value.First.Ticket)
+	request, ok := rp.waiting[ticket]
+	if !ok {
+		panic(fmt.Sprintf("BUG: ticket %d is in line but its request is not held", ticket))
 	}
+	delete(rp.waiting, ticket)
 	return request
 }
 
@@ -588,25 +577,33 @@ func (rp *runtimePools) popAdmissible() *liveHandlerRequest {
 // all.
 func (rp *runtimePools) applyDesired(desired DesiredCapacities) error {
 	for name := range desired {
-		if _, ok := rp.pools[name]; !ok {
+		if _, ok := rp.meta[name]; !ok {
 			return fmt.Errorf("unknown pool '%s'", name)
 		}
 	}
-	for name, configured := range desired {
-		rp.pools[name].configured = configured
+	for _, name := range sortedKeys(desired) {
+		rp.meta[name].configured = desired[name]
+		rp.limitChanged(name)
 	}
 	return nil
 }
 
 // setAvailable is the cartridge self-report for one pool (see PoolHandle).
 func (rp *runtimePools) setAvailable(pool string, available uint64) error {
-	slot, ok := rp.pools[pool]
+	slot, ok := rp.meta[pool]
 	if !ok {
 		return fmt.Errorf("unknown pool '%s'", pool)
 	}
 	value := available
 	slot.available = &value
+	rp.limitChanged(pool)
 	return nil
+}
+
+// limitChanged tells the model a pool's new limit, after one of its numbers
+// changed.
+func (rp *runtimePools) limitChanged(pool string) {
+	rp.state = decided(model.SetCapacity(rp.state, pool, nat(rp.meta[pool].effective())))
 }
 
 // snapshot is the full wire-shaped state map. Queued counts each waiting
@@ -614,46 +611,35 @@ func (rp *runtimePools) setAvailable(pool string, available uint64) error {
 // lacks room (its blockers) — so a shared pool's queued figure is the
 // number of waiters it is actually holding back.
 func (rp *runtimePools) snapshot() PoolStates {
-	states := make(PoolStates, len(rp.pools))
-	for name, pool := range rp.pools {
+	states := make(PoolStates, len(rp.state.Pools))
+	for _, pool := range rp.state.Pools {
+		meta := rp.meta[pool.Name]
 		var available *uint64
-		if pool.available != nil {
-			value := *pool.available
+		if meta.available != nil {
+			value := *meta.available
 			available = &value
 		}
-		states[name] = PoolState{
-			Declared:   pool.declared,
-			Configured: pool.configured,
+		states[pool.Name] = PoolState{
+			Declared:   meta.declared,
+			Configured: meta.configured,
 			Available:  available,
-			Active:     pool.active,
-			Caps:       append([]string(nil), pool.members...),
-		}
-	}
-	for pattern, queue := range rp.queues {
-		waiting := uint64(len(queue))
-		if waiting == 0 {
-			continue
-		}
-		singleton := states[pattern]
-		singleton.Queued += waiting
-		states[pattern] = singleton
-		for _, pool := range rp.chain(pattern) {
-			if pool != pattern && !rp.pools[pool].hasRoom() {
-				blocked := states[pool]
-				blocked.Queued += waiting
-				states[pool] = blocked
-			}
+			Active:     count(pool.Active),
+			Queued:     count(decided(model.HeldBack(rp.state, pool.Name))),
+			Caps:       append([]string(nil), meta.members...),
 		}
 	}
 	return states
 }
 
-// poolsCell owns the runtime's pools behind one mutex — capacities, active
-// counts, and queues change together so admission is one atomic decision.
+// poolsCell owns the runtime's pools behind one mutex — limits, active
+// counts, and the line change together so admission is one atomic decision.
 // pools is nil until runCBORModeIO materializes it at startup.
 type poolsCell struct {
 	mu    sync.Mutex
 	pools *runtimePools
+	// changed starts whoever in line can now go. Set by the running runtime;
+	// nil before Run. Called WITHOUT mu held.
+	changed func()
 }
 
 // PoolHandle is a shared handle for a pool's cartridge SELF-REPORT
@@ -669,15 +655,25 @@ type PoolHandle struct {
 }
 
 // Set reports the pool's current self-limit. Errors name the defect: an
-// unmaterialized runtime (Set before Run) or an unknown pool name.
-// (matches Rust PoolHandle::set)
+// unmaterialized runtime (Set before Run) or an unknown pool name. A limit
+// that rises may let a request in line go: it is started here, not at the
+// host's next frame. (matches Rust PoolHandle::set)
 func (h *PoolHandle) Set(available uint64) error {
 	h.cell.mu.Lock()
-	defer h.cell.mu.Unlock()
 	if h.cell.pools == nil {
+		h.cell.mu.Unlock()
 		return fmt.Errorf("pool handle '%s' used before the runtime materialized its pools (call Run first)", h.name)
 	}
-	return h.cell.pools.setAvailable(h.name, available)
+	err := h.cell.pools.setAvailable(h.name, available)
+	changed := h.cell.changed
+	h.cell.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	if changed != nil {
+		changed()
+	}
+	return nil
 }
 
 // CartridgeRuntime handles all I/O for cartridge binaries.
@@ -1086,21 +1082,16 @@ type incomingStream struct {
 	// unchanged.
 	seq *seqReassembly
 
-	// window is this stream's remaining input credit window (protocol v4,
-	// L10/L12): it starts at the negotiated initial_credit and is extended by
-	// the batched CREDIT grants this runtime sends back as chunks arrive. A
-	// CHUNK arriving with the window at zero is a fatal CREDIT_VIOLATION — the
-	// demux here never blocks, so accounting keeps control frames flowing
-	// regardless of data pressure. (matches Rust demux_multi_stream's
-	// stream_windows / InputGrantEmitter)
-	window int64
-	// consumedSinceGrant counts chunks accepted since the last CREDIT grant; a
-	// batched grant is emitted every creditBatch chunks (initial_credit/2,
-	// matching Rust InputGrantEmitter's default batch). This counts physical
+	// window is this stream's input credit window (protocol v4, L10/L12): it
+	// opens at the negotiated initial_credit and is extended by the batched
+	// CREDIT grants this runtime sends back as chunks arrive (half the window,
+	// at least 1). A CHUNK arriving with nothing left of it is a fatal
+	// CREDIT_VIOLATION — the demux here never blocks, so accounting keeps
+	// control frames flowing regardless of data pressure. It counts physical
 	// wire frames (including sequence continuation fragments), independent of
 	// how many logical items the live demux delivers to the handler for them
-	// (see TEST1302).
-	consumedSinceGrant uint64
+	// (see TEST1302). (matches Rust CreditWindow)
+	window *CreditWindow
 }
 
 // liveHandlerRequest is an incoming request whose live frame channel (see
@@ -1117,8 +1108,8 @@ type liveHandlerRequest struct {
 	// pattern is the registered handler pattern (canonical) serving this
 	// request — the singleton pool it queues on and the key of its chain.
 	pattern string
-	// ticket is the global arrival ticket: cross-cap admission is FIFO by
-	// this. Assigned by runtimePools.enqueue.
+	// ticket is the request's place in the order of arrival, given by the
+	// model when it joins the line.
 	ticket    uint64
 	routingId *MessageId
 	handler   HandlerFunc
@@ -1309,15 +1300,6 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 		}
 	}
 
-	// creditBatch is how many input chunks this runtime accepts before
-	// emitting a batched CREDIT grant back to the host (protocol v4, L10):
-	// half the negotiated window, at least 1. (matches Rust
-	// InputGrantEmitter::batch = initial_credit/2, min 1)
-	creditBatch := uint64(negotiatedLimits.InitialCredit / 2)
-	if creditBatch == 0 {
-		creditBatch = 1
-	}
-
 	// creditRouter routes inbound CREDIT frames (grants from the host for our
 	// OUTGOING response/peer-argument streams) to the CreditGate registered
 	// for that stream. Gates register when an emitter starts a credited
@@ -1339,6 +1321,47 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 	// loop's handler_done_rx-triggered queue drain, expressed as a
 	// self-perpetuating chain instead of a central select loop.
 	var runHandlerNow func(qr *liveHandlerRequest)
+
+	// admitWaiting starts everyone in line who can now go, in the model's
+	// order: the request that has waited longest among those whose whole
+	// chain has room, then the next, until nobody in line can be admitted.
+	// Called whenever anything changed — a handler finished, the operator
+	// changed a limit, the cartridge reported what it can serve. One release
+	// can free a slot for more than one waiter (two caps that shared nothing
+	// but the pools the finished request held), so it admits until none is
+	// left, never just one. (matches the Rust main loop's queue drain)
+	admitWaiting := func() {
+		for {
+			pr.pools.mu.Lock()
+			next := pr.pools.pools.admitNext()
+			pr.pools.mu.Unlock()
+			if next == nil {
+				return
+			}
+			dequeuedLog := NewLog(next.requestID, "dequeued", AttributionClassInternal, "Request dequeued, handler starting", nil)
+			dequeuedLog.RoutingId = next.routingId
+			if err := writer.WriteFrame(dequeuedLog); err != nil {
+				fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write dequeued LOG: %v\n", err)
+			}
+			runHandlerNow(next)
+		}
+	}
+	pr.pools.mu.Lock()
+	pr.pools.changed = admitWaiting
+	pr.pools.mu.Unlock()
+	defer func() {
+		pr.pools.mu.Lock()
+		pr.pools.changed = nil
+		pr.pools.mu.Unlock()
+	}()
+
+	// runHandlerNow spawns a handler goroutine for a ready-to-run request
+	// immediately (its pool chain already admitted by the caller). Its live
+	// frame channel (frames) is already being fed by the main loop below —
+	// dispatch here only decides when the handler goroutine STARTS reading
+	// it, never when frames start arriving. On completion it releases the
+	// request's whole pool chain, releases its credit waiters (L13), and
+	// starts everyone in line who can now go.
 	runHandlerNow = func(qr *liveHandlerRequest) {
 		activeHandlers.Add(1)
 		go func() {
@@ -1346,39 +1369,27 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 			defer func() {
 				pr.pools.mu.Lock()
 				pr.pools.pools.release(qr.pattern)
-				next := pr.pools.pools.popAdmissible()
 				pr.pools.mu.Unlock()
 				// Release this request's credit waiters (protocol v4, L13) —
 				// a sender blocked on this request's response/peer-arg credit
 				// gate must not hang once the handler is done.
 				creditRouter.CloseRequest(qr.requestID, "END")
-				if next != nil {
-					dequeuedLog := NewLog(next.requestID, "dequeued", AttributionClassInternal, "Request dequeued, handler starting", nil)
-					dequeuedLog.RoutingId = next.routingId
-					if err := writer.WriteFrame(dequeuedLog); err != nil {
-						fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write dequeued LOG: %v\n", err)
-					}
-					runHandlerNow(next)
-				}
+				admitWaiting()
 			}()
 			runLiveHandler(qr, writer, negotiatedLimits, pendingPeerRequests, creditRouter)
 		}()
 	}
 
 	// dispatchOrQueue is the pool-chain admission gate (see pools.go): when
-	// every pool in the request's chain has room, its handler goroutine
-	// starts immediately; otherwise it queues on its cap's singleton queue
-	// and the caller is told via a LOG frame with level="queued" so the
-	// pipeline knows the request is alive but waiting — frames keep
+	// every pool in the request's chain has room and nobody in line could go
+	// instead, its handler goroutine starts immediately; otherwise it joins
+	// the line and the caller is told via a LOG frame with level="queued" so
+	// the pipeline knows the request is alive but waiting — frames keep
 	// arriving into qr.frames regardless (L16). (matches Rust main loop's
-	// chain admission at REQ dispatch / queue drain)
+	// chain admission at REQ dispatch)
 	dispatchOrQueue := func(qr *liveHandlerRequest) {
 		pr.pools.mu.Lock()
-		admitted := pr.pools.pools.tryAdmit(qr.pattern)
-		queuePos := 0
-		if !admitted {
-			queuePos = pr.pools.pools.enqueue(qr)
-		}
+		admitted, queuePos := pr.pools.pools.arrive(qr)
 		pr.pools.mu.Unlock()
 		if !admitted {
 			logFrame := NewLog(qr.requestID, "queued", AttributionClassInternal, fmt.Sprintf("Request queued (position %d on pool '%s')", queuePos, qr.pattern), nil)
@@ -1386,6 +1397,8 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 			if err := writer.WriteFrame(logFrame); err != nil {
 				fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write queued LOG: %v\n", err)
 			}
+			// It waits behind whoever could already go: start them.
+			admitWaiting()
 			return
 		}
 		runHandlerNow(qr)
@@ -1494,6 +1507,8 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 					}
 					continue
 				}
+				// A limit that rose may let requests in line go.
+				admitWaiting()
 			}
 			// Respond to heartbeat immediately - never blocked by handlers
 			response := NewHeartbeat(frame.Id)
@@ -1582,8 +1597,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 				// request — the demux itself never blocks, so this
 				// accounting is the only thing keeping a misbehaving sender
 				// from exceeding what it was granted.
-				foundStream.window--
-				if foundStream.window < 0 {
+				if !foundStream.window.Arrive() {
 					delete(pendingIncoming, frame.Id.ToString())
 					pendingIncomingMu.Unlock()
 					total := pr.dropCounters.Record(DropReasonCreditViolation, frame.FrameType)
@@ -1628,20 +1642,16 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 					}
 				}
 
-				// Batched CREDIT grant (protocol v4, L10): every creditBatch
-				// physical chunks accepted, extend the sender's window by
-				// exactly what was consumed. This counts wire frames (including
-				// sequence continuation fragments), independent of how many
-				// logical items were delivered to the handler for them — see
-				// TEST1302. Since this demux never blocks (everything is
-				// accepted eagerly), acceptance and grant-worthiness are the
-				// same event — there is no separate "handler drained it"
-				// phase to wait for.
-				foundStream.consumedSinceGrant++
-				if foundStream.consumedSinceGrant >= creditBatch {
-					n := foundStream.consumedSinceGrant
-					foundStream.consumedSinceGrant = 0
-					foundStream.window += int64(n)
+				// Batched CREDIT grant (protocol v4, L10): once a batch of
+				// physical chunks has been accepted, extend the sender's
+				// window by exactly what was consumed. This counts wire frames
+				// (including sequence continuation fragments), independent of
+				// how many logical items were delivered to the handler for
+				// them — see TEST1302. Since this demux never blocks
+				// (everything is accepted eagerly), acceptance and
+				// grant-worthiness are the same event — there is no separate
+				// "handler drained it" phase to wait for.
+				if n := foundStream.window.Consumed(); n > 0 {
 					grantFrame := NewCredit(frame.Id, &streamID, n, CreditDirectionRequest)
 					grantFrame.RoutingId = pendingReq.routingId
 					if err := writer.WriteFrame(grantFrame); err != nil {
@@ -1676,10 +1686,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 				// consumption). A Response grant carries no routing_id
 				// (Rust's xid = None) and no stream_id: the host routes it to
 				// the responder's sole output gate by direction (L11).
-				pendingReq.responseConsumed++
-				if pendingReq.responseConsumed >= creditBatch {
-					n := pendingReq.responseConsumed
-					pendingReq.responseConsumed = 0
+				if n := pendingReq.window(uint64(negotiatedLimits.InitialCredit)).Consumed(); n > 0 {
 					grantFrame := NewCredit(frame.Id, nil, n, CreditDirectionResponse)
 					if err := writer.WriteFrame(grantFrame); err != nil {
 						fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write peer-response CREDIT grant: %v\n", err)
@@ -1809,7 +1816,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 					mediaUrn: mediaUrn,
 					complete: false,
 					seq:      seq,
-					window:   int64(negotiatedLimits.InitialCredit),
+					window:   NewCreditWindow(uint64(negotiatedLimits.InitialCredit)),
 				}
 				// Forward the REAL STREAM_START frame live — it carries
 				// whatever meta/is_sequence/unbounded the sender declared,
@@ -2673,13 +2680,21 @@ func (s *syncFrameWriter) WriteFrame(frame *Frame) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// Whether the frame is written, and whether writing it ends the flow, is
+	// the proved model's decision (formal/CapDAG/Bifaci/Request.lean).
 	key := FlowKeyFromFrame(frame)
-	if frame.IsFlowFrame() && s.terminated.Contains(key) {
+	ends := false
+	switch write := decided(model.RequestWrite(s.terminated.Contains(key), frame.FrameType.model())).(type) {
+	case model.WriteSend:
+		ends = write.Ends
+	case model.WriteSuppress:
 		total := s.stragglers.Record(frame.FrameType)
 		fmt.Fprintf(os.Stderr,
 			"[CartridgeRuntime] writer: suppressed benign post-terminal straggler — END/ERR already written for this flow, the frame is moot (L4) type=%v rid=%s straggler_total=%d\n",
 			frame.FrameType, frame.Id.ToString(), total)
 		return nil
+	default:
+		panic(fmt.Sprintf("BUG: unknown answer to a write: %T", write))
 	}
 
 	// Centralized seq assignment — all flow frames get monotonic seq per flow
@@ -2693,7 +2708,7 @@ func (s *syncFrameWriter) WriteFrame(frame *Frame) error {
 		return err
 	}
 	// Clean up flow tracking + mark terminal after terminal frames
-	if frame.FrameType == FrameTypeEnd || frame.FrameType == FrameTypeErr {
+	if ends {
 		s.seqAssigner.Remove(key)
 		s.terminated.Insert(key)
 	}
@@ -3357,14 +3372,24 @@ type pendingPeerRequest struct {
 	streams map[string]string // stream_id → media_urn mapping
 	ended   bool              // true after END frame (close channel)
 
-	// responseConsumed counts peer-response CHUNK frames this cartridge has
-	// consumed since the last Response-direction CREDIT grant it emitted back
-	// to the responder (protocol v4, L10/L14). A batched grant (creditBatch =
-	// initial_credit/2, min 1) replenishes the responder's output window so a
-	// large peer response cannot stall the responding cartridge on credit.
-	// Only touched from the single-threaded main read loop. (matches Rust
-	// demux_single_stream's InputGrantEmitter for the peer response)
-	responseConsumed uint64
+	// responseWindow batches the Response-direction CREDIT grants this
+	// cartridge sends back to the responder as it consumes peer-response CHUNK
+	// frames (protocol v4, L10/L14): a grant once half the window has been
+	// consumed, at least 1, so a large peer response cannot stall the
+	// responding cartridge on credit. It batches only — arrivals are not
+	// checked here, because the responder's window was negotiated on another
+	// link. Only touched from the single-threaded main read loop. (matches
+	// Rust demux_single_stream's InputGrantEmitter for the peer response)
+	responseWindow *CreditWindow
+}
+
+// window is the peer response's grant batcher, opened on the first chunk at
+// this link's negotiated initial credit.
+func (p *pendingPeerRequest) window(initialCredit uint64) *CreditWindow {
+	if p.responseWindow == nil {
+		p.responseWindow = NewCreditWindow(initialCredit)
+	}
+	return p.responseWindow
 }
 
 // peerInvokerImpl implements PeerInvoker

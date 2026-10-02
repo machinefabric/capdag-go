@@ -21,9 +21,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"sort"
 	"sync"
 	"time"
+
+	model "github.com/machinefabric/capdag-go/formal"
+	lungo "github.com/machinefabric/lungo-go"
 )
 
 // RequestKey is (XID, RID) — the unique key of a routed request.
@@ -118,6 +122,59 @@ func (k *TerminalKind) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// TerminalKindOfFrame is the end a frame of this type is, if it is one: END
+// or ERR. Cancellation and a dead master end a request without a frame of its
+// flow. The proved model's decision (formal/CapDAG/Bifaci/Request.lean).
+// (matches Rust TerminalKind::of_frame)
+func TerminalKindOfFrame(frameType FrameType) (TerminalKind, bool) {
+	terminal := decided(model.TerminalOf(frameType.model()))
+	if !terminal.Valid {
+		return 0, false
+	}
+	switch terminal.Value.(type) {
+	case model.TerminalFinished:
+		return TerminalKindEnd, true
+	case model.TerminalFailed:
+		return TerminalKindErr, true
+	case model.TerminalCancelled:
+		return TerminalKindCancelled, true
+	case model.TerminalMasterDied:
+		return TerminalKindMasterDied, true
+	default:
+		panic(fmt.Sprintf("BUG: unknown terminal %T", terminal.Value))
+	}
+}
+
+// Disposition is where a routing runtime sends a frame (L6): to its request;
+// nowhere, because it crossed its request's end in flight; or nowhere, because
+// no such request is known — which is the one that means something went wrong.
+// (matches Rust Disposition)
+type Disposition uint8
+
+const (
+	DispositionRoute Disposition = iota
+	// DispositionStraggler is a benign post-terminal straggler: counted,
+	// never a drop.
+	DispositionStraggler
+	// DispositionNoRoute is a routing anomaly: a counted no_route drop.
+	DispositionNoRoute
+)
+
+// DispositionOf is the model's decision, given whether the frame's request is
+// live here and whether it ended lately.
+func DispositionOf(live, endedLately bool) Disposition {
+	switch disposition := decided(model.Dispose(live, endedLately)).(type) {
+	case model.DispositionRoute:
+		return DispositionRoute
+	case model.DispositionStraggler:
+		return DispositionStraggler
+	case model.DispositionNoRoute:
+		return DispositionNoRoute
+	default:
+		panic(fmt.Sprintf("BUG: unknown disposition %T", disposition))
+	}
+}
+
 // RequestPhase is the live phase of a request. Terminated never appears in
 // the active table — termination removes the entry (L7) and leaves a
 // TerminatedSummary in the recent ring instead. (matches Rust RequestPhase)
@@ -144,6 +201,22 @@ func (p RequestPhase) AsStr() string {
 
 // String implements fmt.Stringer.
 func (p RequestPhase) String() string { return p.AsStr() }
+
+// after is the phase once a frame of this type has moved: the model's.
+func (p RequestPhase) after(frameType FrameType) RequestPhase {
+	var phase model.Phase = model.PhaseCreated{}
+	if p == RequestPhaseStreaming {
+		phase = model.PhaseStreaming{}
+	}
+	switch next := decided(model.After(phase, frameType.model())).(type) {
+	case model.PhaseCreated:
+		return RequestPhaseCreated
+	case model.PhaseStreaming:
+		return RequestPhaseStreaming
+	default:
+		panic(fmt.Sprintf("BUG: unknown phase %T", next))
+	}
+}
 
 // MarshalJSON serializes as the stable snake_case name.
 func (p RequestPhase) MarshalJSON() ([]byte, error) {
@@ -296,9 +369,7 @@ func (s *RequestState) WithCapUrn(capUrn *string) *RequestState {
 // record accounts for one frame moving through the runtime for this request.
 func (s *RequestState) record(direction FrameDirection, frame *Frame) {
 	s.LastActivity = time.Now()
-	if frame.IsFlowFrame() {
-		s.Phase = RequestPhaseStreaming
-	}
+	s.Phase = s.Phase.after(frame.FrameType)
 	key := streamKeyFromPtr(frame.StreamId)
 	stats, ok := s.Streams[key]
 	if !ok {
@@ -326,10 +397,18 @@ func (s *RequestState) record(direction FrameDirection, frame *Frame) {
 	}
 	// A chunk consumes one credit from ITS stream's window regardless of
 	// which way it flows past this runtime — a stream's chunks all flow one
-	// direction, and its grants flow the other.
-	if frame.FrameType == FrameTypeChunk {
-		stats.CreditOutstanding--
+	// direction, and its grants flow the other. What a frame does to the
+	// ledger is the model's decision: one less for a chunk, more by a grant,
+	// and nothing otherwise.
+	var granted uint64
+	if cc := frame.CreditCount(); cc != nil {
+		granted = *cc
 	}
+	ledger := decided(model.Ledger(big.NewInt(stats.CreditOutstanding), frame.FrameType.model(), nat(granted)))
+	if !ledger.IsInt64() {
+		panic(fmt.Sprintf("BUG: stream credit ledger %s does not fit an int64", ledger))
+	}
+	stats.CreditOutstanding = ledger.Int64()
 	switch frame.FrameType {
 	case FrameTypeStreamStart:
 		if frame.IsUnbounded() {
@@ -337,10 +416,6 @@ func (s *RequestState) record(direction FrameDirection, frame *Frame) {
 		}
 	case FrameTypeStreamEnd:
 		stats.Ended = true
-	case FrameTypeCredit:
-		if cc := frame.CreditCount(); cc != nil {
-			stats.CreditOutstanding += int64(*cc)
-		}
 	}
 }
 
@@ -402,6 +477,10 @@ type RequestTable struct {
 	// full RequestKey.
 	ridIndex          map[string]MessageId
 	recentTerminated  []TerminatedSummary
+	// recentCapacity is how many ended requests the ring keeps:
+	// RecentTerminatedCap, except in the model's scripts, which fill a small
+	// ring to see the oldest forgotten.
+	recentCapacity    int
 	totalRegistered   uint64
 	terminatedByKind  map[string]uint64
 	terminateObserver TerminateObserver
@@ -409,9 +488,16 @@ type RequestTable struct {
 
 // NewRequestTable creates an empty RequestTable. (matches Rust RequestTable::new)
 func NewRequestTable() *RequestTable {
+	return newRequestTableKeeping(RecentTerminatedCap)
+}
+
+// newRequestTableKeeping creates a table whose ring of ended requests keeps
+// this many. (matches Rust RequestTable::with_recent_capacity)
+func newRequestTableKeeping(recentCapacity int) *RequestTable {
 	return &RequestTable{
 		entries:          make(map[string]*requestEntry),
 		ridIndex:         make(map[string]MessageId),
+		recentCapacity:   recentCapacity,
 		terminatedByKind: make(map[string]uint64),
 	}
 }
@@ -526,7 +612,7 @@ func (t *RequestTable) terminateWith(key RequestKey, kind TerminalKind, cancelCo
 		bytesIn += s.BytesIn
 		bytesOut += s.BytesOut
 	}
-	if len(t.recentTerminated) >= RecentTerminatedCap {
+	if len(t.recentTerminated) >= t.recentCapacity {
 		// Evict oldest-first. Copies into a fresh backing array rather than
 		// re-slicing in place so the bounded ring never pins an
 		// ever-growing underlying array.
@@ -589,6 +675,17 @@ func (t *RequestTable) RecentlyTerminatedRid(rid MessageId) bool {
 	}
 	return false
 }
+
+// Disposition is where a frame for rid goes: to its live request, nowhere as
+// a benign straggler of a request that ended lately, or nowhere as a
+// no_route anomaly. (matches Rust RequestTable::disposition)
+func (t *RequestTable) Disposition(rid MessageId) Disposition {
+	_, live := t.ridIndex[rid.ToString()]
+	return DispositionOf(live, t.RecentlyTerminatedRid(rid))
+}
+
+// TotalRegistered is how many requests were ever registered here.
+func (t *RequestTable) TotalRegistered() uint64 { return t.totalRegistered }
 
 func (t *RequestTable) RecordFrame(key RequestKey, direction FrameDirection, frame *Frame) {
 	if e, ok := t.entries[key.mapKey()]; ok {
@@ -833,31 +930,19 @@ type PoolKey struct {
 	Pool    string
 }
 
-// poolSlot is one pool's admission state: EFFECTIVE capacity (0 =
-// unlimited), active count, and — for singleton pools only, the head of
-// every chain — the FIFO ticket queue. (matches Rust PoolSlot)
-type poolSlot struct {
-	capacity uint64
-	active   uint64
-	queue    []uint64
-}
-
-func (s *poolSlot) hasRoom() bool {
-	return s.capacity == 0 || s.active < s.capacity
-}
-
-// installState is one install's availability. Outages are an INSTALL-level
-// fact — a process disappears whole, never one pool at a time.
+// installState is one install's admission state: the model's picture of its
+// pools — each pool's limit, how many requests hold a slot in it, and the
+// line of waiters in order of arrival — and its availability. Outages are an
+// INSTALL-level fact — a process disappears whole, never one pool at a time.
 // (matches Rust InstallState)
 type installState struct {
+	pools model.State
 	// unavailableSince is nil while the target is available, and set from the
 	// moment it went unavailable. Kept as an instant rather than a bool so the
 	// grace window measures the OUTAGE, not the arrival time of each waiter — a
 	// request that queues late into an outage does not get a fresh window.
 	unavailableSince *time.Time
 }
-
-func (s *installState) available() bool { return s.unavailableSince == nil }
 
 // markUnavailable marks the install unavailable, preserving the start of an
 // outage already in progress.
@@ -868,30 +953,33 @@ func (s *installState) markUnavailable(now time.Time) {
 	}
 }
 
-// graceRemaining reports (remaining, unavailable): remaining is what is left
-// of the outage window, zero once expired; unavailable is false while the
-// install is available.
-func (s *installState) graceRemaining(now time.Time, grace time.Duration) (time.Duration, bool) {
+// unavailableFor is how long the install has been unavailable, in
+// milliseconds; none while it is available.
+func (s *installState) unavailableFor(now time.Time) lungo.Option[*big.Int] {
 	if s.unavailableSince == nil {
-		return 0, false
+		return lungo.None[*big.Int]()
 	}
-	elapsed := now.Sub(*s.unavailableSince)
-	if elapsed >= grace {
-		return 0, true
+	elapsed := now.Sub(*s.unavailableSince).Milliseconds()
+	if elapsed < 0 {
+		elapsed = 0
 	}
-	return grace - elapsed, true
+	return lungo.Some(nat(uint64(elapsed)))
 }
 
 // AdmissionController is the engine-side pool admission gate (see pools.go):
-// one slot per (install, pool), one availability state per install. A
-// dispatch acquires its cap's whole pool CHAIN atomically.
+// one availability state and one line per install. A dispatch acquires its
+// cap's whole pool CHAIN atomically.
+//
+// Who is admitted, and when, is the proved model's decision
+// (formal/CapDAG/Bifaci/Pools.lean): the request that has waited longest
+// among those whose whole chain has room, in order of arrival across all of
+// the install's caps. The controller keeps the installs, the outage clock,
+// and the waiting and waking.
 type AdmissionController struct {
 	mu       sync.Mutex
-	slots    map[PoolKey]*poolSlot
 	installs map[AdmissionKey]*installState
-	tickets  uint64
-	// notify is closed and replaced whenever slot state changes, which is how
-	// waiters are woken (the Go analog of Rust's tokio Notify).
+	// notify is closed and replaced whenever admission state changes, which is
+	// how waiters are woken (the Go analog of Rust's tokio Notify).
 	notify chan struct{}
 	// grace is AdmissionUnavailableGrace in production. Tests shorten it to
 	// drive the expiry path without sleeping through a real minute.
@@ -902,7 +990,6 @@ type AdmissionController struct {
 // window.
 func NewAdmissionController() *AdmissionController {
 	return &AdmissionController{
-		slots:    make(map[PoolKey]*poolSlot),
 		installs: make(map[AdmissionKey]*installState),
 		notify:   make(chan struct{}),
 		grace:    AdmissionUnavailableGrace,
@@ -923,18 +1010,12 @@ func (c *AdmissionController) ConfigurePools(install AdmissionKey, pools map[str
 	c.mu.Lock()
 	state, ok := c.installs[install]
 	if !ok {
-		state = &installState{}
+		state = &installState{pools: decided(model.Empty())}
 		c.installs[install] = state
 	}
 	state.unavailableSince = nil
-	for pool, capacity := range pools {
-		key := PoolKey{Install: install, Pool: pool}
-		slot, ok := c.slots[key]
-		if !ok {
-			slot = &poolSlot{}
-			c.slots[key] = slot
-		}
-		slot.capacity = capacity
+	for _, pool := range sortedKeys(pools) {
+		state.pools = decided(model.SetCapacity(state.pools, pool, nat(pools[pool])))
 	}
 	c.notifyAllLocked()
 	c.mu.Unlock()
@@ -970,11 +1051,40 @@ func (c *AdmissionController) DisableMaster(masterIdx int) {
 	c.mu.Unlock()
 }
 
+// Active is, per pool of an install, how many requests hold a slot in it
+// (tests and diagnostics). (matches Rust AdmissionController::active)
+func (c *AdmissionController) Active(install AdmissionKey) map[string]uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	active := make(map[string]uint64)
+	if state, ok := c.installs[install]; ok {
+		for _, pool := range state.pools.Pools {
+			active[pool.Name] = count(pool.Active)
+		}
+	}
+	return active
+}
+
+// Waiting is the tickets in an install's line, in order of arrival (tests
+// and diagnostics).
+func (c *AdmissionController) Waiting(install AdmissionKey) []uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	var tickets []uint64
+	if state, ok := c.installs[install]; ok {
+		for _, waiter := range state.pools.Queue {
+			tickets = append(tickets, count(waiter.Ticket))
+		}
+	}
+	return tickets
+}
+
 // AdmissionPermit is a set of actively owned pool slots — a dispatch's whole
 // chain. Release exactly once.
 type AdmissionPermit struct {
 	controller *AdmissionController
-	chain      []PoolKey
+	install    AdmissionKey
+	chain      []string
 	released   bool
 }
 
@@ -986,19 +1096,40 @@ func (p *AdmissionPermit) Release() {
 	p.released = true
 	c := p.controller
 	c.mu.Lock()
-	for _, key := range p.chain {
-		if slot, ok := c.slots[key]; ok && slot.active > 0 {
-			slot.active--
-		}
+	state, ok := c.installs[p.install]
+	if !ok {
+		c.mu.Unlock()
+		panic(fmt.Sprintf("BUG: admission permit references an unknown install '%s'", p.install.Id))
 	}
+	state.pools = decided(model.Release(state.pools, p.chain))
 	c.notifyAllLocked()
 	c.mu.Unlock()
 }
 
-// Acquire takes a FIFO admission slot across a cap's whole pool CHAIN,
-// waiting for capacity. The chain's FIRST key is the cap's singleton pool —
-// the queue the ticket waits in; admission requires EVERY chain pool to
-// have room, decided in one critical section (no half-admission).
+// chainOfOneInstall is the pool names of a chain, and the one install they
+// all belong to.
+func chainOfOneInstall(chain []PoolKey) (AdmissionKey, []string, error) {
+	if len(chain) == 0 {
+		return AdmissionKey{}, nil, errors.New("admission chain is empty — a dispatch always has at least its cap's own pool")
+	}
+	install := chain[0].Install
+	names := make([]string, 0, len(chain))
+	for _, key := range chain {
+		if key.Install != install {
+			return AdmissionKey{}, nil, fmt.Errorf(
+				"admission chain spans two installs ('%s' and '%s') — a dispatch is admitted through one cartridge's pools",
+				install.Id, key.Install.Id)
+		}
+		names = append(names, key.Pool)
+	}
+	return install, names, nil
+}
+
+// Acquire takes an admission slot across a cap's whole pool CHAIN, waiting
+// for capacity. The chain's FIRST key is the cap's singleton pool; admission
+// requires EVERY chain pool to have room, decided in one critical section
+// (no half-admission), and goes to the request that has waited longest among
+// those whose chain has room.
 //
 // An UNAVAILABLE target (an install-level fact) does not fail the caller
 // immediately. The request stays queued for AdmissionUnavailableGrace
@@ -1009,110 +1140,92 @@ func (p *AdmissionPermit) Release() {
 // when the window expires does the wait fail, and it fails hard.
 //
 // `cancel`, when non-nil, abandons the wait when closed (the caller gave
-// up); the ticket is removed so it cannot strand the queue behind a dead
-// head. (matches Rust acquire)
+// up); the waiter leaves the line so it cannot strand the requests behind
+// it. (matches Rust acquire)
 func (c *AdmissionController) Acquire(chain []PoolKey, cancel <-chan struct{}) (*AdmissionPermit, error) {
-	if len(chain) == 0 {
-		return nil, errors.New("admission chain is empty — a dispatch always has at least its cap's own pool")
+	install, names, err := chainOfOneInstall(chain)
+	if err != nil {
+		return nil, err
 	}
-	head := chain[0]
-	install := head.Install
 	c.mu.Lock()
-	for _, key := range chain {
-		if _, ok := c.slots[key]; !ok {
-			c.mu.Unlock()
-			return nil, fmt.Errorf("cartridge '%s' has no configured admission pool '%s'", key.Install.Id, key.Pool)
-		}
+	state, ok := c.installs[install]
+	if !ok {
+		c.mu.Unlock()
+		return nil, fmt.Errorf("cartridge '%s' has no configured admission pool '%s'", install.Id, names[0])
 	}
-	ticket := c.tickets
-	c.tickets++
-	// Queue even while unavailable: the loop below owns the grace window, so a
-	// request arriving mid-outage gets the same treatment as one that was
-	// already waiting when the outage began.
-	c.slots[head].queue = append(c.slots[head].queue, ticket)
+	// Join the line even while unavailable: the loop below owns the grace
+	// window, so a request arriving mid-outage gets the same treatment as one
+	// that was already waiting when the outage began.
+	var ticket *big.Int
+	switch arrival := decided(model.Join(state.pools, names)).(type) {
+	case model.PoolsArrivalQueued:
+		state.pools = arrival.State
+		ticket = arrival.Ticket
+	case model.PoolsArrivalUnknownPool:
+		c.mu.Unlock()
+		return nil, fmt.Errorf("cartridge '%s' has no configured admission pool '%s'", install.Id, arrival.Name)
+	default:
+		c.mu.Unlock()
+		panic(fmt.Sprintf("BUG: joining the line answered %T: admission is a turn taken from it", arrival))
+	}
 	c.mu.Unlock()
+
+	// leave gives up this request's place in line.
+	leave := func() {
+		c.mu.Lock()
+		state.pools = decided(model.Leave(state.pools, ticket))
+		c.notifyAllLocked()
+		c.mu.Unlock()
+	}
 
 	for {
 		c.mu.Lock()
-		headSlot, ok := c.slots[head]
-		if !ok {
-			c.mu.Unlock()
-			return nil, fmt.Errorf("admission pool for '%s' disappeared while queued", install.Id)
-		}
-		state, hasState := c.installs[install]
-		if !hasState {
-			c.mu.Unlock()
-			return nil, fmt.Errorf("cartridge '%s' has admission pools but no install state — ConfigurePools was bypassed", install.Id)
-		}
-		chainHasRoom := true
-		for _, key := range chain {
-			if !c.slots[key].hasRoom() {
-				chainHasRoom = false
-				break
+		unavailableFor := state.unavailableFor(time.Now())
+		if !unavailableFor.Valid {
+			if admitted := decided(model.Admit(state.pools, ticket)); admitted.Valid {
+				state.pools = admitted.Value
+				c.notifyAllLocked()
+				c.mu.Unlock()
+				return &AdmissionPermit{controller: c, install: install, chain: names}, nil
 			}
 		}
-		if state.available() && chainHasRoom && len(headSlot.queue) > 0 && headSlot.queue[0] == ticket {
-			headSlot.queue = headSlot.queue[1:]
-			for _, key := range chain {
-				c.slots[key].active++
-			}
-			c.notifyAllLocked()
-			c.mu.Unlock()
-			return &AdmissionPermit{controller: c, chain: chain}, nil
-		}
-		remaining, unavailable := state.graceRemaining(time.Now(), c.grace)
-		if unavailable && remaining == 0 {
-			c.removeTicketLocked(head, ticket)
-			c.mu.Unlock()
-			return nil, fmt.Errorf(
-				"cartridge '%s' was unavailable for longer than %ds while this request waited for capacity",
-				install.Id, int(c.grace/time.Second),
-			)
-		}
+		patience := decided(model.PoolsPatience(unavailableFor, nat(uint64(c.grace.Milliseconds()))))
 		wake := c.notify
+		grace := c.grace
 		c.mu.Unlock()
 
-		if unavailable {
+		switch patience := patience.(type) {
+		case model.PatienceUnbounded:
+			// The target is there: wait for this request's turn.
+			select {
+			case <-wake:
+			case <-cancel:
+				leave()
+				return nil, fmt.Errorf("admission wait for '%s' was cancelled", install.Id)
+			}
+		case model.PatienceAtMost:
 			// Outage still inside its window: wait, but no longer than what is
 			// left of it. A timer expiry is not an error — the next iteration
-			// re-reads the slot and decides.
-			timer := time.NewTimer(remaining)
+			// asks again and decides.
+			timer := time.NewTimer(time.Duration(count(patience.Remaining)) * time.Millisecond)
 			select {
 			case <-wake:
 				timer.Stop()
 			case <-timer.C:
 			case <-cancel:
 				timer.Stop()
-				c.mu.Lock()
-				c.removeTicketLocked(head, ticket)
-				c.mu.Unlock()
+				leave()
 				return nil, fmt.Errorf("admission wait for '%s' was cancelled", install.Id)
 			}
-			continue
-		}
-		select {
-		case <-wake:
-		case <-cancel:
-			c.mu.Lock()
-			c.removeTicketLocked(head, ticket)
-			c.mu.Unlock()
-			return nil, fmt.Errorf("admission wait for '%s' was cancelled", install.Id)
-		}
-	}
-}
-
-// removeTicketLocked drops a ticket from its singleton queue so an abandoned
-// waiter cannot strand the requests behind it. Caller must hold c.mu.
-func (c *AdmissionController) removeTicketLocked(key PoolKey, ticket uint64) {
-	slot, ok := c.slots[key]
-	if !ok {
-		return
-	}
-	for i, queued := range slot.queue {
-		if queued == ticket {
-			slot.queue = append(slot.queue[:i], slot.queue[i+1:]...)
-			break
+		case model.PatienceExhausted:
+			// Outage outlived the window — the target is gone, not slow.
+			leave()
+			return nil, fmt.Errorf(
+				"cartridge '%s' was unavailable for longer than %ds while this request waited for capacity",
+				install.Id, int(grace/time.Second),
+			)
+		default:
+			panic(fmt.Sprintf("BUG: unknown patience %T", patience))
 		}
 	}
-	c.notifyAllLocked()
 }

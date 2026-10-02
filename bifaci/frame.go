@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	model "github.com/machinefabric/capdag-go/formal"
 )
 
 // Protocol version 4 requires explicit handler capacity and strict diagnostic
@@ -1208,12 +1209,7 @@ func (f *Frame) IsEof() bool {
 // gapped flow, since a sender waiting on it would stall until the gap is filled.
 // (matches Rust Frame::is_flow_frame)
 func (f *Frame) IsFlowFrame() bool {
-	switch f.FrameType {
-	case FrameTypeHello, FrameTypeHeartbeat, FrameTypeRelayNotify, FrameTypeRelayState, FrameTypeCancel, FrameTypeCredit, FrameTypeCloseStream:
-		return false
-	default:
-		return true
-	}
+	return f.FrameType.IsFlow()
 }
 
 // =============================================================================
@@ -1281,15 +1277,21 @@ func (sa *SeqAssigner) Remove(key FlowKey) {
 // REORDER BUFFER — Per-flow frame reordering at relay boundaries
 // =============================================================================
 
-// flowState holds per-flow state for the reorder buffer.
+// flowState holds per-flow state for the reorder buffer: the model's picture
+// of the flow — the number expected next and the numbers held — and the held
+// frames themselves.
 type flowState struct {
-	expectedSeq uint64
-	buffer      map[uint64]*Frame
+	order  model.Reorder
+	buffer map[uint64]*Frame
 }
 
 // ReorderBuffer validates and reorders frames at relay boundaries.
 // Keyed by FlowKey (RID + optional XID). Each flow tracks expected seq
 // and buffers out-of-order frames until gaps are filled.
+//
+// What an arriving frame does — delivered with those it releases, held, or
+// refused — is the proved model's decision (formal/CapDAG/Bifaci/Flow.lean):
+// frames are handed on in the order they were written, and none is lost.
 //
 // Protocol errors:
 // - Stale/duplicate seq (frame.seq < expected_seq)
@@ -1322,50 +1324,52 @@ func (rb *ReorderBuffer) Accept(frame *Frame) ([]*Frame, error) {
 	state, exists := rb.flows[key]
 	if !exists {
 		state = &flowState{
-			expectedSeq: 0,
-			buffer:      make(map[uint64]*Frame),
+			order:  decided(model.Start()),
+			buffer: make(map[uint64]*Frame),
 		}
 		rb.flows[key] = state
 	}
 
-	if frame.Seq == state.expectedSeq {
-		// In-order: deliver this frame + drain consecutive buffered frames
-		ready := []*Frame{frame}
-		state.expectedSeq++
-		for {
-			buffered, ok := state.buffer[state.expectedSeq]
-			if !ok {
-				break
-			}
-			ready = append(ready, buffered)
-			delete(state.buffer, state.expectedSeq)
-			state.expectedSeq++
-		}
-		return ready, nil
-	} else if frame.Seq > state.expectedSeq {
-		// Out-of-order: buffer it
-		if _, dup := state.buffer[frame.Seq]; dup {
-			return nil, fmt.Errorf(
-				"stale/duplicate seq: seq %d already buffered (expected >= %d)",
-				frame.Seq, state.expectedSeq,
-			)
-		}
-		if len(state.buffer) >= rb.MaxBufferPerFlow {
-			return nil, fmt.Errorf(
-				"reorder buffer overflow: flow has %d buffered frames (max %d), "+
-					"expected seq %d but got seq %d",
-				len(state.buffer), rb.MaxBufferPerFlow,
-				state.expectedSeq, frame.Seq,
-			)
-		}
+	expected := count(state.order.Expected)
+	switch accepted := decided(model.Accept(state.order, nat(frame.Seq), nat(uint64(rb.MaxBufferPerFlow)))).(type) {
+	case model.AcceptedDeliver:
+		// In order: this frame, then every held frame it releases.
 		state.buffer[frame.Seq] = frame
+		ready := make([]*Frame, 0, len(accepted.Seqs))
+		for _, seq := range accepted.Seqs {
+			number := count(seq)
+			held, ok := state.buffer[number]
+			if !ok {
+				panic(fmt.Sprintf("BUG: seq %d is delivered but not held", number))
+			}
+			delete(state.buffer, number)
+			ready = append(ready, held)
+		}
+		state.order = accepted.Flow
+		return ready, nil
+	case model.AcceptedHold:
+		state.buffer[frame.Seq] = frame
+		state.order = accepted.Flow
 		return []*Frame{}, nil
-	} else {
-		// Stale or duplicate
+	case model.AcceptedDuplicate:
+		return nil, fmt.Errorf(
+			"stale/duplicate seq: seq %d already buffered (expected >= %d)",
+			frame.Seq, expected,
+		)
+	case model.AcceptedOverflow:
+		return nil, fmt.Errorf(
+			"reorder buffer overflow: flow has %d buffered frames (max %d), "+
+				"expected seq %d but got seq %d",
+			len(state.buffer), rb.MaxBufferPerFlow,
+			expected, frame.Seq,
+		)
+	case model.AcceptedStale:
 		return nil, fmt.Errorf(
 			"stale/duplicate seq: expected >= %d but got %d",
-			state.expectedSeq, frame.Seq,
+			expected, frame.Seq,
 		)
+	default:
+		panic(fmt.Sprintf("BUG: unknown answer to an arriving frame: %T", accepted))
 	}
 }
 
