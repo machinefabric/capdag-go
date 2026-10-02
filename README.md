@@ -51,7 +51,7 @@ strings.
 ## Find the relevant API
 
 The module is organized around the same conceptual boundaries as the
-[CapDAG specification](https://capdag.com/docs/01-overview/):
+[CapDAG specification](https://machinefabric.com/capdag/docs/01-overview/):
 
 - `urn` and the root package provide Tagged, Media, and Cap URNs;
 - `cap` provides capability definitions, arguments, outputs, and callers;
@@ -78,7 +78,7 @@ echo "I love this" | capdag sentiment-tagger
 ```
 
 The generated README explains its model-backed peer call and development loop.
-See [Build and Run a Cartridge](https://capdag.com/docs/18.2-getting-started-cartridge-development/)
+See [Build and Run a Cartridge](https://machinefabric.com/capdag/docs/18.2-getting-started-cartridge-development/)
 for the language-neutral tutorial.
 
 ## Verify changes
