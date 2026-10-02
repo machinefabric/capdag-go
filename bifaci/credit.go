@@ -144,7 +144,7 @@ func (g *CreditGate) BlockingAcquire(n uint64) error {
 // after close are no-ops.
 func (g *CreditGate) Grant(n uint64) {
 	g.mu.Lock()
-	_ = n
+	g.state = decided(model.Grant(g.state, nat(n)))
 	old := g.wake
 	g.wake = make(chan struct{})
 	g.mu.Unlock()
