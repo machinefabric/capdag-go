@@ -3,6 +3,7 @@ package bifaci
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -5180,5 +5181,210 @@ func Test11873_AnEmptyPipeIsNoInput(t *testing.T) {
 	}
 	if data != nil {
 		t.Fatalf("an empty pipe is no input, got %q", data)
+	}
+}
+
+// TEST351: frames cut short before their END are an error, not input that
+// finished. A cancel closes the request's frame channel, and every reader of it
+// took the closed channel for the end of the input: a handler saw its input end
+// normally and answered with whatever part had arrived. A peer response cut
+// short the same way read as a complete response.
+func Test351_frames_cut_short_are_an_error(t *testing.T) {
+	rid := NewMessageIdRandom()
+	payload, err := cborlib.Marshal([]byte("part"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	chunk := *NewChunk(rid, "arg0", 0, payload, 0, ComputeChecksum(payload))
+	start := *NewStreamStart(rid, "arg0", "media:enc=utf-8", boolPtr(false))
+	feed := func(frames ...Frame) <-chan Frame {
+		ch := make(chan Frame, len(frames))
+		for _, f := range frames {
+			ch <- f
+		}
+		close(ch)
+		return ch
+	}
+	cut := []Frame{start, chunk}
+	whole := []Frame{start, chunk, *NewStreamEnd(rid, "arg0", 1), *NewEnd(rid, nil)}
+
+	readers := map[string]func(<-chan Frame) error{
+		"CollectStreams":        func(c <-chan Frame) error { _, err := CollectStreams(c); return err },
+		"CollectAllArgs":        func(c <-chan Frame) error { _, err := CollectAllArgs(c); return err },
+		"CollectFirstArg":       func(c <-chan Frame) error { _, err := CollectFirstArg(c); return err },
+		"CollectArgsByMediaUrn": func(c <-chan Frame) error { _, err := CollectArgsByMediaUrn(c, "media:enc=utf-8"); return err },
+		"CollectPeerResponse":   func(c <-chan Frame) error { _, err := CollectPeerResponse(c); return err },
+	}
+	for name, read := range readers {
+		if err := read(feed(cut...)); !errors.Is(err, ErrAbandoned) {
+			t.Errorf("%s: input cut short must be ErrAbandoned, got %v", name, err)
+		}
+		if err := read(feed(whole...)); err != nil {
+			t.Errorf("%s: input that reached its END is complete, got %v", name, err)
+		}
+	}
+	// The first stream ended, but the request did not.
+	if _, err := CollectFirstArg(feed(start, chunk, *NewStreamEnd(rid, "arg0", 1))); !errors.Is(err, ErrAbandoned) {
+		t.Errorf("CollectFirstArg: a request without its END is cut short even after the first stream ended, got %v", err)
+	}
+
+	// A peer response, closed before its END.
+	response := DemuxPeerResponse(feed(start, chunk))
+	first, ok := response.Recv()
+	if !ok || first.DataErr != nil {
+		t.Fatalf("the part that arrived is delivered: %+v", first)
+	}
+	last, ok := response.Recv()
+	if !ok || !errors.Is(last.DataErr, ErrAbandoned) {
+		t.Fatalf("a peer response cut short errors: %+v", last)
+	}
+	if _, ok := response.Recv(); ok {
+		t.Fatal("nothing follows")
+	}
+	response = DemuxPeerResponse(feed(whole...))
+	if item, ok := response.Recv(); !ok || item.DataErr != nil {
+		t.Fatalf("a whole response delivers its data: %+v", item)
+	}
+	if item, ok := response.Recv(); ok {
+		t.Fatalf("nothing follows a response that ended: %+v", item)
+	}
+}
+
+// TEST373: a request's terminal is claimed exactly once, by its handler or by
+// a cancel. Both used to send: a handler finishing just as a cancel arrived had
+// its END followed by the cancel's ERR. Whoever claims first ends the request,
+// however many try at once.
+func Test373_a_terminal_is_claimed_exactly_once(t *testing.T) {
+	for i := 0; i < 200; i++ {
+		claim := &terminalClaim{}
+		start := make(chan struct{})
+		handler := make(chan bool)
+		go func() {
+			<-start
+			handler <- claim.forHandler()
+		}()
+		close(start)
+		cancel := claim.forCancel()
+		if won := <-handler; won == cancel {
+			t.Fatalf("exactly one of them ends the request: handler %v, cancel %v", won, cancel)
+		}
+		if claim.forHandler() || claim.forCancel() {
+			t.Fatal("and nobody after")
+		}
+	}
+}
+
+// TEST375: the runtime acts on a Cancel. A queued request is taken out of line
+// and ends with the cancel's ERR, and the request behind it is not stranded; a
+// running request whose input has already ended is still cancelled, its
+// handler's own terminal is not sent, and the request ends once, with the
+// cancel's ERR. This runtime had no Cancel case at all: a cancelled request ran
+// to its own END.
+func Test375_the_runtime_acts_on_a_cancel(t *testing.T) {
+	rt, err := NewCartridgeRuntime([]byte(testManifest))
+	if err != nil {
+		t.Fatalf("failed to create runtime: %v", err)
+	}
+	if _, err := rt.manifest.WithPoolDeclarations(PoolDeclarations{
+		Capacities: map[string]uint64{PoolAll: 1},
+	}); err != nil {
+		t.Fatalf("pool declarations must validate: %v", err)
+	}
+	release := make(chan struct{}, 3)
+	rt.Register(testCapUrn, func(frames <-chan Frame, emitter StreamEmitter, peer PeerInvoker) error {
+		if _, err := CollectStreams(frames); err != nil {
+			return err
+		}
+		<-release
+		return nil
+	})
+	hostWriter, outFrames, _ := startTestCartridge(t, rt, DefaultInitialCredit)
+	// Runs before the harness waits for the runtime: a failure part-way must
+	// not leave a handler waiting to be released.
+	t.Cleanup(func() { close(release) })
+	send := func(f *Frame) {
+		t.Helper()
+		if err := hostWriter.WriteFrame(f); err != nil {
+			t.Fatalf("write %v: %v", f.FrameType, err)
+		}
+	}
+	reason := HostCancelReason(AttributionClassResource, "the run was stopped", false)
+
+	// running holds the one slot; queued and behind wait in line.
+	running, queued, behind := NewMessageIdRandom(), NewMessageIdRandom(), NewMessageIdRandom()
+	for _, rid := range []MessageId{running, queued, behind} {
+		send(NewReq(rid, testCapUrn, nil, "application/cbor"))
+		send(NewEnd(rid, nil))
+	}
+
+	var seen []Frame
+	waitFor := func(pred func(f Frame) bool, what string) Frame {
+		t.Helper()
+		deadline := time.After(5 * time.Second)
+		for {
+			select {
+			case f, ok := <-outFrames:
+				if !ok {
+					t.Fatalf("output closed waiting for %s", what)
+				}
+				seen = append(seen, f)
+				if pred(f) {
+					return f
+				}
+			case <-deadline:
+				t.Fatalf("timed out waiting for %s", what)
+			}
+		}
+	}
+	waitFor(func(f Frame) bool { return f.Id.Equals(behind) && f.LogLevel() == "queued" }, "behind queued")
+
+	send(NewCancelFrame(queued, reason))
+	err1 := waitFor(func(f Frame) bool { return f.Id.Equals(queued) && f.FrameType == FrameTypeErr }, "ERR for the queued request")
+	if err1.ErrorCode() != reason.TerminalCode() || !strings.Contains(err1.ErrorMessage(), "while queued") {
+		t.Fatalf("a queued request ends with the cancel's ERR: %s: %s", err1.ErrorCode(), err1.ErrorMessage())
+	}
+
+	// running's input has ended; its handler is waiting to be released. The
+	// cancel ends it, and releasing the handler afterwards sends nothing more.
+	// The runtime reads its frames in order, so the reply to a heartbeat sent
+	// after the cancel is proof the cancel was acted on before the release.
+	send(NewCancelFrame(running, reason))
+	probe := NewMessageIdRandom()
+	send(NewHeartbeat(probe))
+	waitFor(func(f Frame) bool { return f.Id.Equals(probe) && f.FrameType == FrameTypeHeartbeat }, "the heartbeat sent after the cancel")
+	release <- struct{}{}
+	err2 := waitFor(func(f Frame) bool {
+		return f.Id.Equals(running) && (f.FrameType == FrameTypeErr || f.FrameType == FrameTypeEnd)
+	}, "the running request's terminal")
+	if err2.FrameType != FrameTypeErr || err2.ErrorCode() != reason.TerminalCode() {
+		t.Fatalf("a running request ends with the cancel's ERR, not its handler's terminal: %v %s", err2.FrameType, err2.ErrorCode())
+	}
+
+	// behind is not stranded behind the cancelled one: it is dequeued and runs.
+	waitFor(func(f Frame) bool { return f.Id.Equals(behind) && f.LogLevel() == "dequeued" }, "behind dequeued")
+	release <- struct{}{}
+	waitFor(func(f Frame) bool { return f.Id.Equals(behind) && f.FrameType == FrameTypeEnd }, "END for behind")
+
+	// A cancel after behind ended adds nothing; the first two ended once.
+	send(NewCancelFrame(behind, reason))
+	settle := time.After(500 * time.Millisecond)
+	for done := false; !done; {
+		select {
+		case f := <-outFrames:
+			seen = append(seen, f)
+		case <-settle:
+			done = true
+		}
+	}
+	for _, rid := range []MessageId{running, queued, behind} {
+		terminals := 0
+		for _, f := range seen {
+			if f.Id.Equals(rid) && (f.FrameType == FrameTypeEnd || f.FrameType == FrameTypeErr) {
+				terminals++
+			}
+		}
+		if terminals != 1 {
+			t.Errorf("request %s ended %d times", rid.ToString(), terminals)
+		}
 	}
 }

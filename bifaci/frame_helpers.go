@@ -160,7 +160,7 @@ func CollectArgsByMediaUrn(frames <-chan Frame, mediaUrnPattern string) ([]inter
 		}
 	}
 
-	return results, nil
+	return nil, ErrAbandoned
 }
 
 // CollectFirstArg collects the first argument stream regardless of media URN.
@@ -208,7 +208,7 @@ func CollectFirstArg(frames <-chan Frame) ([]byte, error) {
 						return nil, errorFromErrFrame(&frame)
 					}
 				}
-				return fullData, nil
+				return nil, ErrAbandoned
 			}
 
 		case FrameTypeEnd:
@@ -224,7 +224,7 @@ func CollectFirstArg(frames <-chan Frame) ([]byte, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("unexpected end of frame stream")
+	return nil, ErrAbandoned
 }
 
 // CollectPeerResponse collects all frames from a peer invocation response.
@@ -273,7 +273,7 @@ func CollectPeerResponse(frames <-chan Frame) (map[string][]byte, error) {
 		}
 	}
 
-	return streams, nil
+	return nil, ErrAbandoned
 }
 
 // CollectAllArgs collects all argument streams in order.
@@ -335,5 +335,5 @@ func CollectAllArgs(frames <-chan Frame) ([]cap.CapArgumentValue, error) {
 		}
 	}
 
-	return results, nil
+	return nil, ErrAbandoned
 }

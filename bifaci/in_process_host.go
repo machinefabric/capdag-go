@@ -167,7 +167,10 @@ func (w *ResponseWriter) EmitError(code, message string) {
 //
 // Returns (args, meta) where meta is the stream metadata from the first input
 // stream's STREAM_START frame. Returns an error on CBOR decode failure
-// (protocol violation).
+// (protocol violation), and when the input does not reach its END: an ERR from
+// upstream, or the host closing the input because the request was cancelled
+// or its connection ended. Incomplete input is never returned as if it were
+// the request's arguments.
 func AccumulateInput(input <-chan Frame) ([]cap.CapArgumentValue, map[string]interface{}, error) {
 	type streamEntry struct {
 		mediaUrn string
@@ -227,10 +230,15 @@ func AccumulateInput(input <-chan Frame) ([]cap.CapArgumentValue, map[string]int
 			// nothing to do
 		case FrameTypeEnd:
 			goto done
+		case FrameTypeErr:
+			return nil, nil, fmt.Errorf(
+				"the request failed upstream before its input was complete: %s: %s",
+				frame.ErrorCode(), frame.ErrorMessage())
 		default:
 			// ignore unexpected frame types
 		}
 	}
+	return nil, nil, ErrInputEndedWithoutEnd
 done:
 	args := make([]cap.CapArgumentValue, 0, len(streams))
 	for _, s := range streams {
@@ -238,6 +246,13 @@ done:
 	}
 	return args, requestMeta, nil
 }
+
+// ErrInputEndedWithoutEnd is why a request's input stopped before its END: the
+// host closed it, because the request was cancelled or the connection ended.
+// Its arguments are incomplete, and answering them would answer a request that
+// no longer exists.
+var ErrInputEndedWithoutEnd = fmt.Errorf(
+	"the request's input ended before its END: the request was cancelled or its connection closed")
 
 // =============================================================================
 // BUILT-IN IDENTITY HANDLER
@@ -260,10 +275,16 @@ func (identityHandler) HandleRequest(_ string, input <-chan Frame, output *Respo
 			}
 		case FrameTypeEnd:
 			goto done
+		case FrameTypeErr:
+			// The request failed upstream: it is over, and has no answer.
+			return
 		default:
 			// STREAM_START, STREAM_END — skip
 		}
 	}
+	// Input that stopped before its END belongs to a request that was
+	// cancelled or whose connection closed: there is nothing to answer.
+	return
 done:
 	// Echo back as a single stream (raw bytes, no CBOR encode)
 	streamId := "identity"
@@ -574,15 +595,15 @@ func (h *InProcessCartridgeHost) Run(localRead io.Reader, localWrite io.Writer) 
 	writerWg.Add(1)
 	go func() {
 		defer writerWg.Done()
-		writer := NewFrameWriter(localWrite)
-		seqAssigner := NewSeqAssigner()
+		// The cartridge runtime's writer, terminal gate and all: whether a
+		// frame is written, and whether it ends its flow, is the proved
+		// model's decision (L4). A handler still emitting after a Cancel's
+		// ERR, or a Cancel arriving after the handler's END, produces
+		// post-terminal frames, and those are suppressed, never written.
+		writer := newSyncFrameWriter(NewFrameWriter(localWrite), NewDropCounters(), NewStragglerCounters())
 		for frame := range writeTx {
-			seqAssigner.Assign(&frame)
 			if err := writer.WriteFrame(&frame); err != nil {
 				return
-			}
-			if frame.FrameType.IsTerminal() {
-				seqAssigner.Remove(FlowKeyFromFrame(&frame))
 			}
 		}
 	}()
@@ -704,15 +725,21 @@ func (h *InProcessCartridgeHost) Run(localRead io.Reader, localWrite io.Writer) 
 			// The attribution rides in Meta like an ERR's; an unattributed
 			// Cancel is still a cancel.
 			reason, _ := frame.CancelReason()
-			// Drop active sender → handler's input recv returns closed.
+			// Terminal ERR in the cancel's own attribution, queued BEFORE the
+			// handler learns of the cancel: a handler that saw its input
+			// close first could fail and queue its own ERR ahead of this one,
+			// and the cancel's attribution would be the frame suppressed.
+			// Whatever the stopping handler emits after it — or the whole
+			// ERR, when the handler had already sent its END — is a
+			// post-terminal frame the writer suppresses (L4).
+			errFrame := NewErr(targetRid, reason.TerminalCode(), reason.TerminalClass(), reason.TerminalMessage(), nil)
+			errFrame.RoutingId = xid
+			writeTx <- *errFrame
+			// Then drop the active sender → handler's input recv returns closed.
 			if tx, ok := active[key]; ok {
 				close(tx)
 				delete(active, key)
 			}
-			// Terminal ERR in the cancel's own attribution.
-			errFrame := NewErr(targetRid, reason.TerminalCode(), reason.TerminalClass(), reason.TerminalMessage(), nil)
-			errFrame.RoutingId = xid
-			writeTx <- *errFrame
 
 		case FrameTypeHeartbeat:
 			// The heartbeat is the capacity CONFIG channel (see the

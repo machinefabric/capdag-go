@@ -142,12 +142,16 @@ type unboundedFrameChan struct {
 	closed bool
 	signal chan struct{}
 	out    chan Frame
+	// gone is closed by Discard: nobody will ever read out.
+	gone      chan struct{}
+	discarded bool
 }
 
 func newUnboundedFrameChan() *unboundedFrameChan {
 	u := &unboundedFrameChan{
 		signal: make(chan struct{}, 1),
 		out:    make(chan Frame),
+		gone:   make(chan struct{}),
 	}
 	go u.pump()
 	return u
@@ -169,7 +173,11 @@ func (u *unboundedFrameChan) pump() {
 		f := u.queue[0]
 		u.queue = u.queue[1:]
 		u.mu.Unlock()
-		u.out <- f
+		select {
+		case u.out <- f:
+		case <-u.gone:
+			return
+		}
 	}
 }
 
@@ -199,6 +207,26 @@ func (u *unboundedFrameChan) Close() {
 	}
 	u.closed = true
 	u.mu.Unlock()
+	select {
+	case u.signal <- struct{}{}:
+	default:
+	}
+}
+
+// Discard ends the channel for a reader that will never come: a queued
+// request cancelled before its handler started. The frames already queued are
+// dropped and the pump stops, rather than waiting forever to deliver them.
+// Idempotent.
+func (u *unboundedFrameChan) Discard() {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if u.discarded {
+		return
+	}
+	u.discarded = true
+	u.closed = true
+	u.queue = nil
+	close(u.gone)
 	select {
 	case u.signal <- struct{}{}:
 	default:

@@ -10,6 +10,7 @@ import (
 	"slices"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	cborlib "github.com/fxamacker/cbor/v2"
@@ -338,10 +339,22 @@ func DemuxPeerResponse(rawFrames <-chan Frame) *PeerResponse {
 				return
 			}
 		}
+		// The response's frames stopped before its END: the peer call was
+		// cancelled, or the connection ended. A cut-short response never
+		// reads as complete.
+		itemCh <- PeerResponseItem{IsDataItem: true, DataErr: ErrAbandoned}
 	}()
 
 	return &PeerResponse{ch: itemCh}
 }
+
+// ErrAbandoned is why frames stopped before their END: a request's input,
+// closed by the runtime because the request was cancelled or the connection
+// ended, or a peer's response, cut short the same way. Every reader of a
+// handler's frames reports it — input cut short never looks like input that
+// finished, so a handler cannot answer with whatever part had arrived.
+var ErrAbandoned = errors.New(
+	"the frames stopped before their END: the request was cancelled or its connection closed")
 
 // ProgressSender is a detached progress/log emitter that can be used from goroutines.
 //
@@ -570,6 +583,20 @@ func (rp *runtimePools) admitNext() *liveHandlerRequest {
 	}
 	delete(rp.waiting, ticket)
 	return request
+}
+
+// removeQueued takes a request out of line — a cancel of a request whose
+// handler has not started. It holds no pool slots, so nothing is released.
+// nil when the request is not in line. (matches Rust RuntimePools::remove_queued)
+func (rp *runtimePools) removeQueued(requestID MessageId) *liveHandlerRequest {
+	for ticket, request := range rp.waiting {
+		if request.requestID.Equals(requestID) {
+			rp.state = decided(model.Leave(rp.state, nat(ticket)))
+			delete(rp.waiting, ticket)
+			return request
+		}
+	}
+	return nil
 }
 
 // applyDesired applies an operator's desired configured values (heartbeat
@@ -1114,6 +1141,37 @@ type liveHandlerRequest struct {
 	routingId *MessageId
 	handler   HandlerFunc
 	frames    *unboundedFrameChan
+	// terminal decides who ends the request: its handler or a cancel.
+	terminal *terminalClaim
+}
+
+// terminalClaim decides who ends a request: its handler or a cancel — exactly
+// one of them.
+//
+// A request has one terminal frame. Its handler's completion sends END (or its
+// ERR); a cancel's ERR is sent once the handler has exited. Without a decision
+// both were sent: a handler that finished just as a cancel arrived had its END
+// followed by the cancel's ERR, and a handler that noticed the cancel and
+// failed had its own ERR followed by the cancel's. Whichever claims first ends
+// the request; the other sends nothing. (matches Rust TerminalClaim)
+type terminalClaim struct {
+	state atomic.Uint32
+}
+
+const (
+	terminalOpen uint32 = iota
+	terminalByHandler
+	terminalByCancel
+)
+
+// forHandler is the handler finishing: may it send its terminal?
+func (c *terminalClaim) forHandler() bool {
+	return c.state.CompareAndSwap(terminalOpen, terminalByHandler)
+}
+
+// forCancel is a cancel arriving: will its ERR be the terminal?
+func (c *terminalClaim) forCancel() bool {
+	return c.state.CompareAndSwap(terminalOpen, terminalByCancel)
 }
 
 // DeriveResponseMedia is the media URN a cap's response STREAM_START must
@@ -1163,6 +1221,9 @@ func runLiveHandler(qr *liveHandlerRequest, writer *syncFrameWriter, limits Limi
 	mediaUrn, deriveErr := DeriveResponseMedia(qr.capUrn)
 	if deriveErr != nil {
 		fmt.Fprintf(os.Stderr, "[CartridgeRuntime] response media derivation FAILED: cap=%s req_id=%s error=%v\n", qr.capUrn, requestID.ToString(), deriveErr)
+		if !qr.terminal.forHandler() {
+			return
+		}
 		errFrame := NewErr(requestID, "HANDLER_ERROR", AttributionClassInternal, deriveErr.Error(), nil)
 		errFrame.RoutingId = qr.routingId
 		if writeErr := writer.WriteFrame(errFrame); writeErr != nil {
@@ -1176,6 +1237,7 @@ func runLiveHandler(qr *liveHandlerRequest, writer *syncFrameWriter, limits Limi
 	// v4, L9).
 	emitter := newThreadSafeEmitter(writer, requestID, qr.routingId, streamID, mediaUrn, limits.MaxChunk, creditRouter, uint64(limits.InitialCredit))
 	peerInvoker := newPeerInvokerImpl(writer, pendingPeerRequests, limits.MaxChunk, creditRouter, uint64(limits.InitialCredit))
+	peerInvoker.origin = requestID.ToString()
 
 	fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Invoking handler for cap=%s (req_id=%s)\n", qr.capUrn, requestID.ToString())
 
@@ -1184,6 +1246,12 @@ func runLiveHandler(qr *liveHandlerRequest, writer *syncFrameWriter, limits Limi
 	// have been consumed yet) as the main read loop processes them; no replay
 	// step, no accumulate-then-dispatch.
 	err := qr.handler(qr.frames.Chan(), emitter, peerInvoker)
+	// A cancel that claimed the request first ends it with its own ERR, sent
+	// once this handler has returned.
+	if !qr.terminal.forHandler() {
+		fmt.Fprintf(os.Stderr, "[CartridgeRuntime] request was cancelled first — the handler's terminal is not sent: req_id=%s\n", requestID.ToString())
+		return
+	}
 	if err != nil {
 		// The ERR frame carries the failure's DECLARED identity
 		// (docs/failure-taxonomy.md): the code, class, and argument
@@ -1310,6 +1378,19 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 	// Track active handler goroutines for cleanup
 	var activeHandlers sync.WaitGroup
 
+	// running is every request whose handler has started and not yet
+	// returned, by request id: what a cancel acts on. A cancel decides the
+	// request's terminal through its claim; when it wins, cancelled holds its
+	// reason and the cancel's ERR is sent once the handler returns. Handler
+	// goroutines remove themselves, so the map is shared under runningMu.
+	type runningRequest struct {
+		terminal  *terminalClaim
+		routingId *MessageId
+		cancelled *CancelReason
+	}
+	running := make(map[string]*runningRequest)
+	runningMu := &sync.Mutex{}
+
 	// runHandlerNow spawns a handler goroutine for a ready-to-run request
 	// immediately (its pool chain already admitted by the caller). Its live
 	// frame channel (frames) is already being fed by the main loop below —
@@ -1363,10 +1444,28 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 	// request's whole pool chain, releases its credit waiters (L13), and
 	// starts everyone in line who can now go.
 	runHandlerNow = func(qr *liveHandlerRequest) {
+		qr.terminal = &terminalClaim{}
+		runningMu.Lock()
+		running[qr.requestID.ToString()] = &runningRequest{terminal: qr.terminal, routingId: qr.routingId}
+		runningMu.Unlock()
 		activeHandlers.Add(1)
 		go func() {
 			defer activeHandlers.Done()
 			defer func() {
+				// A cancel that claimed the request ends it now that its
+				// handler has returned.
+				runningMu.Lock()
+				done := running[qr.requestID.ToString()]
+				delete(running, qr.requestID.ToString())
+				runningMu.Unlock()
+				if done.cancelled != nil {
+					reason := *done.cancelled
+					errFrame := NewErr(qr.requestID, reason.TerminalCode(), reason.TerminalClass(), reason.TerminalMessage(), nil)
+					errFrame.RoutingId = qr.routingId
+					if err := writer.WriteFrame(errFrame); err != nil {
+						fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write cancel ERR: %v\n", err)
+					}
+				}
 				pr.pools.mu.Lock()
 				pr.pools.pools.release(qr.pattern)
 				pr.pools.mu.Unlock()
@@ -1714,11 +1813,13 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 				continue
 			}
 
-			// Not an incoming request end - must be a peer response end
-			// Closing the channel signals completion to the handler
+			// Not an incoming request end - must be a peer response end.
+			// The END itself is delivered before the channel closes: a
+			// channel that closes without one is a response cut short.
 			idKey := frame.Id.ToString()
 			if pending, ok := pendingPeerRequests.LoadAndDelete(idKey); ok {
 				pendingReq := pending.(*pendingPeerRequest)
+				pendingReq.sender <- *frame
 				close(pendingReq.sender)
 			}
 			// Release any credit waiters still parked on this peer request's
@@ -1728,6 +1829,83 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 
 		// RES frame REMOVED - old protocol no longer supported
 		// Peer invoke responses now use stream multiplexing (handled by END case above)
+
+		case FrameTypeCancel:
+			// The attribution rides in meta like an ERR's; a Cancel with
+			// none is still a cancel (unattributed). (12.2 §Cancel; matches
+			// the Rust runtime's Cancel arm)
+			targetRid := frame.Id
+			key := targetRid.ToString()
+			reason, _ := frame.CancelReason()
+
+			// Case 1: queued on its singleton pool — take it out of line (it
+			// holds no pool slots) and answer with the cancel's ERR.
+			pr.pools.mu.Lock()
+			queued := pr.pools.pools.removeQueued(targetRid)
+			pr.pools.mu.Unlock()
+			if queued != nil {
+				pendingIncomingMu.Lock()
+				delete(pendingIncoming, key)
+				pendingIncomingMu.Unlock()
+				queued.frames.Discard()
+				errFrame := NewErr(targetRid, reason.TerminalCode(), reason.TerminalClass(), reason.TerminalMessage()+" (while queued)", nil)
+				errFrame.RoutingId = queued.routingId
+				if err := writer.WriteFrame(errFrame); err != nil {
+					fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write cancel ERR: %v\n", err)
+				}
+				continue
+			}
+
+			// Case 2: its handler is running — a cooperative cancel. The
+			// handler may already have ended the request and not yet
+			// returned: then a cancel's ERR would be a second terminal, and
+			// the cancel adds nothing. Otherwise the cancel ends it: its
+			// input closes (a reader of it gets ErrAbandoned), its credit
+			// waiters and peer calls are released, and its ERR is sent when
+			// the handler returns.
+			runningMu.Lock()
+			target, isRunning := running[key]
+			claimed := isRunning && target.terminal.forCancel()
+			if claimed {
+				target.cancelled = &reason
+			}
+			runningMu.Unlock()
+			if !isRunning {
+				// Case 3: unknown — already ended, or never seen.
+				fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Cancel for unknown req_id=%s — ignoring\n", key)
+				continue
+			}
+			if !claimed {
+				fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Cancel for req_id=%s whose handler already ended it — nothing to send\n", key)
+				continue
+			}
+			pendingIncomingMu.Lock()
+			if pendingReq, open := pendingIncoming[key]; open {
+				delete(pendingIncoming, key)
+				pendingReq.frames.Close()
+			}
+			pendingIncomingMu.Unlock()
+			// A cancelled producer must not hang on credit (L13, L17).
+			creditRouter.CloseRequest(targetRid, reason.TerminalCode())
+			// Its peer calls end under the SAME reason — a peer of a
+			// cancelled request is collateral of the same failure. Their
+			// response channels close without an END, so a reader of one
+			// gets ErrAbandoned.
+			pendingPeerRequests.Range(func(peerKey, value any) bool {
+				peer := value.(*pendingPeerRequest)
+				if peer.origin != key {
+					return true
+				}
+				if _, still := pendingPeerRequests.LoadAndDelete(peerKey); !still {
+					return true
+				}
+				if err := writer.WriteFrame(NewCancelFrame(peer.rid, reason)); err != nil {
+					fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write peer Cancel: %v\n", err)
+				}
+				close(peer.sender)
+				return true
+			})
+			fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Cancelled in-flight request (cooperative): req_id=%s\n", key)
 
 		case FrameTypeErr:
 			// Error frame from host - could be response to peer request
@@ -3371,6 +3549,11 @@ type pendingPeerRequest struct {
 	sender  chan Frame        // Channel to send response frames to handler
 	streams map[string]string // stream_id → media_urn mapping
 	ended   bool              // true after END frame (close channel)
+	// rid is this call's own request id.
+	rid MessageId
+	// origin is the request whose handler made this call (its id's string);
+	// a cancel of that request cancels the call. Empty outside a request.
+	origin string
 
 	// responseWindow batches the Response-direction CREDIT grants this
 	// cartridge sends back to the responder as it consumes peer-response CHUNK
@@ -3397,6 +3580,9 @@ type peerInvokerImpl struct {
 	writer          *syncFrameWriter
 	pendingRequests *sync.Map
 	maxChunk        int
+	// origin is the request whose handler holds this invoker (its id's
+	// string), recorded on every call it makes.
+	origin string
 	// creditRouter/initialCredit flow-control this cartridge's outgoing
 	// peer-argument streams (protocol v4, L14 — peer args are credited too,
 	// exactly like a handler's response stream). nil creditRouter = uncredited
@@ -3425,6 +3611,8 @@ func (p *peerInvokerImpl) Invoke(capUrn string, arguments []cap.CapArgumentValue
 
 	// Register the pending request before sending
 	p.pendingRequests.Store(requestID.ToString(), &pendingPeerRequest{
+		rid:     requestID,
+		origin:  p.origin,
 		sender:  sender,
 		streams: make(map[string]string),
 		ended:   false,
@@ -3956,7 +4144,7 @@ func CollectStreams(frames <-chan Frame) ([]struct {
 		}
 	}
 
-	return result, nil
+	return nil, ErrAbandoned
 }
 
 // FindStream finds a stream's bytes by exact URN equivalence.

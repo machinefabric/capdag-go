@@ -197,36 +197,20 @@ func Test1961_cancel_terminal_carries_its_attribution(t *testing.T) {
 				}
 			}
 		} else {
-			// Read until the TERMINAL frame, the way the CloseStream branch
-			// above already does. A cancel's terminal is the ERR, and it is
-			// not necessarily the first thing the host writes: the handler is
-			// live when the cancel arrives, so its output STREAM_START can be
-			// on the wire first.
-			//
-			// Taking the first frame made this test flaky, and flaky in a way
-			// that read as a broken cancel path. A STREAM_START carries no
-			// error code and no attribution, so the assertions reported
-			//
-			//     expected: "ABORTED_COLLATERAL"  actual: ""
-			//     expected: 0x1 (Input)           actual: 0x0 (Internal)
-			//
-			// which is what an unattributed reason looks like -- and sent the
-			// investigation through every layer of the cancel machinery, all
-			// of which was correct. Instrumented, one run in forty-eight got
-			// STREAM_START where the other forty-seven got the ERR.
-			for {
-				frame, err := reader.ReadFrame()
-				require.NoError(t, err)
-				require.True(t, frame.Id.Equals(rid))
-				outcome = frame
-				// ERR only. The handler is live when the cancel arrives, so
-				// its own END can reach the wire first — breaking on it
-				// stopped at a frame that carries no code and reported the
-				// same empty-attribution failure this loop exists to fix.
-				if frame.FrameType == FrameTypeErr {
-					break
-				}
-			}
+			// The cancel's ERR is the request's first and only frame. This
+			// once read on to the first ERR, because one run in forty-eight
+			// got the handler's STREAM_START — and sometimes its END — before
+			// the ERR. That was the defect, not noise: closing a cancelled
+			// handler's input looked like the end of its input, so the
+			// handler answered a request that had been cancelled, and the
+			// request got two terminals. The host now queues the cancel's ERR
+			// before it closes the handler's input, so the ERR is the
+			// request's terminal, and its writer suppresses whatever the
+			// handler emits after it (TEST345).
+			frame, err := reader.ReadFrame()
+			require.NoError(t, err)
+			require.True(t, frame.Id.Equals(rid))
+			outcome = frame
 		}
 		testConn.Close()
 		require.NoError(t, <-hostDone)
@@ -541,4 +525,156 @@ func (h taggedHandler) HandleRequest(_ string, input <-chan Frame, output *Respo
 		}
 	}
 	output.EmitResponse("media:text", []byte(h.tag))
+}
+
+// answersAnywayHandler answers however its input ended: at END, or when the
+// host closed its input. It stands for every handler that does not check — the
+// host, not the handler, is what keeps a request to one terminal. It signals on
+// answered once it has sent its answer.
+type answersAnywayHandler struct{ answered chan struct{} }
+
+func (h answersAnywayHandler) HandleRequest(_ string, input <-chan Frame, output *ResponseWriter, _ PeerInvoker) {
+	for frame := range input {
+		if frame.FrameType == FrameTypeEnd {
+			break
+		}
+	}
+	output.EmitResponse("media:", []byte("an answer"))
+	h.answered <- struct{}{}
+}
+
+// TEST344: input that does not reach its END is refused, not returned as the
+// request's arguments.
+//
+// The host closes a handler's input when the request is cancelled or its
+// connection ends, and forwards an ERR from upstream. Each was accumulated as
+// if the request were complete, so a handler answered a request that no
+// longer existed, with whatever part of its input had arrived.
+func Test344_accumulate_refuses_input_that_never_ended(t *testing.T) {
+	rid := NewMessageIdRandom()
+	payload := cborBytesPayload(t, []byte("part"))
+	start := *NewStreamStart(rid, "arg0", "media:text", nil)
+	chunk := *NewChunk(rid, "arg0", 0, payload, 0, ComputeChecksum(payload))
+
+	closed := make(chan Frame, 4)
+	closed <- start
+	closed <- chunk
+	close(closed)
+	_, _, err := AccumulateInput(closed)
+	assert.ErrorIs(t, err, ErrInputEndedWithoutEnd)
+
+	failed := make(chan Frame, 4)
+	failed <- start
+	failed <- *NewErr(rid, "UPSTREAM_DIED", AttributionClassInternal, "the producer failed", nil)
+	_, _, err = AccumulateInput(failed)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "UPSTREAM_DIED")
+	assert.Contains(t, err.Error(), "the producer failed")
+
+	complete := make(chan Frame, 4)
+	complete <- start
+	complete <- chunk
+	complete <- *NewStreamEnd(rid, "arg0", 1)
+	complete <- *NewEnd(rid, nil)
+	args, _, err := AccumulateInput(complete)
+	require.NoError(t, err)
+	require.Len(t, args, 1)
+	assert.Equal(t, []byte("part"), args[0].Value)
+}
+
+// TEST345: once a request has its terminal, the host sends nothing more for
+// it.
+//
+// Two ways a request ended and more followed: a CANCEL arriving after the
+// handler finished, answered with a second terminal; and a CANCEL while input
+// was open, after which a handler that answers anyway sent its response around
+// the cancel's ERR. The ERR must be that request's only frame.
+func Test345_a_request_ends_once(t *testing.T) {
+	capUrn := `cap:in="media:text";echo;out="media:text"`
+	xid := NewMessageIdFromUint(1)
+	// framesFor runs script against a fresh host and returns every frame the
+	// host sent for the request, up to the connection's end.
+	framesFor := func(t *testing.T, script func(rid MessageId, writer *FrameWriter, reader *FrameReader, answered chan struct{}) []*Frame) []*Frame {
+		answered := make(chan struct{}, 1)
+		handlers := []HandlerRegistration{{Name: "answers", Caps: []cap.Cap{makeTestCap(t, capUrn)}, Handler: answersAnywayHandler{answered: answered}}}
+		host := NewInProcessCartridgeHost(InProcessHostIdentityForTest("in-process-test"), handlers)
+		hostConn, testConn := createSocketPair(t)
+		hostDone := make(chan error, 1)
+		go func() {
+			// The host's end of the connection closes when it is done, so the
+			// test reads everything it sent and then the end.
+			err := host.Run(hostConn, hostConn)
+			hostConn.Close()
+			hostDone <- err
+		}()
+		reader := NewFrameReader(testConn)
+		writer := NewFrameWriter(testConn)
+		notify, err := reader.ReadFrame()
+		require.NoError(t, err)
+		require.Equal(t, FrameTypeRelayNotify, notify.FrameType)
+
+		rid := NewMessageIdRandom()
+		req := NewReq(rid, capUrn, []byte{}, "application/cbor")
+		req.RoutingId = &xid
+		require.NoError(t, writer.WriteFrame(req))
+		require.NoError(t, writer.WriteFrame(NewStreamStart(rid, "arg0", "media:text", nil)))
+		seen := script(rid, writer, reader, answered)
+		// The script is done writing: the host ends, and everything it sent
+		// is read to the connection's end.
+		require.NoError(t, testConn.(interface{ CloseWrite() error }).CloseWrite())
+		for {
+			frame, err := reader.ReadFrame()
+			if err != nil {
+				break
+			}
+			seen = append(seen, frame)
+		}
+		testConn.Close()
+		require.NoError(t, <-hostDone)
+		var forRid []*Frame
+		for _, f := range seen {
+			if f.Id.Equals(rid) {
+				forRid = append(forRid, f)
+			}
+		}
+		return forRid
+	}
+	cancelFor := func(rid MessageId) *Frame {
+		cancel := NewCancelFrame(NewMessageIdFromUint(0), UserCancelReason(false))
+		cancel.Id = rid
+		cancel.RoutingId = &xid
+		return cancel
+	}
+
+	// A CANCEL after the handler finished: the request's END stands alone.
+	afterEnd := framesFor(t, func(rid MessageId, writer *FrameWriter, reader *FrameReader, answered chan struct{}) []*Frame {
+		require.NoError(t, writer.WriteFrame(NewEnd(rid, nil)))
+		<-answered
+		var seen []*Frame
+		for {
+			frame, err := reader.ReadFrame()
+			require.NoError(t, err)
+			seen = append(seen, frame)
+			if frame.Id.Equals(rid) && frame.FrameType == FrameTypeEnd {
+				break
+			}
+		}
+		require.NoError(t, writer.WriteFrame(cancelFor(rid)))
+		return seen
+	})
+	require.NotEmpty(t, afterEnd)
+	assert.Equal(t, FrameTypeEnd, afterEnd[len(afterEnd)-1].FrameType)
+	for _, f := range afterEnd {
+		assert.NotEqual(t, FrameTypeErr, f.FrameType, "a cancel after END adds no terminal")
+	}
+
+	// A CANCEL while input is open: its ERR is the request's only frame.
+	cancelled := framesFor(t, func(rid MessageId, writer *FrameWriter, _ *FrameReader, answered chan struct{}) []*Frame {
+		require.NoError(t, writer.WriteFrame(cancelFor(rid)))
+		<-answered
+		return nil
+	})
+	require.Len(t, cancelled, 1)
+	assert.Equal(t, FrameTypeErr, cancelled[0].FrameType)
+	assert.Equal(t, "CANCELLED", cancelled[0].ErrorCode())
 }
