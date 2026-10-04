@@ -52,8 +52,6 @@ type GenerationRequest struct {
 	TopP             *float32        `json:"top_p,omitempty"`
 	MinP             *float32        `json:"min_p,omitempty"`
 	Seed             *uint32         `json:"seed,omitempty"`
-	Grammar          *string         `json:"grammar,omitempty"`
-	JSONSchema       json.RawMessage `json:"json_schema,omitempty"`
 	Constraint       *ConstraintSpec `json:"constraint,omitempty"`
 	ChatTemplate     *string         `json:"chat_template,omitempty"`
 	StopSequences    []string        `json:"stop_sequences,omitempty"`
