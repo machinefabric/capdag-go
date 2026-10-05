@@ -33,6 +33,8 @@ github.com/machinefabric/tagged-urn-go v1.73.35 h1:Xjy1Vjth7dHQa1cSZgRg836tNr3Vu
 github.com/machinefabric/tagged-urn-go v1.73.35/go.mod h1:MNz+W/6CY87m54nDOFYThcexvk+TABJnapN+YRHn4Qo=
 github.com/machinefabric/tagged-urn-go v1.75.35 h1:WCPRWj0pMXugBqkbEbYKzTIvnvJT01KXJhT55JAjdSg=
 github.com/machinefabric/tagged-urn-go v1.75.35/go.mod h1:zDsZj6ONPbISldMZZDt2cSM5OH0ki0M6oNn/bz94jO4=
+github.com/machinefabric/tagged-urn-go v1.77.35 h1:yXN15rCN/K55nWcPXIqE7FSfG0Ze77i9tGE1LArCOrU=
+github.com/machinefabric/tagged-urn-go v1.77.35/go.mod h1:dCXtgCzg6ltb9XTda0H5aPDrOXP5A7SmFqS8yC3N7zQ=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
