@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -107,5 +108,44 @@ func Test12166_TheImplementationIsTheProvedModel(t *testing.T) {
 	require.True(t, len(table.Refines) > 4000 && len(table.Dispatch) > 30000, "the table is the full one")
 	if len(wrong) > 0 {
 		t.Fatalf("%d row(s) differ from the model, e.g.\n  %v", len(wrong), wrong[:min(8, len(wrong))])
+	}
+}
+
+// TEST12596: a call into the model whose argument is a temporary survives a
+// collection during the call.
+//
+// An argument is lent to the runtime as a handle identifier, and the value
+// holding the handle can be unreachable by then — `CapQueryFromPattern(c)` is
+// used once and dropped. Its finalizer released the handle before the runtime
+// read it, and a release's test run panicked with "217920 is not a live
+// handle". Collected continuously here, so a handle that is not kept alive
+// for the call is released during one.
+func Test12596_AnArgumentOutlivesACollectionDuringTheCall(t *testing.T) {
+	c, err := NewCapUrnFromString(`cap:in="media:ext=pdf";render-page-image;out="media:ext=png;image"`)
+	require.NoError(t, err)
+	q, err := NewCapUrnFromString(`cap:in="media:ext=pdf";render-page-image;out="media:image"`)
+	require.NoError(t, err)
+
+	stop := make(chan struct{})
+	collecting := make(chan struct{})
+	go func() {
+		defer close(collecting)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				runtime.GC()
+			}
+		}
+	}()
+	defer func() {
+		close(stop)
+		<-collecting
+	}()
+
+	want := CapQueryFromPattern(c).Admits(q)
+	for i := 0; i < 20000; i++ {
+		require.Equal(t, want, CapQueryFromPattern(c).Admits(q), "call %d", i)
 	}
 }
