@@ -306,7 +306,7 @@ func Test1294_rule11_void_input_with_stdin_rejected(t *testing.T) {
 // TEST1295: RULE11 - non-void-input cap without stdin source rejected
 func Test1295_rule11_non_void_input_without_stdin_rejected(t *testing.T) {
 	cap := makeTestCapWithUrnAndArgs(t,
-		`cap:in="media:ext=pdf";extract;out="media:enc=utf-8;ext=txt"`,
+		`cap:in="media:document;ext=pdf";extract;out="media:enc=utf-8;ext=txt"`,
 		[]CapArg{
 			NewCapArg(standard.MediaString, true, []ArgSource{positionSource(0)}),
 		},
@@ -333,10 +333,10 @@ func Test1296_rule11_void_input_cli_flag_only_passes(t *testing.T) {
 // option has no wire stream, so it has nothing to consume incrementally, and
 // the rule keeps the executor's hop rule one-dimensional.
 func Test1953_rule14_streaming_only_on_main_input(t *testing.T) {
-	main := NewCapArg("media:ext=pdf", true, []ArgSource{stdinSource("media:ext=pdf")})
+	main := NewCapArg("media:document;ext=pdf", true, []ArgSource{stdinSource("media:document;ext=pdf")})
 	main.Streaming = true
 	ok := makeTestCapWithUrnAndArgs(t,
-		`cap:in="media:ext=pdf";extract;out="media:enc=utf-8;ext=txt"`,
+		`cap:in="media:document;ext=pdf";extract;out="media:enc=utf-8;ext=txt"`,
 		[]CapArg{main},
 	)
 	require.NoError(t, ValidateCapArgs(ok), "streaming main input must pass")
@@ -348,7 +348,7 @@ func Test1953_rule14_streaming_only_on_main_input(t *testing.T) {
 	side := NewCapArg(standard.MediaString, false, []ArgSource{cliFlagSource("--lang")})
 	side.Streaming = true
 	bad := makeTestCapWithUrnAndArgs(t,
-		`cap:in="media:ext=pdf";extract;out="media:enc=utf-8;ext=txt"`,
+		`cap:in="media:document;ext=pdf";extract;out="media:enc=utf-8;ext=txt"`,
 		[]CapArg{main, side},
 	)
 	err := ValidateCapArgs(bad)
@@ -360,9 +360,9 @@ func Test1953_rule14_streaming_only_on_main_input(t *testing.T) {
 // TEST1297: RULE11 - non-void-input cap with stdin source passes
 func Test1297_rule11_non_void_input_with_stdin_passes(t *testing.T) {
 	cap := makeTestCapWithUrnAndArgs(t,
-		`cap:in="media:ext=pdf";extract;out="media:enc=utf-8;ext=txt"`,
+		`cap:in="media:document;ext=pdf";extract;out="media:enc=utf-8;ext=txt"`,
 		[]CapArg{
-			NewCapArg(standard.MediaString, true, []ArgSource{stdinSource("media:ext=pdf")}),
+			NewCapArg(standard.MediaString, true, []ArgSource{stdinSource("media:document;ext=pdf")}),
 		},
 	)
 	err := ValidateCapArgs(cap)

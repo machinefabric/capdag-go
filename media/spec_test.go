@@ -512,7 +512,7 @@ func Test894_multiple_extensions(t *testing.T) {
 // TEST616: StoredMediaDef converts to MediaDef preserving every field.
 func Test616_stored_media_def_to_media_def(t *testing.T) {
 	spec := StoredMediaDef{
-		Urn:         "media:ext=pdf",
+		Urn:         "media:document;ext=pdf",
 		MediaType:   "application/pdf",
 		Title:       "PDF Document",
 		ProfileURI:  "https://capdag.com/schema/pdf",
@@ -521,7 +521,7 @@ func Test616_stored_media_def_to_media_def(t *testing.T) {
 	}
 
 	def := spec.ToMediaDef()
-	assert.Equal(t, "media:ext=pdf", def.Urn)
+	assert.Equal(t, "media:document;ext=pdf", def.Urn)
 	assert.Equal(t, "application/pdf", def.MediaType)
 	assert.Equal(t, "PDF Document", def.Title)
 	assert.Equal(t, "PDF document data", def.Description)

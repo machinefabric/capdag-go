@@ -5,7 +5,7 @@
 //
 // Examples:
 // - `media:enc=utf-8`
-// - `media:ext=pdf`
+// - `media:document;ext=pdf`
 //
 // MediaDef is always a structured object - NO string form parsing.
 package media
@@ -37,14 +37,15 @@ const (
 	MediaBooleanList = "media:bool;enc=utf-8;list"
 	MediaObjectList  = "media:list;record"
 	// Semantic content types
-	MediaImage = "media:ext=png;image"
-	MediaAudio = "media:audio;ext=wav"
-	MediaVideo = "media:video"
+	MediaImage    = "media:image"
+	MediaAudio    = "media:audio"
+	MediaVideo    = "media:video"
+	MediaDocument = "media:document"
 	// Semantic AI input types
 	MediaAudioSpeech = "media:audio;ext=wav;speech"
 	// Document types (PRIMARY naming - type IS the format)
-	MediaPdf  = "media:ext=pdf"
-	MediaEpub = "media:ext=epub"
+	MediaPdf  = "media:document;ext=pdf"
+	MediaEpub = "media:document;ext=epub"
 	// Text format types (PRIMARY naming - type IS the format)
 	MediaMd         = "media:enc=utf-8;ext=md"
 	MediaTxt        = "media:enc=utf-8;ext=txt"

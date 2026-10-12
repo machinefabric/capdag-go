@@ -133,7 +133,7 @@ func Test736_topological_order_complex_dag(t *testing.T) {
 
 // TEST737: Tests linear_chain() with exactly one capability Verifies that a single-element chain produces a valid plan with input_slot, cap, and output
 func Test737_linear_chain_single_cap(t *testing.T) {
-	plan := LinearChain([]string{"cap:only"}, "media:ext=pdf", "media:ext=png;image", []string{"source_file"})
+	plan := LinearChain([]string{"cap:only"}, "media:document;ext=pdf", "media:ext=png;image", []string{"source_file"})
 	assert.Equal(t, 3, len(plan.Nodes)) // input_slot, cap_0, output
 	assert.Equal(t, 2, len(plan.Edges))
 	assert.NoError(t, plan.Validate())
@@ -141,7 +141,7 @@ func Test737_linear_chain_single_cap(t *testing.T) {
 
 // TEST738: Tests linear_chain() with empty capability list Verifies that an empty chain produces a plan with zero nodes and edges
 func Test738_linear_chain_empty(t *testing.T) {
-	plan := LinearChain([]string{}, "media:ext=pdf", "media:ext=png;image", []string{})
+	plan := LinearChain([]string{}, "media:document;ext=pdf", "media:ext=png;image", []string{})
 	assert.Equal(t, 0, len(plan.Nodes))
 	assert.Equal(t, 0, len(plan.Edges))
 }
@@ -167,7 +167,7 @@ func Test6634_machine_result_primary_output(t *testing.T) {
 // Direct edges MUST create a dependency. Verifies that edge kind affects plan execution order.
 func Test6635_iteration_edge_does_not_create_topological_dependency(t *testing.T) {
 	plan := NewMachinePlan("edge_kind_test")
-	plan.AddNode(NewInputSlotNode("input", "input", "media:ext=pdf", CardinalitySingle))
+	plan.AddNode(NewInputSlotNode("input", "input", "media:document;ext=pdf", CardinalitySingle))
 	plan.AddNode(NewMachineNode("cap_0", "cap:in=media:pdf;disbind;out=media:pdf-page"))
 	plan.AddNode(NewForEachNode("foreach_0", "cap_0", "body_cap", "body_cap"))
 	plan.AddNode(NewMachineNode("body_cap", "cap:in=media:pdf-page;process;out=media:text"))
@@ -222,7 +222,7 @@ func Test6636_foreach_body_bounds_determine_extraction(t *testing.T) {
 // TEST6637: Tests SingleCap plan passes Validate and TopologicalOrder produces correct sequence
 // Verifies the plan is structurally sound: input_slot must precede cap_0 must precede output
 func Test6637_single_cap_plan_validates_and_orders_correctly(t *testing.T) {
-	plan := SingleCap("cap:test", "media:ext=pdf", "media:ext=png;image", "input_file")
+	plan := SingleCap("cap:test", "media:document;ext=pdf", "media:ext=png;image", "input_file")
 
 	require.NoError(t, plan.Validate(), "SingleCap plan must pass validation")
 
@@ -317,7 +317,7 @@ func Test6640_split_and_merge_not_classified_as_cap_fanout_fanin(t *testing.T) {
 
 // TEST749: Tests get_node() method for looking up nodes by ID in a plan Verifies that existing nodes are found and non-existent nodes return None
 func Test749_get_node(t *testing.T) {
-	plan := SingleCap("cap:test", "media:ext=pdf", "media:ext=png;image", "doc_path")
+	plan := SingleCap("cap:test", "media:document;ext=pdf", "media:ext=png;image", "doc_path")
 
 	assert.NotNil(t, plan.GetNode("cap_0"))
 	assert.NotNil(t, plan.GetNode("input_slot"))
@@ -330,7 +330,7 @@ func Test749_get_node(t *testing.T) {
 func buildForeachPlanWithCollect() *MachinePlan {
 	plan := NewMachinePlan("ForEach test plan")
 
-	plan.AddNode(NewInputSlotNode("input_slot", "input", "media:ext=pdf", CardinalitySingle))
+	plan.AddNode(NewInputSlotNode("input_slot", "input", "media:document;ext=pdf", CardinalitySingle))
 	plan.AddNode(NewMachineNode("cap_0", `cap:in=media:pdf;out="media:pdf-page;list"`))
 	plan.AddNode(NewForEachNode("foreach_0", "cap_0", "body_cap_0", "body_cap_1"))
 	plan.AddNode(NewMachineNode("body_cap_0", `cap:in=media:pdf-page;out="media:text;enc=utf-8"`))
@@ -354,7 +354,7 @@ func buildForeachPlanWithCollect() *MachinePlan {
 func buildForeachPlanUnclosed() *MachinePlan {
 	plan := NewMachinePlan("Unclosed ForEach test plan")
 
-	plan.AddNode(NewInputSlotNode("input_slot", "input", "media:ext=pdf", CardinalitySingle))
+	plan.AddNode(NewInputSlotNode("input_slot", "input", "media:document;ext=pdf", CardinalitySingle))
 	plan.AddNode(NewMachineNode("cap_0", `cap:in=media:pdf;out="media:pdf-page;list"`))
 	plan.AddNode(NewForEachNode("foreach_0", "cap_0", "body_cap_0", "body_cap_0"))
 	plan.AddNode(NewMachineNode("body_cap_0", `cap:in=media:pdf-page;out="media:decision;fmt=json;record"`))
@@ -510,7 +510,7 @@ func Test763_suffix_is_dag(t *testing.T) {
 
 // TEST920: Tests creation of a simple execution plan with a single capability Verifies that single_cap() generates a valid plan with input_slot, cap node, and output node
 func Test920_single_cap_plan(t *testing.T) {
-	plan := SingleCap("cap:test", "media:ext=pdf", "media:ext=png;image", "input_file")
+	plan := SingleCap("cap:test", "media:document;ext=pdf", "media:ext=png;image", "input_file")
 	// 3 nodes: input_slot, cap_0, output
 	assert.Equal(t, 3, len(plan.Nodes))
 	assert.Equal(t, 1, len(plan.EntryNodes))
@@ -522,7 +522,7 @@ func Test920_single_cap_plan(t *testing.T) {
 func Test921_linear_chain_plan(t *testing.T) {
 	plan := LinearChain(
 		[]string{"cap:a", "cap:b", "cap:c"},
-		"media:ext=pdf",
+		"media:document;ext=pdf",
 		"media:ext=png;image",
 		[]string{"input_a", "input_b", "input_c"},
 	)
@@ -695,7 +695,7 @@ func Test934_find_first_foreach(t *testing.T) {
 
 // TEST935: find_first_foreach returns None for linear plans
 func Test935_find_first_foreach_linear(t *testing.T) {
-	plan := LinearChain([]string{"cap:a", "cap:b"}, "media:ext=pdf", "media:ext=png;image", []string{"input_a", "input_b"})
+	plan := LinearChain([]string{"cap:a", "cap:b"}, "media:document;ext=pdf", "media:ext=png;image", []string{"input_a", "input_b"})
 	assert.Nil(t, plan.FindFirstForEach())
 }
 
@@ -704,7 +704,7 @@ func Test936_has_foreach(t *testing.T) {
 	foreachPlan := buildForeachPlanWithCollect()
 	assert.True(t, foreachPlan.HasForeach(), "Plan with ForEach+Collect should detect ForEach")
 
-	linearPlan := LinearChain([]string{"cap:a"}, "media:ext=pdf", "media:ext=png;image", []string{"input_a"})
+	linearPlan := LinearChain([]string{"cap:a"}, "media:document;ext=pdf", "media:ext=png;image", []string{"input_a"})
 	assert.False(t, linearPlan.HasForeach(), "Linear plan should not detect ForEach")
 
 	// Standalone Collect (no ForEach) should NOT trigger HasForeach
@@ -791,7 +791,7 @@ func Test743_execution_node_type_serialization(t *testing.T) {
 
 // TEST744: Tests MachinePlan serialization and deserialization to/from JSON Verifies that complete plans with nodes and edges correctly round-trip through JSON
 func Test744_plan_serialization(t *testing.T) {
-	plan := SingleCap("cap:test", "media:ext=pdf", "media:ext=png;image", "input_file")
+	plan := SingleCap("cap:test", "media:document;ext=pdf", "media:ext=png;image", "input_file")
 
 	data, err := json.Marshal(plan)
 	require.NoError(t, err)

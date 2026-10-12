@@ -54,7 +54,7 @@ func Test0123_CapExists(t *testing.T) {
 // TEST138: Test parsing registry JSON with stdin args verifies stdin media URN extraction
 func Test138_parse_registry_json_with_stdin(t *testing.T) {
 	// JSON with stdin args - means cap accepts stdin of specified media type
-	jsonData := `{"urn":"cap:in=\"media:ext=pdf\";disbind;out=\"media:enc=utf-8;page\"","aliases":["disbind"],"title":"Disbind PDF","args":[{"media_urn":"media:ext=pdf","required":true,"sources":[{"stdin":"media:ext=pdf"}]}]}`
+	jsonData := `{"urn":"cap:in=\"media:document;ext=pdf\";disbind;out=\"media:enc=utf-8;page\"","aliases":["disbind"],"title":"Disbind PDF","args":[{"media_urn":"media:document;ext=pdf","required":true,"sources":[{"stdin":"media:document;ext=pdf"}]}]}`
 
 	var registryResp cap.RegistryCapResponse
 	err := json.Unmarshal([]byte(jsonData), &registryResp)
@@ -66,7 +66,7 @@ func Test138_parse_registry_json_with_stdin(t *testing.T) {
 	assert.True(t, cap.AcceptsStdin())
 	stdinUrn := cap.GetStdinMediaUrn()
 	require.NotNil(t, stdinUrn)
-	assert.Equal(t, "media:ext=pdf", *stdinUrn)
+	assert.Equal(t, "media:document;ext=pdf", *stdinUrn)
 }
 
 // TEST141: URL has the right shape — protocol, host, /caps/ prefix, 64 hex chars, no extension.
@@ -293,7 +293,7 @@ func Test1889_ResolveAliasTypedEnforcesKind(t *testing.T) {
 // TEST1890: get_cap accepts a cap alias and returns the aliased cap; a media alias passed to get_cap fails hard (typed boundary). This proves alias substitution AND type enforcement at the registry's cap surface.
 func Test1890_GetCapViaAliasAndTypeMismatch(t *testing.T) {
 	reg := NewForTest()
-	c := buildCap(`cap:extract;in="media:ext=pdf";out="media:enc=utf-8"`, "extract", []string{"media:ext=pdf"}, "media:enc=utf-8")
+	c := buildCap(`cap:extract;in="media:document;ext=pdf";out="media:enc=utf-8"`, "extract", []string{"media:document;ext=pdf"}, "media:enc=utf-8")
 	canonical := c.UrnString()
 	reg.AddCapsToCache([]*cap.Cap{c})
 	reg.InsertCachedAliasForTest(media.StoredAlias{Name: "pdf2text", Target: canonical, Version: 1})
@@ -323,7 +323,7 @@ func Test1891_GetMediaDefViaAliasAndTypeMismatch(t *testing.T) {
 
 	reg.InsertCachedAliasForTest(media.StoredAlias{
 		Name:    "pdf2text",
-		Target:  `cap:extract;in="media:ext=pdf";out="media:enc=utf-8"`,
+		Target:  `cap:extract;in="media:document;ext=pdf";out="media:enc=utf-8"`,
 		Version: 1,
 	})
 	_, err = reg.GetMediaDef("pdf2text")
@@ -486,7 +486,7 @@ func Test1895_DisplayAliasForURN(t *testing.T) {
 	assert.Equal(t, "json", got)
 
 	// A real URN with no alias → not found.
-	_, ok = registry.DisplayAliasForURN("media:enc=utf-8;ext=pdf")
+	_, ok = registry.DisplayAliasForURN("media:document;enc=utf-8;ext=pdf")
 	assert.False(t, ok)
 
 	// A non-URN (no cap:/media: prefix) → not found, never a panic.
@@ -853,13 +853,13 @@ func Test609_get_extension_mappings(t *testing.T) {
 	registry := NewForTest()
 
 	registry.AddSpec(media.StoredMediaDef{
-		Urn:        "media:ext=pdf",
+		Urn:        "media:document;ext=pdf",
 		MediaType:  "application/octet-stream",
 		Title:      "Test",
 		Extensions: []string{"pdf"},
 	})
 	registry.AddSpec(media.StoredMediaDef{
-		Urn:        "media:ext=epub",
+		Urn:        "media:document;ext=epub",
 		MediaType:  "application/octet-stream",
 		Title:      "Test",
 		Extensions: []string{"epub"},
@@ -908,7 +908,7 @@ func Test608_media_urns_for_extension_populated(t *testing.T) {
 	registry := NewForTest()
 
 	registry.AddSpec(media.StoredMediaDef{
-		Urn:        "media:ext=pdf",
+		Urn:        "media:document;ext=pdf",
 		MediaType:  "application/pdf",
 		Title:      "PDF Document",
 		Extensions: []string{"pdf"},

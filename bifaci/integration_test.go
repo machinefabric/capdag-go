@@ -1416,7 +1416,7 @@ func Test6532_ArgumentsMultiple(t *testing.T) {
 	// Create multiple arguments
 	args := []cap.CapArgumentValue{
 		cap.NewCapArgumentValueFromStr("media:model-spec;enc=utf-8", "gpt-4"),
-		cap.NewCapArgumentValue("media:ext=pdf", []byte{0x89, 0x50, 0x4E, 0x47}),
+		cap.NewCapArgumentValue("media:document;ext=pdf", []byte{0x89, 0x50, 0x4E, 0x47}),
 	}
 
 	// Encode arguments to CBOR

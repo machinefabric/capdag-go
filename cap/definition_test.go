@@ -832,13 +832,13 @@ func TestIsMainInput_InvalidStdinUrnIsIgnoredNotFatal(t *testing.T) {
 // declared slot media_urn — the stdin URN, not the slot URN, is what the
 // runtime demuxes the arg's input stream by.
 func Test7100_StreamUrnReturnsStdinSourceUrnWhenItDiffersFromSlotUrn(t *testing.T) {
-	stdinUrn := "media:ext=pdf;pdf-stream"
+	stdinUrn := "media:document;ext=pdf;pdf-stream"
 	arg := CapArg{
 		MediaUrn: "media:enc=utf-8;file-path",
 		Required: true,
 		Sources:  []ArgSource{{Stdin: &stdinUrn}},
 	}
-	assert.Equal(t, "media:ext=pdf;pdf-stream", arg.StreamUrn())
+	assert.Equal(t, "media:document;ext=pdf;pdf-stream", arg.StreamUrn())
 	assert.NotEqual(t, arg.MediaUrn, arg.StreamUrn())
 }
 
@@ -860,10 +860,10 @@ func Test7101_StreamUrnFallsBackToDeclaredMediaUrnWithoutStdinSource(t *testing.
 // in a different order — the comparison is the MediaUrn equivalence
 // predicate, never a string comparison.
 func Test7102_IsMainInputTrueOnTagOrderInsensitiveEquivalenceToInSpec(t *testing.T) {
-	inSpec, err := urn.NewMediaUrnFromString("media:ext=pdf;pdf-stream")
+	inSpec, err := urn.NewMediaUrnFromString("media:document;ext=pdf;pdf-stream")
 	require.NoError(t, err)
 
-	stdinUrn := "media:pdf-stream;ext=pdf" // same tags, different order
+	stdinUrn := "media:pdf-stream;document;ext=pdf" // same tags, different order
 	arg := CapArg{
 		MediaUrn: "media:enc=utf-8;file-path",
 		Required: true,
@@ -879,12 +879,12 @@ func Test7102_IsMainInputTrueOnTagOrderInsensitiveEquivalenceToInSpec(t *testing
 // (no Stdin source means never the main input, whatever the declared slot
 // URN says), and false when the Stdin URN is not equivalent to in=.
 func Test7103_IsMainInputFalseWithoutEquivalentStdinSource(t *testing.T) {
-	inSpec, err := urn.NewMediaUrnFromString("media:ext=pdf;pdf-stream")
+	inSpec, err := urn.NewMediaUrnFromString("media:document;ext=pdf;pdf-stream")
 	require.NoError(t, err)
 
 	flag := "--input"
 	cliFlagOnly := CapArg{
-		MediaUrn: "media:ext=pdf;pdf-stream", // slot URN even matches in= — irrelevant
+		MediaUrn: "media:document;ext=pdf;pdf-stream", // slot URN even matches in= — irrelevant
 		Required: true,
 		Sources:  []ArgSource{{CliFlag: &flag}},
 	}
@@ -892,7 +892,7 @@ func Test7103_IsMainInputFalseWithoutEquivalentStdinSource(t *testing.T) {
 
 	pos := 0
 	positionOnly := CapArg{
-		MediaUrn: "media:ext=pdf;pdf-stream",
+		MediaUrn: "media:document;ext=pdf;pdf-stream",
 		Required: true,
 		Sources:  []ArgSource{{Position: &pos}},
 	}
@@ -912,10 +912,10 @@ func Test7103_IsMainInputFalseWithoutEquivalentStdinSource(t *testing.T) {
 // arg is the main input, and partitioning the remaining args by
 // required-without-default vs has-default yields the expected sets.
 func Test7104_MultiArgCapExactlyOneMainInputAndPartitionOfRest(t *testing.T) {
-	inSpec, err := urn.NewMediaUrnFromString("media:ext=pdf;pdf-stream")
+	inSpec, err := urn.NewMediaUrnFromString("media:document;ext=pdf;pdf-stream")
 	require.NoError(t, err)
 
-	mainStdin := "media:pdf-stream;ext=pdf"
+	mainStdin := "media:pdf-stream;document;ext=pdf"
 	mainFlag := "--input"
 	questionFlag := "--question"
 	maxTokensFlag := "--max-tokens"

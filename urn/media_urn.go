@@ -179,7 +179,7 @@ func (m *MediaUrn) ConformsTo(pattern *MediaUrn) bool {
 
 // Meets reports whether this media type and other COULD describe the same
 // value: not a guarantee (ConformsTo), and not excluded. `media:ext` meets
-// `media:ext=pdf`; `media:ext=pdf` does not meet `media:ext=png`.
+// `media:document;ext=pdf`; `media:document;ext=pdf` does not meet `media:ext=png`.
 func (m *MediaUrn) Meets(other *MediaUrn) bool {
 	if m.inner == nil || other == nil || other.inner == nil {
 		return false
@@ -556,7 +556,7 @@ func MediaUrnBoolean() *MediaUrn {
 
 // FileMediaUrnForExt builds a bare file media URN for the given file extension —
 // a file of the given type with no content-format or encoding claim
-// (e.g. media:ext=pdf). Extension() resolves correctly off the keyed ext= axis.
+// (e.g. media:document;ext=pdf). Extension() resolves correctly off the keyed ext= axis.
 func FileMediaUrnForExt(ext string) string {
 	return fmt.Sprintf("media:ext=%s", ext)
 }

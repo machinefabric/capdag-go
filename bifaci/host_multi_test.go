@@ -1365,7 +1365,7 @@ func Test6623_cartridge_death_keeps_caps_advertised(t *testing.T) {
 	host := NewCartridgeHost()
 	registerTempCartridge(t, host, "thumbnailcartridge",
 		standard.CapIdentity,
-		`cap:in="media:ext=pdf";out="media:ext=png;image";thumbnail`,
+		`cap:in="media:document;ext=pdf";out="media:ext=png;image";thumbnail`,
 	)
 
 	// cap_table is the routing source of truth: both caps are present even
@@ -1386,7 +1386,7 @@ func Test662_rebuild_capabilities_includes_non_running_cartridges(t *testing.T) 
 	host := NewCartridgeHost()
 	registerTempCartridge(t, host, "extractcartridge",
 		standard.CapIdentity,
-		`cap:in="media:ext=pdf";extract;out="media:text"`,
+		`cap:in="media:document;ext=pdf";extract;out="media:text"`,
 	)
 	registerTempCartridge(t, host, "ocrcartridge",
 		standard.CapIdentity,
@@ -1460,7 +1460,7 @@ func Test664_running_cartridge_uses_manifest_caps(t *testing.T) {
 	// Register with stale (probe-time) caps BEFORE attaching.
 	registerTempCartridge(t, host, "extractcartridge",
 		standard.CapIdentity,
-		`cap:in="media:ext=pdf";extract;out="media:text"`,
+		`cap:in="media:document;ext=pdf";extract;out="media:text"`,
 	)
 
 	// Now attach the actual cartridge (which sends a different manifest).
@@ -1512,7 +1512,7 @@ func Test665_cap_table_mixed_running_and_non_running(t *testing.T) {
 	// Register a non-running cartridge with probe-time caps.
 	registerTempCartridge(t, host, "not-running",
 		standard.CapIdentity,
-		`cap:in="media:ext=pdf";not-running-op;out="media:text"`,
+		`cap:in="media:document;ext=pdf";not-running-op;out="media:text"`,
 	)
 
 	host.mu.Lock()

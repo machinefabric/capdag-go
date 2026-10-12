@@ -271,7 +271,7 @@ func Test072_constants_parse(t *testing.T) {
 
 // TEST73: Test extension helper functions create media URNs with ext tag and correct format
 func Test073_extension_helpers(t *testing.T) {
-	pdfUrn, err := NewMediaUrnFromString("media:ext=pdf")
+	pdfUrn, err := NewMediaUrnFromString("media:document;ext=pdf")
 	require.NoError(t, err)
 	ext, ok := pdfUrn.GetTag("ext")
 	assert.True(t, ok)
@@ -379,7 +379,7 @@ func Test306_availability_and_path_output_distinct(t *testing.T) {
 	assert.False(t, availUrn.ConformsTo(pathUrn))
 }
 
-// TEST546: is_image returns true only when image marker tag is present
+// TEST546: is_image returns true only when image marker tag is present; a format conforms to its own medium and to no other
 func Test546_is_image(t *testing.T) {
 	pngUrn, err := NewMediaUrnFromString(standard.MediaPNG)
 	require.NoError(t, err)
@@ -405,6 +405,22 @@ func Test546_is_image(t *testing.T) {
 	videoUrn, err := NewMediaUrnFromString(standard.MediaVideo)
 	require.NoError(t, err)
 	assert.False(t, videoUrn.IsImage())
+
+	// The medium itself, and what its formats are to it.
+	image, err := NewMediaUrnFromString(standard.MediaImage)
+	require.NoError(t, err)
+	document, err := NewMediaUrnFromString(standard.MediaDocument)
+	require.NoError(t, err)
+	png, err := NewMediaUrnFromString(standard.MediaPNG)
+	require.NoError(t, err)
+	assert.True(t, image.IsImage())
+	assert.False(t, document.IsImage())
+	assert.True(t, png.ConformsTo(image))
+	assert.True(t, pdfUrn.ConformsTo(document))
+	assert.False(t, png.ConformsTo(document))
+	assert.False(t, pdfUrn.ConformsTo(image))
+	// The medium is wider than any one format of it.
+	assert.False(t, image.ConformsTo(png))
 }
 
 // TEST547: is_audio returns true only when audio marker tag is present
@@ -591,7 +607,7 @@ func Test558_predicate_constant_consistency(t *testing.T) {
 
 // TEST852: LUB of identical URNs returns the same URN
 func Test852_lub_identical(t *testing.T) {
-	pdf, err := NewMediaUrnFromString("media:ext=pdf")
+	pdf, err := NewMediaUrnFromString("media:document;ext=pdf")
 	require.NoError(t, err)
 	lub := LeastUpperBound([]*MediaUrn{pdf, pdf})
 	assert.True(t, lub.IsEquivalent(pdf))
@@ -599,7 +615,7 @@ func Test852_lub_identical(t *testing.T) {
 
 // TEST853: LUB of URNs with no common tags returns media: (universal)
 func Test853_lub_no_common_tags(t *testing.T) {
-	pdf, err := NewMediaUrnFromString("media:ext=pdf")
+	pdf, err := NewMediaUrnFromString("media:document;ext=pdf")
 	require.NoError(t, err)
 	png, err := NewMediaUrnFromString("media:ext=png;image")
 	require.NoError(t, err)
@@ -643,7 +659,7 @@ func Test856_lub_empty(t *testing.T) {
 
 // TEST857: LUB of single input returns that input
 func Test857_lub_single(t *testing.T) {
-	pdf, err := NewMediaUrnFromString("media:ext=pdf")
+	pdf, err := NewMediaUrnFromString("media:document;ext=pdf")
 	require.NoError(t, err)
 	lub := LeastUpperBound([]*MediaUrn{pdf})
 	assert.True(t, lub.IsEquivalent(pdf))

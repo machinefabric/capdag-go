@@ -326,7 +326,7 @@ func Test6750_NoHandlerReturnsErr(t *testing.T) {
 	require.NoError(t, err)
 
 	rid := NewMessageIdRandom()
-	req := NewReq(rid, `cap:in="media:ext=pdf";unknown;out="media:text"`, []byte{}, "application/cbor")
+	req := NewReq(rid, `cap:in="media:document;ext=pdf";unknown;out="media:text"`, []byte{}, "application/cbor")
 	xid := NewMessageIdFromUint(1)
 	req.RoutingId = &xid
 	require.NoError(t, writer.WriteFrame(req))
@@ -344,7 +344,7 @@ func Test6750_NoHandlerReturnsErr(t *testing.T) {
 
 // TEST6751: InProcessCartridgeHost manifest includes identity cap and handler caps
 func Test6751_ManifestIncludesAllCaps(t *testing.T) {
-	capUrn := `cap:in="media:ext=pdf";thumbnail;out="media:ext=png;image"`
+	capUrn := `cap:in="media:document;ext=pdf";thumbnail;out="media:ext=png;image"`
 	c := makeTestCap(t, capUrn)
 	host := NewInProcessCartridgeHost(InProcessHostIdentityForTest("thumb-host"), []HandlerRegistration{{
 		Name:    "thumb",
@@ -484,7 +484,7 @@ func Test659_HandlerErrorReturnsErrFrame(t *testing.T) {
 
 // TEST660: InProcessCartridgeHost closest-specificity routing prefers specific over identity
 func Test660_ClosestSpecificityRouting(t *testing.T) {
-	specificUrn := `cap:in="media:ext=pdf";thumbnail;out="media:ext=png;image"`
+	specificUrn := `cap:in="media:document;ext=pdf";thumbnail;out="media:ext=png;image"`
 	genericUrn := `cap:in="media:image";thumbnail;out="media:ext=png;image"`
 
 	specificCap := makeTestCap(t, specificUrn)
@@ -507,7 +507,7 @@ func Test660_ClosestSpecificityRouting(t *testing.T) {
 
 	// Request for pdf thumbnail should match specific (pdf, specificity 3) over
 	// generic (image, specificity 2)
-	idx, ok := findHandlerForCap(capTable, `cap:in="media:ext=pdf";thumbnail;out="media:ext=png;image"`)
+	idx, ok := findHandlerForCap(capTable, `cap:in="media:document;ext=pdf";thumbnail;out="media:ext=png;image"`)
 	assert.True(t, ok)
 	assert.Equal(t, 1, idx) // specific handler
 }

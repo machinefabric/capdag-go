@@ -69,7 +69,7 @@ func buildTestRegistry(t *testing.T, capUrns []string) *fabric.FabricRegistry {
 func Test1142_resolved_graph_to_mermaid_renders_shapes_dedupes_edges_and_escapes(t *testing.T) {
 	extractCap := buildTestCap(
 		t,
-		`cap:in="media:ext=pdf";extract;out="media:txt;enc=utf-8"`,
+		`cap:in="media:document;ext=pdf";extract;out="media:txt;enc=utf-8"`,
 		`Extract "Title" <One>\path`,
 	)
 	embedCap := buildTestCap(
@@ -81,13 +81,13 @@ func Test1142_resolved_graph_to_mermaid_renders_shapes_dedupes_edges_and_escapes
 	graphName := "demo"
 	graph := &ResolvedGraph{
 		Nodes: map[string]string{
-			"input":  "media:ext=pdf",
+			"input":  "media:document;ext=pdf",
 			"middle": "media:txt;enc=utf-8",
 			"output": "media:embedding;record",
 		},
 		Edges: []*ResolvedEdge{
-			{From: "input", To: "middle", CapUrn: extractCap.Urn.String(), Cap: extractCap, InMedia: "media:ext=pdf", OutMedia: "media:txt;enc=utf-8"},
-			{From: "input", To: "middle", CapUrn: extractCap.Urn.String(), Cap: extractCap, InMedia: "media:ext=pdf", OutMedia: "media:txt;enc=utf-8"},
+			{From: "input", To: "middle", CapUrn: extractCap.Urn.String(), Cap: extractCap, InMedia: "media:document;ext=pdf", OutMedia: "media:txt;enc=utf-8"},
+			{From: "input", To: "middle", CapUrn: extractCap.Urn.String(), Cap: extractCap, InMedia: "media:document;ext=pdf", OutMedia: "media:txt;enc=utf-8"},
 			{From: "middle", To: "output", CapUrn: embedCap.Urn.String(), Cap: embedCap, InMedia: "media:txt;enc=utf-8", OutMedia: "media:embedding;record"},
 		},
 		GraphName: &graphName,
@@ -98,7 +98,7 @@ func Test1142_resolved_graph_to_mermaid_renders_shapes_dedupes_edges_and_escapes
 	if !strings.HasPrefix(mermaid, "graph LR\n") {
 		t.Fatalf("expected graph LR prefix, got: %s", mermaid)
 	}
-	if !strings.Contains(mermaid, `input(["input<br/><small>media:ext=pdf</small>"])`) {
+	if !strings.Contains(mermaid, `input(["input<br/><small>media:document;ext=pdf</small>"])`) {
 		t.Fatalf("expected input node shape, got: %s", mermaid)
 	}
 	if !strings.Contains(mermaid, `middle["middle<br/><small>media:txt;enc=utf-8</small>"]`) {
@@ -118,13 +118,13 @@ func Test1142_resolved_graph_to_mermaid_renders_shapes_dedupes_edges_and_escapes
 // TEST1161: Converting a simple linear plan produces resolved edges for the cap-to-cap chain.
 func Test1161_simple_linear_chain_conversion(t *testing.T) {
 	registry := buildTestRegistry(t, []string{
-		"cap:in=\"media:ext=pdf\";extract;out=media:text",
+		"cap:in=\"media:document;ext=pdf\";extract;out=media:text",
 		"cap:in=media:text;summarize;out=media:summary",
 	})
 
 	plan := planner.NewMachinePlan("test_chain")
-	plan.AddNode(planner.NewInputSlotNode("input", "input", "media:ext=pdf", planner.CardinalitySingle))
-	plan.AddNode(planner.NewMachineNode("cap_0", "cap:in=\"media:ext=pdf\";extract;out=media:text"))
+	plan.AddNode(planner.NewInputSlotNode("input", "input", "media:document;ext=pdf", planner.CardinalitySingle))
+	plan.AddNode(planner.NewMachineNode("cap_0", "cap:in=\"media:document;ext=pdf\";extract;out=media:text"))
 	plan.AddNode(planner.NewMachineNode("cap_1", "cap:in=media:text;summarize;out=media:summary"))
 	plan.AddNode(planner.NewOutputNode("output", "result", "cap_1"))
 	plan.AddEdge(planner.NewDirectEdge("input", "cap_0"))
@@ -138,7 +138,7 @@ func Test1161_simple_linear_chain_conversion(t *testing.T) {
 	if graph.GraphName == nil || *graph.GraphName != "test_chain" {
 		t.Fatalf("unexpected graph name: %+v", graph.GraphName)
 	}
-	if graph.Nodes["input"] != "media:ext=pdf" || graph.Nodes["cap_0"] != "media:text" || graph.Nodes["cap_1"] != "media:summary" {
+	if graph.Nodes["input"] != "media:document;ext=pdf" || graph.Nodes["cap_0"] != "media:text" || graph.Nodes["cap_1"] != "media:summary" {
 		t.Fatalf("unexpected nodes: %#v", graph.Nodes)
 	}
 	if len(graph.Edges) != 2 {
@@ -160,7 +160,7 @@ func Test770_rejects_foreach(t *testing.T) {
 	})
 
 	plan := planner.NewMachinePlan("foreach_plan")
-	plan.AddNode(planner.NewInputSlotNode("input", "input", "media:ext=pdf", planner.CardinalitySingle))
+	plan.AddNode(planner.NewInputSlotNode("input", "input", "media:document;ext=pdf", planner.CardinalitySingle))
 	plan.AddNode(planner.NewMachineNode("cap_0", "cap:in=media:pdf;disbind;out=media:pdf-page"))
 	plan.AddNode(planner.NewForEachNode("foreach_0", "cap_0", "cap_1", "cap_1"))
 	plan.AddNode(planner.NewMachineNode("cap_1", "cap:in=media:pdf-page;process;out=media:text"))
@@ -186,13 +186,13 @@ func Test770_rejects_foreach(t *testing.T) {
 // TEST771: plan_to_resolved_graph rejects plans containing Collect nodes
 func Test771_rejects_collect(t *testing.T) {
 	registry := buildTestRegistry(t, []string{
-		`cap:in="media:ext=pdf";disbind;out=media:pdf-page`,
+		`cap:in="media:document;ext=pdf";disbind;out=media:pdf-page`,
 		"cap:in=media:pdf-page;process;out=media:text",
 	})
 
 	plan := planner.NewMachinePlan("collect_plan")
-	plan.AddNode(planner.NewInputSlotNode("input", "input", "media:ext=pdf", planner.CardinalitySingle))
-	plan.AddNode(planner.NewMachineNode("cap_0", `cap:in="media:ext=pdf";disbind;out=media:pdf-page`))
+	plan.AddNode(planner.NewInputSlotNode("input", "input", "media:document;ext=pdf", planner.CardinalitySingle))
+	plan.AddNode(planner.NewMachineNode("cap_0", `cap:in="media:document;ext=pdf";disbind;out=media:pdf-page`))
 	plan.AddNode(planner.NewForEachNode("foreach_0", "cap_0", "cap_1", "cap_1"))
 	plan.AddNode(planner.NewMachineNode("cap_1", "cap:in=media:pdf-page;process;out=media:text"))
 	plan.AddNode(planner.NewCollectNode("collect_0", []string{"cap_1"}))
@@ -216,11 +216,11 @@ func Test771_rejects_collect(t *testing.T) {
 
 // TEST953: Linear plans (no ForEach/Collect) still convert successfully
 func Test953_linear_plan_still_works(t *testing.T) {
-	registry := buildTestRegistry(t, []string{"cap:in=\"media:ext=pdf\";extract;out=media:text"})
+	registry := buildTestRegistry(t, []string{"cap:in=\"media:document;ext=pdf\";extract;out=media:text"})
 
 	plan := planner.NewMachinePlan("linear_plan")
-	plan.AddNode(planner.NewInputSlotNode("input", "input", "media:ext=pdf", planner.CardinalitySingle))
-	plan.AddNode(planner.NewMachineNode("cap_0", "cap:in=\"media:ext=pdf\";extract;out=media:text"))
+	plan.AddNode(planner.NewInputSlotNode("input", "input", "media:document;ext=pdf", planner.CardinalitySingle))
+	plan.AddNode(planner.NewMachineNode("cap_0", "cap:in=\"media:document;ext=pdf\";extract;out=media:text"))
 	plan.AddNode(planner.NewOutputNode("output", "result", "cap_0"))
 	plan.AddEdge(planner.NewDirectEdge("input", "cap_0"))
 	plan.AddEdge(planner.NewDirectEdge("cap_0", "output"))
@@ -237,13 +237,13 @@ func Test953_linear_plan_still_works(t *testing.T) {
 // TEST954: Standalone Collect nodes are handled as pass-through Plan: input → cap_0 → Collect → cap_1 → output The standalone Collect is transparent — the resolved edge from Collect to cap_1 should be rewritten to go from cap_0 to cap_1 directly.
 func Test954_standalone_collect_passthrough(t *testing.T) {
 	registry := buildTestRegistry(t, []string{
-		`cap:in="media:ext=pdf";extract;out="media:text;enc=utf-8"`,
+		`cap:in="media:document;ext=pdf";extract;out="media:text;enc=utf-8"`,
 		`cap:in="media:list;text;enc=utf-8";embed;out="media:embedding-vector;record;enc=utf-8"`,
 	})
 
 	plan := planner.NewMachinePlan("collect_plan")
-	plan.AddNode(planner.NewInputSlotNode("input", "input", "media:ext=pdf", planner.CardinalitySingle))
-	plan.AddNode(planner.NewMachineNode("cap_0", `cap:in="media:ext=pdf";extract;out="media:text;enc=utf-8"`))
+	plan.AddNode(planner.NewInputSlotNode("input", "input", "media:document;ext=pdf", planner.CardinalitySingle))
+	plan.AddNode(planner.NewMachineNode("cap_0", `cap:in="media:document;ext=pdf";extract;out="media:text;enc=utf-8"`))
 
 	// Standalone Collect: scalar→list with OutputMediaUrn set
 	collectNode := planner.NewCollectNode("collect_0", []string{"cap_0"})
@@ -285,10 +285,10 @@ func Test954_standalone_collect_passthrough(t *testing.T) {
 // TEST1256: A single declared cap and one wiring parse into a two-node one-edge DAG.
 func Test1256_parse_simple_machine(t *testing.T) {
 	registry := buildParserTestRegistry(t, []string{
-		`cap:in="media:ext=pdf";extract;out="media:txt;enc=utf-8"`,
+		`cap:in="media:document;ext=pdf";extract;out="media:txt;enc=utf-8"`,
 	})
 
-	notation := `[extract cap:in="media:ext=pdf";extract;out="media:txt;enc=utf-8"][A -> extract -> B]`
+	notation := `[extract cap:in="media:document;ext=pdf";extract;out="media:txt;enc=utf-8"][A -> extract -> B]`
 
 	graph, err := ParseMachineToCapDag(notation, registry)
 	if err != nil {
@@ -312,11 +312,11 @@ func Test1256_parse_simple_machine(t *testing.T) {
 // TEST1257: Two sequential wirings preserve the intermediate node media type.
 func Test1257_parse_two_step_chain(t *testing.T) {
 	registry := buildParserTestRegistry(t, []string{
-		`cap:in="media:ext=pdf";extract;out="media:txt;enc=utf-8"`,
+		`cap:in="media:document;ext=pdf";extract;out="media:txt;enc=utf-8"`,
 		`cap:in="media:txt;enc=utf-8";embed;out="media:embedding-vector;record;enc=utf-8"`,
 	})
 
-	notation := `[extract cap:in="media:ext=pdf";extract;out="media:txt;enc=utf-8"]` +
+	notation := `[extract cap:in="media:document;ext=pdf";extract;out="media:txt;enc=utf-8"]` +
 		`[embed cap:in="media:txt;enc=utf-8";embed;out="media:embedding-vector;record;enc=utf-8"]` +
 		`[A -> extract -> B]` +
 		`[B -> embed -> C]`
@@ -345,14 +345,14 @@ func Test1257_parse_two_step_chain(t *testing.T) {
 // TEST1258: One source node can fan out into multiple caps and target nodes.
 func Test1258_parse_fan_out(t *testing.T) {
 	registry := buildParserTestRegistry(t, []string{
-		`cap:in="media:ext=pdf";extract-metadata;out="media:enc=utf-8;file-metadata;record"`,
-		`cap:in="media:ext=pdf";extract-outline;out="media:document-outline;enc=utf-8;record"`,
-		`cap:in="media:ext=pdf";generate-thumbnail;out="media:ext=png;image;thumbnail"`,
+		`cap:in="media:document;ext=pdf";extract-metadata;out="media:enc=utf-8;file-metadata;record"`,
+		`cap:in="media:document;ext=pdf";extract-outline;out="media:document-outline;enc=utf-8;record"`,
+		`cap:in="media:document;ext=pdf";generate-thumbnail;out="media:ext=png;image;thumbnail"`,
 	})
 
-	notation := `[meta cap:in="media:ext=pdf";extract-metadata;out="media:enc=utf-8;file-metadata;record"]` +
-		`[outline cap:in="media:ext=pdf";extract-outline;out="media:document-outline;enc=utf-8;record"]` +
-		`[thumb cap:in="media:ext=pdf";generate-thumbnail;out="media:ext=png;image;thumbnail"]` +
+	notation := `[meta cap:in="media:document;ext=pdf";extract-metadata;out="media:enc=utf-8;file-metadata;record"]` +
+		`[outline cap:in="media:document;ext=pdf";extract-outline;out="media:document-outline;enc=utf-8;record"]` +
+		`[thumb cap:in="media:document;ext=pdf";generate-thumbnail;out="media:ext=png;image;thumbnail"]` +
 		`[doc -> meta -> metadata]` +
 		`[doc -> outline -> outline_data]` +
 		`[doc -> thumb -> thumbnail]`
@@ -375,7 +375,7 @@ func Test1259_parse_fan_in(t *testing.T) {
 	// in= spec) and enc=utf-8;model-spec (a secondary fan-in input). The
 	// resolver's matching assigns each source URN to the right arg slot.
 	registry := fabric.NewForTest()
-	thumb := buildTestCapWithStdin(t, `cap:in="media:ext=pdf";generate-thumbnail;out="media:ext=png;image;thumbnail"`, "thumb")
+	thumb := buildTestCapWithStdin(t, `cap:in="media:document;ext=pdf";generate-thumbnail;out="media:ext=png;image;thumbnail"`, "thumb")
 	modelDl := buildTestCapWithStdin(t, `cap:in="media:enc=utf-8;model-spec";download;out="media:enc=utf-8;model-spec"`, "download")
 	// describe: two args (image;png and model-spec), each with a stdin source.
 	describeUrn, err := urn.NewCapUrnFromString(`cap:in="media:ext=png;image";describe-image;out="media:enc=utf-8;image-description"`)
@@ -391,7 +391,7 @@ func Test1259_parse_fan_in(t *testing.T) {
 	describe.Output = &cap.CapOutput{MediaUrn: describeUrn.OutSpec(), OutputDescription: "describe output"}
 	registry.AddCapsToCache([]*cap.Cap{thumb, modelDl, describe})
 
-	notation := `[thumb cap:in="media:ext=pdf";generate-thumbnail;out="media:ext=png;image;thumbnail"]` +
+	notation := `[thumb cap:in="media:document;ext=pdf";generate-thumbnail;out="media:ext=png;image;thumbnail"]` +
 		`[model_dl cap:in="media:enc=utf-8;model-spec";download;out="media:enc=utf-8;model-spec"]` +
 		`[describe cap:in="media:ext=png;image";describe-image;out="media:enc=utf-8;image-description"]` +
 		`[doc -> thumb -> thumbnail]` +
@@ -501,11 +501,11 @@ func Test1263_cycle_detection(t *testing.T) {
 // TEST1264: Shared nodes with incompatible upstream and downstream media fail during parsing.
 func Test1264_incompatible_media_types_at_shared_node(t *testing.T) {
 	registry := buildParserTestRegistry(t, []string{
-		`cap:in="media:void";produce-pdf;out="media:ext=pdf"`,
+		`cap:in="media:void";produce-pdf;out="media:document;ext=pdf"`,
 		`cap:in="media:audio;ext=wav";transcribe;out="media:txt;enc=utf-8"`,
 	})
 
-	notation := `[produce cap:in="media:void";produce-pdf;out="media:ext=pdf"]` +
+	notation := `[produce cap:in="media:void";produce-pdf;out="media:document;ext=pdf"]` +
 		`[transcribe cap:in="media:audio;ext=wav";transcribe;out="media:txt;enc=utf-8"]` +
 		`[A -> produce -> B]` +
 		`[B -> transcribe -> C]`
@@ -523,11 +523,11 @@ func Test1264_incompatible_media_types_at_shared_node(t *testing.T) {
 // TEST1265: Shared nodes accept compatible media URNs when one is a more specific form of the other.
 func Test1265_compatible_media_urns_at_shared_node(t *testing.T) {
 	registry := buildParserTestRegistry(t, []string{
-		`cap:in="media:ext=pdf";thumbnail;out="media:ext=png;image"`,
+		`cap:in="media:document;ext=pdf";thumbnail;out="media:ext=png;image"`,
 		`cap:in="media:bytes;ext=png;image";embed-image;out="media:embedding-vector;record;enc=utf-8"`,
 	})
 
-	notation := `[thumb cap:in="media:ext=pdf";thumbnail;out="media:ext=png;image"]` +
+	notation := `[thumb cap:in="media:document;ext=pdf";thumbnail;out="media:ext=png;image"]` +
 		`[embed_image cap:in="media:bytes;ext=png;image";embed-image;out="media:embedding-vector;record;enc=utf-8"]` +
 		`[A -> thumb -> B]` +
 		`[B -> embed_image -> C]`
@@ -617,11 +617,11 @@ func Test1268_structure_match_both_opaque(t *testing.T) {
 // TEST1269: Multi-line machine notation parses successfully with the same semantics as inline notation.
 func Test1269_parse_multiline_machine(t *testing.T) {
 	registry := buildParserTestRegistry(t, []string{
-		`cap:in="media:ext=pdf";extract;out="media:txt;enc=utf-8"`,
+		`cap:in="media:document;ext=pdf";extract;out="media:txt;enc=utf-8"`,
 	})
 
 	notation := `
-[extract cap:in="media:ext=pdf";extract;out="media:txt;enc=utf-8"]
+[extract cap:in="media:document;ext=pdf";extract;out="media:txt;enc=utf-8"]
 [doc -> extract -> text]
 `
 
@@ -640,7 +640,7 @@ func Test6649_rejects_foreach_paired_collect(t *testing.T) {
 	})
 
 	plan := planner.NewMachinePlan("collect_plan")
-	plan.AddNode(planner.NewInputSlotNode("input", "input", "media:ext=pdf", planner.CardinalitySingle))
+	plan.AddNode(planner.NewInputSlotNode("input", "input", "media:document;ext=pdf", planner.CardinalitySingle))
 	plan.AddNode(planner.NewMachineNode("cap_0", "cap:in=media:pdf;disbind;out=media:pdf-page"))
 	plan.AddNode(planner.NewForEachNode("foreach_0", "cap_0", "cap_1", "cap_1"))
 	plan.AddNode(planner.NewMachineNode("cap_1", "cap:in=media:pdf-page;process;out=media:text"))

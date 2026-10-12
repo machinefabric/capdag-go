@@ -28,9 +28,9 @@ func queryMedia(t *testing.T, s string) *MediaUrn {
 // request spelled that way asked for a cap that takes everything, and found
 // none. The unknown side asks nothing; the stated side is held to.
 func Test12368_AQuestionMayLeaveASideUnknown(t *testing.T) {
-	pages := queryCap(t, `cap:disbind;in="media:ext=pdf";out="media:enc=utf-8;ext=txt;page"`)
+	pages := queryCap(t, `cap:disbind;in="media:document;ext=pdf";out="media:enc=utf-8;ext=txt;page"`)
 	toJpeg := queryCap(t, `cap:convert-image;in="media:ext=png;image";out="media:ext=jpeg;image"`)
-	someImage := queryCap(t, `cap:render;in="media:ext=pdf";out="media:image"`)
+	someImage := queryCap(t, `cap:render;in="media:document;ext=pdf";out="media:image"`)
 	passesThrough := queryCap(t, "cap:decimate-sequence;effect=none")
 
 	wantsJpeg := CapQueryProducing(queryMedia(t, "media:ext=jpeg;image"), nil)
@@ -49,7 +49,7 @@ func Test12368_AQuestionMayLeaveASideUnknown(t *testing.T) {
 	assert.False(t, wantsImage.Admits(passesThrough), "media: out promises no image")
 
 	// What can a pdf become? Whatever takes a pdf — or takes anything.
-	hasPdf := CapQueryConsuming(queryMedia(t, "media:ext=pdf"), nil)
+	hasPdf := CapQueryConsuming(queryMedia(t, "media:document;ext=pdf"), nil)
 	assert.True(t, hasPdf.Admits(pages))
 	assert.True(t, hasPdf.Admits(someImage))
 	assert.True(t, hasPdf.Admits(passesThrough), "it takes anything, a pdf included")
@@ -57,7 +57,7 @@ func Test12368_AQuestionMayLeaveASideUnknown(t *testing.T) {
 	assert.Equal(t, MatchNone, hasPdf.Grade(toJpeg))
 
 	// Both sides stated is the typed call.
-	pdfToImage := CapQueryBetween(queryMedia(t, "media:ext=pdf"), queryMedia(t, "media:image"), nil)
+	pdfToImage := CapQueryBetween(queryMedia(t, "media:document;ext=pdf"), queryMedia(t, "media:image"), nil)
 	assert.True(t, pdfToImage.Admits(someImage))
 	assert.False(t, pdfToImage.Admits(pages))
 	assert.False(t, pdfToImage.Admits(toJpeg))
@@ -70,7 +70,7 @@ func Test12368_AQuestionMayLeaveASideUnknown(t *testing.T) {
 // no cap needs to declare; and a cap may carry tags nobody asked about.
 func Test12369_AQuerysTagsAreAskedOfTheTagsACapHas(t *testing.T) {
 	toJpeg := queryCap(t, `cap:convert-image;in="media:ext=png;image";out="media:ext=jpeg;image"`)
-	someImage := queryCap(t, `cap:render;in="media:ext=pdf";out="media:image"`)
+	someImage := queryCap(t, `cap:render;in="media:document;ext=pdf";out="media:image"`)
 	anyImage := queryMedia(t, "media:image")
 
 	converters := CapQueryProducing(anyImage, map[string]string{"convert-image": "*"})

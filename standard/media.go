@@ -10,7 +10,7 @@ package standard
 // - `record` marker: presence = has internal fields, absence = opaque (default)
 //
 // Examples:
-// - `media:ext=pdf` → scalar, opaque (no markers)
+// - `media:document;ext=pdf` → scalar, opaque (no markers)
 // - `media:enc=utf-8;list` → list, opaque (has list marker)
 // - `media:fmt=json;record` → scalar, record (has record marker)
 // - `media:fmt=json;list;record` → list of records (has both markers)
@@ -80,8 +80,15 @@ const MediaTIFF = "media:ext=tiff;image"
 // MediaWEBP is the media URN for WebP image data
 const MediaWEBP = "media:ext=webp;image"
 
-// MediaAudio is the media URN for audio data (wav, mp3, flac, etc.)
-const MediaAudio = "media:audio;ext=wav"
+// MediaImage is the media URN for an image in any format (png, jpeg, webp, etc.).
+// Every per-format image URN conforms to it.
+const MediaImage = "media:image"
+
+// MediaAudio is the media URN for audio in any format (wav, mp3, flac, raw frames, etc.)
+const MediaAudio = "media:audio"
+
+// MediaDocument is the media URN for a document in any format (pdf, docx, epub, etc.)
+const MediaDocument = "media:document"
 
 // MediaMP3 is the media URN for MP3 audio data
 const MediaMP3 = "media:audio;ext=mp3"
@@ -107,7 +114,7 @@ const MediaAIFF = "media:audio;ext=aiff"
 // MediaOpus is the media URN for Opus audio data
 const MediaOpus = "media:audio;ext=opus"
 
-// MediaVideo is the media URN for video data (mp4, webm, mov, etc.)
+// MediaVideo is the media URN for a video in any container (mp4, webm, mov, etc.)
 const MediaVideo = "media:video"
 
 // MediaMP4 is the media URN for MP4 video data
@@ -130,10 +137,10 @@ const MediaAudioSpeech = "media:audio;ext=wav;speech"
 // Document types (PRIMARY naming - type IS the format)
 
 // MediaPDF is the media URN for PDF documents
-const MediaPDF = "media:ext=pdf"
+const MediaPDF = "media:document;ext=pdf"
 
 // MediaEPUB is the media URN for EPUB documents
-const MediaEPUB = "media:ext=epub"
+const MediaEPUB = "media:document;ext=epub"
 
 // Text format types (PRIMARY naming - type IS the format)
 

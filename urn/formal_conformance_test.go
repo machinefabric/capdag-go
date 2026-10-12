@@ -121,9 +121,9 @@ func Test12166_TheImplementationIsTheProvedModel(t *testing.T) {
 // handle". Collected continuously here, so a handle that is not kept alive
 // for the call is released during one.
 func Test12596_AnArgumentOutlivesACollectionDuringTheCall(t *testing.T) {
-	c, err := NewCapUrnFromString(`cap:in="media:ext=pdf";render-page-image;out="media:ext=png;image"`)
+	c, err := NewCapUrnFromString(`cap:in="media:document;ext=pdf";render-page-image;out="media:ext=png;image"`)
 	require.NoError(t, err)
-	q, err := NewCapUrnFromString(`cap:in="media:ext=pdf";render-page-image;out="media:image"`)
+	q, err := NewCapUrnFromString(`cap:in="media:document;ext=pdf";render-page-image;out="media:image"`)
 	require.NoError(t, err)
 
 	stop := make(chan struct{})

@@ -45,7 +45,7 @@ func Test693_compatibility_vector_to_vector(t *testing.T) {
 
 // TEST697: Tests CapShapeInfo correctly identifies one-to-one pattern Verifies Single input and Single output result in OneToOne pattern
 func Test697_cap_shape_info_one_to_one(t *testing.T) {
-	info := CapShapeInfoFromSpecs("cap:test", "media:ext=pdf", "media:ext=png;image")
+	info := CapShapeInfoFromSpecs("cap:test", "media:document;ext=pdf", "media:ext=png;image")
 	assert.Equal(t, CardinalitySingle, info.Input.Cardinality)
 	assert.Equal(t, CardinalitySingle, info.Output.Cardinality)
 	assert.Equal(t, PatternOneToOne, info.CardinalityPatternOf())
@@ -53,7 +53,7 @@ func Test697_cap_shape_info_one_to_one(t *testing.T) {
 
 // TEST698: CapShapeInfo cardinality is always Single when derived from URN Cardinality comes from context (is_sequence), not from URN tags. The list tag is a semantic type property, not a cardinality indicator.
 func Test698_cap_shape_info_cardinality_always_single_from_urn(t *testing.T) {
-	info := CapShapeInfoFromSpecs("cap:pdf-to-pages", "media:ext=pdf", "media:ext=png;list")
+	info := CapShapeInfoFromSpecs("cap:pdf-to-pages", "media:document;ext=pdf", "media:ext=png;list")
 	assert.Equal(t, CardinalitySingle, info.Input.Cardinality)
 	assert.Equal(t, CardinalitySingle, info.Output.Cardinality)
 	assert.Equal(t, PatternOneToOne, info.CardinalityPatternOf())
@@ -62,7 +62,7 @@ func Test698_cap_shape_info_cardinality_always_single_from_urn(t *testing.T) {
 // TEST699: CapShapeInfo cardinality from URN is always Single; ManyToOne requires is_sequence
 func Test699_cap_shape_info_list_urn_still_single_cardinality(t *testing.T) {
 	// URN parsing always yields Single — the "list" tag is a structure marker, not cardinality
-	fromUrn := CapShapeInfoFromSpecs("cap:merge-pdfs", "media:ext=pdf;list", "media:ext=pdf")
+	fromUrn := CapShapeInfoFromSpecs("cap:merge-pdfs", "media:document;ext=pdf;list", "media:document;ext=pdf")
 	assert.Equal(t, CardinalitySingle, fromUrn.Input.Cardinality)
 	assert.Equal(t, CardinalitySingle, fromUrn.Output.Cardinality)
 	assert.Equal(t, PatternOneToOne, fromUrn.CardinalityPatternOf())
@@ -97,7 +97,7 @@ func Test710_pattern_requires_vector(t *testing.T) {
 // TEST711: Tests shape chain analysis for simple linear one-to-one capability chains Verifies chains with no fan-out are valid and require no transformation
 func Test711_strand_shape_analysis_simple_linear(t *testing.T) {
 	infos := []CapShapeInfo{
-		CapShapeInfoFromSpecs("cap:pdf-to-png", "media:ext=pdf", "media:ext=png;image"),
+		CapShapeInfoFromSpecs("cap:pdf-to-png", "media:document;ext=pdf", "media:ext=png;image"),
 		CapShapeInfoFromSpecs("cap:resize", "media:ext=png;image", "media:ext=png;image"),
 	}
 	analysis := AnalyzeShapeChain(infos)
@@ -110,7 +110,7 @@ func Test711_strand_shape_analysis_simple_linear(t *testing.T) {
 func Test712_strand_shape_analysis_with_fan_out(t *testing.T) {
 	// Simulate pdf-to-pages with Sequence output (is_sequence=true)
 	pdfToPages := CapShapeInfo{
-		Input:  MediaShapeFromUrn("media:ext=pdf"),
+		Input:  MediaShapeFromUrn("media:document;ext=pdf"),
 		Output: MediaShape{Cardinality: CardinalitySequence, Structure: StructureFromMediaUrn("media:ext=png;image")},
 		CapUrn: "cap:pdf-to-pages",
 	}
@@ -170,7 +170,7 @@ func Test715_pattern_serialization(t *testing.T) {
 
 // TEST720: Tests InputStructure correctly identifies opaque media URNs Verifies that URNs without record marker are parsed as Opaque
 func Test720_from_media_urn_opaque(t *testing.T) {
-	assert.Equal(t, StructureOpaque, StructureFromMediaUrn("media:ext=pdf"))
+	assert.Equal(t, StructureOpaque, StructureFromMediaUrn("media:document;ext=pdf"))
 	assert.Equal(t, StructureOpaque, StructureFromMediaUrn("media:enc=utf-8"))
 	assert.Equal(t, StructureOpaque, StructureFromMediaUrn("media:integer"))
 	// List marker doesn't affect structure
@@ -305,7 +305,7 @@ func Test740_cap_shape_info_from_specs(t *testing.T) {
 func Test741_cap_shape_info_pattern(t *testing.T) {
 	// Simulate one-to-many (output is_sequence=true on wire)
 	oneToMany := CapShapeInfo{
-		Input:  MediaShapeFromUrn("media:ext=pdf"),
+		Input:  MediaShapeFromUrn("media:document;ext=pdf"),
 		Output: MediaShape{Cardinality: CardinalitySequence, Structure: StructureFromMediaUrn("media:disbound-page;enc=utf-8")},
 		CapUrn: "cap:disbind",
 	}
@@ -326,7 +326,7 @@ func Test750_strand_shape_valid(t *testing.T) {
 // TEST751: Tests shape chain analysis detects structure mismatch
 func Test751_strand_shape_structure_mismatch(t *testing.T) {
 	infos := []CapShapeInfo{
-		CapShapeInfoFromSpecs("cap:extract", "media:ext=pdf", "media:enc=utf-8"),
+		CapShapeInfoFromSpecs("cap:extract", "media:document;ext=pdf", "media:enc=utf-8"),
 		// This cap expects record but gets opaque — should fail
 		CapShapeInfoFromSpecs("cap:parse", "media:fmt=json;record", "media:data;record"),
 	}
@@ -339,7 +339,7 @@ func Test751_strand_shape_structure_mismatch(t *testing.T) {
 // TEST752: Tests shape chain analysis with fan-out (matching structures) Fan-out requires output is_sequence=true on the disbind cap
 func Test752_strand_shape_with_fanout(t *testing.T) {
 	disbind := CapShapeInfo{
-		Input:  MediaShapeFromUrn("media:ext=pdf"),
+		Input:  MediaShapeFromUrn("media:document;ext=pdf"),
 		Output: MediaShape{Cardinality: CardinalitySequence, Structure: StructureFromMediaUrn("media:page;enc=utf-8")},
 		CapUrn: "cap:disbind",
 	}

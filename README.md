@@ -28,14 +28,14 @@ import (
 
 func main() {
     parsed, err := capdag.NewCapUrnFromString(
-        `cap:disbind;in="media:ext=pdf";out="media:enc=utf-8;page"`,
+        `cap:disbind;in="media:document;ext=pdf";out="media:enc=utf-8;page"`,
     )
     if err != nil {
         panic(err)
     }
 
     built := capdag.NewCapUrnBuilder().
-        InSpec("media:ext=pdf").
+        InSpec("media:document;ext=pdf").
         OutSpec("media:enc=utf-8;page").
         Marker("disbind").
         MustBuild()

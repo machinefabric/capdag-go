@@ -95,7 +95,7 @@ func Test774_get_reachable_targets_finds_all_targets(t *testing.T) {
 // TEST777: Tests type checking prevents using PDF-specific cap with PNG input Verifies that media type compatibility is enforced during pathfinding
 func Test777_type_mismatch_pdf_cap_does_not_match_png_input(t *testing.T) {
 	graph := NewLiveCapFab()
-	pdfToText := makeTestCapForGraph("media:ext=pdf", "media:enc=utf-8", "pdf2text", "PDF to Text")
+	pdfToText := makeTestCapForGraph("media:document;ext=pdf", "media:enc=utf-8", "pdf2text", "PDF to Text")
 	graph.AddCap(pdfToText)
 
 	source, err := urn.NewMediaUrnFromString("media:ext=png;image")
@@ -113,7 +113,7 @@ func Test778_type_mismatch_png_cap_does_not_match_pdf_input(t *testing.T) {
 	pngToThumb := makeTestCapForGraph("media:ext=png;image", "media:thumbnail", "png2thumb", "PNG to Thumbnail")
 	graph.AddCap(pngToThumb)
 
-	source, err := urn.NewMediaUrnFromString("media:ext=pdf")
+	source, err := urn.NewMediaUrnFromString("media:document;ext=pdf")
 	require.NoError(t, err)
 	target, err := urn.NewMediaUrnFromString("media:thumbnail")
 	require.NoError(t, err)
@@ -125,7 +125,7 @@ func Test778_type_mismatch_png_cap_does_not_match_pdf_input(t *testing.T) {
 // TEST779: Tests get_reachable_targets() only returns targets reachable via type-compatible caps Verifies that PNG and PDF inputs reach different cap targets (not each other's)
 func Test779_get_reachable_targets_respects_type_matching(t *testing.T) {
 	graph := NewLiveCapFab()
-	pdfToText := makeTestCapForGraph("media:ext=pdf", "media:enc=utf-8", "pdf2text", "PDF to Text")
+	pdfToText := makeTestCapForGraph("media:document;ext=pdf", "media:enc=utf-8", "pdf2text", "PDF to Text")
 	pngToThumb := makeTestCapForGraph("media:ext=png;image", "media:thumbnail", "png2thumb", "PNG to Thumbnail")
 	graph.AddCap(pdfToText)
 	graph.AddCap(pngToThumb)
@@ -152,7 +152,7 @@ func Test779_get_reachable_targets_respects_type_matching(t *testing.T) {
 	assert.False(t, reaches(pngTargets, mediaTextable), "PNG should NOT reach textable")
 
 	// PDF should reach textable but NOT thumbnail
-	pdfSource, err := urn.NewMediaUrnFromString("media:ext=pdf")
+	pdfSource, err := urn.NewMediaUrnFromString("media:document;ext=pdf")
 	require.NoError(t, err)
 	pdfTargets := graph.GetReachableTargets(pdfSource, false, 5)
 	assert.True(t, reaches(pdfTargets, mediaTextable), "PDF should reach textable")
@@ -171,7 +171,7 @@ func Test781_find_paths_respects_type_chain(t *testing.T) {
 	require.NoError(t, err)
 	thumbTarget, err := urn.NewMediaUrnFromString("media:thumbnail")
 	require.NoError(t, err)
-	pdfSource, err := urn.NewMediaUrnFromString("media:ext=pdf")
+	pdfSource, err := urn.NewMediaUrnFromString("media:document;ext=pdf")
 	require.NoError(t, err)
 
 	// PNG should find path through resized-png to thumbnail
@@ -212,14 +212,14 @@ func Test787_find_paths_sorting_prefers_shorter(t *testing.T) {
 // TEST788: ForEach is only synthesized when is_sequence=true
 func Test788_foreach_only_with_sequence_input(t *testing.T) {
 	graph := NewLiveCapFab()
-	disbind := makeTestCapForGraph("media:ext=pdf", "media:page;enc=utf-8", "disbind", "Disbind PDF")
+	disbind := makeTestCapForGraph("media:document;ext=pdf", "media:page;enc=utf-8", "disbind", "Disbind PDF")
 	choose := makeTestCapForGraph("media:enc=utf-8", "media:decision;fmt=json;record", "choose", "Make a Decision")
 	graph.SyncFromCaps([]*cap.Cap{disbind, choose})
 	nodeCount, edgeCount := graph.Stats()
 	assert.Equal(t, 2, edgeCount, "Graph should contain exactly 2 Cap edges")
 	_ = nodeCount
 
-	source, err := urn.NewMediaUrnFromString("media:ext=pdf")
+	source, err := urn.NewMediaUrnFromString("media:document;ext=pdf")
 	require.NoError(t, err)
 	target, err := urn.NewMediaUrnFromString("media:decision;fmt=json;record")
 	require.NoError(t, err)
@@ -363,7 +363,7 @@ func Test1112_no_collect_in_path_finding(t *testing.T) {
 func Test1113_multi_cap_path_no_collect(t *testing.T) {
 	graph := NewLiveCapFab()
 
-	disbind := makeTestCapForGraph("media:ext=pdf", "media:page;enc=utf-8", "disbind", "Disbind PDF")
+	disbind := makeTestCapForGraph("media:document;ext=pdf", "media:page;enc=utf-8", "disbind", "Disbind PDF")
 	summarize := makeTestCapForGraph(
 		"media:page;enc=utf-8",
 		"media:summary;enc=utf-8",
@@ -372,7 +372,7 @@ func Test1113_multi_cap_path_no_collect(t *testing.T) {
 	)
 	graph.SyncFromCaps([]*cap.Cap{disbind, summarize})
 
-	source, err := urn.NewMediaUrnFromString("media:ext=pdf")
+	source, err := urn.NewMediaUrnFromString("media:document;ext=pdf")
 	require.NoError(t, err)
 	target, err := urn.NewMediaUrnFromString("media:summary;enc=utf-8")
 	require.NoError(t, err)
@@ -387,7 +387,7 @@ func Test1114_graph_stores_only_cap_edges(t *testing.T) {
 	graph := NewLiveCapFab()
 
 	caps := []*cap.Cap{
-		makeTestCapForGraph("media:ext=pdf", "media:page;enc=utf-8", "disbind", "Disbind"),
+		makeTestCapForGraph("media:document;ext=pdf", "media:page;enc=utf-8", "disbind", "Disbind"),
 		makeTestCapForGraph("media:page;enc=utf-8", "media:summary;enc=utf-8", "summarize", "Summarize"),
 		makeTestCapForGraph("media:enc=utf-8", "media:decision;fmt=json;record", "decide", "Decide"),
 	}
@@ -646,7 +646,7 @@ func Test1293_roundtrip_requires_cap_steps(t *testing.T) {
 // TEST789: Tests that caps loaded from JSON have correct in_spec/out_spec
 func Test789_cap_from_json_has_valid_specs(t *testing.T) {
 	jsonStr := `{
-		"urn": "cap:in=\"media:ext=pdf\";disbind;out=\"media:disbound-page;enc=utf-8\"",
+		"urn": "cap:in=\"media:document;ext=pdf\";disbind;out=\"media:disbound-page;enc=utf-8\"",
 		"aliases": ["disbind"],
 		"title": "Disbind PDF",
 		"args": [],
@@ -662,7 +662,7 @@ func Test789_cap_from_json_has_valid_specs(t *testing.T) {
 
 	assert.NotEmpty(t, inSpec, "in_spec should not be empty")
 	assert.NotEmpty(t, outSpec, "out_spec should not be empty")
-	assert.Equal(t, "media:ext=pdf", inSpec)
+	assert.Equal(t, "media:document;ext=pdf", inSpec)
 	assert.Contains(t, outSpec, "disbound-page")
 }
 
@@ -676,7 +676,7 @@ func Test790_identity_urn_is_specific(t *testing.T) {
 	assert.Equal(t, urn.CapEffectNone, identityUrn.Effect())
 
 	// A specific cap should NOT be equivalent to identity
-	specificCap, err := urn.NewCapUrnFromString(`cap:in="media:ext=pdf";disbind;out="media:disbound-page;enc=utf-8"`)
+	specificCap, err := urn.NewCapUrnFromString(`cap:in="media:document;ext=pdf";disbind;out="media:disbound-page;enc=utf-8"`)
 	require.NoError(t, err)
 
 	assert.False(t, specificCap.IsEquivalent(identityUrn),
@@ -686,14 +686,14 @@ func Test790_identity_urn_is_specific(t *testing.T) {
 // TEST1150: Adding one cap creates one edge and makes its output reachable in one step.
 func Test1150_add_cap_and_basic_traversal(t *testing.T) {
 	graph := NewLiveCapFab()
-	c := makeTestCapForGraph("media:ext=pdf", "media:digitized-text", "extract_text", "Extract Text")
+	c := makeTestCapForGraph("media:document;ext=pdf", "media:digitized-text", "extract_text", "Extract Text")
 	graph.AddCap(c)
 
 	nodeCount, edgeCount := graph.Stats()
 	assert.Equal(t, 1, edgeCount)
 	assert.Equal(t, 2, nodeCount)
 
-	source, err := urn.NewMediaUrnFromString("media:ext=pdf")
+	source, err := urn.NewMediaUrnFromString("media:document;ext=pdf")
 	require.NoError(t, err)
 	targets := graph.GetReachableTargets(source, false, 5)
 
@@ -725,14 +725,14 @@ func Test1151_exact_vs_conformance_matching(t *testing.T) {
 	graph := NewLiveCapFab()
 
 	// pdf → result (singular)
-	cap1 := makeTestCapForGraph("media:ext=pdf", "media:analysis-result", "analyze", "Analyze PDF")
+	cap1 := makeTestCapForGraph("media:document;ext=pdf", "media:analysis-result", "analyze", "Analyze PDF")
 	graph.AddCap(cap1)
 
 	// pdf → result;list (plural)
-	cap2 := makeTestCapForGraph("media:ext=pdf", "media:analysis-result;list", "analyze_multi", "Analyze PDF Multi")
+	cap2 := makeTestCapForGraph("media:document;ext=pdf", "media:analysis-result;list", "analyze_multi", "Analyze PDF Multi")
 	graph.AddCap(cap2)
 
-	source, err := urn.NewMediaUrnFromString("media:ext=pdf")
+	source, err := urn.NewMediaUrnFromString("media:document;ext=pdf")
 	require.NoError(t, err)
 
 	// Query for singular result — direct path should rank first
@@ -756,12 +756,12 @@ func Test1151_exact_vs_conformance_matching(t *testing.T) {
 func Test1152_multi_step_path(t *testing.T) {
 	graph := NewLiveCapFab()
 
-	cap1 := makeTestCapForGraph("media:ext=pdf", "media:digitized-text", "extract", "Extract")
+	cap1 := makeTestCapForGraph("media:document;ext=pdf", "media:digitized-text", "extract", "Extract")
 	cap2 := makeTestCapForGraph("media:digitized-text", "media:summary-text", "summarize", "Summarize")
 	graph.AddCap(cap1)
 	graph.AddCap(cap2)
 
-	source, err := urn.NewMediaUrnFromString("media:ext=pdf")
+	source, err := urn.NewMediaUrnFromString("media:document;ext=pdf")
 	require.NoError(t, err)
 	target, err := urn.NewMediaUrnFromString("media:summary-text")
 	require.NoError(t, err)
@@ -777,12 +777,12 @@ func Test1152_multi_step_path(t *testing.T) {
 func Test1153_deterministic_ordering(t *testing.T) {
 	graph := NewLiveCapFab()
 
-	cap1 := makeTestCapForGraph("media:ext=pdf", "media:digitized-text", "extract_a", "Extract A")
-	cap2 := makeTestCapForGraph("media:ext=pdf", "media:digitized-text", "extract_b", "Extract B")
+	cap1 := makeTestCapForGraph("media:document;ext=pdf", "media:digitized-text", "extract_a", "Extract A")
+	cap2 := makeTestCapForGraph("media:document;ext=pdf", "media:digitized-text", "extract_b", "Extract B")
 	graph.AddCap(cap1)
 	graph.AddCap(cap2)
 
-	source, err := urn.NewMediaUrnFromString("media:ext=pdf")
+	source, err := urn.NewMediaUrnFromString("media:document;ext=pdf")
 	require.NoError(t, err)
 	target, err := urn.NewMediaUrnFromString("media:digitized-text")
 	require.NoError(t, err)
@@ -806,7 +806,7 @@ func Test1154_sync_from_caps(t *testing.T) {
 	graph := NewLiveCapFab()
 
 	caps := []*cap.Cap{
-		makeTestCapForGraph("media:ext=pdf", "media:digitized-text", "op1", "Op1"),
+		makeTestCapForGraph("media:document;ext=pdf", "media:digitized-text", "op1", "Op1"),
 		makeTestCapForGraph("media:digitized-text", "media:summary-text", "op2", "Op2"),
 	}
 	graph.SyncFromCaps(caps)
@@ -846,7 +846,7 @@ func allBookends(caps []*cap.Cap) map[string]bool {
 func Test791_sync_from_cap_urns_adds_edges(t *testing.T) {
 	registry := fabric.NewForTest()
 
-	disbind := makeTestCapForGraph("media:ext=pdf", "media:enc=utf-8;page", "disbind", "Disbind PDF")
+	disbind := makeTestCapForGraph("media:document;ext=pdf", "media:enc=utf-8;page", "disbind", "Disbind PDF")
 	choose := makeTestCapForGraph("media:enc=utf-8", "media:decision;fmt=json;record", "choose", "Make a Decision")
 	registry.AddCapsToCache([]*cap.Cap{disbind, choose})
 

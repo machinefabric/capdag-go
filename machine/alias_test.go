@@ -34,7 +34,7 @@ func Test1880_AliasNameNormalizationRules(t *testing.T) {
 
 // TEST1881: URN-vs-alias detection keys purely on the presence of ':'. The whole design rests on this discriminator being exact.
 func Test1881_TokenURNvsAliasDetection(t *testing.T) {
-	assert.True(t, media.TokenIsURN(`cap:in="media:ext=pdf";extract;out="media:enc=utf-8"`))
+	assert.True(t, media.TokenIsURN(`cap:in="media:document;ext=pdf";extract;out="media:enc=utf-8"`))
 	assert.True(t, media.TokenIsURN("media:fmt=json;record"))
 	assert.False(t, media.TokenIsURN("pdf2text"))
 	assert.True(t, media.IsAliasToken("pdf2text"))
@@ -71,8 +71,8 @@ func Test1883_CapPositionAliasResolvesToCap(t *testing.T) {
 // Test1884: a local header alias shadows a fabric alias of the same name.
 func Test1884_LocalHeaderShadowsCapAlias(t *testing.T) {
 	reg, _ := extractWithAliasRegistry()
-	otherUrn := `cap:other;in="media:ext=pdf";out="media:enc=utf-8;ext=txt"`
-	other := buildCap(otherUrn, "other", []string{"media:ext=pdf"}, "media:enc=utf-8;ext=txt")
+	otherUrn := `cap:other;in="media:document;ext=pdf";out="media:enc=utf-8;ext=txt"`
+	other := buildCap(otherUrn, "other", []string{"media:document;ext=pdf"}, "media:enc=utf-8;ext=txt")
 	otherCanonical := other.UrnString()
 	reg.AddCapsToCache([]*cap.Cap{other})
 	notation := "[pdf2text " + otherUrn + "]\n[doc -> pdf2text -> txt]"
@@ -83,7 +83,7 @@ func Test1884_LocalHeaderShadowsCapAlias(t *testing.T) {
 
 // Test1885: a cap-position alias that resolves to a MEDIA URN is a hard error.
 func Test1885_CapPositionAliasToMediaIsError(t *testing.T) {
-	c := buildCap(`cap:extract;in="media:ext=pdf";out="media:enc=utf-8;ext=txt"`, "extract", []string{"media:ext=pdf"}, "media:enc=utf-8;ext=txt")
+	c := buildCap(`cap:extract;in="media:document;ext=pdf";out="media:enc=utf-8;ext=txt"`, "extract", []string{"media:document;ext=pdf"}, "media:enc=utf-8;ext=txt")
 	reg := fabric.NewForTest()
 	reg.AddCapsToCache([]*cap.Cap{c})
 	reg.InsertCachedAliasForTest(media.StoredAlias{Name: "jsondoc", Target: "media:fmt=json;record", Version: 1})
@@ -121,7 +121,7 @@ func Test1196_AliasedSerializationUsesAliasAndRoundTrips(t *testing.T) {
 	// Build a pdf -> txt -> vec machine spanning both caps.
 	strand := strandFromSteps(
 		[]*planner.StrandStep{
-			capStep(extract.UrnString(), "extract", "media:ext=pdf", `media:txt;enc=utf-8`),
+			capStep(extract.UrnString(), "extract", "media:document;ext=pdf", `media:txt;enc=utf-8`),
 			capStep(embed.UrnString(), "embed", `media:txt;enc=utf-8`, `media:vec;record`),
 		},
 		"pdf to vec",
@@ -152,8 +152,8 @@ func Test1196_AliasedSerializationUsesAliasAndRoundTrips(t *testing.T) {
 // ----- machine notation cap aliases (1883-1886) -----
 
 func extractWithAliasRegistry() (*fabric.FabricRegistry, string) {
-	extractUrn := `cap:extract;in="media:ext=pdf";out="media:enc=utf-8;ext=txt"`
-	c := buildCap(extractUrn, "extract", []string{"media:ext=pdf"}, "media:enc=utf-8;ext=txt")
+	extractUrn := `cap:extract;in="media:document;ext=pdf";out="media:enc=utf-8;ext=txt"`
+	c := buildCap(extractUrn, "extract", []string{"media:document;ext=pdf"}, "media:enc=utf-8;ext=txt")
 	canonical := c.UrnString()
 	reg := fabric.NewForTest()
 	reg.AddCapsToCache([]*cap.Cap{c})

@@ -33,7 +33,7 @@ func createTestFabricRegistry(t *testing.T) *testMediaDefSource {
 	// PDF.
 	registry.AddSpec(media.StoredMediaDef{
 		Version:    0,
-		Urn:        "media:ext=pdf",
+		Urn:        "media:document;ext=pdf",
 		MediaType:  "application/pdf",
 		Title:      "PDF",
 		Extensions: []string{"pdf"},
@@ -252,7 +252,7 @@ func Test1288_StructureFromMarkerTags(t *testing.T) {
 		return u
 	}
 
-	if got := structureFromMarkerTags(mustUrn("media:ext=pdf")); got != ScalarOpaque {
+	if got := structureFromMarkerTags(mustUrn("media:document;ext=pdf")); got != ScalarOpaque {
 		t.Errorf("ext=pdf → %v, want ScalarOpaque", got)
 	}
 	if got := structureFromMarkerTags(mustUrn("media:fmt=json;record")); got != ScalarRecord {

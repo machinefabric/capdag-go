@@ -22,7 +22,7 @@ func Test157_StdinSourceFileReferenceCreation(t *testing.T) {
 	trackedFileID := "tracked-file-123"
 	originalPath := "/path/to/original.pdf"
 	securityBookmark := []byte{0x62, 0x6f, 0x6f, 0x6b} // "book"
-	mediaUrn := "media:ext=pdf"
+	mediaUrn := "media:document;ext=pdf"
 
 	source := NewStdinSourceFromFileReference(trackedFileID, originalPath, securityBookmark, mediaUrn)
 
@@ -70,7 +70,7 @@ func Test161_StdinSourceFileReferenceClone(t *testing.T) {
 		"test-id",
 		"/test/path.pdf",
 		[]byte{1, 2, 3},
-		"media:ext=pdf",
+		"media:document;ext=pdf",
 	)
 	cloned := *source
 
@@ -92,7 +92,7 @@ func Test162_StdinSourceDebug(t *testing.T) {
 		"test-id",
 		"/test/path.pdf",
 		[]byte{},
-		"media:ext=pdf",
+		"media:document;ext=pdf",
 	)
 	debugStr = fileSource.String()
 	assert.Contains(t, debugStr, "FileReference")
@@ -124,7 +124,7 @@ func Test276_CapArgumentValueAsStrValid(t *testing.T) {
 
 // TEST277: Test CapArgumentValue::value_as_str fails for non-UTF-8 binary data
 func Test277_CapArgumentValueAsStrInvalidUtf8(t *testing.T) {
-	arg := NewCapArgumentValue("media:ext=pdf", []byte{0xFF, 0xFE, 0x80})
+	arg := NewCapArgumentValue("media:document;ext=pdf", []byte{0xFF, 0xFE, 0x80})
 	_, err := arg.ValueAsStr()
 	assert.Error(t, err, "non-UTF-8 data must fail")
 }
@@ -177,7 +177,7 @@ func Test283_CapArgumentValueLargeBinary(t *testing.T) {
 	for i := range data {
 		data[i] = byte(i % 256)
 	}
-	arg := NewCapArgumentValue("media:ext=pdf", data)
+	arg := NewCapArgumentValue("media:document;ext=pdf", data)
 	assert.Equal(t, 10000, len(arg.Value))
 	assert.Equal(t, data, arg.Value)
 }

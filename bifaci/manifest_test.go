@@ -87,7 +87,7 @@ func Test150_cap_manifest_json_serialization(t *testing.T) {
 	require.NoError(t, err)
 
 	capDef := cap.NewCap(id, "Metadata Extractor", []string{"extract-metadata"})
-	stdinUrn := "media:ext=pdf"
+	stdinUrn := "media:document;ext=pdf"
 	capDef.AddArg(cap.CapArg{
 		MediaUrn: standard.MediaIdentity,
 		Required: true,
@@ -257,7 +257,7 @@ func Test6367_CapManifestValidation(t *testing.T) {
 	require.NoError(t, err)
 
 	capDef := cap.NewCap(id, "Metadata Extractor", []string{"extract-metadata"})
-	stdinUrn := "media:ext=pdf"
+	stdinUrn := "media:document;ext=pdf"
 	capDef.AddArg(cap.CapArg{
 		MediaUrn: standard.MediaIdentity,
 		Required: true,
@@ -496,7 +496,7 @@ func Test7152_EmptyAdapterUrnsIsOmitted(t *testing.T) {
 	assert.False(t, present, "an empty adapter_urns must be omitted, not written as []")
 
 	// A group that DOES claim adapters still writes them.
-	claiming := CapGroup{Name: "default", Caps: []cap.Cap{}, AdapterUrns: []string{"media:ext=pdf"}}
+	claiming := CapGroup{Name: "default", Caps: []cap.Cap{}, AdapterUrns: []string{"media:document;ext=pdf"}}
 	claimingRaw, err := json.Marshal(claiming)
 	if err != nil {
 		t.Fatalf("group serializes: %v", err)
