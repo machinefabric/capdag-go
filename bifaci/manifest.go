@@ -246,9 +246,58 @@ func (cm *CapManifest) declaredCapUrns() []*urn.CapUrn {
 	return urns
 }
 
-// Validate checks that CAP_IDENTITY is declared in this manifest.
-// Checks caps within cap_groups.
-// Returns error if missing — identity is mandatory in every capset.
+// CapManifestFromAdvertised takes a manifest another program advertised: it
+// parses it and holds every definition in it to the definition rules. This is
+// the one way a reader gets a CapManifest from bytes it did not write, so no
+// reader has a manifest whose definitions nobody checked.
+// Matches Rust: CapManifest::from_advertised(bytes)
+func CapManifestFromAdvertised(data []byte) (*CapManifest, error) {
+	var manifest CapManifest
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return nil, &ManifestLoadError{Unparseable: true, Reason: err.Error()}
+	}
+	if err := manifest.ValidateDefinitions(); err != nil {
+		return nil, &ManifestLoadError{Unparseable: false, Reason: err.Error()}
+	}
+	return &manifest, nil
+}
+
+// ManifestLoadError says why a manifest another program advertised was not
+// taken: its bytes are not a manifest (Unparseable), or it parsed and a cap
+// definition in it breaks a definition rule.
+// Matches Rust: enum ManifestLoadError { Unparseable, InvalidDefinition }
+type ManifestLoadError struct {
+	Unparseable bool
+	Reason      string
+}
+
+func (e *ManifestLoadError) Error() string {
+	if e.Unparseable {
+		return "not a manifest: " + e.Reason
+	}
+	return "invalid cap definition: " + e.Reason
+}
+
+// ValidateDefinitions holds every cap definition this manifest declares to
+// the definition rules (capdag docs/10-validation-rules.md, RULE1-RULE22).
+//
+// A manifest is where a definition crosses from one program to another, so
+// both sides hold it to them: the cartridge before it advertises (Validate),
+// the reader before it believes (CapManifestFromAdvertised).
+// Matches Rust: pub fn validate_definitions(&self) -> Result<(), String>
+func (cm *CapManifest) ValidateDefinitions() error {
+	caps := cm.AllCaps()
+	for i := range caps {
+		if err := cap.ValidateCapDefinition(&caps[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Validate checks this manifest: CAP_IDENTITY is declared, every definition
+// passes the definition rules, and the pool declarations resolve.
+// Returns error if identity is missing — it is mandatory in every capset.
 func (cm *CapManifest) Validate() error {
 	identityUrn, err := urn.NewCapUrnFromString(standard.CapIdentity)
 	if err != nil {
@@ -264,6 +313,9 @@ func (cm *CapManifest) Validate() error {
 	}
 	if !hasIdentity {
 		return fmt.Errorf("Manifest missing required CAP_IDENTITY (%s)", standard.CapIdentity)
+	}
+	if err := cm.ValidateDefinitions(); err != nil {
+		return err
 	}
 
 	// Pool declarations must resolve against this manifest's caps —
@@ -291,8 +343,12 @@ func (cm *CapManifest) EnsureIdentity() *CapManifest {
 		}
 	}
 
-	// Add identity cap in a default group
-	identityCap := cap.NewCap(identityUrn, "Identity", []string{"identity"})
+	// Add identity cap in a default group: the standard definition, with
+	// its main input and its output — a bare URN is not a definition.
+	identityCap, err := cap.IdentityCap()
+	if err != nil {
+		panic("the standard identity definition is invalid: " + err.Error())
+	}
 	newGroups := make([]CapGroup, 0, len(cm.CapGroups)+1)
 	newGroups = append(newGroups, DefaultGroup([]cap.Cap{*identityCap}))
 	newGroups = append(newGroups, cm.CapGroups...)

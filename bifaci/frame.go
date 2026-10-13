@@ -10,10 +10,12 @@ import (
 	model "github.com/machinefabric/capdag-go/formal"
 )
 
-// Protocol version 4 requires explicit handler capacity and strict diagnostic
-// attribution in addition to credit-based flow control and terminal metadata.
+// Protocol version 5: a cap may answer with one stream per declared output.
+// The stream of its main output names none; the stream of another output
+// names the output it is (key 21). It keeps explicit handler capacity, strict
+// diagnostic attribution, credit-based flow control and terminal metadata.
 // Every other version is rejected during handshake.
-const ProtocolVersion uint8 = 4
+const ProtocolVersion uint8 = 5
 
 // Default maximum frame size (3.5 MB) - safe margin below 3.75MB limit
 // Larger payloads automatically use CHUNK frames
@@ -318,12 +320,16 @@ type Frame struct {
 	// Unbounded marks a STREAM_START whose stream makes no length promise: its
 	// STREAM_END may omit chunk_count and receivers must consume it
 	// incrementally, never buffering to completion. Present on STREAM_START
-	// frames only (protocol v4, L16). NOTE: wire-level CBOR encode/decode
-	// support for this field (key 20) is ported by the frame/codec subsystem
-	// task, not here; the request-state subsystem only needs the in-memory
-	// flag and the constructors/accessor its parity tests exercise directly
-	// on Frame values.
+	// frames only (L16; key 20).
 	Unbounded *bool
+	// Output says which output of the cap this response stream is, when it is
+	// not the main one: that output's media URN. The stream of a cap's MAIN
+	// output (the one the cap URN's `out=` states) carries none — it is the
+	// cap's answer, and whoever asked knows what they asked for without the
+	// cap's definition. A request stream is an argument and carries none
+	// either. MediaUrn says what the data is; two outputs may carry one type,
+	// and this says which of them the stream is. STREAM_START only (key 21).
+	Output *string
 }
 
 // CancelReason is WHY a request is being cancelled — the attribution a Cancel
@@ -568,6 +574,23 @@ func NewStreamStartUnbounded(reqId MessageId, streamId string, mediaUrn string, 
 	unbounded := true
 	frame.Unbounded = &unbounded
 	return frame
+}
+
+// ForOutput marks this STREAM_START as the stream of an output other than the
+// cap's main one: the output `output` identifies (that output's media URN).
+// (matches Rust Frame::for_output)
+func (f *Frame) ForOutput(output string) *Frame {
+	f.Output = &output
+	return f
+}
+
+// OutputUrn returns the output this STREAM_START names. None on the main
+// output's stream and on a request stream. (matches Rust Frame::output_urn)
+func (f *Frame) OutputUrn() (string, bool) {
+	if f.Output == nil {
+		return "", false
+	}
+	return *f.Output, true
 }
 
 // IsUnbounded reports whether this STREAM_START announces an unbounded

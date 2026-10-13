@@ -1,6 +1,7 @@
 package machine
 
 import (
+	"fmt"
 	"sort"
 	"testing"
 
@@ -24,18 +25,24 @@ func buildCap(capUrnStr, title string, argMediaUrns []string, outputMediaUrn str
 		panic("test fixture: invalid cap URN " + capUrnStr + ": " + err.Error())
 	}
 	args := make([]cap.CapArg, len(argMediaUrns))
+	// Each arg has a name of its own (RULE17): the first is `input`, the
+	// rest `arg1`, `arg2`, …
 	for i, mu := range argMediaUrns {
 		stdinVal := mu
-		args[i] = cap.NewCapArg(mu, true, []cap.ArgSource{{Stdin: &stdinVal}})
+		name := "input"
+		if i > 0 {
+			name = fmt.Sprintf("arg%d", i)
+		}
+		args[i] = cap.NewCapArg(mu, name, true, []cap.ArgSource{{Stdin: &stdinVal}})
 	}
 	outMedia := outputMediaUrn
-	output := cap.NewCapOutput(outMedia, "output of "+title)
+	output := cap.NewCapOutput(outMedia, "output", "output of "+title)
 	return &cap.Cap{
 		Urn:     capUrnParsed,
 		Title:   title,
 		Aliases: []string{"test-fixture://" + title},
 		Args:    args,
-		Output:  output,
+		Outputs: []cap.CapOutput{*output},
 	}
 }
 
@@ -296,6 +303,21 @@ func Test1159_MachineStrandIsEquivalentWalksNodeBijection(t *testing.T) {
 	if !m1.Strands()[0].IsEquivalent(m2.Strands()[0]) {
 		t.Error("two MachineStrands built from the same planner strand must be equivalent")
 	}
+
+	// The same step over a more specific input: the nodes that stand for each
+	// other hold different types, so the strands are different.
+	scanned, err := FromStrand(strandFromSteps([]*planner.StrandStep{capStep(
+		`cap:in="media:document;ext=pdf";extract;out="media:txt;enc=utf-8"`,
+		"extract",
+		"media:document;ext=pdf;scanned",
+		`media:txt;enc=utf-8`,
+	)}, "scanned pdf to txt"), registry)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if m1.Strands()[0].IsEquivalent(scanned.Strands()[0]) || scanned.Strands()[0].IsEquivalent(m1.Strands()[0]) {
+		t.Error("strands whose nodes hold different types must not be equivalent")
+	}
 }
 
 // ===================================================================
@@ -347,7 +369,7 @@ func Test1169_SequenceIntoScalarCapDerivesIsLoop(t *testing.T) {
 		[]string{"media:enc=utf-8"},
 		`media:item;enc=utf-8`,
 	)
-	splitter.Output.IsSequence = true
+	splitter.MainOutput().IsSequence = true
 	// Consumer: scalar item -> scalar text.
 	texter := buildCap(
 		`cap:in="media:item;enc=utf-8";t;out="media:enc=utf-8"`,
@@ -439,10 +461,10 @@ func Test1163_ParseSingleStrandTwoCapsConnectedViaSharedNode(t *testing.T) {
 		t.Fatalf("expected 2 edges in strand, got %d", len(strand.Edges()))
 	}
 	// The intermediate node must be the same NodeId for both edges.
-	extractTarget := strand.Edges()[0].Target
-	embedSource := strand.Edges()[1].Assignment[0].Source
+	extractTarget := mainTarget(t, strand.Edges()[0])
+	embedSource := strand.Edges()[1].Assignment[0].Source.Node
 	if extractTarget != embedSource {
-		t.Errorf("intermediate node 'txt' must be the same NodeId: extract.Target=%d, embed.source=%d",
+		t.Errorf("intermediate node 'txt' must be the same NodeId: mainTarget(t, extract)=%d, embed.source=%d",
 			extractTarget, embedSource)
 	}
 }
@@ -789,15 +811,15 @@ func Test1120_FromStrand_unknown_cap_fails_hard(t *testing.T) {
 }
 
 // TEST1147: MachineSyntaxError.Error() includes position and detail.
-// invalidWiringError(7) must produce a message containing "statement 7" and "invalid wiring".
+// invalidPolicyError must produce a message naming the step, the statement and what is wrong.
 func Test1147_machine_syntax_error_display_is_specific(t *testing.T) {
-	err := invalidWiringError(7, "expected source -> cap -> target")
+	err := invalidPolicyError("fetch", 7, "unknown key 'tries'")
 	msg := err.Error()
 	if !containsStr(msg, "statement 7") {
 		t.Errorf("error message must contain 'statement 7', got: %q", msg)
 	}
-	if !containsStr(msg, "invalid wiring") {
-		t.Errorf("error message must contain 'invalid wiring', got: %q", msg)
+	if !containsStr(msg, "invalid policy on step 'fetch'") || !containsStr(msg, "unknown key 'tries'") {
+		t.Errorf("error message must name the step and the defect, got: %q", msg)
 	}
 }
 
@@ -869,11 +891,11 @@ func Test1178_match_single_source_picks_unique_arg(t *testing.T) {
 	args := []*urn.MediaUrn{mediaUrn("media:document;ext=pdf")}
 	capUrnStr := `cap:in="media:document;ext=pdf";extract;out="media:txt;enc=utf-8"`
 
-	pairs, err := matchSourcesToArgs(sources, args, capUrnStr, 0)
+	pairs, err := matchSourcesToArgs(sources, args, make([]bool, len(args)), -1, capUrnStr, 0)
 	require.Nil(t, err, "trivial single-source match must succeed")
 	require.Equal(t, 1, len(pairs))
-	assert.True(t, pairs[0][0].IsEquivalent(mediaUrn("media:document;ext=pdf")), "arg must be media:document;ext=pdf")
-	assert.True(t, pairs[0][1].IsEquivalent(mediaUrn("media:document;ext=pdf")), "source must be media:document;ext=pdf")
+	assert.True(t, pairs[0].arg.IsEquivalent(mediaUrn("media:document;ext=pdf")), "arg must be media:document;ext=pdf")
+	assert.True(t, pairs[0].source.IsEquivalent(mediaUrn("media:document;ext=pdf")), "source must be media:document;ext=pdf")
 }
 
 // TEST1179: Source-to-arg matching assigns a more specific source to a compatible general argument.
@@ -882,11 +904,11 @@ func Test1179_match_more_specific_source_assigned_to_general_arg(t *testing.T) {
 	args := []*urn.MediaUrn{mediaUrn("media:enc=utf-8")}
 	capUrnStr := `cap:in="media:enc=utf-8";make-decision;out="media:decision;fmt=json;record"`
 
-	pairs, err := matchSourcesToArgs(sources, args, capUrnStr, 0)
+	pairs, err := matchSourcesToArgs(sources, args, make([]bool, len(args)), -1, capUrnStr, 0)
 	require.Nil(t, err, "more-specific source must be matched to its arg")
 	require.Equal(t, 1, len(pairs))
-	assert.True(t, pairs[0][0].IsEquivalent(mediaUrn("media:enc=utf-8")), "arg must be media:enc=utf-8")
-	assert.True(t, pairs[0][1].IsEquivalent(mediaUrn("media:page;enc=utf-8")), "source must be media:page;enc=utf-8")
+	assert.True(t, pairs[0].arg.IsEquivalent(mediaUrn("media:enc=utf-8")), "arg must be media:enc=utf-8")
+	assert.True(t, pairs[0].source.IsEquivalent(mediaUrn("media:page;enc=utf-8")), "source must be media:page;enc=utf-8")
 }
 
 // TEST1180: Matching fails when a source does not conform to any cap input argument.
@@ -895,7 +917,7 @@ func Test1180_match_unmatched_source_fails_hard(t *testing.T) {
 	args := []*urn.MediaUrn{mediaUrn("media:enc=utf-8")}
 	capUrnStr := `cap:in="media:enc=utf-8";t;out="media:enc=utf-8"`
 
-	_, err := matchSourcesToArgs(sources, args, capUrnStr, 7)
+	_, err := matchSourcesToArgs(sources, args, make([]bool, len(args)), -1, capUrnStr, 7)
 	require.NotNil(t, err, "unmatched source must fail hard")
 	assert.Equal(t, ErrAbstractionUnmatchedSourceInCapArgs, err.Kind)
 }
@@ -906,13 +928,13 @@ func Test1181_match_two_sources_disambiguated_by_specificity(t *testing.T) {
 	args := []*urn.MediaUrn{mediaUrn("media:ext=png;image"), mediaUrn("media:enc=utf-8")}
 	capUrnStr := `cap:in="media:ext=png;image";describe;out="media:image-description;enc=utf-8"`
 
-	pairs, err := matchSourcesToArgs(sources, args, capUrnStr, 0)
+	pairs, err := matchSourcesToArgs(sources, args, make([]bool, len(args)), -1, capUrnStr, 0)
 	require.Nil(t, err, "two sources disambiguated by specificity must succeed")
 	require.Equal(t, 2, len(pairs))
 
 	foundImage, foundText := false, false
 	for _, pair := range pairs {
-		arg, src := pair[0], pair[1]
+		arg, src := pair.arg, pair.source
 		if arg.IsEquivalent(mediaUrn("media:ext=png;image")) {
 			assert.True(t, src.IsEquivalent(mediaUrn("media:ext=png;image")))
 			foundImage = true
@@ -922,6 +944,14 @@ func Test1181_match_two_sources_disambiguated_by_specificity(t *testing.T) {
 		}
 	}
 	assert.True(t, foundImage && foundText, "both arg slots must be assigned")
+
+	// One source that fits two args takes the one it is closest to.
+	page := []*urn.MediaUrn{mediaUrn("media:enc=utf-8;page")}
+	either := []*urn.MediaUrn{mediaUrn("media:enc=utf-8"), mediaUrn("media:enc=utf-8;page")}
+	pairs, err = matchSourcesToArgs(page, either, make([]bool, 2), -1, capUrnStr, 0)
+	require.Nil(t, err)
+	require.Len(t, pairs, 1)
+	assert.True(t, pairs[0].arg.IsEquivalent(mediaUrn("media:enc=utf-8;page")), "the exact arg, not the general one: %s", pairs[0].arg)
 }
 
 // TEST1182: Matching fails as ambiguous when two sources can be swapped at equal minimum cost.
@@ -930,7 +960,7 @@ func Test1182_match_ambiguous_when_two_sources_could_swap(t *testing.T) {
 	args := []*urn.MediaUrn{mediaUrn("media:enc=utf-8"), mediaUrn("media:enc=utf-8")}
 	capUrnStr := `cap:in="media:enc=utf-8";t;out="media:enc=utf-8"`
 
-	_, err := matchSourcesToArgs(sources, args, capUrnStr, 0)
+	_, err := matchSourcesToArgs(sources, args, make([]bool, len(args)), -1, capUrnStr, 0)
 	require.NotNil(t, err, "ambiguous matching must fail hard")
 	assert.Equal(t, ErrAbstractionAmbiguousMachineNotation, err.Kind)
 }
@@ -941,7 +971,7 @@ func Test1183_match_more_sources_than_args_fails_hard(t *testing.T) {
 	args := []*urn.MediaUrn{mediaUrn("media:document;ext=pdf"), mediaUrn("media:document;ext=pdf")}
 	capUrnStr := "cap:in=\"media:document;ext=pdf\";t;out=\"media:document;ext=pdf\""
 
-	_, err := matchSourcesToArgs(sources, args, capUrnStr, 0)
+	_, err := matchSourcesToArgs(sources, args, make([]bool, len(args)), -1, capUrnStr, 0)
 	require.NotNil(t, err, "more sources than args must fail hard")
 	assert.Equal(t, ErrAbstractionUnmatchedSourceInCapArgs, err.Kind)
 }
@@ -966,7 +996,7 @@ func Test1184_resolve_strand_single_cap_produces_one_edge(t *testing.T) {
 
 	binding := resolved.Edges()[0].Assignment[0]
 	assert.True(t, binding.CapArgMediaUrn.IsEquivalent(mediaUrn("media:document;ext=pdf")))
-	srcUrn := resolved.NodeUrn(binding.Source)
+	srcUrn := resolved.NodeUrn(binding.Source.Node)
 	assert.True(t, srcUrn.IsEquivalent(mediaUrn("media:document;ext=pdf")))
 
 	inputs := resolved.InputAnchors()
@@ -992,8 +1022,8 @@ func Test1185_resolve_strand_chained_caps_share_intermediate_node(t *testing.T) 
 		"three distinct data positions: pdf, enc=utf-8;ext=txt, vec;record")
 
 	// Intermediate node must be shared between extract's target and embed's source.
-	extractTarget := resolved.Edges()[0].Target
-	embedSource := resolved.Edges()[1].Assignment[0].Source
+	extractTarget := mainTarget(t, resolved.Edges()[0])
+	embedSource := resolved.Edges()[1].Assignment[0].Source.Node
 	assert.Equal(t, extractTarget, embedSource,
 		"intermediate data position must be one shared NodeId")
 
@@ -1016,7 +1046,7 @@ func Test1186_resolve_strand_foreach_marks_following_cap_as_loop(t *testing.T) {
 		[]string{"media:document;ext=pdf"},
 		`media:page;enc=utf-8`,
 	)
-	disbind.Output.IsSequence = true
+	disbind.MainOutput().IsSequence = true
 	makeDecision := buildCap(
 		`cap:in="media:enc=utf-8";make-decision;out="media:decision;fmt=json;record"`,
 		"make_decision",
@@ -1051,8 +1081,8 @@ func Test1186_resolve_strand_foreach_marks_following_cap_as_loop(t *testing.T) {
 	assert.True(t, decisionEdge.IsLoop, "make-decision is inside ForEach")
 
 	// Intermediate node is shared (positional interning).
-	disbindTarget := disbindEdge.Target
-	decisionSource := decisionEdge.Assignment[0].Source
+	disbindTarget := mainTarget(t, disbindEdge)
+	decisionSource := decisionEdge.Assignment[0].Source.Node
 	assert.Equal(t, disbindTarget, decisionSource,
 		"disbind target and make_decision source must share the same NodeId (positional interning)")
 	assert.True(t, resolved.NodeUrn(disbindTarget).IsEquivalent(mediaUrn(`media:page;enc=utf-8`)),
@@ -1100,8 +1130,8 @@ func Test1190_resolve_strand_inverse_format_converters_no_cycle(t *testing.T) {
 		"three distinct data positions: input, intermediate, output")
 	assert.Equal(t, 2, len(resolved.Edges()))
 
-	intTarget := resolved.Edges()[0].Target
-	numSource := resolved.Edges()[1].Assignment[0].Source
+	intTarget := mainTarget(t, resolved.Edges()[0])
+	numSource := resolved.Edges()[1].Assignment[0].Source.Node
 	assert.Equal(t, intTarget, numSource, "intermediate node must be shared")
 }
 
@@ -1118,9 +1148,9 @@ func Test1191_resolve_strand_disbind_pdf_with_file_path_slot_identity(t *testing
 		Title:   "disbind",
 		Aliases: []string{"disbind"},
 		Args: []cap.CapArg{
-			cap.NewCapArg(filePathSlot, true, []cap.ArgSource{{Stdin: &stdinUrn}}),
+			cap.NewCapArg(filePathSlot, "input", true, []cap.ArgSource{{Stdin: &stdinUrn}}),
 		},
-		Output: cap.NewCapOutput(`media:page;enc=utf-8`, "pages"),
+		Outputs: []cap.CapOutput{*cap.NewCapOutput(`media:page;enc=utf-8`, "output", "pages")},
 	}
 	registry := registryWith([]*cap.Cap{disbind})
 
@@ -1138,7 +1168,7 @@ func Test1191_resolve_strand_disbind_pdf_with_file_path_slot_identity(t *testing
 	assert.True(t, binding.CapArgMediaUrn.IsEquivalent(mediaUrn("media:file-path;enc=utf-8")),
 		"binding cap_arg_media_urn must be the slot identity, got: %s", binding.CapArgMediaUrn)
 	// Source node must be media:document;ext=pdf.
-	sourceUrn := resolved.NodeUrn(binding.Source)
+	sourceUrn := resolved.NodeUrn(binding.Source.Node)
 	assert.True(t, sourceUrn.IsEquivalent(mediaUrn("media:document;ext=pdf")),
 		"source node URN must be media:document;ext=pdf (the data-type URN), got: %s", sourceUrn)
 }
@@ -1171,7 +1201,7 @@ func Test1138_assignment_bindings_are_sorted_by_cap_arg_media_urn(t *testing.T) 
 			tokenId:       mustStepToken(t, "tok-1"),
 			capUrn:        mergeCapUrn,
 			sourceNodeIds: []NodeId{0, 1}, // pdf first, enc=utf-8 second
-			targetNodeId:  2,
+			targets:       []wiringTarget{{node: 2}},
 		},
 	}
 
@@ -1256,13 +1286,13 @@ func Test1308_CyclicStrandFailsHard(t *testing.T) {
 			tokenId:       mustStepToken(t, "tok-2"),
 			capUrn:        capUrnVal(urnA),
 			sourceNodeIds: []NodeId{0},
-			targetNodeId:  1,
+			targets:       []wiringTarget{{node: 1}},
 		},
 		{
 			tokenId:       mustStepToken(t, "tok-3"),
 			capUrn:        capUrnVal(urnB),
 			sourceNodeIds: []NodeId{1},
-			targetNodeId:  0,
+			targets:       []wiringTarget{{node: 0}},
 		},
 	}
 
@@ -1318,4 +1348,13 @@ func mustStepToken(t *testing.T, raw string) planner.StepToken {
 	token, err := planner.ParseStepToken(raw)
 	require.NoError(t, err)
 	return token
+}
+
+// mainTarget is the node an edge's main output goes to; the edges these
+// fixtures build all take it.
+func mainTarget(t *testing.T, edge *MachineEdge) NodeId {
+	t.Helper()
+	node, taken := edge.MainTarget()
+	require.True(t, taken, "the edge takes its cap's main output: %s", edge)
+	return node
 }

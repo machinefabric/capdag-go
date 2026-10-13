@@ -1,23 +1,84 @@
 package machine
 
 import (
+	"fmt"
 	"sort"
+	"strings"
 
+	"github.com/machinefabric/capdag-go/cap"
 	"github.com/machinefabric/capdag-go/fabric"
 	"github.com/machinefabric/capdag-go/planner"
 	"github.com/machinefabric/capdag-go/standard"
 	"github.com/machinefabric/capdag-go/urn"
 )
 
-// preInternedWiring is one wiring after the caller has pre-interned its
-// source and target slots into NodeIds against a parallel nodes slice.
+// Anchor realization for MachineStrands.
+//
+// This file turns either a planner-produced Strand or a parser-produced wiring
+// set into a fully resolved MachineStrand: a connected sub-graph whose every
+// edge has an explicit source-to-cap-arg assignment and names the outputs it
+// takes, anchored by the input root URNs and output leaf URNs of the strand.
+//
+// # Binding a wiring's members
+//
+// Members that name an arg bind first, each to the arg of that name; the
+// source must conform to what that arg ACCEPTS. A name written more than once
+// gathers, and only a sequence arg may be gathered into. A constant is held to
+// the validation of the arg's media definition.
+//
+// The members that name no arg are matched by type over the args no name
+// bound, by minimum-cost assignment in two phases of strict precedence:
+//
+//   - Cost of pairing source s with arg a: |spec(s) - spec(a)| if s conforms
+//     to what a accepts; otherwise the pair is impossible.
+//   - Phase 1 — product: each source claims a distinct arg. Whenever such an
+//     assignment exists, this phase decides.
+//   - Phase 2 — gather: only when no such assignment exists, a sequence arg
+//     may absorb several conforming sources (scalar args still take at most
+//     one).
+//   - The minimum-cost assignment of the deciding phase must be unique: a tie
+//     is ErrAbstractionAmbiguousMachineNotation. Where a member stands in its
+//     group is never a tiebreaker (it only fixes the item order within one
+//     gathered arg).
+
+// namedSource is a member that says which arg it is for, by the arg's NAME in
+// the cap definition.
+type namedSource struct {
+	name   string
+	source BindingSource
+}
+
+// wiringTarget is an output taken: the output's NAME in the cap definition
+// (without a name, the main output) and the node it goes to.
+type wiringTarget struct {
+	name    string
+	hasName bool
+	node    NodeId
+}
+
+// preInternedWiring is one wiring after the caller has pre-interned its source
+// and target slots into NodeIds against a parallel nodes slice.
+//
+// The resolver does no URN-based interning of its own: two distinct NodeIds
+// whose URNs are equivalent stay distinct, which is what lets the notation
+// parser honor the identity of node names.
 type preInternedWiring struct {
-	// tokenId is the originating resolved-strand step's stable identity,
-	// carried onto the resulting MachineEdge (see MachineEdge.TokenId).
-	tokenId       planner.StepToken
-	capUrn        *urn.CapUrn
+	// tokenId is the originating step's stable identity, carried onto the
+	// resulting MachineEdge (see MachineEdge.TokenId).
+	tokenId planner.StepToken
+	capUrn  *urn.CapUrn
+	// namedSources bind first, in the order written.
+	namedSources []namedSource
+	// sourceNodeIds name no arg. Position carries no semantics — the matching
+	// assigns each to a cap arg no named member bound.
 	sourceNodeIds []NodeId
-	targetNodeId  NodeId
+	// targets are the outputs taken. Empty: a sink.
+	targets []wiringTarget
+	// policy is what the step does when it fails.
+	policy StepPolicy
+	// includedAs is the machine steps this step was included through,
+	// outermost first; empty for a step the machine wrote itself.
+	includedAs []string
 }
 
 // resolveStrand converts a planner-produced Strand into a single MachineStrand.
@@ -25,8 +86,7 @@ type preInternedWiring struct {
 // Every cap step names each of its inputs' producers explicitly (StrandInput or
 // another step's TokenId) — there is no positional predecessor assumption, so
 // fan-out and convergence both wire correctly. ForEach and Collect steps are
-// elided here; IsLoop is derived from cardinality in resolvePreInterned, the
-// single source of truth shared with path search.
+// elided here; IsLoop is derived from cardinality in resolvePreInterned.
 func resolveStrand(
 	strand *planner.Strand,
 	registry *fabric.FabricRegistry,
@@ -36,12 +96,11 @@ func resolveStrand(
 	var preInterned []preInternedWiring
 
 	// Producer of each node, by producing step's stable TokenId -> its output
-	// NodeId. Explicit input sources (CapInput.Source) resolve against this — no
-	// positional predecessor assumption, so fan-out and convergence both wire
-	// correctly.
+	// NodeId.
 	producerNode := make(map[planner.StepToken]NodeId)
-	// The single shared strand input anchor node, allocated on first StrandInput
-	// reference and refined to the most specific consuming FromSpec.
+	// The single shared strand input anchor node, allocated on first
+	// StrandInput reference and refined to the most specific consuming
+	// FromSpec.
 	var strandInputNode *NodeId
 
 	for _, step := range strand.Steps {
@@ -82,7 +141,8 @@ func resolveStrand(
 				tokenId:       step.TokenId,
 				capUrn:        step.CapUrnVal,
 				sourceNodeIds: sourceNodeIds,
-				targetNodeId:  targetId,
+				// A strand step produces its cap's main output.
+				targets: []wiringTarget{{node: targetId}},
 			})
 
 			producerNode[step.TokenId] = targetId
@@ -101,16 +161,23 @@ func resolveStrand(
 	return resolvePreInterned(nodes, preInterned, registry, strandIndex)
 }
 
+func mustMedia(text, what string) *urn.MediaUrn {
+	parsed, err := urn.NewMediaUrnFromString(text)
+	if err != nil {
+		panic(fmt.Sprintf("cap registry invariant: %s is a valid MediaUrn: %q: %v", what, text, err))
+	}
+	return parsed
+}
+
 // resolvePreInterned resolves a pre-interned wiring set into a MachineStrand.
 //
 // The caller has already allocated NodeIds for every distinct data position.
-// The resolver does NOT touch the interning policy — two NodeIds whose URNs
-// happen to be equivalent stay distinct.
 //
 // Steps:
-//  1. Per-wiring source-to-cap-arg matching (brute-force minimum-cost, with uniqueness check).
-//  2. Cycle detection via Kahn's algorithm over the resulting NodeId dependency graph.
-//  3. Canonical edge ordering with a structural tiebreaker.
+//  0. The outputs each wiring takes, and with them the cardinality of every node.
+//  1. Per-wiring binding of sources to cap args.
+//  2. Which steps map (IterationOf).
+//  3. Cycle detection and canonical edge ordering.
 //  4. Anchor computation (NodeIds with no producer / no consumer in the strand).
 func resolvePreInterned(
 	nodes []*urn.MediaUrn,
@@ -122,364 +189,584 @@ func resolvePreInterned(
 		return nil, noCapabilityStepsError()
 	}
 
-	// Cardinality of every node, derived from the single canonical rule
-	// (cap.SequenceShape): a node holds a sequence iff the cap that PRODUCES it
-	// has a sequence output; root nodes (never a wiring target) are scalar.
-	// IsLoop is DERIVED from cardinality, never authored. It replaces the
-	// retired LOOP keyword.
+	// Step 0: the outputs each wiring takes, by the names its targets wrote,
+	// and with them the cardinality of every node.
+	//
+	// A node holds a sequence, IN THE SCOPE IT LIVES IN, iff the output that
+	// produces it is declared a sequence: one run of the step yields a
+	// sequence. (A node a mapped step produces has one such value per item;
+	// what it is from outside the map is IterationStructure's to say.) An
+	// input of the machine is one value: notation has no run shape.
 	nodeIsSequence := make([]bool, len(nodes))
-	for _, wiring := range wirings {
-		capDef, ok := registry.GetCachedCap(wiring.capUrn.String())
-		if !ok {
-			return nil, unknownCapError(wiring.capUrn.String())
+	definitions := make([]*cap.Cap, len(wirings))
+	wiringOutputs := make([][]EdgeOutput, len(wirings))
+	for index, wiring := range wirings {
+		capUrn := wiring.capUrn.String()
+		definition, cached := registry.GetCachedCap(capUrn)
+		if !cached {
+			return nil, unknownCapError(capUrn)
 		}
-		_, outputIsSequence := capDef.SequenceShape()
-		nodeIsSequence[wiring.targetNodeId] = outputIsSequence
+		definitions[index] = definition
+		outputs := make([]EdgeOutput, 0, len(wiring.targets))
+		for _, target := range wiring.targets {
+			var output *cap.CapOutput
+			if !target.hasName {
+				// The unnamed target takes the main output.
+				output = definition.MainOutput()
+				if output == nil {
+					return nil, noMainOutputError(strandIndex, capUrn)
+				}
+			} else {
+				output = definition.OutputNamed(target.name)
+				if output == nil {
+					return nil, unknownOutputNameError(strandIndex, capUrn, target.name, outputNames(definition))
+				}
+			}
+			outputMediaUrn := mustMedia(output.MediaUrn, "every output media_urn")
+			for _, taken := range outputs {
+				if taken.OutputMediaUrn.IsEquivalent(outputMediaUrn) {
+					return nil, outputTakenTwiceError(strandIndex, capUrn, output.Name)
+				}
+			}
+			nodeIsSequence[target.node] = output.IsSequence
+			outputs = append(outputs, EdgeOutput{
+				OutputMediaUrn: outputMediaUrn,
+				OutputName:     output.Name,
+				Node:           target.node,
+			})
+		}
+		// Canonical order, like the assignment's.
+		sort.SliceStable(outputs, func(a, b int) bool {
+			return outputs[a].OutputMediaUrn.String() < outputs[b].OutputMediaUrn.String()
+		})
+		wiringOutputs[index] = outputs
 	}
 
-	// Step 1: per-wiring source-to-cap-arg matching.
-	indexedEdges := make([]*MachineEdge, 0, len(wirings))
-	for _, wiring := range wirings {
-		capDef, ok := registry.GetCachedCap(wiring.capUrn.String())
-		if !ok {
-			return nil, unknownCapError(wiring.capUrn.String())
-		}
-		capInSpec, err := urn.NewMediaUrnFromString(capDef.Urn.InSpec())
+	// Step 1: per-wiring binding of sources to cap args. Named members bind
+	// first; the rest are matched by type over the args no name bound.
+	void := mustMedia(standard.MediaVoid, "media:void")
+	shapes := make([]StepShape, len(wirings))
+	assignments := make([][]EdgeAssignmentBinding, len(wirings))
+	for index, wiring := range wirings {
+		definition := definitions[index]
+		capUrn := wiring.capUrn.String()
+		capInSpec, err := urn.NewMediaUrnFromString(definition.Urn.InSpec())
 		if err != nil {
-			panic("cap registry invariant: cap in= is a valid MediaUrn: " + err.Error())
-		}
-		voidMedia, err := urn.NewMediaUrnFromString(standard.MediaVoid)
-		if err != nil {
-			panic("standard.MediaVoid is a valid MediaUrn: " + err.Error())
+			return nil, runtimeMediaInferenceError(strandIndex, capUrn, definition.Urn.InSpec(),
+				fmt.Sprintf("cap `in=` is not a valid media URN: %v", err))
 		}
 		primaryArgIndex := -1
-		if !capInSpec.IsEquivalent(voidMedia) {
-			for i := range capDef.Args {
-				if capDef.Args[i].IsMainInput(capInSpec) {
+		if !capInSpec.IsEquivalent(void) {
+			for i := range definition.Args {
+				if definition.Args[i].IsMainInput(capInSpec) {
 					primaryArgIndex = i
 					break
 				}
 			}
 			if primaryArgIndex < 0 {
-				panic("cap registry invariant: every non-void cap declares its main input")
+				return nil, capDoesNotDeclareInputError(strandIndex, capUrn)
 			}
 		}
 
-		// Wiring sources are matched against EVERY arg by its stream URN (its
-		// Stdin source URN if it declares one, else its declared URN — a cap may
-		// have no stdin at all). ALL args are producer-feedable: a producer is
-		// anything that supplies a value (a prior cap's output, config, a
-		// literal, …), so every arg is a candidate. The matcher assigns each
-		// source to the arg it conforms to; args no source matches take their
-		// value from config/defaults; genuine ambiguity is a hard failure (in
-		// matchSourcesToArgs). stdin* names are historical — these are the
-		// per-arg stream and slot URNs.
-		var stdinArgUrns []*urn.MediaUrn
-		var stdinArgSlotUrns []*urn.MediaUrn
-		for _, arg := range capDef.Args {
-			streamUrn, err := urn.NewMediaUrnFromString(arg.StreamUrn())
-			if err != nil {
-				panic("cap registry invariant: every arg stream URN is a valid MediaUrn: " + err.Error())
-			}
-			slotUrn, err := urn.NewMediaUrnFromString(arg.MediaUrn)
-			if err != nil {
-				panic("cap registry invariant: every cap arg media_urn is a valid MediaUrn: " + err.Error())
-			}
-			stdinArgUrns = append(stdinArgUrns, streamUrn)
-			stdinArgSlotUrns = append(stdinArgSlotUrns, slotUrn)
+		// Every arg, by what it ACCEPTS (the type a source must conform to:
+		// its stdin source URN for the main input, its `accepts` when it gives
+		// one, its own URN otherwise) and by its SLOT (its media_urn, the
+		// identity a binding records and the URN its stream is delivered
+		// under). How an arg is supplied on a command line plays no part:
+		// every arg can be bound by a wiring.
+		argAccepts := make([]*urn.MediaUrn, len(definition.Args))
+		argSlots := make([]*urn.MediaUrn, len(definition.Args))
+		for i := range definition.Args {
+			argAccepts[i] = mustMedia(definition.Args[i].AcceptedUrn(), "what every arg accepts")
+			argSlots[i] = mustMedia(definition.Args[i].MediaUrn, "every cap arg media_urn")
 		}
 
-		// Pull source URNs from the nodes table.
+		// Named members bind first.
+		bindings := make([]EdgeAssignmentBinding, 0, len(wiring.namedSources)+len(wiring.sourceNodeIds))
+		namedCount := make([]int, len(definition.Args))
+		for _, named := range wiring.namedSources {
+			argIndex := -1
+			for i := range definition.Args {
+				if definition.Args[i].Name == named.name {
+					argIndex = i
+					break
+				}
+			}
+			if argIndex < 0 {
+				return nil, unknownArgNameError(strandIndex, capUrn, named.name, argNames(definition))
+			}
+			if named.source.IsConstant {
+				if refused := checkConstant(registry, capUrn, &definition.Args[argIndex], named.source.Constant, strandIndex); refused != nil {
+					return nil, refused
+				}
+			} else {
+				sourceUrn := nodes[named.source.Node]
+				if !sourceUrn.ConformsTo(argAccepts[argIndex]) {
+					return nil, sourceDoesNotConformToArgError(strandIndex, capUrn, named.name,
+						argAccepts[argIndex].String(), sourceUrn.String())
+				}
+			}
+			namedCount[argIndex]++
+			bindings = append(bindings, EdgeAssignmentBinding{
+				CapArgMediaUrn: argSlots[argIndex],
+				ArgName:        definition.Args[argIndex].Name,
+				Source:         named.source,
+			})
+		}
+		for i, count := range namedCount {
+			if count > 1 && !definition.Args[i].IsSequence {
+				return nil, argBoundTwiceError(strandIndex, capUrn, definition.Args[i].Name, count)
+			}
+		}
+
+		// The unnamed members are matched by type over the args no name bound.
+		var free []int
+		for i := range definition.Args {
+			if namedCount[i] == 0 {
+				free = append(free, i)
+			}
+		}
+		freeAccepts := make([]*urn.MediaUrn, len(free))
+		freeIsSequence := make([]bool, len(free))
+		// The main input, when no named member bound it.
+		mustBind := -1
+		for i, argIndex := range free {
+			freeAccepts[i] = argAccepts[argIndex]
+			freeIsSequence[i] = definition.Args[argIndex].IsSequence
+			if argIndex == primaryArgIndex {
+				mustBind = i
+			}
+		}
 		sourceUrns := make([]*urn.MediaUrn, len(wiring.sourceNodeIds))
 		for i, id := range wiring.sourceNodeIds {
 			sourceUrns[i] = nodes[id]
 		}
 
-		// Run bipartite matching.
-		sortedAssignment, matchErr := matchSourcesToArgs(
-			sourceUrns, stdinArgUrns, wiring.capUrn.String(), strandIndex,
-		)
-		if matchErr != nil {
-			return nil, matchErr
+		if len(sourceUrns) > 0 {
+			matched, matchErr := matchSourcesToArgs(sourceUrns, freeAccepts, freeIsSequence, mustBind, capUrn, strandIndex)
+			if matchErr != nil {
+				return nil, matchErr
+			}
+			// The matching answers in URNs. Each accepted URN is translated
+			// back to its slot identity, and each source URN to its position
+			// among the wiring's unnamed sources, walking the positions not
+			// yet taken so that two sources that share a URN stay two.
+			consumed := make([]bool, len(wiring.sourceNodeIds))
+			for _, pair := range matched {
+				argAt, sourceAt := -1, -1
+				for i, accepts := range freeAccepts {
+					if accepts.IsEquivalent(pair.arg) {
+						argAt = i
+						break
+					}
+				}
+				for position, id := range wiring.sourceNodeIds {
+					if !consumed[position] && nodes[id].IsEquivalent(pair.source) {
+						sourceAt = position
+						break
+					}
+				}
+				if argAt < 0 || sourceAt < 0 {
+					panic("the matching answered in a URN it was not given")
+				}
+				consumed[sourceAt] = true
+				bindings = append(bindings, EdgeAssignmentBinding{
+					CapArgMediaUrn: argSlots[free[argAt]],
+					ArgName:        definition.Args[free[argAt]].Name,
+					Source:         NodeSource(wiring.sourceNodeIds[sourceAt]),
+				})
+			}
 		}
 
-		// Build bindings: translate matched stdin URN back to slot identity.
-		bindings := make([]EdgeAssignmentBinding, 0, len(sortedAssignment))
-		consumedPositions := make([]bool, len(wiring.sourceNodeIds))
-		for _, pair := range sortedAssignment {
-			matchedStdinUrn := pair[0]
-			sourceUrn := pair[1]
-
-			// Find slot identity for this matched stdin URN.
-			var slotUrn *urn.MediaUrn
-			for j, su := range stdinArgUrns {
-				if su.IsEquivalent(matchedStdinUrn) {
-					slotUrn = stdinArgSlotUrns[j]
-					break
-				}
-			}
-			if slotUrn == nil {
-				panic("matching returned a stdin URN not in the cap's stdin args list")
-			}
-
-			// Find the source NodeId by URN equivalence.
-			chosenPos := -1
-			for pos, sid := range wiring.sourceNodeIds {
-				if consumedPositions[pos] {
-					continue
-				}
-				if nodes[sid].IsEquivalent(sourceUrn) {
-					chosenPos = pos
-					break
-				}
-			}
-			if chosenPos < 0 {
-				panic("matching returned a source URN not in the wiring's source positions")
-			}
-			consumedPositions[chosenPos] = true
-			bindings = append(bindings, EdgeAssignmentBinding{
-				CapArgMediaUrn: slotUrn,
-				Source:         wiring.sourceNodeIds[chosenPos],
-			})
-		}
-
-		// Sort bindings by slot identity for canonical equivalence comparison.
-		sort.Slice(bindings, func(a, b int) bool {
+		// The bindings are in the order they were made: the named ones as
+		// written, then the matched ones. To keep the canonical equivalence
+		// comparison stable, re-sort by slot identity; the sort is stable, so
+		// several bindings gathered onto one arg keep their declaration order
+		// — the gathered sequence's item order.
+		sort.SliceStable(bindings, func(a, b int) bool {
 			return bindings[a].CapArgMediaUrn.String() < bindings[b].CapArgMediaUrn.String()
 		})
 
-		// Derive IsLoop from cardinality — the single ForEach rule
-		// (cap.NeedsForeach): the primary data input (the arg whose stdin
-		// matches in=)
-		// carries a sequence but this cap consumes it as a scalar, so it maps
-		// per-item. The primary stdin source node is the binding feeding the
-		// main arg's slot. A void-input cap has no main arg and never
-		// loops.
-		primaryStdinSourceIsSequence := false
+		// A cap that takes an input is given it.
 		if primaryArgIndex >= 0 {
-			primarySlot := stdinArgSlotUrns[primaryArgIndex]
-			for _, b := range bindings {
-				if b.CapArgMediaUrn.IsEquivalent(primarySlot) {
-					primaryStdinSourceIsSequence = nodeIsSequence[b.Source]
+			given := false
+			for _, binding := range bindings {
+				if binding.CapArgMediaUrn.IsEquivalent(argSlots[primaryArgIndex]) {
+					given = true
+				}
+			}
+			if !given {
+				return nil, mainInputUnboundError(strandIndex, capUrn, definition.Args[primaryArgIndex].Name)
+			}
+		}
+
+		// What the step is given, as far as iteration is concerned: each node
+		// and whether the arg it is bound to takes a sequence. A constant is
+		// one value wherever the step runs.
+		shape := StepShape{}
+		for _, binding := range bindings {
+			if binding.Source.IsConstant {
+				continue
+			}
+			for i, slot := range argSlots {
+				if slot.IsEquivalent(binding.CapArgMediaUrn) {
+					shape.Members = append(shape.Members, MemberShape{
+						Node:          binding.Source.Node,
+						ArgIsSequence: definition.Args[i].IsSequence,
+					})
 					break
 				}
 			}
 		}
-		isLoop := capDef.NeedsForeach(primaryStdinSourceIsSequence)
+		for _, output := range wiringOutputs[index] {
+			shape.Outputs = append(shape.Outputs, OutputShape{Node: output.Node, IsSequence: nodeIsSequence[output.Node]})
+		}
+		shapes[index] = shape
+		assignments[index] = bindings
+	}
 
-		indexedEdges = append(indexedEdges, &MachineEdge{
+	// Step 2: which steps map. Iteration is DERIVED from cardinality, never
+	// authored (docs 09 §Iteration); IterationOf is the one place the rule is
+	// computed. Notation has no run, so an input of the machine is one value
+	// here.
+	iteration, cyclic := IterationOf(shapes, func(NodeId) bool { return false })
+	if cyclic != nil {
+		return nil, cyclicStrandError(strandIndex)
+	}
+
+	indexedEdges := make([]*MachineEdge, len(wirings))
+	for index, wiring := range wirings {
+		indexedEdges[index] = &MachineEdge{
 			TokenId:    wiring.tokenId,
 			CapUrn:     wiring.capUrn,
-			Assignment: bindings,
-			Target:     wiring.targetNodeId,
-			IsLoop:     isLoop,
-		})
+			Assignment: assignments[index],
+			Outputs:    wiringOutputs[index],
+			Policy:     wiring.policy,
+			IncludedAs: append([]string(nil), wiring.includedAs...),
+			IsLoop:     iteration.Steps()[index].Maps,
+		}
 	}
 
-	// Step 2: cycle detection + canonical edge order.
-	canonicalOrder, cycleErr := topoSort(indexedEdges, nodes, strandIndex)
-	if cycleErr != nil {
-		return nil, cycleErr
-	}
+	// Step 3: canonical edge order. The steps are acyclic: every one of them
+	// was placed above.
+	canonicalOrder := topoSort(indexedEdges, nodes)
 	edges := make([]*MachineEdge, len(canonicalOrder))
 	for i, idx := range canonicalOrder {
 		edges[i] = indexedEdges[idx]
 	}
 
-	// Step 3: anchor computation.
-	producedNodeIds := make(map[NodeId]bool)
-	consumedNodeIds := make(map[NodeId]bool)
+	// Step 4: anchor computation.
+	produced := make(map[NodeId]bool)
+	consumed := make(map[NodeId]bool)
 	for _, e := range edges {
-		producedNodeIds[e.Target] = true
-		for _, b := range e.Assignment {
-			consumedNodeIds[b.Source] = true
+		for _, node := range e.OutputNodes() {
+			produced[node] = true
+		}
+		for _, node := range e.SourceNodes() {
+			consumed[node] = true
 		}
 	}
-
+	// Every node is a source or an output of some step — that is what makes
+	// it a node of the strand. One nothing produces is an input of the
+	// strand; one nothing consumes is an output of it.
 	var inputAnchorIds []NodeId
 	var outputAnchorIds []NodeId
 	for id := NodeId(0); id < NodeId(len(nodes)); id++ {
-		if !producedNodeIds[id] && consumedNodeIds[id] {
+		if !produced[id] && !consumed[id] {
+			panic(fmt.Sprintf("node %d of strand %d is touched by no wiring", id, strandIndex))
+		}
+		if !produced[id] {
 			inputAnchorIds = append(inputAnchorIds, id)
 		}
-		if !consumedNodeIds[id] && producedNodeIds[id] {
+		if !consumed[id] {
 			outputAnchorIds = append(outputAnchorIds, id)
 		}
 	}
+	// Sort anchors by canonical (URN, NodeId) order so the result is stable
+	// across node-allocation orders that yield equivalent strands.
+	byUrnThenId := func(ids []NodeId) {
+		sort.Slice(ids, func(a, b int) bool {
+			ua, ub := nodes[ids[a]].String(), nodes[ids[b]].String()
+			if ua != ub {
+				return ua < ub
+			}
+			return ids[a] < ids[b]
+		})
+	}
+	byUrnThenId(inputAnchorIds)
+	byUrnThenId(outputAnchorIds)
 
-	// Sort anchors by canonical (URN string, NodeId) order.
-	sort.Slice(inputAnchorIds, func(a, b int) bool {
-		ua, ub := nodes[inputAnchorIds[a]].String(), nodes[inputAnchorIds[b]].String()
-		if ua != ub {
-			return ua < ub
-		}
-		return inputAnchorIds[a] < inputAnchorIds[b]
-	})
-	sort.Slice(outputAnchorIds, func(a, b int) bool {
-		ua, ub := nodes[outputAnchorIds[a]].String(), nodes[outputAnchorIds[b]].String()
-		if ua != ub {
-			return ua < ub
-		}
-		return outputAnchorIds[a] < outputAnchorIds[b]
-	})
-
-	return newMachineStrand(nodes, edges, inputAnchorIds, outputAnchorIds), nil
+	return newMachineStrand(nodes, edges, inputAnchorIds, outputAnchorIds, nodeIsSequence), nil
 }
 
-// matchSourcesToArgs matches a wiring's sources to a cap's stdin arg URNs by
-// minimum total specificity-distance, with a uniqueness requirement.
+// checkConstant holds a constant to the validation of the arg it is bound to:
+// the rules and the schema the arg's media definition declares. A constant is
+// a value like any other the arg is given; it is known when the machine is
+// resolved, so that is when it is checked.
+func checkConstant(
+	registry *fabric.FabricRegistry,
+	capUrn string,
+	arg *cap.CapArg,
+	value any,
+	strandIndex int,
+) *MachineAbstractionError {
+	refused := func(reason string) *MachineAbstractionError {
+		return constantFailsValidationError(strandIndex, capUrn, arg.Name, constantText(value), reason)
+	}
+	// Without the definition there is nothing to hold the constant to, and a
+	// constant nobody checked is not bound.
+	definition := registry.GetCachedMediaDef(arg.MediaUrn)
+	if definition == nil {
+		return refused(fmt.Sprintf(
+			"the media definition of '%s' is not available, so the constant cannot be validated", arg.MediaUrn))
+	}
+	if definition.Validation != nil {
+		rule, err := definition.Validation.Violation(value)
+		if err != nil {
+			return refused(err.Error())
+		}
+		if rule != "" {
+			return refused("it breaks the rule: " + rule)
+		}
+	}
+	if definition.Schema != nil {
+		if details := cap.SchemaViolations(definition.Schema, value); len(details) > 0 {
+			return refused("it does not match the schema: " + strings.Join(details, "; "))
+		}
+	}
+	return nil
+}
+
+// matchedPair is one answer of the matching: an arg, by the URN it accepts,
+// and the source placed on it.
+type matchedPair struct {
+	arg    *urn.MediaUrn
+	source *urn.MediaUrn
+}
+
+// matchSourcesToArgs matches a wiring's sources to a cap's args by minimum
+// total specificity-distance, with a uniqueness requirement.
 //
-// Returns matched pairs as [][2]*MediaUrn{capArgStdinUrn, sourceUrn}, sorted
-// by capArgStdinUrn. Returns nil on error.
+// Two phases, in strict precedence order:
+//
+//  1. Product — each source claims a distinct arg. It wins whenever such an
+//     assignment exists, including the hard failure on tied minimum-cost
+//     assignments.
+//  2. Gather — only when no such assignment exists (more sources than args, or
+//     a Hall violation): a sequence arg may absorb several conforming sources;
+//     a scalar arg still takes at most one. The minimum-cost such assignment
+//     must be unique.
+//
+// `mustBind` is the index of the arg an assignment MUST bind — the cap's main
+// input, when these sources are what can feed it — or -1. `step` is what the
+// errors name the step by.
+//
+// The pairs come sorted by arg URN (stably: several sources gathered into one
+// arg keep their declaration order, which fixes the gathered sequence's item
+// order).
 func matchSourcesToArgs(
 	sources []*urn.MediaUrn,
 	args []*urn.MediaUrn,
-	capUrn string,
+	argIsSequence []bool,
+	mustBind int,
+	step string,
 	strandIndex int,
-) ([][2]*urn.MediaUrn, *MachineAbstractionError) {
-	if len(sources) > len(args) {
+) ([]matchedPair, *MachineAbstractionError) {
+	hasSequenceArg := false
+	for _, isSequence := range argIsSequence {
+		hasSequenceArg = hasSequenceArg || isSequence
+	}
+
+	if len(sources) > len(args) && !hasSequenceArg {
+		// Pigeonhole: at least one source has no arg slot and no sequence arg
+		// exists to gather the surplus. Report the first source with no
+		// candidate arg; if every source has one, the first source stands for
+		// the one that must go unmatched.
 		for _, source := range sources {
 			hasCandidate := false
-			for _, a := range args {
-				if source.ConformsTo(a) {
-					hasCandidate = true
-					break
-				}
+			for _, arg := range args {
+				hasCandidate = hasCandidate || source.ConformsTo(arg)
 			}
 			if !hasCandidate {
-				return nil, unmatchedSourceError(strandIndex, capUrn, source.String())
+				return nil, unmatchedSourceError(strandIndex, step, source.String())
 			}
 		}
-		return nil, unmatchedSourceError(strandIndex, capUrn, sources[0].String())
+		return nil, unmatchedSourceError(strandIndex, step, sources[0].String())
 	}
 
-	nSources := len(sources)
-	nArgs := len(args)
-
-	// cost[s][a] is the distance if sources[s] conforms to args[a], else -1.
-	cost := make([][]int64, nSources)
+	// cost[s][a] is the distance when sources[s] conforms to args[a], else
+	// impossible.
+	cost := make([][]int, len(sources))
 	for s, source := range sources {
-		cost[s] = make([]int64, nArgs)
-		for a := range cost[s] {
-			cost[s][a] = -1
-		}
-		hasAny := false
+		cost[s] = make([]int, len(args))
+		hasCandidate := false
 		for a, arg := range args {
+			cost[s][a] = impossible
 			if source.ConformsTo(arg) {
-				dist := int64(source.Specificity()) - int64(arg.Specificity())
-				cost[s][a] = dist
-				hasAny = true
+				// Absolute specificity gap. A source is USUALLY at least as
+				// specific as the arg it conforms to, but a wildcard-carrying
+				// source conforms to a value-exact arg while being LESS
+				// specific. Either direction of mismatch is a worse fit than an
+				// exact one, so both cost.
+				distance := source.Specificity() - arg.Specificity()
+				if distance < 0 {
+					distance = -distance
+				}
+				cost[s][a] = distance
+				hasCandidate = true
 			}
 		}
-		if !hasAny {
-			return nil, unmatchedSourceError(strandIndex, capUrn, source.String())
+		if !hasCandidate {
+			return nil, unmatchedSourceError(strandIndex, step, source.String())
 		}
 	}
 
-	var bestCost *int64
-	var bestAssignments [][]int
-
-	current := make([]int, nSources)
-	used := make([]bool, nArgs)
-	enumerateMatchings(cost, 0, current, used, &bestCost, &bestAssignments)
-
-	if bestCost == nil {
-		return nil, unmatchedSourceError(strandIndex, capUrn, sources[0].String())
+	// An assignment binds the arg that MUST be bound. A cap that takes an
+	// input is given it, so a way of placing the sources that leaves the main
+	// input out is not an assignment at all; it does not tie with one that is.
+	// This is what makes `series -> compare -> result` resolve when `compare`
+	// has a second arg that accepts a series: the lone source is the main
+	// input. It is a constraint, not a tiebreak: two sources that both fit the
+	// main input and the other arg still tie.
+	if mustBind >= 0 {
+		reachable := false
+		for s := range cost {
+			reachable = reachable || cost[s][mustBind] != impossible
+		}
+		if !reachable {
+			mustBind = -1
+		}
 	}
-	if len(bestAssignments) != 1 {
-		return nil, ambiguousNotationError(strandIndex, capUrn)
+
+	search := assignmentSearch{cost: cost, mustBind: mustBind, bestCost: impossible}
+
+	// Phase 1: product.
+	if len(sources) <= len(args) {
+		search.run(make([]bool, len(args)))
+		if search.bestCost != impossible {
+			// A tie among minimum-cost assignments is a hard ambiguity; it
+			// never falls through to gather, which would mask it.
+			if len(search.best) != 1 {
+				return nil, ambiguousNotationError(strandIndex, step)
+			}
+			return assignmentToPairs(search.best[0], sources, args), nil
+		}
 	}
 
-	assignment := bestAssignments[0]
-	pairs := make([][2]*urn.MediaUrn, nSources)
-	for s := range pairs {
-		pairs[s] = [2]*urn.MediaUrn{args[assignment[s]], sources[s]}
+	// Phase 2: gather.
+	if !hasSequenceArg {
+		// Every source has a candidate, but the candidates cannot all be
+		// claimed by distinct args (a Hall violation). The first source stands
+		// for the one that goes unmatched.
+		return nil, unmatchedSourceError(strandIndex, step, sources[0].String())
 	}
-	// Sort pairs by cap arg URN string.
-	sort.Slice(pairs, func(a, b int) bool {
-		return pairs[a][0].String() < pairs[b][0].String()
-	})
-	return pairs, nil
+	search.run(argIsSequence)
+	if search.bestCost == impossible {
+		return nil, unmatchedSourceError(strandIndex, step, sources[0].String())
+	}
+	if len(search.best) != 1 {
+		return nil, ambiguousNotationError(strandIndex, step)
+	}
+	return assignmentToPairs(search.best[0], sources, args), nil
 }
 
-// enumerateMatchings recursively enumerates all injections of sources into
-// args with a defined cost, tracking the minimum total cost and the
-// assignments that achieve it.
-func enumerateMatchings(
-	cost [][]int64,
-	sIdx int,
-	current []int,
-	used []bool,
-	bestCost **int64,
-	bestAssignments *[][]int,
-) {
-	nSources := len(cost)
-	if sIdx == nSources {
-		total := int64(0)
-		for s := 0; s < nSources; s++ {
-			total += cost[s][current[s]]
+// impossible marks a pairing that cannot be made, and a search that found no
+// assignment.
+const impossible = -1
+
+// assignmentToPairs converts a source→arg assignment into pairs sorted by arg
+// URN. The sort is stable and pairs are emitted in source order.
+func assignmentToPairs(assignment []int, sources, args []*urn.MediaUrn) []matchedPair {
+	pairs := make([]matchedPair, len(assignment))
+	for s, a := range assignment {
+		pairs[s] = matchedPair{arg: args[a], source: sources[s]}
+	}
+	sort.SliceStable(pairs, func(x, y int) bool { return pairs[x].arg.String() < pairs[y].arg.String() })
+	return pairs
+}
+
+// assignmentSearch enumerates every source→arg assignment with a defined
+// cost, keeping the minimum total cost and the assignments that reach it.
+type assignmentSearch struct {
+	cost     [][]int
+	mustBind int
+	bestCost int
+	best     [][]int
+}
+
+// run enumerates under a capacity rule: canGather[a] gives arg `a` unbounded
+// capacity (a sequence arg in the gather phase); otherwise the arg is claimed
+// by at most one source.
+func (s *assignmentSearch) run(canGather []bool) {
+	args := 0
+	if len(s.cost) > 0 {
+		args = len(s.cost[0])
+	}
+	s.bestCost, s.best = impossible, nil
+	s.place(0, make([]int, len(s.cost)), make([]bool, args), canGather)
+}
+
+func (s *assignmentSearch) place(source int, current []int, used, canGather []bool) {
+	if source == len(s.cost) {
+		// A placement that leaves out the arg that must be bound is not an
+		// assignment.
+		if s.mustBind >= 0 {
+			bound := false
+			for _, arg := range current {
+				bound = bound || arg == s.mustBind
+			}
+			if !bound {
+				return
+			}
 		}
-		if *bestCost == nil {
-			c := total
-			*bestCost = &c
-			*bestAssignments = [][]int{append([]int{}, current...)}
-		} else if total < **bestCost {
-			c := total
-			*bestCost = &c
-			*bestAssignments = [][]int{append([]int{}, current...)}
-		} else if total == **bestCost {
-			*bestAssignments = append(*bestAssignments, append([]int{}, current...))
+		total := 0
+		for at, arg := range current {
+			total += s.cost[at][arg]
+		}
+		switch {
+		case s.bestCost == impossible || total < s.bestCost:
+			s.bestCost = total
+			s.best = [][]int{append([]int(nil), current...)}
+		case total == s.bestCost:
+			s.best = append(s.best, append([]int(nil), current...))
 		}
 		return
 	}
-
-	for aIdx := range cost[sIdx] {
-		if used[aIdx] {
+	for arg := range s.cost[source] {
+		if (used[arg] && !canGather[arg]) || s.cost[source][arg] == impossible {
 			continue
 		}
-		if cost[sIdx][aIdx] < 0 {
-			continue
-		}
-		used[aIdx] = true
-		current[sIdx] = aIdx
-		enumerateMatchings(cost, sIdx+1, current, used, bestCost, bestAssignments)
-		used[aIdx] = false
+		wasUsed := used[arg]
+		used[arg] = true
+		current[source] = arg
+		s.place(source+1, current, used, canGather)
+		used[arg] = wasUsed
 	}
 }
 
 // topoSort performs Kahn's algorithm over the resolved data-flow dependency
 // graph, returning the canonical ordering of edge indices.
 //
-// Edge B depends on edge A iff some binding in B.Assignment has Source == A.Target.
-func topoSort(
-	edges []*MachineEdge,
-	nodes []*urn.MediaUrn,
-	strandIndex int,
-) ([]int, *MachineAbstractionError) {
+// Edge B depends on edge A iff B is given a node A produces. The edges it is
+// given are acyclic: steps that wait on one another are refused when the
+// steps are placed (IterationOf), before any edge is made of them.
+func topoSort(edges []*MachineEdge, nodes []*urn.MediaUrn) []int {
 	n := len(edges)
-	if n == 0 {
-		return nil, nil
-	}
 
-	// Map NodeId -> list of edge indices that produce it as target.
 	producersOf := make(map[NodeId][]int)
 	for idx, e := range edges {
-		producersOf[e.Target] = append(producersOf[e.Target], idx)
+		for _, node := range e.OutputNodes() {
+			producersOf[node] = append(producersOf[node], idx)
+		}
 	}
 
 	indegree := make([]int, n)
 	successors := make([][]int, n)
-
 	for bIdx, b := range edges {
-		for _, binding := range b.Assignment {
-			if producers, ok := producersOf[binding.Source]; ok {
-				for _, aIdx := range producers {
-					if aIdx == bIdx {
-						continue
-					}
-					successors[aIdx] = append(successors[aIdx], bIdx)
-					indegree[bIdx]++
-				}
+		for _, source := range b.SourceNodes() {
+			for _, aIdx := range producersOf[source] {
+				successors[aIdx] = append(successors[aIdx], bIdx)
+				indegree[bIdx]++
 			}
 		}
 	}
@@ -507,44 +794,63 @@ func topoSort(
 	}
 
 	if len(result) < n {
-		return nil, cyclicStrandError(strandIndex)
+		panic(fmt.Sprintf("%d of %d placed steps wait on one another", n-len(result), n))
 	}
-	return result, nil
+	return result
 }
 
-// sortReady sorts the ready set in canonical structural order for deterministic
-// Kahn's output.
+// sortReady sorts the ready set in canonical structural order so Kahn's
+// algorithm produces a deterministic output. The order is:
+//
+//  1. cap URN
+//  2. assignment (element-wise: the arg's slot URN, then the source — a node
+//     by its URN, a constant by its text, after every node)
+//  3. outputs (element-wise: the output's URN, then the URN of the node it
+//     goes to)
+//  4. the IsLoop flag
 func sortReady(ready []int, edges []*MachineEdge, nodes []*urn.MediaUrn) {
+	sourceKey := func(source BindingSource) (bool, string) {
+		if source.IsConstant {
+			return true, constantText(source.Constant)
+		}
+		return false, nodes[source.Node].String()
+	}
 	sort.SliceStable(ready, func(i, j int) bool {
 		ea, eb := edges[ready[i]], edges[ready[j]]
 
-		capCmp := ea.CapUrn.String() < eb.CapUrn.String()
-		capEq := ea.CapUrn.String() == eb.CapUrn.String()
-		if !capEq {
-			return capCmp
+		if capA, capB := ea.CapUrn.String(), eb.CapUrn.String(); capA != capB {
+			return capA < capB
 		}
 
-		for k := range ea.Assignment {
-			if k >= len(eb.Assignment) {
-				return false
-			}
+		for k := 0; k < len(ea.Assignment) && k < len(eb.Assignment); k++ {
 			ba, bb := ea.Assignment[k], eb.Assignment[k]
-			argA, argB := ba.CapArgMediaUrn.String(), bb.CapArgMediaUrn.String()
-			if argA != argB {
+			if argA, argB := ba.CapArgMediaUrn.String(), bb.CapArgMediaUrn.String(); argA != argB {
 				return argA < argB
 			}
-			srcA, srcB := nodes[ba.Source].String(), nodes[bb.Source].String()
-			if srcA != srcB {
-				return srcA < srcB
+			constantA, keyA := sourceKey(ba.Source)
+			constantB, keyB := sourceKey(bb.Source)
+			if constantA != constantB {
+				return !constantA
+			}
+			if keyA != keyB {
+				return keyA < keyB
 			}
 		}
 		if len(ea.Assignment) != len(eb.Assignment) {
 			return len(ea.Assignment) < len(eb.Assignment)
 		}
 
-		tgtA, tgtB := nodes[ea.Target].String(), nodes[eb.Target].String()
-		if tgtA != tgtB {
-			return tgtA < tgtB
+		for k := 0; k < len(ea.Outputs) && k < len(eb.Outputs); k++ {
+			oa, ob := ea.Outputs[k], eb.Outputs[k]
+			if outA, outB := oa.OutputMediaUrn.String(), ob.OutputMediaUrn.String(); outA != outB {
+				return outA < outB
+			}
+			if nodeA, nodeB := nodes[oa.Node].String(), nodes[ob.Node].String(); nodeA != nodeB {
+				return nodeA < nodeB
+			}
+		}
+		if len(ea.Outputs) != len(eb.Outputs) {
+			return len(ea.Outputs) < len(eb.Outputs)
 		}
 
 		return !ea.IsLoop && eb.IsLoop

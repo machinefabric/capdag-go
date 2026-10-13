@@ -3,7 +3,6 @@ package cap
 import (
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -98,10 +97,12 @@ func NewInvalidOutputTypeSchemaError(capUrn, mediaUrn string, actualValue interf
 	}
 }
 
-// validateWithLocalSchema compiles an inline JSON Schema and validates a value
-// against it, returning the list of error strings (empty when valid). Mirrors
-// Rust's validate_with_local_schema.
-func validateWithLocalSchema(schema interface{}, value interface{}) []string {
+// SchemaViolations compiles an inline JSON Schema and validates a value
+// against it, returning the list of error strings (empty when valid). This is
+// the one reading of a media definition's schema: what an argument value and
+// an output are held to at run time, and what a constant written in a machine
+// is held to when the machine is resolved.
+func SchemaViolations(schema interface{}, value interface{}) []string {
 	schemaJSON, err := json.Marshal(schema)
 	if err != nil {
 		return []string{fmt.Sprintf("Failed to serialize schema: %v", err)}
@@ -372,76 +373,18 @@ func (iv *InputValidator) validateSingleArgument(cap *Cap, argDef *CapArg, value
 // validateMediaDefRules validates value against media def's inherent validation rules (first pass)
 func (iv *InputValidator) validateMediaDefRules(cap *Cap, argDef *CapArg, resolved *media.ResolvedMediaDef, value interface{}) error {
 	capUrn := cap.UrnString()
-	validation := resolved.Validation
 	mediaUrn := resolved.SpecID
-
-	// Numeric validation
-	if validation.Min != nil {
-		if num, ok := getNumericValue(value); ok {
-			if num < *validation.Min {
-				return NewMediaDefValidationFailedError(capUrn, argDef.MediaUrn, mediaUrn, fmt.Sprintf("minimum value %v", *validation.Min), value)
-			}
+	rule, err := resolved.Validation.Violation(value)
+	if err != nil {
+		return &ValidationError{
+			Type:    "InvalidCapSchema",
+			CapUrn:  capUrn,
+			Message: fmt.Sprintf("%v in media def '%s'", err, mediaUrn),
 		}
 	}
-
-	if validation.Max != nil {
-		if num, ok := getNumericValue(value); ok {
-			if num > *validation.Max {
-				return NewMediaDefValidationFailedError(capUrn, argDef.MediaUrn, mediaUrn, fmt.Sprintf("maximum value %v", *validation.Max), value)
-			}
-		}
+	if rule != "" {
+		return NewMediaDefValidationFailedError(capUrn, argDef.MediaUrn, mediaUrn, rule, value)
 	}
-
-	// String length validation
-	if validation.MinLength != nil {
-		if s, ok := value.(string); ok {
-			if len(s) < *validation.MinLength {
-				return NewMediaDefValidationFailedError(capUrn, argDef.MediaUrn, mediaUrn, fmt.Sprintf("minimum length %d", *validation.MinLength), value)
-			}
-		}
-	}
-
-	if validation.MaxLength != nil {
-		if s, ok := value.(string); ok {
-			if len(s) > *validation.MaxLength {
-				return NewMediaDefValidationFailedError(capUrn, argDef.MediaUrn, mediaUrn, fmt.Sprintf("maximum length %d", *validation.MaxLength), value)
-			}
-		}
-	}
-
-	// Pattern validation
-	if validation.Pattern != nil {
-		if s, ok := value.(string); ok {
-			regex, err := regexp.Compile(*validation.Pattern)
-			if err != nil {
-				return &ValidationError{
-					Type:    "InvalidCapSchema",
-					CapUrn:  capUrn,
-					Message: fmt.Sprintf("Invalid regex pattern '%s' in media def '%s': %v", *validation.Pattern, mediaUrn, err),
-				}
-			}
-			if !regex.MatchString(s) {
-				return NewMediaDefValidationFailedError(capUrn, argDef.MediaUrn, mediaUrn, fmt.Sprintf("pattern '%s'", *validation.Pattern), value)
-			}
-		}
-	}
-
-	// Allowed values validation
-	if len(validation.AllowedValues) > 0 {
-		if s, ok := value.(string); ok {
-			allowed := false
-			for _, allowedValue := range validation.AllowedValues {
-				if s == allowedValue {
-					allowed = true
-					break
-				}
-			}
-			if !allowed {
-				return NewMediaDefValidationFailedError(capUrn, argDef.MediaUrn, mediaUrn, fmt.Sprintf("allowed values: %v", validation.AllowedValues), value)
-			}
-		}
-	}
-
 	return nil
 }
 
@@ -455,7 +398,7 @@ func (iv *InputValidator) validateArgumentType(cap *Cap, argDef *CapArg, resolve
 
 	// First, try the local schema from the resolved spec.
 	if resolved.Schema != nil {
-		if errs := validateWithLocalSchema(resolved.Schema, value); len(errs) > 0 {
+		if errs := SchemaViolations(resolved.Schema, value); len(errs) > 0 {
 			return NewInvalidArgumentTypeSchemaError(capUrn, argDef.MediaUrn, value, errs)
 		}
 		return nil
@@ -508,7 +451,8 @@ func NewOutputValidatorWithSchemaResolver(resolver SchemaResolver) *OutputValida
 func (ov *OutputValidator) ValidateOutput(cap *Cap, output interface{}, registry media.MediaDefSource) error {
 	capUrn := cap.UrnString()
 
-	outputDef := cap.GetOutput()
+	// What a cap's response is validated as is its main output.
+	outputDef := cap.MainOutput()
 	if outputDef == nil {
 		return &ValidationError{
 			Type:    "InvalidCapSchema",
@@ -545,76 +489,18 @@ func (ov *OutputValidator) ValidateOutput(cap *Cap, output interface{}, registry
 // validateOutputMediaDefRules validates output against media def's inherent validation rules (first pass)
 func (ov *OutputValidator) validateOutputMediaDefRules(cap *Cap, resolved *media.ResolvedMediaDef, value interface{}) error {
 	capUrn := cap.UrnString()
-	validation := resolved.Validation
 	mediaUrn := resolved.SpecID
-
-	// Numeric validation
-	if validation.Min != nil {
-		if num, ok := getNumericValue(value); ok {
-			if num < *validation.Min {
-				return NewOutputMediaDefValidationFailedError(capUrn, mediaUrn, fmt.Sprintf("minimum value %v", *validation.Min), value)
-			}
+	rule, err := resolved.Validation.Violation(value)
+	if err != nil {
+		return &ValidationError{
+			Type:    "InvalidCapSchema",
+			CapUrn:  capUrn,
+			Message: fmt.Sprintf("%v in media def '%s'", err, mediaUrn),
 		}
 	}
-
-	if validation.Max != nil {
-		if num, ok := getNumericValue(value); ok {
-			if num > *validation.Max {
-				return NewOutputMediaDefValidationFailedError(capUrn, mediaUrn, fmt.Sprintf("maximum value %v", *validation.Max), value)
-			}
-		}
+	if rule != "" {
+		return NewOutputMediaDefValidationFailedError(capUrn, mediaUrn, rule, value)
 	}
-
-	// String length validation
-	if validation.MinLength != nil {
-		if s, ok := value.(string); ok {
-			if len(s) < *validation.MinLength {
-				return NewOutputMediaDefValidationFailedError(capUrn, mediaUrn, fmt.Sprintf("minimum length %d", *validation.MinLength), value)
-			}
-		}
-	}
-
-	if validation.MaxLength != nil {
-		if s, ok := value.(string); ok {
-			if len(s) > *validation.MaxLength {
-				return NewOutputMediaDefValidationFailedError(capUrn, mediaUrn, fmt.Sprintf("maximum length %d", *validation.MaxLength), value)
-			}
-		}
-	}
-
-	// Pattern validation
-	if validation.Pattern != nil {
-		if s, ok := value.(string); ok {
-			regex, err := regexp.Compile(*validation.Pattern)
-			if err != nil {
-				return &ValidationError{
-					Type:    "InvalidCapSchema",
-					CapUrn:  capUrn,
-					Message: fmt.Sprintf("Invalid regex pattern '%s' in media def '%s': %v", *validation.Pattern, mediaUrn, err),
-				}
-			}
-			if !regex.MatchString(s) {
-				return NewOutputMediaDefValidationFailedError(capUrn, mediaUrn, fmt.Sprintf("pattern '%s'", *validation.Pattern), value)
-			}
-		}
-	}
-
-	// Allowed values validation
-	if len(validation.AllowedValues) > 0 {
-		if s, ok := value.(string); ok {
-			allowed := false
-			for _, allowedValue := range validation.AllowedValues {
-				if s == allowedValue {
-					allowed = true
-					break
-				}
-			}
-			if !allowed {
-				return NewOutputMediaDefValidationFailedError(capUrn, mediaUrn, fmt.Sprintf("allowed values: %v", validation.AllowedValues), value)
-			}
-		}
-	}
-
 	return nil
 }
 
@@ -625,7 +511,7 @@ func (ov *OutputValidator) validateOutputType(cap *Cap, outputDef *CapOutput, re
 	capUrn := cap.UrnString()
 
 	if resolved.Schema != nil {
-		if errs := validateWithLocalSchema(resolved.Schema, value); len(errs) > 0 {
+		if errs := SchemaViolations(resolved.Schema, value); len(errs) > 0 {
 			return NewInvalidOutputTypeSchemaError(capUrn, outputDef.MediaUrn, value, errs)
 		}
 		return nil
@@ -705,12 +591,12 @@ func (cvc *CapValidationCoordinator) ValidateCapSchema(cap *Cap, registry media.
 
 	if len(args) == 0 {
 		// Validate output media URN if present
-		if cap.Output != nil {
-			if _, err := cap.Output.Resolve(registry); err != nil {
+		for i := range cap.Outputs {
+			if _, err := cap.Outputs[i].Resolve(registry); err != nil {
 				return &ValidationError{
 					Type:    "InvalidCapSchema",
 					CapUrn:  capUrn,
-					Message: fmt.Sprintf("Cap '%s' output has unresolvable media URN '%s'", capUrn, cap.Output.MediaUrn),
+					Message: fmt.Sprintf("Cap '%s' output has unresolvable media URN '%s'", capUrn, cap.Outputs[i].MediaUrn),
 				}
 			}
 		}
@@ -744,13 +630,13 @@ func (cvc *CapValidationCoordinator) ValidateCapSchema(cap *Cap, registry media.
 		}
 	}
 
-	// Validate output media URN if present
-	if cap.Output != nil {
-		if _, err := cap.Output.Resolve(registry); err != nil {
+	// Validate every output's media URN
+	for i := range cap.Outputs {
+		if _, err := cap.Outputs[i].Resolve(registry); err != nil {
 			return &ValidationError{
 				Type:    "InvalidCapSchema",
 				CapUrn:  capUrn,
-				Message: fmt.Sprintf("Cap '%s' output has unresolvable media URN '%s'", capUrn, cap.Output.MediaUrn),
+				Message: fmt.Sprintf("Cap '%s' output has unresolvable media URN '%s'", capUrn, cap.Outputs[i].MediaUrn),
 			}
 		}
 	}
@@ -793,22 +679,185 @@ func (cvc *CapValidationCoordinator) ValidateCapSchema(cap *Cap, registry media.
 // ReservedCliFlags are CLI flags that cannot be used as cap argument flags
 var ReservedCliFlags = []string{"manifest", "--help", "--version", "-v", "-h"}
 
+// IsValidDefinitionName reports whether `name` can name an argument or an
+// output (RULE17, RULE19): the lexical form of a notation alias, and none of
+// the words notation reads as constants.
+// Matches Rust: pub fn is_valid_definition_name(name: &str) -> bool
+func IsValidDefinitionName(name string) bool {
+	if name == "" || name == "true" || name == "false" || name == "null" {
+		return false
+	}
+	for i, c := range name {
+		letter := (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+		digit := c >= '0' && c <= '9'
+		if i == 0 {
+			if !letter && c != '_' {
+				return false
+			}
+			continue
+		}
+		if !letter && !digit && c != '_' && c != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+// ValidateCapDefinition holds a whole definition to the definition rules
+// (RULE1-RULE22): its arguments, then its outputs. A definition is held to
+// them wherever it crosses from one program to another.
+// Matches Rust: pub fn validate_cap_definition(cap: &Cap)
+func ValidateCapDefinition(cap *Cap) error {
+	if err := ValidateCapArgs(cap); err != nil {
+		return err
+	}
+	return ValidateCapOutputs(cap)
+}
+
+// ValidateCapOutputs enforces the rules on a cap's outputs.
+//
+//	RULE19: Output names: required, well-formed, unique
+//	RULE20: No duplicate output media_urns
+//	RULE21: Exactly one main output, matching out= (none when out= is media:void)
+//	RULE22: What an output carries
+//
+// Matches Rust: pub fn validate_cap_outputs(cap: &Cap)
+func ValidateCapOutputs(cap *Cap) error {
+	return namingTheCap(capOutputRuleBroken(cap))
+}
+
+// namingTheCap renders a broken definition rule as the reference does: the
+// cap it was found in, then the rule. A refusal that does not say which cap
+// broke the rule sends its reader to every definition in the manifest.
+// Matches Rust: "Cap '{cap_urn}' has invalid schema: {issue}"
+func namingTheCap(broken *ValidationError) error {
+	if broken == nil {
+		return nil
+	}
+	broken.Message = fmt.Sprintf("Cap '%s' has invalid schema: %s", broken.CapUrn, broken.Message)
+	return broken
+}
+
+// capOutputRuleBroken returns the first output rule `cap` breaks, as the bare
+// rule text, or nil.
+func capOutputRuleBroken(cap *Cap) *ValidationError {
+	capUrn := cap.UrnString()
+	schema := func(message string) *ValidationError {
+		return &ValidationError{Type: "InvalidCapSchema", CapUrn: capUrn, Message: message}
+	}
+	voidUrn, err := urn.NewMediaUrnFromString(media.MediaVoid)
+	if err != nil {
+		panic("media.MediaVoid is a valid MediaUrn: " + err.Error())
+	}
+	if cap.Urn == nil {
+		return schema("RULE21: Failed to parse out= spec: the cap has no URN")
+	}
+	outMedia, err := cap.Urn.OutMediaUrn()
+	if err != nil {
+		return schema(fmt.Sprintf("RULE21: Failed to parse out= spec: %v", err))
+	}
+	inMedia, err := cap.Urn.InMediaUrn()
+	if err != nil {
+		return schema(fmt.Sprintf("RULE22: Failed to parse in= spec: %v", err))
+	}
+	outIsVoid := outMedia.IsEquivalent(voidUrn)
+	inIsVoid := inMedia.IsEquivalent(voidUrn)
+
+	// RULE19: names
+	type namedUrn struct{ name, mediaUrn string }
+	var names []namedUrn
+	for i := range cap.Outputs {
+		output := &cap.Outputs[i]
+		if output.Name == "" {
+			return schema(fmt.Sprintf("RULE19: Output '%s' has no name", output.MediaUrn))
+		}
+		if !IsValidDefinitionName(output.Name) {
+			return schema(fmt.Sprintf("RULE19: Output name '%s' is not a valid name", output.Name))
+		}
+		for _, seen := range names {
+			if seen.name == output.Name {
+				return schema(fmt.Sprintf("RULE19: Outputs '%s' and '%s' share the name '%s'", seen.mediaUrn, output.MediaUrn, output.Name))
+			}
+		}
+		names = append(names, namedUrn{output.Name, output.MediaUrn})
+	}
+
+	// RULE20: identities, compared as media URNs (tag order is not identity)
+	identities := make([]*urn.MediaUrn, 0, len(cap.Outputs))
+	for i := range cap.Outputs {
+		output := &cap.Outputs[i]
+		outputUrn, err := urn.NewMediaUrnFromString(output.MediaUrn)
+		if err != nil {
+			return schema(fmt.Sprintf("RULE20: Output media_urn '%s' is not a media URN: %v", output.MediaUrn, err))
+		}
+		for _, seen := range identities {
+			if seen.IsEquivalent(outputUrn) {
+				return schema(fmt.Sprintf("RULE20: Duplicate output media_urn '%s'", output.MediaUrn))
+			}
+		}
+		identities = append(identities, outputUrn)
+	}
+
+	// RULE21: the main output
+	if outIsVoid {
+		if len(cap.Outputs) > 0 {
+			return schema(fmt.Sprintf("RULE21: out= is 'media:void' but %d output(s) are declared", len(cap.Outputs)))
+		}
+		return nil
+	}
+	var main []int
+	for i, identity := range identities {
+		if identity.IsEquivalent(outMedia) {
+			main = append(main, i)
+		}
+	}
+	if len(main) != 1 {
+		return schema(fmt.Sprintf("RULE21: out= is '%s' but %d outputs are equivalent to it; exactly one must be", cap.Urn.OutSpec(), len(main)))
+	}
+
+	// RULE22: what an output carries
+	for i := range cap.Outputs {
+		output := &cap.Outputs[i]
+		if output.Carries == nil {
+			continue
+		}
+		if i == main[0] {
+			return schema(fmt.Sprintf("RULE22: The main output '%s' declares carries", output.MediaUrn))
+		}
+		if inIsVoid {
+			return schema(fmt.Sprintf("RULE22: Output '%s' carries the input but the cap takes none", output.MediaUrn))
+		}
+	}
+	return nil
+}
+
 // ValidateCapArgs enforces structural rules on a cap's argument definitions.
 // This is a standalone function matching Rust's validate_cap_args().
 // Rules:
 //
 //	RULE1: No duplicate media_urns across args
 //	RULE2: Sources must not be empty
-//	RULE3: If multiple args have stdin source, stdin media_urns must be identical
+//	RULE3: At most one arg declares a stdin source
 //	RULE4: No arg may specify same source type more than once
 //	RULE5: No two args may have same position
 //	RULE6: Positions must be sequential (0-based, no gaps)
 //	RULE7: No arg may have both position and cli_flag
 //	RULE9: No two args may have same cli_flag
 //	RULE10: Reserved cli_flags rejected
-//	RULE11: Stdin source consistency with in= spec (void input must have no stdin; non-void must have at least one)
 //	RULE14: Only the main input argument may declare streaming=true
+//	RULE15: The main input matches in= (void input declares no stdin; any other declares one, equivalent to in=)
+//	RULE17: Argument names: required, well-formed, unique
+//	RULE18: `accepts` only without a stdin source
+//
+// Every rule is raised under the number the reference raises it under
+// (capdag docs/10-validation-rules.md): a number names one rule.
 func ValidateCapArgs(cap *Cap) error {
+	return namingTheCap(capArgRuleBroken(cap))
+}
+
+// capArgRuleBroken returns the first argument rule `cap` breaks, as the bare
+// rule text, or nil.
+func capArgRuleBroken(cap *Cap) *ValidationError {
 	capUrn := cap.UrnString()
 	args := cap.GetArgs()
 
@@ -902,42 +951,110 @@ func ValidateCapArgs(cap *Cap) error {
 		}
 	}
 
-	// RULE3: If multiple args have stdin source, stdin media_urns must be identical
-	if len(stdinUrns) > 1 {
-		first := stdinUrns[0]
-		for _, su := range stdinUrns[1:] {
-			if su != first {
+	// RULE3: At most one arg declares a stdin source. `stdin` is a command
+	// line's one piped input, and the arg that declares it is the main input.
+	var stdinArgs []string
+	for i := range args {
+		if args[i].HasStdinSource() {
+			stdinArgs = append(stdinArgs, args[i].MediaUrn)
+		}
+	}
+	if len(stdinArgs) > 1 {
+		return &ValidationError{
+			Type:    "InvalidCapSchema",
+			CapUrn:  capUrn,
+			Message: fmt.Sprintf("RULE3: Arguments '%s' and '%s' both declare a stdin source; a cap has one main input", stdinArgs[0], stdinArgs[1]),
+		}
+	}
+
+	// RULE17: names
+	type namedUrn struct{ name, mediaUrn string }
+	var names []namedUrn
+	for i := range args {
+		arg := &args[i]
+		if arg.Name == "" {
+			return &ValidationError{
+				Type:    "InvalidCapSchema",
+				CapUrn:  capUrn,
+				Message: fmt.Sprintf("RULE17: Argument '%s' has no name", arg.MediaUrn),
+			}
+		}
+		if !IsValidDefinitionName(arg.Name) {
+			return &ValidationError{
+				Type:    "InvalidCapSchema",
+				CapUrn:  capUrn,
+				Message: fmt.Sprintf("RULE17: Argument name '%s' is not a valid name", arg.Name),
+			}
+		}
+		for _, seen := range names {
+			if seen.name == arg.Name {
 				return &ValidationError{
 					Type:    "InvalidCapSchema",
 					CapUrn:  capUrn,
-					Message: fmt.Sprintf("RULE3: Multiple args have different stdin media_urns: '%s' vs '%s'", first, su),
+					Message: fmt.Sprintf("RULE17: Arguments '%s' and '%s' share the name '%s'", seen.mediaUrn, arg.MediaUrn, arg.Name),
 				}
+			}
+		}
+		names = append(names, namedUrn{arg.Name, arg.MediaUrn})
+	}
+
+	// RULE18: an arg says what it accepts in one place.
+	for i := range args {
+		if args[i].Accepts != nil && args[i].HasStdinSource() {
+			return &ValidationError{
+				Type:    "InvalidCapSchema",
+				CapUrn:  capUrn,
+				Message: fmt.Sprintf("RULE18: Argument '%s' declares both a stdin source and accepts", args[i].MediaUrn),
 			}
 		}
 	}
 
-	// RULE11: Stdin source consistency with in= spec
-	if cap.Urn != nil {
-		inMediaUrn, err := cap.Urn.InMediaUrn()
-		if err == nil {
-			voidUrn, voidErr := urn.NewMediaUrnFromString(media.MediaVoid)
-			if voidErr == nil {
-				isVoid := inMediaUrn.IsEquivalent(voidUrn)
-				hasStdin := len(stdinUrns) > 0
-				if isVoid && hasStdin {
-					return &ValidationError{
-						Type:    "InvalidCapSchema",
-						CapUrn:  capUrn,
-						Message: "RULE11: Cap has in=\"media:void\" but args have stdin sources",
-					}
-				}
-				if !isVoid && !hasStdin {
-					return &ValidationError{
-						Type:    "InvalidCapSchema",
-						CapUrn:  capUrn,
-						Message: fmt.Sprintf("RULE11: Cap has in='%s' but no args declare a stdin source — the main input is the value piped in on stdin, so at least one arg must accept stdin", cap.Urn.InSpec()),
-					}
-				}
+	// RULE15: The main input matches in=. If in= is media:void, no arg may
+	// have a stdin source (the cap takes no data-flow input). Otherwise
+	// exactly one does (RULE3 caps it at one), and its URN is in=.
+	if cap.Urn == nil {
+		return &ValidationError{
+			Type:    "InvalidCapSchema",
+			CapUrn:  capUrn,
+			Message: "RULE15: Failed to parse in= spec: the cap has no URN",
+		}
+	}
+	inMediaUrn, err := cap.Urn.InMediaUrn()
+	if err != nil {
+		return &ValidationError{
+			Type:    "InvalidCapSchema",
+			CapUrn:  capUrn,
+			Message: fmt.Sprintf("RULE15: Failed to parse in= spec: %v", err),
+		}
+	}
+	voidUrn, err := urn.NewMediaUrnFromString(media.MediaVoid)
+	if err != nil {
+		panic("media.MediaVoid is a valid MediaUrn: " + err.Error())
+	}
+	inIsVoid := inMediaUrn.IsEquivalent(voidUrn)
+	if inIsVoid && len(stdinUrns) > 0 {
+		return &ValidationError{
+			Type:    "InvalidCapSchema",
+			CapUrn:  capUrn,
+			Message: fmt.Sprintf("RULE15: in= is 'media:void' but %d arg(s) declare a stdin source", len(stdinUrns)),
+		}
+	}
+	if !inIsVoid {
+		// The stdin arg IS the main input, so its URN is `in=` — compared as
+		// tagged URNs, never as strings.
+		matchesIn := false
+		for _, stdin := range stdinUrns {
+			stdinUrn, err := urn.NewMediaUrnFromString(stdin)
+			if err == nil && stdinUrn.IsEquivalent(inMediaUrn) {
+				matchesIn = true
+				break
+			}
+		}
+		if !matchesIn {
+			return &ValidationError{
+				Type:    "InvalidCapSchema",
+				CapUrn:  capUrn,
+				Message: fmt.Sprintf("RULE15: in= is '%s' but no arg declares a stdin source equivalent to it", cap.Urn.InSpec()),
 			}
 		}
 	}
@@ -947,17 +1064,13 @@ func ValidateCapArgs(cap *Cap) error {
 	// arguments (options, model specs, prompts alongside the main input) are
 	// values the runtime demuxes whole; a feed there has no meaning and would
 	// let an unbounded stream reach a collector that must refuse it (L16).
-	if cap.Urn != nil {
-		if inMediaUrn, err := cap.Urn.InMediaUrn(); err == nil {
-			for i := range cap.Args {
-				if cap.Args[i].Streaming && !cap.Args[i].IsMainInput(inMediaUrn) {
-					return &ValidationError{
-						Type:   "InvalidCapSchema",
-						CapUrn: capUrn,
-						Message: fmt.Sprintf("RULE14: Argument '%s' declares streaming=true but is not the main input (no stdin source equivalent to in='%s') — only the main input may be consumed without a length promise",
-							cap.Args[i].MediaUrn, cap.Urn.InSpec()),
-					}
-				}
+	for i := range cap.Args {
+		if cap.Args[i].Streaming && !cap.Args[i].IsMainInput(inMediaUrn) {
+			return &ValidationError{
+				Type:   "InvalidCapSchema",
+				CapUrn: capUrn,
+				Message: fmt.Sprintf("RULE14: Argument '%s' declares streaming=true but is not the main input (no stdin source equivalent to in='%s') — only the main input may be consumed without a length promise",
+					cap.Args[i].MediaUrn, cap.Urn.InSpec()),
 			}
 		}
 	}
@@ -1010,30 +1123,6 @@ func ValidateCapArgs(cap *Cap) error {
 }
 
 // Utility functions
-
-func getNumericValue(value interface{}) (float64, bool) {
-	switch v := value.(type) {
-	case int:
-		return float64(v), true
-	case int8:
-		return float64(v), true
-	case int16:
-		return float64(v), true
-	case int32:
-		return float64(v), true
-	case int64:
-		return float64(v), true
-	case float32:
-		return float64(v), true
-	case float64:
-		return v, true
-	case json.Number:
-		if f, err := v.Float64(); err == nil {
-			return f, true
-		}
-	}
-	return 0, false
-}
 
 // ============================================================================
 // XV5 VALIDATION - No Redefinition of Registry Media Defs

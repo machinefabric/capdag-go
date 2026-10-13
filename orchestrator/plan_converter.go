@@ -15,7 +15,7 @@ import (
 //
 // Standalone Collect nodes (OutputMediaUrn != nil) are transparent pass-throughs.
 // ForEach-paired Collect nodes (OutputMediaUrn == nil) are rejected.
-// ForEach/Merge/Split nodes are also rejected — the caller must decompose
+// ForEach nodes are also rejected — the caller must decompose
 // first using ExtractPrefixTo/ExtractForEachBody/ExtractSuffixFrom.
 //
 // All cap lookups use GetCachedCap: caps must be pre-loaded into the registry
@@ -79,14 +79,6 @@ func PlanToResolvedGraph(plan *planner.MachinePlan, registry *fabric.FabricRegis
 				"Plan contains ForEach node '%s'. Decompose the plan using "+
 					"extract_prefix_to/extract_foreach_body/extract_suffix_from "+
 					"before converting to ResolvedGraph.", nodeID))
-
-		case planner.NodeKindMerge:
-			return nil, invalidGraphError(fmt.Sprintf(
-				"Plan contains Merge node '%s' which is not yet supported for execution.", nodeID))
-
-		case planner.NodeKindSplit:
-			return nil, invalidGraphError(fmt.Sprintf(
-				"Plan contains Split node '%s' which is not yet supported for execution.", nodeID))
 		}
 	}
 

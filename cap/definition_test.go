@@ -223,7 +223,7 @@ func Test115_cap_arg_serialization(t *testing.T) {
 func Test116_cap_arg_constructors(t *testing.T) {
 	// Test basic constructor
 	flag := "--name"
-	arg := NewCapArg("media:string", true, []ArgSource{{CliFlag: &flag}})
+	arg := NewCapArg("media:string", "arg", true, []ArgSource{{CliFlag: &flag}})
 	assert.Equal(t, "media:string", arg.MediaUrn)
 	assert.True(t, arg.Required)
 	assert.Len(t, arg.Sources, 1)
@@ -233,7 +233,7 @@ func Test116_cap_arg_constructors(t *testing.T) {
 	// Test with description
 	pos := 0
 	arg2 := NewCapArgWithDescription(
-		"media:integer",
+		"media:integer", "position",
 		false,
 		[]ArgSource{{Position: &pos}},
 		"The count argument",
@@ -347,8 +347,8 @@ func Test595_with_args_constructor(t *testing.T) {
 	pos := 0
 	flag := "--count"
 	args := []CapArg{
-		NewCapArg("media:string", true, []ArgSource{{Position: &pos}}),
-		NewCapArg("media:integer", false, []ArgSource{{CliFlag: &flag}}),
+		NewCapArg("media:string", "position", true, []ArgSource{{Position: &pos}}),
+		NewCapArg("media:integer", "arg", false, []ArgSource{{CliFlag: &flag}}),
 	}
 
 	c := NewCapWithArgs(u, "Test", []string{"cmd"}, args)
@@ -364,14 +364,14 @@ func Test596_with_full_definition_constructor(t *testing.T) {
 	u, err := urn.NewCapUrnFromString(defTestUrn("test"))
 	require.NoError(t, err)
 	metadata := map[string]string{"env": "prod"}
-	args := []CapArg{NewCapArg("media:string", true, nil)}
-	output := NewCapOutput("media:object", "Output object")
+	args := []CapArg{NewCapArg("media:string", "option", true, nil)}
+	output := NewCapOutput("media:object", "output", "Output object")
 	jsonMeta := map[string]any{"v": 1}
 	desc := "Description"
 
 	c := NewCapWithFullDefinition(
 		u, "Full Cap", &desc, metadata, []string{"full-cmd"},
-		args, output, jsonMeta,
+		args, []CapOutput{*output}, jsonMeta,
 	)
 
 	assert.Equal(t, "Full Cap", c.Title)
@@ -382,8 +382,12 @@ func Test596_with_full_definition_constructor(t *testing.T) {
 	assert.Equal(t, "prod", val)
 	assert.Equal(t, "full-cmd", c.PrimaryAlias())
 	assert.Len(t, c.GetArgs(), 1)
-	require.NotNil(t, c.GetOutput())
-	assert.Equal(t, "media:object", c.GetOutput().MediaUrn)
+	require.Len(t, c.GetOutputs(), 1)
+	assert.Equal(t, "media:object", c.GetOutputs()[0].MediaUrn)
+	// `media:object` is not this cap's `out=`, so it is an output and not
+	// the main one: the constructor stores what it is given and decides
+	// nothing (RULE21 is validation's).
+	assert.Nil(t, c.MainOutput())
 	assert.Equal(t, jsonMeta, c.GetMetadataJSON())
 	// registered_by is not set by NewCapWithFullDefinition
 	assert.Nil(t, c.GetRegisteredBy())
@@ -396,7 +400,7 @@ func Test597_cap_arg_with_full_definition(t *testing.T) {
 	flag := "--name"
 
 	arg := NewCapArgWithFullDefinition(
-		"media:string", true,
+		"media:string", "arg", true,
 		[]ArgSource{{CliFlag: &flag}},
 		"User name", defaultVal, meta,
 	)
@@ -417,27 +421,43 @@ func Test597_cap_arg_with_full_definition(t *testing.T) {
 
 // TEST598: CapOutput lifecycle — set_output, set/clear metadata
 func Test598_cap_output_lifecycle(t *testing.T) {
-	u, err := urn.NewCapUrnFromString(defTestUrn("test"))
+	u, err := urn.NewCapUrnFromString(`cap:in="media:enc=utf-8";regress;out="media:fmt=json;record;regression"`)
 	require.NoError(t, err)
 	c := NewCap(u, "Test", []string{"cmd"})
 
-	// Initially no output
-	assert.Nil(t, c.GetOutput())
+	// Initially no outputs, so no main one.
+	assert.Empty(t, c.GetOutputs())
+	assert.Nil(t, c.MainOutput())
 
-	// Set output
-	output := NewCapOutput("media:string", "Text output")
-	output.SetMetadata(map[string]any{"format": "plain"})
-	c.SetOutput(output)
+	// An output that is not the cap's `out=` is an output, and not the main one.
+	residuals := NewCapOutput("media:fmt=json;list;record;residual", "residuals", "Residuals")
+	residuals.SetMetadata(map[string]any{"format": "plain"})
+	c.AddOutput(*residuals)
+	assert.Len(t, c.GetOutputs(), 1)
+	assert.Nil(t, c.MainOutput(), "no output is the cap's out= yet")
 
-	got := c.GetOutput()
-	require.NotNil(t, got)
-	assert.Equal(t, "media:string", got.MediaUrn)
-	assert.Equal(t, "Text output", got.OutputDescription)
+	// The main output is found by URN equivalence with `out=`, wherever it
+	// stands in the list and whatever order its tags are written in.
+	c.AddOutput(*NewCapOutput("media:regression;record;fmt=json", "fit", "The fit"))
+	main := c.MainOutput()
+	require.NotNil(t, main, "the output whose URN is out=")
+	assert.Equal(t, "fit", main.GetName())
+
+	// By the URN that identifies it, and by the name a machine uses.
+	got := c.OutputByUrn("media:record;residual;list;fmt=json")
+	require.NotNil(t, got, "an output is identified by its media URN")
+	assert.Equal(t, "residuals", got.GetName())
+	assert.Equal(t, "Residuals", got.OutputDescription)
 	assert.NotNil(t, got.GetMetadata())
+	named := c.OutputNamed("residuals")
+	require.NotNil(t, named)
+	assert.Equal(t, "media:fmt=json;list;record;residual", named.MediaUrn)
+	assert.Nil(t, c.OutputNamed("fmt"), "a name is not read out of a URN")
+	assert.Nil(t, c.OutputByUrn("media:enc=utf-8"))
 
 	// CapOutput with_full_definition
-	output2 := NewCapOutputWithFullDefinition("media:json", "JSON output", map[string]any{"v": 2})
-	assert.Equal(t, "media:json", output2.MediaUrn)
+	output2 := NewCapOutputWithFullDefinition("media:fmt=json", "output", "JSON output", map[string]any{"v": 2})
+	assert.Equal(t, "media:fmt=json", output2.MediaUrn)
 	assert.NotNil(t, output2.GetMetadata())
 
 	// Clear metadata on output
@@ -511,7 +531,7 @@ func Test6248_CapWithMediaDefs(t *testing.T) {
 	})
 
 	// Add output
-	cap.SetOutput(NewCapOutput("media:result", "Query result"))
+	cap.AddOutput(*NewCapOutput("media:result", "output", "Query result"))
 
 	// Resolve the argument spec
 	args := cap.GetArgs()
@@ -523,7 +543,7 @@ func Test6248_CapWithMediaDefs(t *testing.T) {
 	assert.Equal(t, media.ProfileStr, resolved.ProfileURI)
 
 	// Resolve the output spec
-	outResolved, err := cap.Output.Resolve(registry)
+	outResolved, err := cap.MainOutput().Resolve(registry)
 	require.NoError(t, err)
 	assert.Equal(t, "application/json", outResolved.MediaType)
 	assert.NotNil(t, outResolved.Schema)
@@ -573,14 +593,7 @@ func Test1128_cap_documentation_omitted_when_none(t *testing.T) {
 // TEST1129: A capfab-shaped JSON document with a documentation field
 // must deserialize into a Cap with the body intact.
 func Test1129_cap_documentation_parses_from_capfab_json(t *testing.T) {
-	raw := `{
-		"urn": "cap:in=\"media:enc=utf-8\";docparse;out=\"media:enc=utf-8\"",
-		"title": "Doc Parse",
-		"aliases": ["docparse"],
-		"cap_description": "short",
-		"documentation": "## Heading\n\nbody text",
-		"metadata": {}
-	}`
+	raw := `{"urn":"cap:in=\"media:enc=utf-8\";docparse;out=\"media:enc=utf-8\"","title":"Doc Parse","aliases":["docparse"],"cap_description":"short","documentation":"## Heading\n\nbody text","metadata":{},"args":[{"media_urn":"media:enc=utf-8","name":"input","required":true,"sources":[{"stdin":"media:enc=utf-8"}]}],"outputs":[{"media_urn":"media:enc=utf-8","name":"output","output_description":"output"}]}`
 	var c Cap
 	require.NoError(t, json.Unmarshal([]byte(raw), &c), "must parse capfab-shaped JSON")
 	require.NotNil(t, c.GetDocumentation())
@@ -658,7 +671,7 @@ func Test6259_CapJSONRoundTrip(t *testing.T) {
 		Sources:        []ArgSource{{CliFlag: &cliFlag}, {Position: &pos}},
 		ArgDescription: &inputTextDesc2,
 	})
-	cap.SetOutput(NewCapOutput(standard.MediaJSON, "Output object"))
+	cap.AddOutput(*NewCapOutput(standard.MediaJSON, "output", "Output object"))
 
 	// Serialize to JSON
 	jsonData, err := json.Marshal(cap)
@@ -674,7 +687,7 @@ func Test6259_CapJSONRoundTrip(t *testing.T) {
 	assert.Equal(t, cap.Aliases, deserialized.Aliases)
 	assert.Equal(t, len(cap.GetArgs()), len(deserialized.GetArgs()))
 	assert.Equal(t, cap.GetArgs()[0].MediaUrn, deserialized.GetArgs()[0].MediaUrn)
-	assert.Equal(t, cap.Output.MediaUrn, deserialized.Output.MediaUrn)
+	assert.Equal(t, cap.MainOutput().MediaUrn, deserialized.MainOutput().MediaUrn)
 }
 
 // Bifaci v4: CapArg.StreamUrn / CapArg.IsMainInput.
@@ -1030,23 +1043,32 @@ func Test7150_CapOutputSurvivesSerializationRoundtrip(t *testing.T) {
 	capUrn, err := urn.NewCapUrnFromString(`cap:in="media:enc=utf-8;in";out="media:enc=utf-8;tag";tag`)
 	require.NoError(t, err)
 	c := NewCap(capUrn, "tag", []string{"tag"})
-	c.SetOutput(NewCapOutput("media:enc=utf-8;tag", "One of 'positive', 'neutral', or 'negative'."))
+	c.AddOutput(*NewCapOutput("media:enc=utf-8;tag", "output", "One of 'positive', 'neutral', or 'negative'."))
 
 	raw, err := json.Marshal(c)
 	require.NoError(t, err)
 	var decoded map[string]any
 	require.NoError(t, json.Unmarshal(raw, &decoded))
 
-	output, ok := decoded["output"].(map[string]any)
-	require.True(t, ok, "a cap that declares an output must serialize one")
+	outputs, ok := decoded["outputs"].([]any)
+	require.True(t, ok, "a cap that declares an output must serialize its outputs")
+	require.Len(t, outputs, 1)
+	_, single := decoded["output"]
+	assert.False(t, single, "the single-output key is gone")
+	output, ok := outputs[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "output", output["name"])
+	assert.Equal(t, false, output["optional"])
+	_, carries := output["carries"]
+	assert.False(t, carries, "an output that carries its own URN says nothing about it")
 	assert.Equal(t, "media:enc=utf-8;tag", output["media_urn"])
 	assert.Equal(t, "One of 'positive', 'neutral', or 'negative'.", output["output_description"])
 
 	var back Cap
 	require.NoError(t, json.Unmarshal(raw, &back))
-	require.NotNil(t, back.Output, "output survives the round-trip")
-	assert.Equal(t, "media:enc=utf-8;tag", back.Output.MediaUrn)
-	assert.False(t, back.Output.IsSequence)
+	require.NotNil(t, back.MainOutput(), "output survives the round-trip")
+	assert.Equal(t, "media:enc=utf-8;tag", back.MainOutput().MediaUrn)
+	assert.False(t, back.MainOutput().IsSequence)
 
 	// A cap with no output must not carry the key at all.
 	identityUrn, err := urn.NewCapUrnFromString(standard.CapIdentity)
@@ -1056,7 +1078,7 @@ func Test7150_CapOutputSurvivesSerializationRoundtrip(t *testing.T) {
 	require.NoError(t, err)
 	var bareDecoded map[string]any
 	require.NoError(t, json.Unmarshal(bareRaw, &bareDecoded))
-	_, present := bareDecoded["output"]
+	_, present := bareDecoded["outputs"]
 	assert.False(t, present, "a cap without an output must omit the key")
 }
 
@@ -1069,7 +1091,7 @@ func Test7150_CapOutputSurvivesSerializationRoundtrip(t *testing.T) {
 // test passes through.
 func Test7151_IsSequenceIsSerializedEvenWhenFalse(t *testing.T) {
 	stdin := "media:enc=utf-8;in"
-	arg := NewCapArg("media:enc=utf-8;in", true, []ArgSource{{Stdin: &stdin}})
+	arg := NewCapArg("media:enc=utf-8;in", "input", true, []ArgSource{{Stdin: &stdin}})
 	argRaw, err := json.Marshal(arg)
 	require.NoError(t, err)
 	var argDecoded map[string]any
@@ -1078,7 +1100,7 @@ func Test7151_IsSequenceIsSerializedEvenWhenFalse(t *testing.T) {
 	require.True(t, present, "CapArg must write is_sequence even when false")
 	assert.Equal(t, false, value)
 
-	output := NewCapOutput("media:enc=utf-8;tag", "a tag")
+	output := NewCapOutput("media:enc=utf-8;tag", "output", "a tag")
 	outputRaw, err := json.Marshal(output)
 	require.NoError(t, err)
 	var outputDecoded map[string]any
@@ -1086,4 +1108,18 @@ func Test7151_IsSequenceIsSerializedEvenWhenFalse(t *testing.T) {
 	value, present = outputDecoded["is_sequence"]
 	require.True(t, present, "CapOutput must write is_sequence even when false")
 	assert.Equal(t, false, value)
+}
+
+// TEST12713: every definition this library builds in passes the rules it
+// holds everyone else's definitions to. (This library builds identity and
+// the two fabric look-ups in.)
+func Test12713_built_in_definitions_pass_the_definition_rules(t *testing.T) {
+	identity, err := IdentityCap()
+	require.NoError(t, err)
+	for _, c := range []*Cap{identity, LookupCapFabricCap(), LookupMediaDefFabricCap()} {
+		assert.NoError(t, ValidateCapDefinition(c), c.UrnString())
+	}
+	// Identity's `out=` is not void, so it declares its one output.
+	require.NotNil(t, identity.MainOutput())
+	assert.Equal(t, "output", identity.MainOutput().GetName())
 }

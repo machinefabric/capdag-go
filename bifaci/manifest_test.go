@@ -323,9 +323,8 @@ func Test6371_CapManifestCompatibility(t *testing.T) {
 
 // TEST475: validate() passes with CAP_IDENTITY in a cap group
 func Test475_validate_passes_with_identity(t *testing.T) {
-	identityUrn, err := urn.NewCapUrnFromString(standard.CapIdentity)
+	identityCap, err := cap.IdentityCap()
 	require.NoError(t, err)
-	identityCap := cap.NewCap(identityUrn, "Identity", []string{"identity"})
 
 	manifest := NewCapManifest("TestCartridge", "1.0.0", "release", nil, "Test", []CapGroup{DefaultGroup([]cap.Cap{*identityCap})})
 	err = manifest.Validate()
@@ -510,4 +509,96 @@ func Test7152_EmptyAdapterUrnsIsOmitted(t *testing.T) {
 		t.Fatalf("a non-empty adapter_urns must be written, got %v", claimingDecoded["adapter_urns"])
 	}
 	assert.Equal(t, 1, len(urns), "a non-empty adapter_urns must be written")
+}
+
+// TEST12711: Validate() holds every definition in the manifest to the
+// definition rules: a cap in any group that breaks one is refused, naming
+// the cap and the rule. Identity alone being present is not enough.
+func Test12711_validate_refuses_an_invalid_definition(t *testing.T) {
+	identity, err := cap.IdentityCap()
+	require.NoError(t, err)
+	manifestWith := func(c *cap.Cap) *CapManifest {
+		return NewCapManifest("TestCartridge", "1.0.0", "release", nil, "Test", []CapGroup{
+			DefaultGroup([]cap.Cap{*identity}),
+			{Name: "second", Caps: []cap.Cap{*c}},
+		})
+	}
+	convert := func() *cap.Cap {
+		u, err := urn.NewCapUrnFromString(manifestTestUrn("convert"))
+		require.NoError(t, err)
+		return cap.NewCap(u, "Convert", []string{"convert"})
+	}
+	complete := func() *cap.Cap {
+		c := convert()
+		c.AddOutput(*cap.NewCapOutput("media:fmt=json;record", "record", "The record"))
+		return c
+	}
+	assert.NoError(t, manifestWith(complete()).Validate())
+
+	// No output although `out=` is not void.
+	err = manifestWith(convert()).Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "RULE21")
+	assert.Contains(t, err.Error(), "convert")
+
+	// Two arguments under one name.
+	twins := complete()
+	for _, each := range [][2]string{{"media:enc=utf-8", "--a"}, {"media:integer", "--b"}} {
+		flag := each[1]
+		twins.Args = append(twins.Args, cap.NewCapArg(each[0], "same", false, []cap.ArgSource{{CliFlag: &flag}}))
+	}
+	err = manifestWith(twins).Validate()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "RULE17")
+	assert.Contains(t, err.Error(), "convert")
+}
+
+// TEST12717: a manifest read from another program's bytes is parsed and
+// held to the definition rules in one step, and the two refusals are told
+// apart: bytes that are no manifest, and a manifest with a definition that
+// breaks a rule.
+func Test12717_an_advertised_manifest_is_parsed_and_checked(t *testing.T) {
+	identity, err := cap.IdentityCap()
+	require.NoError(t, err)
+	manifestWith := func(c *cap.Cap) []byte {
+		body, err := json.Marshal(NewCapManifest("TestCartridge", "1.0.0", "release", nil, "Test",
+			[]CapGroup{DefaultGroup([]cap.Cap{*identity, *c})}))
+		require.NoError(t, err)
+		return body
+	}
+	convert := func() *cap.Cap {
+		u, err := urn.NewCapUrnFromString(manifestTestUrn("convert"))
+		require.NoError(t, err)
+		return cap.NewCap(u, "Convert", []string{"convert"})
+	}
+	complete := convert()
+	complete.AddOutput(*cap.NewCapOutput("media:fmt=json;record", "record", "The record"))
+	taken, err := CapManifestFromAdvertised(manifestWith(complete))
+	require.NoError(t, err, "a valid manifest")
+	require.Len(t, taken.AllCaps(), 2)
+	caps := taken.AllCaps()
+	record := caps[1].OutputNamed("record")
+	require.NotNil(t, record)
+	assert.Equal(t, "media:fmt=json;record", record.MediaUrn)
+
+	_, err = CapManifestFromAdvertised(manifestWith(convert()))
+	require.Error(t, err)
+	var load *ManifestLoadError
+	require.ErrorAs(t, err, &load)
+	assert.False(t, load.Unparseable, "it parsed: what it carries is invalid")
+	assert.Contains(t, load.Reason, "RULE21")
+	assert.Contains(t, load.Reason, "convert")
+	assert.Contains(t, err.Error(), "invalid cap definition")
+
+	_, err = CapManifestFromAdvertised([]byte("{not a manifest"))
+	require.ErrorAs(t, err, &load)
+	assert.True(t, load.Unparseable)
+
+	// A manifest of the earlier shape (an argument without a name) is not a
+	// manifest this capdag reads.
+	unnamed := []byte(`{"name":"T","version":"1.0","channel":"release","registry_url":null,"description":"T","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"],"args":[{"media_urn":"media:","required":true,"sources":[{"stdin":"media:"}]}]}]}]}`)
+	_, err = CapManifestFromAdvertised(unnamed)
+	require.ErrorAs(t, err, &load)
+	assert.True(t, load.Unparseable)
+	assert.Contains(t, load.Reason, "name")
 }

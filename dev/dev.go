@@ -25,7 +25,6 @@
 package dev
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -293,11 +292,15 @@ func ReadEntryManifest(entry string) (*bifaci.CapManifest, error) {
 			"could not run the cartridge entry %q to read its manifest: %w. Make sure it is "+
 				"executable and its dependencies are importable.", entry, err)
 	}
-	var manifest bifaci.CapManifest
-	if err := json.Unmarshal(out, &manifest); err != nil {
+	manifest, err := bifaci.CapManifestFromAdvertised(out)
+	if err != nil {
+		var load *bifaci.ManifestLoadError
+		if errors.As(err, &load) && !load.Unparseable {
+			return nil, fmt.Errorf("the cartridge entry %q printed a manifest with an invalid cap definition: %s", entry, load.Reason)
+		}
 		return nil, fmt.Errorf("the cartridge entry %q printed a manifest capdag cannot parse: %w", entry, err)
 	}
-	return &manifest, nil
+	return manifest, nil
 }
 
 // ---------------------------------------------------------------------------

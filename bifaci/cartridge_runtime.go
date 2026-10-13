@@ -87,8 +87,14 @@ type PeerResponseItem struct {
 	DataErr error
 	// LogFrame holds the LOG frame if this is a Log item (nil for Data items)
 	LogFrame *Frame
-	// IsDataItem is true if this is a Data item, false for Log
+	// IsDataItem is true if this is a Data item of the peer's MAIN output,
+	// false for a Log item and for an item of another output.
 	IsDataItem bool
+	// Output is set on an item of an output OTHER than the peer's main one:
+	// that output's media URN, as its stream named it. DataValue or DataErr
+	// holds the item. A caller that wants only the cap's answer ignores
+	// these; the collectors do.
+	Output string
 }
 
 // PeerResponse yields both data items and LOG frames from a peer call.
@@ -162,6 +168,9 @@ func (pr *PeerResponse) CollectBytesForwarding(output StreamEmitter, progressBas
 			}
 			continue
 		}
+		if item.Output != "" {
+			continue // another output of the peer: not its answer
+		}
 		if item.DataErr != nil {
 			return nil, item.DataErr
 		}
@@ -188,6 +197,9 @@ func (pr *PeerResponse) CollectBytes() ([]byte, error) {
 	for item := range pr.ch {
 		if item.LogFrame != nil {
 			return nil, errors.New("peer response emitted a LOG frame; collect with explicit diagnostic forwarding")
+		}
+		if item.Output != "" {
+			continue // another output of the peer: not its answer
 		}
 		if item.DataErr != nil {
 			return nil, item.DataErr
@@ -217,6 +229,9 @@ func (pr *PeerResponse) CollectValue() (interface{}, error) {
 		if item.LogFrame != nil {
 			return nil, errors.New("peer response emitted a LOG frame; collect with explicit diagnostic forwarding")
 		}
+		if item.Output != "" {
+			continue // another output of the peer: not its answer
+		}
 		if item.DataErr != nil {
 			return nil, item.DataErr
 		}
@@ -232,100 +247,145 @@ func (pr *PeerResponse) CollectValue() (interface{}, error) {
 	return value, nil
 }
 
+// peerStream is one stream of a peer response.
+type peerStream struct {
+	// output is the output the stream named. Empty: the main output's stream.
+	output string
+	// seq reassembles a stream started with is_sequence=true.
+	seq *seqReassembly
+}
+
 // DemuxPeerResponse converts a raw Frame channel into a PeerResponse that yields
-// PeerResponseItems (Data or Log). Returns immediately so LOG frames can be consumed
+// PeerResponseItems (Data, Output or Log). Returns immediately so LOG frames can be consumed
 // before data arrives (critical for keeping the engine's activity timer alive).
+//
+// A response has one stream per output the callee answers on. The stream that
+// names no output is the callee's main output: its items are the response's
+// data. A stream that names an output yields items tagged with it. The
+// response ends at the request's END, not at a stream's end.
 //
 // A response STREAM_START carrying is_sequence=true means CHUNK payloads are
 // raw RFC 8742 fragments of a CBOR-encoded item (the emit_list_item framing),
 // not self-contained CBOR values — decoding per frame fails with a CBOR
 // truncation error on any item larger than max_chunk. This demux buffers
 // fragments and decodes at item granularity instead (see seqReassembly),
-// delivering exactly one Data item per complete fragment run. A sequence
-// ending mid-item (STREAM_END/END with a non-empty reassembly buffer) is
-// surfaced as a hard decode error, never a silently dropped partial item.
+// delivering exactly one item per complete fragment run. A sequence ending
+// mid-item (STREAM_END/END with a non-empty reassembly buffer) is surfaced as
+// a hard decode error, never a silently dropped partial item.
 func DemuxPeerResponse(rawFrames <-chan Frame) *PeerResponse {
 	itemCh := make(chan PeerResponseItem, 256)
 
 	go func() {
 		defer close(itemCh)
-		var seq *seqReassembly
+		streams := map[string]*peerStream{}
+		// item delivers one item of `stream`: data of the main output, or an
+		// item tagged with the output its stream named.
+		item := func(stream *peerStream, value interface{}, err error) {
+			itemCh <- PeerResponseItem{
+				IsDataItem: stream.output == "",
+				Output:     stream.output,
+				DataValue:  value,
+				DataErr:    err,
+			}
+		}
+		protocol := func(format string, args ...interface{}) {
+			itemCh <- PeerResponseItem{IsDataItem: true, DataErr: fmt.Errorf(format, args...)}
+		}
+		// endOf closes one stream: a sequence that stopped mid-item is an error.
+		endOf := func(stream *peerStream) {
+			if stream.seq != nil {
+				if err := stream.seq.atEnd(); err != nil {
+					item(stream, nil, err)
+				}
+			}
+		}
 		for frame := range rawFrames {
 			switch frame.FrameType {
 			case FrameTypeStreamStart:
-				if frame.IsSequence != nil && *frame.IsSequence {
-					seq = &seqReassembly{}
-				} else {
-					seq = nil
+				if frame.StreamId == nil {
+					protocol("peer response STREAM_START has no stream_id")
+					continue
 				}
+				stream := &peerStream{}
+				if frame.Output != nil {
+					stream.output = *frame.Output
+				}
+				if frame.IsSequence != nil && *frame.IsSequence {
+					stream.seq = &seqReassembly{}
+				}
+				streams[*frame.StreamId] = stream
 			case FrameTypeChunk:
-				if frame.Payload != nil {
-					// Verify checksum
-					if frame.Checksum == nil {
-						itemCh <- PeerResponseItem{
-							IsDataItem: true,
-							DataErr:    errors.New("CHUNK frame missing required checksum field"),
-						}
-						continue
+				if frame.Payload == nil {
+					continue
+				}
+				// A chunk belongs to the stream that was started under its
+				// id; one for a stream that never started is not data of any
+				// output.
+				var stream *peerStream
+				if frame.StreamId != nil {
+					stream = streams[*frame.StreamId]
+				}
+				if stream == nil {
+					id := "<none>"
+					if frame.StreamId != nil {
+						id = *frame.StreamId
 					}
-					actual := ComputeChecksum(frame.Payload)
-					if actual != *frame.Checksum {
-						itemCh <- PeerResponseItem{
-							IsDataItem: true,
-							DataErr:    fmt.Errorf("checksum mismatch: expected=%d, actual=%d", *frame.Checksum, actual),
-						}
-						continue
-					}
-					if seq != nil {
-						feedErr := seq.feed(frame.Payload, frame.Meta, func(itemBytes []byte, _ map[string]interface{}) {
-							var value interface{}
-							if decErr := cborlib.Unmarshal(itemBytes, &value); decErr != nil {
-								itemCh <- PeerResponseItem{
-									IsDataItem: true,
-									DataErr:    fmt.Errorf("CBOR decode error: %w", decErr),
-								}
-								return
-							}
-							itemCh <- PeerResponseItem{
-								IsDataItem: true,
-								DataValue:  value,
-							}
-						})
-						if feedErr != nil {
-							// Hard decode error: surface it as a Data(Err) item
-							// and stay in sequence mode with the buffer cleared
-							// (feed already reset it) — subsequent fragments
-							// keep reassembling. Mirrors Rust
-							// demux_single_stream, which does seq.buf.clear()
-							// and leaves the reassembly Some, rather than
-							// dropping to scalar decoding for the rest of the
-							// stream.
-							itemCh <- PeerResponseItem{IsDataItem: true, DataErr: feedErr}
-						}
-					} else {
+					protocol("peer response CHUNK for a stream that was not started: %s", id)
+					continue
+				}
+				if frame.Checksum == nil {
+					item(stream, nil, errors.New("CHUNK frame missing required checksum field"))
+					continue
+				}
+				if actual := ComputeChecksum(frame.Payload); actual != *frame.Checksum {
+					item(stream, nil, fmt.Errorf("checksum mismatch: expected=%d, actual=%d", *frame.Checksum, actual))
+					continue
+				}
+				if stream.seq != nil {
+					feedErr := stream.seq.feed(frame.Payload, frame.Meta, func(itemBytes []byte, _ map[string]interface{}) {
 						var value interface{}
-						if err := cborlib.Unmarshal(frame.Payload, &value); err != nil {
-							itemCh <- PeerResponseItem{
-								IsDataItem: true,
-								DataErr:    fmt.Errorf("CBOR decode error: %w", err),
-							}
-						} else {
-							itemCh <- PeerResponseItem{
-								IsDataItem: true,
-								DataValue:  value,
-							}
+						if decErr := cborlib.Unmarshal(itemBytes, &value); decErr != nil {
+							item(stream, nil, fmt.Errorf("CBOR decode error: %w", decErr))
+							return
 						}
+						item(stream, value, nil)
+					})
+					if feedErr != nil {
+						// Hard decode error: surface it and stay in sequence
+						// mode with the buffer cleared (feed already reset
+						// it) — subsequent fragments keep reassembling.
+						item(stream, nil, feedErr)
 					}
+					continue
+				}
+				var value interface{}
+				if err := cborlib.Unmarshal(frame.Payload, &value); err != nil {
+					item(stream, nil, fmt.Errorf("CBOR decode error: %w", err))
+				} else {
+					item(stream, value, nil)
 				}
 			case FrameTypeLog:
 				f := frame // copy
 				itemCh <- PeerResponseItem{LogFrame: &f}
-			case FrameTypeStreamEnd, FrameTypeEnd:
-				if seq != nil {
-					if err := seq.atEnd(); err != nil {
-						itemCh <- PeerResponseItem{IsDataItem: true, DataErr: err}
-					}
-					seq = nil
+			case FrameTypeStreamEnd:
+				if frame.StreamId == nil {
+					continue
+				}
+				if stream := streams[*frame.StreamId]; stream != nil {
+					endOf(stream)
+					delete(streams, *frame.StreamId)
+				}
+			case FrameTypeEnd:
+				// The request is over. A stream still open stopped without
+				// its STREAM_END: what it holds of an unfinished item is an
+				// error, in a fixed order.
+				open := make([]string, 0, len(streams))
+				for id := range streams {
+					open = append(open, id)
+				}
+				sort.Strings(open)
+				for _, id := range open {
+					endOf(streams[id])
 				}
 				return
 			case FrameTypeErr:
@@ -796,12 +856,13 @@ func NewCartridgeRuntimeWithManifest(manifest *CapManifest) (*CartridgeRuntime, 
 	}
 
 	runtime := &CartridgeRuntime{
-		handlers:     make(map[string]HandlerFunc),
-		manifestData: manifestData,
-		manifest:     manifest,
-		limits:       DefaultLimits(),
-		pools:        &poolsCell{},
-		dropCounters: NewDropCounters(),
+		handlers:          make(map[string]HandlerFunc),
+		manifestData:      manifestData,
+		manifest:          manifest,
+		limits:            DefaultLimits(),
+		pools:             &poolsCell{},
+		dropCounters:      NewDropCounters(),
+		stragglerCounters: NewStragglerCounters(),
 	}
 
 	// Auto-register identity handler if not already registered
@@ -1209,16 +1270,24 @@ func DeriveResponseMedia(capUrn string) (string, error) {
 // pendingIncomingRequest.frames) and writes the terminal ERR/END frame.
 // Shared by both the immediate-dispatch and queue-drain paths in
 // runCBORModeIO.
-func runLiveHandler(qr *liveHandlerRequest, writer *syncFrameWriter, limits Limits, pendingPeerRequests *sync.Map, creditRouter *CreditRouter) {
+func runLiveHandler(qr *liveHandlerRequest, manifest *CapManifest, writer *syncFrameWriter, limits Limits, pendingPeerRequests *sync.Map, creditRouter *CreditRouter) {
 	requestID := qr.requestID
 
-	// Generate unique stream ID for response
-	streamID := fmt.Sprintf("resp-%s", requestID.ToString()[:8])
-	// The response label is DERIVED from the cap's declared effect — not
-	// chosen by the handler — so an honest lib-runtime cartridge satisfies
-	// the engine's effect audit by construction. An underivable label is a
-	// broken cap declaration: fail the request, never fall back.
-	mediaUrn, deriveErr := DeriveResponseMedia(qr.capUrn)
+	// One stream per output the cap declares, each naming its output, each
+	// flow-controlled by the host's consumption (L9) and carrying the
+	// request's routing id. The main output's label is DERIVED from the
+	// cap's declared effect — not chosen by the handler — so an honest
+	// lib-runtime cartridge satisfies the engine's effect audit by
+	// construction. An underivable label is a broken cap declaration: fail
+	// the request, never fall back.
+	opened := 0
+	outputs, deriveErr := responseOutputsForCap(qr.capUrn, manifest, func(label string, output *string) outputStream {
+		streamID := fmt.Sprintf("resp-%s-%d", requestID.ToString()[:8], opened)
+		opened++
+		stream := newThreadSafeEmitter(writer, requestID, qr.routingId, streamID, label, limits.MaxChunk, creditRouter, uint64(limits.InitialCredit))
+		stream.output = output
+		return stream
+	})
 	if deriveErr != nil {
 		fmt.Fprintf(os.Stderr, "[CartridgeRuntime] response media derivation FAILED: cap=%s req_id=%s error=%v\n", qr.capUrn, requestID.ToString(), deriveErr)
 		if !qr.terminal.forHandler() {
@@ -1232,10 +1301,10 @@ func runLiveHandler(qr *liveHandlerRequest, writer *syncFrameWriter, limits Limi
 		return
 	}
 
-	// Create emitter with stream multiplexing (preserve routing_id for
-	// response routing), flow-controlled by the host's consumption (protocol
-	// v4, L9).
-	emitter := newThreadSafeEmitter(writer, requestID, qr.routingId, streamID, mediaUrn, limits.MaxChunk, creditRouter, uint64(limits.InitialCredit))
+	for _, output := range outputs.all() {
+		output.stream.(*threadSafeEmitter).outputs = outputs
+	}
+	emitter := outputs.main.stream.(*threadSafeEmitter)
 	peerInvoker := newPeerInvokerImpl(writer, pendingPeerRequests, limits.MaxChunk, creditRouter, uint64(limits.InitialCredit))
 	peerInvoker.origin = requestID.ToString()
 
@@ -1267,8 +1336,16 @@ func runLiveHandler(qr *liveHandlerRequest, writer *syncFrameWriter, limits Limi
 		return
 	}
 
-	// Finalize sends STREAM_END + END frames
-	emitter.Finalize()
+	// Every output is ended — a required one the handler never wrote to is
+	// sent empty, an optional one it never wrote to is not sent — and then
+	// the request.
+	if finishErr := outputs.finish(); finishErr != nil {
+		fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to end the response streams: %v\n", finishErr)
+		return
+	}
+	if writeErr := writer.WriteFrame(emitter.endFrame()); writeErr != nil {
+		fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write END: %v\n", writeErr)
+	}
 }
 
 // runCBORMode runs in Cartridge CBOR mode - binary frame protocol via stdin/stdout
@@ -1475,7 +1552,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 				creditRouter.CloseRequest(qr.requestID, "END")
 				admitWaiting()
 			}()
-			runLiveHandler(qr, writer, negotiatedLimits, pendingPeerRequests, creditRouter)
+			runLiveHandler(qr, pr.manifest, writer, negotiatedLimits, pendingPeerRequests, creditRouter)
 		}()
 	}
 
@@ -1660,6 +1737,10 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 				// FAIL HARD: Request already ended
 				if pendingReq.ended {
 					delete(pendingIncoming, frame.Id.ToString())
+					// The refused request's input ends here: its handler sees its
+					// frames stop before END and returns, instead of waiting for
+					// input that will never come.
+					pendingReq.frames.Close()
 					pendingIncomingMu.Unlock()
 					errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", AttributionClassInternal, "CHUNK after request END", nil)
 					if err := writer.WriteFrame(errFrame); err != nil {
@@ -1673,6 +1754,10 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 
 				if foundStream == nil {
 					delete(pendingIncoming, frame.Id.ToString())
+					// The refused request's input ends here: its handler sees its
+					// frames stop before END and returns, instead of waiting for
+					// input that will never come.
+					pendingReq.frames.Close()
 					pendingIncomingMu.Unlock()
 					errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", AttributionClassInternal, fmt.Sprintf("CHUNK for unknown stream_id: %s", streamID), nil)
 					if err := writer.WriteFrame(errFrame); err != nil {
@@ -1683,6 +1768,10 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 
 				if foundStream.complete {
 					delete(pendingIncoming, frame.Id.ToString())
+					// The refused request's input ends here: its handler sees its
+					// frames stop before END and returns, instead of waiting for
+					// input that will never come.
+					pendingReq.frames.Close()
 					pendingIncomingMu.Unlock()
 					errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", AttributionClassInternal, fmt.Sprintf("CHUNK for ended stream: %s", streamID), nil)
 					if err := writer.WriteFrame(errFrame); err != nil {
@@ -1698,6 +1787,10 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 				// from exceeding what it was granted.
 				if !foundStream.window.Arrive() {
 					delete(pendingIncoming, frame.Id.ToString())
+					// The refused request's input ends here: its handler sees its
+					// frames stop before END and returns, instead of waiting for
+					// input that will never come.
+					pendingReq.frames.Close()
 					pendingIncomingMu.Unlock()
 					total := pr.dropCounters.Record(DropReasonCreditViolation, frame.FrameType)
 					errFrame := NewErr(
@@ -1783,10 +1876,11 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 				// FrameTypeChunk path above — checksum was already verified
 				// before this branch, so every chunk here is real
 				// consumption). A Response grant carries no routing_id
-				// (Rust's xid = None) and no stream_id: the host routes it to
-				// the responder's sole output gate by direction (L11).
-				if n := pendingReq.window(uint64(negotiatedLimits.InitialCredit)).Consumed(); n > 0 {
-					grantFrame := NewCredit(frame.Id, nil, n, CreditDirectionResponse)
+				// (Rust's xid = None) and NAMES ITS STREAM: a callee answers
+				// on one stream per output, and a grant that names none
+				// reaches a callee with several only by guessing (L11).
+				if n := pendingReq.window(streamID, uint64(negotiatedLimits.InitialCredit)).Consumed(); n > 0 {
+					grantFrame := NewCredit(frame.Id, &streamID, n, CreditDirectionResponse)
 					if err := writer.WriteFrame(grantFrame); err != nil {
 						fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write peer-response CREDIT grant: %v\n", err)
 					}
@@ -1962,8 +2056,30 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 				// FAIL HARD: Request already ended
 				if pendingReq.ended {
 					delete(pendingIncoming, frame.Id.ToString())
+					// The refused request's input ends here: its handler sees its
+					// frames stop before END and returns, instead of waiting for
+					// input that will never come.
+					pendingReq.frames.Close()
 					pendingIncomingMu.Unlock()
 					errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", AttributionClassInternal, "STREAM_START after request END", nil)
+					if err := writer.WriteFrame(errFrame); err != nil {
+						fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", err)
+					}
+					continue
+				}
+
+				// FAIL HARD: a request stream is an argument, identified by
+				// its media URN alone. One that names an output is a
+				// response stream where an argument belongs.
+				if frame.Output != nil {
+					delete(pendingIncoming, frame.Id.ToString())
+					// The refused request's input ends here: its handler sees its
+					// frames stop before END and returns, instead of waiting for
+					// input that will never come.
+					pendingReq.frames.Close()
+					pendingIncomingMu.Unlock()
+					errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", AttributionClassInternal,
+						fmt.Sprintf("request stream '%s' names an output ('%s'): a request stream is an argument", streamID, *frame.Output), nil)
 					if err := writer.WriteFrame(errFrame); err != nil {
 						fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", err)
 					}
@@ -1973,6 +2089,10 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 				// FAIL HARD: Duplicate stream_id
 				if _, dup := pendingReq.streams[streamID]; dup {
 					delete(pendingIncoming, frame.Id.ToString())
+					// The refused request's input ends here: its handler sees its
+					// frames stop before END and returns, instead of waiting for
+					// input that will never come.
+					pendingReq.frames.Close()
 					pendingIncomingMu.Unlock()
 					errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", AttributionClassInternal, fmt.Sprintf("Duplicate stream_id: %s", streamID), nil)
 					if err := writer.WriteFrame(errFrame); err != nil {
@@ -2039,6 +2159,10 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 				if foundStream == nil {
 					// FAIL HARD: STREAM_END for unknown stream
 					delete(pendingIncoming, frame.Id.ToString())
+					// The refused request's input ends here: its handler sees its
+					// frames stop before END and returns, instead of waiting for
+					// input that will never come.
+					pendingReq.frames.Close()
 					pendingIncomingMu.Unlock()
 					errFrame := NewErr(frame.Id, "PROTOCOL_ERROR", AttributionClassInternal, fmt.Sprintf("STREAM_END for unknown stream_id: %s", streamID), nil)
 					if err := writer.WriteFrame(errFrame); err != nil {
@@ -2238,7 +2362,20 @@ func (pr *CartridgeRuntime) dispatchCliPayload(capDef *cap.Cap, handler HandlerF
 		framesChan <- *endFrame
 	}()
 
-	emitter := &cliStreamEmitter{}
+	// The same outputs as the wire path (runLiveHandler): the command line is
+	// a debugging surface for the same contract. It has one standard output,
+	// and that carries the cap's main output; another output is a stream the
+	// handler may write to, and its data is not printed.
+	outputs, err := responseOutputsForCap(capDef.UrnString(), pr.manifest, func(_ string, output *string) outputStream {
+		return &cliStreamEmitter{unprinted: output != nil}
+	})
+	if err != nil {
+		return err
+	}
+	for _, output := range outputs.all() {
+		output.stream.(*cliStreamEmitter).outputs = outputs
+	}
+	emitter := outputs.main.stream
 	peer := &noPeerInvoker{}
 
 	if err := handler(framesChan, emitter, peer); err != nil {
@@ -2907,6 +3044,13 @@ type threadSafeEmitter struct {
 	streamID      string     // Response stream ID
 	mediaUrn      string     // Response media URN
 	streamStarted bool       // Track if STREAM_START was sent
+	// output is the output this stream names in its STREAM_START: the media
+	// URN of an output other than the cap's main one. nil on the main
+	// output's stream, which names none.
+	output *string
+	// outputs is the outputs of the request this stream belongs to, when the
+	// runtime made it one of them. Set once, before the handler runs.
+	outputs *responseOutputs
 	// isSequence pins this stream's mode once started: false = write mode
 	// (EmitCbor/Write — each chunk a complete CBOR value), true = sequence
 	// mode (EmitListItem — chunks are RFC 8742 fragments of one CBOR-encoded
@@ -3022,8 +3166,74 @@ func (e *threadSafeEmitter) ensureStreamStarted(isSequence bool) error {
 	} else {
 		startFrame = NewStreamStart(e.requestID, e.streamID, e.mediaUrn, &seq)
 	}
+	if e.output != nil {
+		startFrame.ForOutput(*e.output)
+	}
 	startFrame.RoutingId = e.routingId
 	return e.writer.WriteFrame(startFrame)
+}
+
+// requestOutputs returns the outputs of the request this stream belongs to.
+func (e *threadSafeEmitter) requestOutputs() *responseOutputs { return e.outputs }
+
+// isStarted reports whether this stream's STREAM_START was sent.
+func (e *threadSafeEmitter) isStarted() bool {
+	e.seqMu.Lock()
+	defer e.seqMu.Unlock()
+	return e.streamStarted
+}
+
+// startDeclared opens the stream, empty, in the cardinality its output
+// declares: what the runtime does for a required output the handler never
+// wrote to.
+func (e *threadSafeEmitter) startDeclared(isSequence bool) error {
+	e.seqMu.Lock()
+	defer e.seqMu.Unlock()
+	return e.ensureStreamStarted(isSequence)
+}
+
+// closeStream ends a started stream: its coalesced tail, then its STREAM_END.
+func (e *threadSafeEmitter) closeStream() error {
+	e.seqMu.Lock()
+	defer e.seqMu.Unlock()
+	if !e.streamStarted {
+		return fmt.Errorf("stream %s was never started", e.streamID)
+	}
+	// Coalesced tail bytes ship BEFORE the STREAM_END that promises the
+	// chunk count — flushing here is what makes coalescing lossless.
+	if err := e.flushCoalescedLocked(); err != nil {
+		return fmt.Errorf("flushing the coalesced tail: %w", err)
+	}
+	// An unbounded stream (StartUnbounded was called, L16) made no length
+	// promise, so its STREAM_END carries no chunk_count.
+	var streamEndFrame *Frame
+	if e.unbounded {
+		streamEndFrame = NewStreamEndUnbounded(e.requestID, e.streamID)
+	} else {
+		streamEndFrame = NewStreamEnd(e.requestID, e.streamID, e.chunkIndex)
+	}
+	streamEndFrame.RoutingId = e.routingId
+	return e.writer.WriteFrame(streamEndFrame)
+}
+
+// endFrame builds the END that closes the whole request. It carries the
+// terminal metadata (L3/L5): the handler's declared final status from
+// Finish(), or the 1.0 default when Finish was never called. Final progress
+// rides IN the terminal frame — it cannot race it (do not emit a trailing
+// 100% progress LOG frame instead).
+func (e *threadSafeEmitter) endFrame() *Frame {
+	e.finalMu.Lock()
+	progress, message := e.finalProgress, e.finalMessage
+	e.finalMu.Unlock()
+	// The END frame always carries an explicit final progress, so the
+	// success-END wire bytes are the same in every implementation.
+	if progress == nil {
+		one := 1.0
+		progress = &one
+	}
+	end := EndOkWith(e.requestID, nil, progress, message)
+	end.RoutingId = e.routingId
+	return end
 }
 
 // modeName renders an OutputStream mode for error messages.
@@ -3298,67 +3508,6 @@ func (e *threadSafeEmitter) EmitCbor(value interface{}) error {
 	return nil
 }
 
-// Finalize sends STREAM_END + END frames to complete the response. The END
-// frame carries the terminal metadata (protocol v4, L3/L5): the handler's
-// declared final status from Finish(), or the 1.0 default when Finish was
-// never called.
-func (e *threadSafeEmitter) Finalize() {
-	e.seqMu.Lock()
-	defer e.seqMu.Unlock()
-
-	// If no chunks were sent, still send STREAM_START to keep protocol
-	// consistent — defaults to write mode (the never-started case has no
-	// mode preference).
-	if err := e.ensureStreamStarted(false); err != nil {
-		fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write STREAM_START: %v\n", err)
-		return
-	}
-
-	// Coalesced tail bytes ship BEFORE the STREAM_END that promises the
-	// chunk count — flushing here is what makes coalescing lossless.
-	if err := e.flushCoalescedLocked(); err != nil {
-		fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to flush coalesced tail: %v\n", err)
-		return
-	}
-
-	// STREAM_END: Close this stream. An unbounded stream (StartUnbounded was
-	// called, protocol v4, L16) made no length promise, so its STREAM_END
-	// carries no chunk_count.
-	var streamEndFrame *Frame
-	if e.unbounded {
-		streamEndFrame = NewStreamEndUnbounded(e.requestID, e.streamID)
-	} else {
-		streamEndFrame = NewStreamEnd(e.requestID, e.streamID, e.chunkIndex)
-	}
-	streamEndFrame.RoutingId = e.routingId
-	if err := e.writer.WriteFrame(streamEndFrame); err != nil {
-		fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write STREAM_END: %v\n", err)
-		return
-	}
-
-	// END: Close the entire request. Final progress rides IN the terminal
-	// frame — it cannot race it (do not emit a trailing 100% progress LOG
-	// frame instead).
-	e.finalMu.Lock()
-	progress, message := e.finalProgress, e.finalMessage
-	e.finalMu.Unlock()
-	// The END frame always carries an explicit final progress: the handler's
-	// declared value, or the 1.0 success default when Finish was never called.
-	// Rust's spawn_handler stamps Some(1.0) rather than omitting the key, so
-	// stamp it here too — the success-END wire bytes must match exactly, not
-	// merely decode equivalently via FinalProgress's reader-side default.
-	// (matches Rust spawn_handler's `None => (1.0, None)` + end_ok_with)
-	if progress == nil {
-		one := 1.0
-		progress = &one
-	}
-	endFrame := EndOkWith(e.requestID, nil, progress, message)
-	endFrame.RoutingId = e.routingId
-	if err := e.writer.WriteFrame(endFrame); err != nil {
-		fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write END: %v\n", err)
-	}
-}
-
 func (e *threadSafeEmitter) Write(data []byte) error {
 	e.seqMu.Lock()
 	defer e.seqMu.Unlock()
@@ -3488,11 +3637,27 @@ func (e *threadSafeEmitter) NewProgressSender() *ProgressSender {
 }
 
 // cliStreamEmitter implements StreamEmitter for CLI mode
-type cliStreamEmitter struct{}
+type cliStreamEmitter struct {
+	// unprinted marks the stream of an output other than the cap's main one:
+	// a command line has one standard output, and it carries the main
+	// output. What a handler writes to another output is accepted and not
+	// printed.
+	unprinted bool
+	// outputs is the outputs of the invocation this stream belongs to.
+	outputs *responseOutputs
+}
 
-// StartUnbounded is a no-op in CLI mode: there is no STREAM_START/STREAM_END
-// wire framing to begin with (every other method here writes straight to
-// stdout), so "no length promise" has nothing to declare against.
+func (e *cliStreamEmitter) requestOutputs() *responseOutputs { return e.outputs }
+
+// A command line has no stream framing: there is nothing to open for an
+// output nobody wrote to, and nothing to close for one somebody did. Every
+// stream is as started as it will ever be.
+func (e *cliStreamEmitter) isStarted() bool          { return true }
+func (e *cliStreamEmitter) startDeclared(bool) error { return nil }
+func (e *cliStreamEmitter) closeStream() error       { return nil }
+
+// StartUnbounded has no framing to declare a length promise against in CLI
+// mode: every data method here writes straight to stdout.
 func (e *cliStreamEmitter) StartUnbounded(isSequence bool) error {
 	return nil
 }
@@ -3501,6 +3666,9 @@ func (e *cliStreamEmitter) EmitCbor(value interface{}) error {
 	// In CLI mode: extract raw bytes/text from value and emit to stdout
 	// Supported types: []byte, string, map (extract "value" field)
 	// NO FALLBACK - fail hard if unsupported type
+	if e.unprinted {
+		return nil
+	}
 
 	switch v := value.(type) {
 	case []byte:
@@ -3522,6 +3690,9 @@ func (e *cliStreamEmitter) EmitCbor(value interface{}) error {
 }
 
 func (e *cliStreamEmitter) Write(data []byte) error {
+	if e.unprinted {
+		return nil
+	}
 	_, err := os.Stdout.Write(data)
 	return err
 }
@@ -3555,24 +3726,27 @@ type pendingPeerRequest struct {
 	// a cancel of that request cancels the call. Empty outside a request.
 	origin string
 
-	// responseWindow batches the Response-direction CREDIT grants this
+	// responseWindows batch the Response-direction CREDIT grants this
 	// cartridge sends back to the responder as it consumes peer-response CHUNK
-	// frames (protocol v4, L10/L14): a grant once half the window has been
-	// consumed, at least 1, so a large peer response cannot stall the
-	// responding cartridge on credit. It batches only — arrivals are not
-	// checked here, because the responder's window was negotiated on another
-	// link. Only touched from the single-threaded main read loop. (matches
-	// Rust demux_single_stream's InputGrantEmitter for the peer response)
-	responseWindow *CreditWindow
+	// frames (L10/L14), one batcher per response stream: a grant once half
+	// the window has been consumed, at least 1, so a large peer response
+	// cannot stall the responding cartridge on credit. They batch only —
+	// arrivals are not checked here, because the responder's window was
+	// negotiated on another link. Only touched from the single-threaded main
+	// read loop. (matches Rust PeerGrantSource::for_stream)
+	responseWindows map[string]*CreditWindow
 }
 
-// window is the peer response's grant batcher, opened on the first chunk at
-// this link's negotiated initial credit.
-func (p *pendingPeerRequest) window(initialCredit uint64) *CreditWindow {
-	if p.responseWindow == nil {
-		p.responseWindow = NewCreditWindow(initialCredit)
+// window is the grant batcher of one stream of the peer response, opened on
+// that stream's first chunk at this link's negotiated initial credit.
+func (p *pendingPeerRequest) window(streamID string, initialCredit uint64) *CreditWindow {
+	if p.responseWindows == nil {
+		p.responseWindows = map[string]*CreditWindow{}
 	}
-	return p.responseWindow
+	if p.responseWindows[streamID] == nil {
+		p.responseWindows[streamID] = NewCreditWindow(initialCredit)
+	}
+	return p.responseWindows[streamID]
 }
 
 // peerInvokerImpl implements PeerInvoker

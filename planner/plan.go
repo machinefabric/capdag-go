@@ -8,58 +8,6 @@ import (
 // NodeId is a string alias for node identifiers.
 type NodeId = string
 
-// MergeStrategy defines how multiple inputs are merged.
-type MergeStrategy int
-
-const (
-	MergeConcat MergeStrategy = iota
-	MergeZipWith
-	MergeFirstSuccess
-	MergeAllSuccessful
-)
-
-// String returns the snake_case name for serialization.
-func (m MergeStrategy) String() string {
-	switch m {
-	case MergeConcat:
-		return "concat"
-	case MergeZipWith:
-		return "zip_with"
-	case MergeFirstSuccess:
-		return "first_success"
-	case MergeAllSuccessful:
-		return "all_successful"
-	default:
-		return "concat"
-	}
-}
-
-// MarshalJSON implements json.Marshaler.
-func (m MergeStrategy) MarshalJSON() ([]byte, error) {
-	return json.Marshal(m.String())
-}
-
-// UnmarshalJSON implements json.Unmarshaler.
-func (m *MergeStrategy) UnmarshalJSON(data []byte) error {
-	var s string
-	if err := json.Unmarshal(data, &s); err != nil {
-		return err
-	}
-	switch s {
-	case "concat":
-		*m = MergeConcat
-	case "zip_with":
-		*m = MergeZipWith
-	case "first_success":
-		*m = MergeFirstSuccess
-	case "all_successful":
-		*m = MergeAllSuccessful
-	default:
-		return fmt.Errorf("unknown MergeStrategy: %s", s)
-	}
-	return nil
-}
-
 // ExecutionNodeKind identifies the type of execution node.
 type ExecutionNodeKind int
 
@@ -67,8 +15,6 @@ const (
 	NodeKindCap ExecutionNodeKind = iota
 	NodeKindForEach
 	NodeKindCollect
-	NodeKindMerge
-	NodeKindSplit
 	NodeKindInputSlot
 	NodeKindOutput
 )
@@ -90,12 +36,6 @@ type ExecutionNodeType struct {
 	// Collect fields
 	InputNodes     []string
 	OutputMediaUrn *string
-
-	// Merge fields
-	MergeStrat MergeStrategy
-
-	// Split fields
-	OutputCount int
 
 	// InputSlot fields
 	SlotName         string
@@ -136,24 +76,6 @@ func NewCollectNodeType(inputNodes []string, outputMediaUrn *string) *ExecutionN
 		Kind:           NodeKindCollect,
 		InputNodes:     inputNodes,
 		OutputMediaUrn: outputMediaUrn,
-	}
-}
-
-// NewMergeNodeType creates a Merge execution node type.
-func NewMergeNodeType(inputNodes []string, strategy MergeStrategy) *ExecutionNodeType {
-	return &ExecutionNodeType{
-		Kind:       NodeKindMerge,
-		InputNodes: inputNodes,
-		MergeStrat: strategy,
-	}
-}
-
-// NewSplitNodeType creates a Split execution node type.
-func NewSplitNodeType(inputNode string, outputCount int) *ExecutionNodeType {
-	return &ExecutionNodeType{
-		Kind:        NodeKindSplit,
-		InputNode:   inputNode,
-		OutputCount: outputCount,
 	}
 }
 
@@ -277,17 +199,14 @@ type EdgeKind int
 
 const (
 	EdgeKindDirect EdgeKind = iota
-	EdgeKindJsonField
-	EdgeKindJsonPath
 	EdgeKindIteration
 	EdgeKindCollection
 )
 
-// EdgeType holds the edge type and variant data.
+// EdgeType holds the edge type. An edge carries the whole value its source
+// produced: there is no reading of a part of it.
 type EdgeType struct {
-	Kind  EdgeKind
-	Field string // for JsonField
-	Path  string // for JsonPath
+	Kind EdgeKind
 }
 
 // DirectEdgeType creates a Direct edge type.
@@ -298,16 +217,6 @@ func IterationEdgeType() *EdgeType { return &EdgeType{Kind: EdgeKindIteration} }
 
 // CollectionEdgeType creates a Collection edge type.
 func CollectionEdgeType() *EdgeType { return &EdgeType{Kind: EdgeKindCollection} }
-
-// JsonFieldEdgeType creates a JsonField edge type.
-func JsonFieldEdgeType(field string) *EdgeType {
-	return &EdgeType{Kind: EdgeKindJsonField, Field: field}
-}
-
-// JsonPathEdgeType creates a JsonPath edge type.
-func JsonPathEdgeType(path string) *EdgeType {
-	return &EdgeType{Kind: EdgeKindJsonPath, Path: path}
-}
 
 // MachinePlanEdge is a directed edge in the execution plan.
 type MachinePlanEdge struct {
@@ -329,16 +238,6 @@ func NewIterationEdge(from, to string) *MachinePlanEdge {
 // NewCollectionEdge creates a collection edge.
 func NewCollectionEdge(from, to string) *MachinePlanEdge {
 	return &MachinePlanEdge{FromNode: from, ToNode: to, Type: CollectionEdgeType()}
-}
-
-// NewJsonFieldEdge creates a JSON field edge.
-func NewJsonFieldEdge(from, to, field string) *MachinePlanEdge {
-	return &MachinePlanEdge{FromNode: from, ToNode: to, Type: JsonFieldEdgeType(field)}
-}
-
-// NewJsonPathEdge creates a JSON path edge.
-func NewJsonPathEdge(from, to, path string) *MachinePlanEdge {
-	return &MachinePlanEdge{FromNode: from, ToNode: to, Type: JsonPathEdgeType(path)}
 }
 
 // MachinePlan is the complete execution plan DAG.
@@ -872,10 +771,6 @@ func edgeKindName(k EdgeKind) string {
 	switch k {
 	case EdgeKindDirect:
 		return "direct"
-	case EdgeKindJsonField:
-		return "json_field"
-	case EdgeKindJsonPath:
-		return "json_path"
 	case EdgeKindIteration:
 		return "iteration"
 	case EdgeKindCollection:
@@ -885,70 +780,30 @@ func edgeKindName(k EdgeKind) string {
 	}
 }
 
-// MarshalJSON serializes EdgeType as an externally-tagged enum mirroring serde's
-// `rename_all = "snake_case"`: unit variants become bare strings ("direct"),
-// struct variants become a single-key object ({"json_field":{"field":"x"}}).
+// MarshalJSON serializes EdgeType as its snake_case name ("direct"), mirroring
+// serde's `rename_all = "snake_case"` for unit variants.
 func (e *EdgeType) MarshalJSON() ([]byte, error) {
-	switch e.Kind {
-	case EdgeKindDirect, EdgeKindIteration, EdgeKindCollection:
-		return json.Marshal(edgeKindName(e.Kind))
-	case EdgeKindJsonField:
-		return json.Marshal(map[string]any{
-			"json_field": map[string]string{"field": e.Field},
-		})
-	case EdgeKindJsonPath:
-		return json.Marshal(map[string]any{
-			"json_path": map[string]string{"path": e.Path},
-		})
-	default:
-		return json.Marshal("direct")
-	}
+	return json.Marshal(edgeKindName(e.Kind))
 }
 
-// UnmarshalJSON deserializes the externally-tagged EdgeType form.
+// UnmarshalJSON reads an EdgeType from its name. A name this library does not
+// know is refused: an edge of a kind nobody here can carry is not an edge.
 func (e *EdgeType) UnmarshalJSON(data []byte) error {
 	var s string
-	if err := json.Unmarshal(data, &s); err == nil {
-		switch s {
-		case "direct":
-			e.Kind = EdgeKindDirect
-		case "iteration":
-			e.Kind = EdgeKindIteration
-		case "collection":
-			e.Kind = EdgeKindCollection
-		default:
-			return fmt.Errorf("unknown EdgeType: %s", s)
-		}
-		return nil
+	if err := json.Unmarshal(data, &s); err != nil {
+		return fmt.Errorf("an EdgeType is a name: %s", string(data))
 	}
-
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return err
+	switch s {
+	case "direct":
+		e.Kind = EdgeKindDirect
+	case "iteration":
+		e.Kind = EdgeKindIteration
+	case "collection":
+		e.Kind = EdgeKindCollection
+	default:
+		return fmt.Errorf("unknown EdgeType: %s", s)
 	}
-	if raw, ok := obj["json_field"]; ok {
-		var v struct {
-			Field string `json:"field"`
-		}
-		if err := json.Unmarshal(raw, &v); err != nil {
-			return err
-		}
-		e.Kind = EdgeKindJsonField
-		e.Field = v.Field
-		return nil
-	}
-	if raw, ok := obj["json_path"]; ok {
-		var v struct {
-			Path string `json:"path"`
-		}
-		if err := json.Unmarshal(raw, &v); err != nil {
-			return err
-		}
-		e.Kind = EdgeKindJsonPath
-		e.Path = v.Path
-		return nil
-	}
-	return fmt.Errorf("unknown EdgeType object: %s", string(data))
+	return nil
 }
 
 // nodeKindName returns the snake_case wire name for an ExecutionNodeKind.
@@ -960,10 +815,6 @@ func nodeKindName(k ExecutionNodeKind) string {
 		return "for_each"
 	case NodeKindCollect:
 		return "collect"
-	case NodeKindMerge:
-		return "merge"
-	case NodeKindSplit:
-		return "split"
 	case NodeKindInputSlot:
 		return "input_slot"
 	case NodeKindOutput:
@@ -998,12 +849,6 @@ func (n *ExecutionNodeType) MarshalJSON() ([]byte, error) {
 		if n.OutputMediaUrn != nil {
 			m["output_media_urn"] = *n.OutputMediaUrn
 		}
-	case NodeKindMerge:
-		m["input_nodes"] = n.InputNodes
-		m["merge_strategy"] = n.MergeStrat
-	case NodeKindSplit:
-		m["input_node"] = n.InputNode
-		m["output_count"] = n.OutputCount
 	case NodeKindInputSlot:
 		m["slot_name"] = n.SlotName
 		m["expected_media_urn"] = n.ExpectedMediaUrn
@@ -1064,28 +909,6 @@ func (n *ExecutionNodeType) UnmarshalJSON(data []byte) error {
 		n.Kind = NodeKindCollect
 		n.InputNodes = v.InputNodes
 		n.OutputMediaUrn = v.OutputMediaUrn
-	case "merge":
-		var v struct {
-			InputNodes    []string      `json:"input_nodes"`
-			MergeStrategy MergeStrategy `json:"merge_strategy"`
-		}
-		if err := json.Unmarshal(data, &v); err != nil {
-			return err
-		}
-		n.Kind = NodeKindMerge
-		n.InputNodes = v.InputNodes
-		n.MergeStrat = v.MergeStrategy
-	case "split":
-		var v struct {
-			InputNode   string `json:"input_node"`
-			OutputCount int    `json:"output_count"`
-		}
-		if err := json.Unmarshal(data, &v); err != nil {
-			return err
-		}
-		n.Kind = NodeKindSplit
-		n.InputNode = v.InputNode
-		n.OutputCount = v.OutputCount
 	case "input_slot":
 		var v struct {
 			SlotName         string           `json:"slot_name"`

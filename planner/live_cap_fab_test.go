@@ -15,7 +15,7 @@ import (
 func makeTestCapForGraph(inSpec, outSpec, op, title string) *cap.Cap {
 	capUrn := urn.NewCapUrn(inSpec, outSpec, map[string]string{"op": op})
 	stdin := inSpec
-	mainArg := cap.NewCapArg(inSpec, true, []cap.ArgSource{{Stdin: &stdin}})
+	mainArg := cap.NewCapArg(inSpec, "input", true, []cap.ArgSource{{Stdin: &stdin}})
 	return cap.NewCapWithArgs(capUrn, title, []string{"test"}, []cap.CapArg{mainArg})
 }
 
@@ -645,13 +645,7 @@ func Test1293_roundtrip_requires_cap_steps(t *testing.T) {
 
 // TEST789: Tests that caps loaded from JSON have correct in_spec/out_spec
 func Test789_cap_from_json_has_valid_specs(t *testing.T) {
-	jsonStr := `{
-		"urn": "cap:in=\"media:document;ext=pdf\";disbind;out=\"media:disbound-page;enc=utf-8\"",
-		"aliases": ["disbind"],
-		"title": "Disbind PDF",
-		"args": [],
-		"output": null
-	}`
+	jsonStr := `{"urn":"cap:in=\"media:document;ext=pdf\";disbind;out=\"media:disbound-page;enc=utf-8\"","aliases":["disbind"],"title":"Disbind PDF","args":[{"media_urn":"media:document;ext=pdf","name":"input","required":true,"sources":[{"stdin":"media:document;ext=pdf"}]}],"outputs":[{"media_urn":"media:disbound-page;enc=utf-8","name":"output","output_description":"output"}]}`
 
 	var c cap.Cap
 	err := json.Unmarshal([]byte(jsonStr), &c)

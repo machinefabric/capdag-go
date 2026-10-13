@@ -10,7 +10,7 @@ import (
 // CBOR map keys (MUST match Rust implementation exactly)
 // From capdag/src/cbor_frame.rs lines 10-22:
 const (
-	keyVersion     = 0  // version (u8, always ProtocolVersion = 4)
+	keyVersion     = 0  // version (u8, always ProtocolVersion)
 	keyFrameType   = 1  // frame_type (u8)
 	keyId          = 2  // id (bytes[16] or uint)
 	keySeq         = 3  // seq (u64)
@@ -31,6 +31,7 @@ const (
 	keyForceKill   = 18 // force_kill (bool, optional - whether Cancel should force-kill)
 	keyCredit      = 19 // credit (u64, REQUIRED for CREDIT frames - flow-control grant in CHUNK units)
 	keyUnbounded   = 20 // unbounded (bool, optional - STREAM_START makes no length promise)
+	keyOutput      = 21 // output (tstr, STREAM_START of a response stream that is not the cap's main output - the media URN of the output it is)
 )
 
 // EncodeFrame encodes a Frame to CBOR bytes using integer keys (matches Rust)
@@ -154,6 +155,11 @@ func EncodeFrame(frame *Frame) ([]byte, error) {
 	// 20: unbounded (optional - for STREAM_START frames)
 	if frame.Unbounded != nil {
 		m[keyUnbounded] = *frame.Unbounded
+	}
+
+	// 21: output (a response stream that is not the cap's main output)
+	if frame.Output != nil {
+		m[keyOutput] = *frame.Output
 	}
 
 	return cbor.Marshal(m)
@@ -414,6 +420,22 @@ func DecodeFrame(data []byte) (*Frame, error) {
 		if unbounded, ok := unboundedVal.(bool); ok {
 			frame.Unbounded = &unbounded
 		}
+	}
+
+	// 21: which output a response stream is. Present and not a text string is
+	// a malformed frame, not an absent name: a stream that says which output
+	// it is must be readable.
+	if outputVal, ok := m[keyOutput]; ok {
+		output, isText := outputVal.(string)
+		if !isText {
+			return nil, fmt.Errorf("output (key %d) must be a text string, got %T", keyOutput, outputVal)
+		}
+		frame.Output = &output
+	}
+	// Only a STREAM_START says which output it is; the stream's other frames
+	// are tied to it by stream_id.
+	if frame.Output != nil && frame.FrameType != FrameTypeStreamStart {
+		return nil, fmt.Errorf("%s frame carries output (key %d), which only STREAM_START may", frame.FrameType, keyOutput)
 	}
 
 	// Validate required fields based on frame type

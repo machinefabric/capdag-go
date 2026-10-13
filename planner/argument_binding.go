@@ -182,15 +182,14 @@ const (
 
 // ArgumentBinding describes how to resolve one argument value.
 type ArgumentBinding struct {
-	Kind        ArgumentBindingKind
-	Index       int              // for InputFile
-	NodeID      string           // for PreviousOutput
-	OutputField *string          // for PreviousOutput (optional)
-	SettingUrn  string           // for CapSetting
-	Value       json.RawMessage  // for Literal (JSON value)
-	SlotName    string           // for Slot
-	Schema      *json.RawMessage // for Slot (optional)
-	Key         string           // for PlanMetadata
+	Kind       ArgumentBindingKind
+	Index      int              // for InputFile
+	NodeID     string           // for PreviousOutput
+	SettingUrn string           // for CapSetting
+	Value      json.RawMessage  // for Literal (JSON value)
+	SlotName   string           // for Slot
+	Schema     *json.RawMessage // for Slot (optional)
+	Key        string           // for PlanMetadata
 }
 
 // NewInputFileBinding creates an InputFile binding.
@@ -208,9 +207,10 @@ func NewInputMediaUrnBinding() *ArgumentBinding {
 	return &ArgumentBinding{Kind: BindingInputMediaUrn}
 }
 
-// NewPreviousOutputBinding creates a PreviousOutput binding.
-func NewPreviousOutputBinding(nodeID string, outputField *string) *ArgumentBinding {
-	return &ArgumentBinding{Kind: BindingPreviousOutput, NodeID: nodeID, OutputField: outputField}
+// NewPreviousOutputBinding creates a PreviousOutput binding: the whole value
+// another node produced.
+func NewPreviousOutputBinding(nodeID string) *ArgumentBinding {
+	return &ArgumentBinding{Kind: BindingPreviousOutput, NodeID: nodeID}
 }
 
 // NewCapDefaultBinding creates a CapDefault binding.
@@ -284,11 +284,10 @@ func (b *ArgumentBinding) MarshalJSON() ([]byte, error) {
 		}{"input_media_urn"})
 	case BindingPreviousOutput:
 		type po struct {
-			Type        string  `json:"type"`
-			NodeID      string  `json:"node_id"`
-			OutputField *string `json:"output_field,omitempty"`
+			Type   string `json:"type"`
+			NodeID string `json:"node_id"`
 		}
-		return json.Marshal(po{"previous_output", b.NodeID, b.OutputField})
+		return json.Marshal(po{"previous_output", b.NodeID})
 	case BindingCapDefault:
 		return json.Marshal(struct {
 			Type string `json:"type"`
@@ -343,15 +342,13 @@ func (b *ArgumentBinding) UnmarshalJSON(data []byte) error {
 		b.Kind = BindingInputMediaUrn
 	case "previous_output":
 		var v struct {
-			NodeID      string  `json:"node_id"`
-			OutputField *string `json:"output_field"`
+			NodeID string `json:"node_id"`
 		}
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
 		b.Kind = BindingPreviousOutput
 		b.NodeID = v.NodeID
-		b.OutputField = v.OutputField
 	case "cap_default":
 		b.Kind = BindingCapDefault
 	case "cap_setting":
@@ -614,21 +611,6 @@ func ResolveBinding(
 		if !ok {
 			return nil, NewInternalError(fmt.Sprintf(
 				"No previous output for node %q", binding.NodeID))
-		}
-		if binding.OutputField != nil {
-			// Extract a field from the JSON object
-			var obj map[string]json.RawMessage
-			if err := json.Unmarshal(outputVal, &obj); err != nil {
-				return nil, NewInternalError(fmt.Sprintf(
-					"Output of node %q is not a JSON object", binding.NodeID))
-			}
-			fieldVal, ok := obj[*binding.OutputField]
-			if !ok {
-				return nil, NewInternalError(fmt.Sprintf(
-					"Output field %q not found in output of node %q",
-					*binding.OutputField, binding.NodeID))
-			}
-			outputVal = fieldVal
 		}
 		return &ResolvedArgument{
 			Value:  jsonValueToBytes(outputVal),

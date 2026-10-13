@@ -147,23 +147,42 @@ func Test7155_scaffold_guards(t *testing.T) {
 // language would be testing a path no real cartridge takes.
 func writeStubEntry(t *testing.T, dir, name, alias, capURN string) string {
 	t.Helper()
+	// A complete definition: the argument that receives the cap's `in=` and
+	// the output its `out=` states, as the definition rules require.
+	u, err := urn.NewCapUrnFromString(capURN)
+	if err != nil {
+		t.Fatalf("test passes a valid cap URN: %v", err)
+	}
+	inSpec, outSpec := u.InSpec(), u.OutSpec()
+	c := cap.NewCap(u, name, []string{alias})
+	c.Args = append(c.Args, cap.NewCapArg(inSpec, "input", true, []cap.ArgSource{{Stdin: &inSpec}}))
+	c.AddOutput(*cap.NewCapOutput(outSpec, "output", "The output"))
+	return writeStubEntryWith(t, dir, name, c)
+}
+
+// writeStubEntryWith is the same stub entry, printing a manifest that declares
+// identity and `c` exactly as given — complete or not.
+func writeStubEntryWith(t *testing.T, dir, name string, c *cap.Cap) string {
+	t.Helper()
 	python := Language("python")
 	if python == nil {
 		t.Fatal("the contract must cover python")
 	}
-	urnJSON := strings.ReplaceAll(capURN, `"`, `\"`)
-	manifest := fmt.Sprintf(
-		`{"name":"%s","version":"0.1.0","channel":"nightly","registry_url":null,`+
-			`"description":"stub","cap_groups":[{"name":"default","caps":[`+
-			`{"urn":"cap:effect=none","title":"Identity","aliases":["identity"]},`+
-			`{"urn":"%s","title":"%s","aliases":["%s"]}]}]}`,
-		name, urnJSON, name, alias)
+	identity, err := cap.IdentityCap()
+	if err != nil {
+		t.Fatalf("the standard identity definition: %v", err)
+	}
+	manifestBytes, err := json.Marshal(bifaci.NewCapManifest(name, "0.1.0", "nightly", nil, "stub",
+		[]bifaci.CapGroup{{Name: "default", Caps: []cap.Cap{*identity, *c}}}))
+	if err != nil {
+		t.Fatalf("the stub manifest serializes: %v", err)
+	}
 	// `strconv.Quote` because the manifest is JSON: Go and Python agree on
 	// how to escape a quote and a backslash inside a double-quoted string,
 	// so one quoting produces a literal both languages read the same way.
 	script := "#!/usr/bin/env python3\n" +
 		"import sys\n" +
-		"MANIFEST = " + strconv.Quote(manifest) + "\n" +
+		"MANIFEST = " + strconv.QuoteToASCII(string(manifestBytes)) + "\n" +
 		"if len(sys.argv) > 1 and sys.argv[1] == \"manifest\":\n" +
 		"    sys.stdout.write(MANIFEST)\n"
 
@@ -592,5 +611,41 @@ func assertStubMatches(t *testing.T, language, dest, vendored, canonical string)
 			}
 			break
 		}
+	}
+}
+
+// TEST12716: a manifest a cartridge entry prints is held to the definition
+// rules when it is read. One that parses and declares a cap breaking a rule
+// is refused as an invalid manifest, naming the entry, the cap and the
+// rule — not reported as unparseable, and never staged.
+func Test12716_an_entry_manifest_with_an_invalid_definition_is_refused(t *testing.T) {
+	root := tempRoot(t, "invalid-definition")
+	project := filepath.Join(root, "proj")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatalf("creating project: %v", err)
+	}
+	// `out=` states a greeting and the definition declares no output.
+	u, err := urn.NewCapUrnFromString(`cap:greet;in="media:void";out="media:enc=utf-8;greeting"`)
+	if err != nil {
+		t.Fatalf("cap URN: %v", err)
+	}
+	writeStubEntryWith(t, project, "greeter", cap.NewCap(u, "Greeter", []string{"greet"}))
+
+	entry, err := ProjectEntry(project)
+	if err != nil {
+		t.Fatalf("entry discovery: %v", err)
+	}
+	_, err = ReadEntryManifest(entry)
+	if err == nil {
+		t.Fatal("an invalid definition must be refused")
+	}
+	text := err.Error()
+	for _, part := range []string{"invalid cap definition", "RULE21", "greet", entry} {
+		if !strings.Contains(text, part) {
+			t.Fatalf("the refusal must say %q: %s", part, text)
+		}
+	}
+	if strings.Contains(text, "cannot parse") {
+		t.Fatalf("an invalid definition is not an unparseable manifest: %s", text)
 	}
 }

@@ -299,18 +299,14 @@ func Test792_ArgumentBindingRequiresInput(t *testing.T) {
 
 // TEST6660: ArgumentBinding PreviousOutput serializes/deserializes correctly
 func Test6660_ArgumentBindingSerializationPreviousOutput(t *testing.T) {
-	field := "result_path"
-	binding := NewPreviousOutputBinding("node_0", &field)
+	binding := NewPreviousOutputBinding("node_0")
 	data, err := json.Marshal(binding)
 	if err != nil {
 		t.Fatalf("marshal error: %v", err)
 	}
-	s := string(data)
-	if !stringContains(s, "previous_output") {
-		t.Fatalf("expected 'previous_output' in JSON: %s", s)
-	}
-	if !stringContains(s, "node_0") {
-		t.Fatalf("expected 'node_0' in JSON: %s", s)
+	// The whole value the node produced: there is no field of it to name.
+	if s := string(data); s != `{"type":"previous_output","node_id":"node_0"}` {
+		t.Fatalf("unexpected JSON: %s", s)
 	}
 	var recovered ArgumentBinding
 	if err := json.Unmarshal(data, &recovered); err != nil {
@@ -321,9 +317,6 @@ func Test6660_ArgumentBindingSerializationPreviousOutput(t *testing.T) {
 	}
 	if recovered.NodeID != "node_0" {
 		t.Fatalf("expected node_id 'node_0', got %q", recovered.NodeID)
-	}
-	if recovered.OutputField == nil || *recovered.OutputField != "result_path" {
-		t.Fatalf("expected output_field 'result_path', got %v", recovered.OutputField)
 	}
 }
 
@@ -397,15 +390,14 @@ func Test797_ResolveLiteral(t *testing.T) {
 	}
 }
 
-// TEST798: Tests resolve_binding extracts value from previous node output Verifies PreviousOutput binding fetches field from earlier execution results
+// TEST798: Tests resolve_binding takes the value a previous node produced Verifies PreviousOutput binding is given the whole output of the earlier node
 func Test798_ResolvePreviousOutput(t *testing.T) {
-	field := "result_path"
 	ctx := emptyContext(func(c *ArgumentResolutionContext) {
 		c.PreviousOutputs = map[string]json.RawMessage{
-			"node_0": json.RawMessage(`{"result_path": "/output/result.png"}`),
+			"node_0": json.RawMessage(`"/output/result.png"`),
 		}
 	})
-	binding := NewPreviousOutputBinding("node_0", &field)
+	binding := NewPreviousOutputBinding("node_0")
 	result, err := ResolveBinding(binding, ctx, "cap:test", "step_0", nil, true)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -553,19 +545,15 @@ func Test960_argument_binding_literal_string(t *testing.T) {
 	}
 }
 
-// TEST793: Tests ArgumentBinding PreviousOutput serializes/deserializes correctly Verifies JSON round-trip preserves node_id and output_field values
+// TEST793: Tests ArgumentBinding PreviousOutput serializes/deserializes correctly Verifies JSON round-trip preserves node_id, and that the value is the whole output
 func Test793_argument_binding_serialization(t *testing.T) {
-	outputField := "result_path"
-	binding := NewPreviousOutputBinding("node_0", &outputField)
+	binding := NewPreviousOutputBinding("node_0")
 	data, err := json.Marshal(binding)
 	if err != nil {
 		t.Fatalf("marshal failed: %v", err)
 	}
-	if !contains(string(data), "previous_output") {
-		t.Errorf("serialized form must contain previous_output, got %s", string(data))
-	}
-	if !contains(string(data), "node_0") {
-		t.Errorf("serialized form must contain node_0, got %s", string(data))
+	if string(data) != `{"type":"previous_output","node_id":"node_0"}` {
+		t.Errorf("unexpected serialized form: %s", string(data))
 	}
 
 	var deserialized ArgumentBinding
@@ -577,9 +565,6 @@ func Test793_argument_binding_serialization(t *testing.T) {
 	}
 	if deserialized.NodeID != "node_0" {
 		t.Errorf("node_id = %q, want node_0", deserialized.NodeID)
-	}
-	if deserialized.OutputField == nil || *deserialized.OutputField != "result_path" {
-		t.Errorf("output_field = %v, want result_path", deserialized.OutputField)
 	}
 }
 

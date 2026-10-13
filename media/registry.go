@@ -2,10 +2,12 @@ package media
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/machinefabric/capdag-go/urn"
@@ -23,6 +25,105 @@ type MediaValidation struct {
 	MaxLength     *int     `json:"max_length,omitempty"`
 	Pattern       *string  `json:"pattern,omitempty"`
 	AllowedValues []string `json:"allowed_values,omitempty"`
+}
+
+// Violation returns the first of these rules `value` breaks, described, or ""
+// when it breaks none. The error is for a rule that cannot itself be applied
+// (a pattern that is not a regular expression): a defect in the media
+// definition, not in the value.
+//
+// A rule applies to the values it is about and passes the rest: Min and Max to
+// numbers, the length rules to strings and arrays, Pattern and AllowedValues
+// to strings. This is the one decision of whether a value satisfies a media
+// definition's validation — what an argument value is held to at run time and
+// what a constant written in a machine is held to when the machine is
+// resolved.
+// Matches Rust: MediaValidation::violation
+func (v *MediaValidation) Violation(value any) (string, error) {
+	if number, isNumber := numericValue(value); isNumber {
+		if v.Min != nil && number < *v.Min {
+			return fmt.Sprintf("minimum value %v", *v.Min), nil
+		}
+		if v.Max != nil && number > *v.Max {
+			return fmt.Sprintf("maximum value %v", *v.Max), nil
+		}
+	}
+	// Length, for strings and arrays.
+	length, kind, hasLength := 0, "", false
+	switch held := value.(type) {
+	case string:
+		length, hasLength = len(held), true
+	case []any:
+		length, kind, hasLength = len(held), "array ", true
+	}
+	if hasLength {
+		if v.MinLength != nil && length < *v.MinLength {
+			return fmt.Sprintf("minimum %slength %d", kind, *v.MinLength), nil
+		}
+		if v.MaxLength != nil && length > *v.MaxLength {
+			return fmt.Sprintf("maximum %slength %d", kind, *v.MaxLength), nil
+		}
+	}
+	text, isText := value.(string)
+	if v.Pattern != nil && isText {
+		pattern, err := regexp.Compile(*v.Pattern)
+		if err != nil {
+			return "", fmt.Errorf("Invalid regex pattern '%s': %v", *v.Pattern, err)
+		}
+		if !pattern.MatchString(text) {
+			return fmt.Sprintf("pattern '%s'", *v.Pattern), nil
+		}
+	}
+	if len(v.AllowedValues) > 0 && isText {
+		allowed := false
+		quoted := make([]string, len(v.AllowedValues))
+		for i, each := range v.AllowedValues {
+			quoted[i] = strconv.Quote(each)
+			if each == text {
+				allowed = true
+			}
+		}
+		if !allowed {
+			return "allowed values: [" + strings.Join(quoted, ", ") + "]", nil
+		}
+	}
+	return "", nil
+}
+
+// numericValue reads a number out of a decoded value, whatever Go type the
+// decoder gave it.
+func numericValue(value any) (float64, bool) {
+	switch number := value.(type) {
+	case int:
+		return float64(number), true
+	case int8:
+		return float64(number), true
+	case int16:
+		return float64(number), true
+	case int32:
+		return float64(number), true
+	case int64:
+		return float64(number), true
+	case uint:
+		return float64(number), true
+	case uint8:
+		return float64(number), true
+	case uint16:
+		return float64(number), true
+	case uint32:
+		return float64(number), true
+	case uint64:
+		return float64(number), true
+	case float32:
+		return float64(number), true
+	case float64:
+		return number, true
+	case json.Number:
+		if float, err := number.Float64(); err == nil {
+			return float, true
+		}
+	}
+	return 0, false
 }
 
 // RegistryConfig holds configuration for the media registry — the base URL

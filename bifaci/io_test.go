@@ -1617,7 +1617,7 @@ func Test1141_write_stream_chunked_exact_fit_produces_single_chunk(t *testing.T)
 }
 
 // identityManifest is the minimum valid manifest declaring only CAP_IDENTITY.
-const identityManifest = `{"name":"Test","version":"1.0","channel":"release","description":"Test","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"],"args":[]}]}]}`
+const identityManifest = `{"name":"Test","version":"1.0","channel":"release","description":"Test","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"],"args":[{"media_urn":"media:","name":"input","required":true,"sources":[{"stdin":"media:"}]}],"outputs":[{"media_urn":"media:","name":"output","output_description":"output"}]}]}]}`
 
 // drainIdentityRequest reads the identity REQ and its request body
 // (STREAM_START → CHUNK(s) → STREAM_END → END), returning the REQ frame and the
@@ -1801,7 +1801,7 @@ func Test483_verify_identity_fails_on_close(t *testing.T) {
 // =============================================================================
 
 // v4TestManifest is the cartridge manifest used by the v4 handshake parity tests.
-const v4TestManifest = `{"name":"test","version":"1.0","channel":"release","description":"Test","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"]}]}]}`
+const v4TestManifest = `{"name":"test","version":"1.0","channel":"release","description":"Test","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"],"args":[{"media_urn":"media:","name":"input","required":true,"sources":[{"stdin":"media:"}]}],"outputs":[{"media_urn":"media:","name":"output","output_description":"output"}]}]}]}`
 
 // runV4Handshake runs a real host<->cartridge handshake over a bidirectional
 // net.Pipe. The cartridge side proposes cartridgeLimits in its HELLO and
@@ -1916,8 +1916,11 @@ func Test7000_v4_handshake_negotiates_all_four_limits(t *testing.T) {
 	}
 }
 
-// TEST7001: HELLO carrying protocol version 2 is rejected at handshake with a version-mismatch error
-func Test7001_handshake_rejects_version_2(t *testing.T) {
+// TEST7001: HELLO carrying another protocol version is rejected at handshake
+// with a version-mismatch error naming both — the version this one replaced
+// included: a cartridge built for it does not name its response streams'
+// outputs, and nothing downstream could read it.
+func Test7001_handshake_rejects_another_version(t *testing.T) {
 	hostRead, cartridgeWrite := net.Pipe()
 	cartridgeRead, hostWrite := net.Pipe()
 
@@ -1928,16 +1931,16 @@ func Test7001_handshake_rejects_version_2(t *testing.T) {
 		reader := NewFrameReader(cartridgeRead)
 		writer := NewFrameWriter(cartridgeWrite)
 
-		// Fake v2 cartridge: replies to the host HELLO with a version=2 HELLO.
+		// A cartridge of the previous protocol: replies to the host HELLO with a version=4 HELLO.
 		if _, err := reader.ReadFrame(); err != nil {
 			t.Errorf("cartridge failed to read host HELLO: %v", err)
 			return
 		}
 		hello := NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit, []byte(v4TestManifest), make(PoolStates))
-		hello.Version = 2
-		hello.Meta["version"] = 2
+		hello.Version = 4
+		hello.Meta["version"] = 4
 		if err := writer.WriteFrame(hello); err != nil {
-			t.Errorf("cartridge failed to write v2 HELLO: %v", err)
+			t.Errorf("cartridge failed to write the HELLO: %v", err)
 			return
 		}
 	}()
@@ -1953,13 +1956,13 @@ func Test7001_handshake_rejects_version_2(t *testing.T) {
 	cartridgeWrite.Close()
 
 	if err == nil {
-		t.Fatal("v2 HELLO must be rejected")
+		t.Fatal("a HELLO of another version must be rejected")
 	}
 	msg := err.Error()
 	if !strings.Contains(msg, "version") {
 		t.Errorf("error must name the version mismatch: %s", msg)
 	}
-	if !strings.Contains(msg, "2") || !strings.Contains(msg, "4") {
+	if !strings.Contains(msg, "ours 5") || !strings.Contains(msg, "theirs 4") {
 		t.Errorf("error must state both versions: %s", msg)
 	}
 }

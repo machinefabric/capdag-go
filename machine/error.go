@@ -6,7 +6,10 @@
 // resolved paths.
 package machine
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // MachineAbstractionError covers anchor-realization failures during resolution.
 //
@@ -19,6 +22,16 @@ type MachineAbstractionError struct {
 	// StrandIndex carries the strand index for ErrAbstractionCyclicMachineStrand,
 	// mirroring Rust's CyclicMachineStrand { strand_index }. nil for other kinds.
 	StrandIndex *int
+	// SourceUrn is the source that fits no arg
+	// (ErrAbstractionUnmatchedSourceInCapArgs).
+	SourceUrn string
+	// Chain is every machine on the way round an inclusion that closes on
+	// itself, from the first to the one that closes the circle
+	// (ErrAbstractionCyclicMachineReference).
+	Chain []string
+	// Cause is why an included machine is not a valid machine
+	// (ErrAbstractionInvalidIncludedMachine).
+	Cause *MachineParseError
 }
 
 func (e *MachineAbstractionError) Error() string {
@@ -45,15 +58,77 @@ const (
 	// ErrAbstractionCapDoesNotDeclareInput — no argument declares a stdin source
 	// whose URN is the cap's in=.
 	ErrAbstractionCapDoesNotDeclareInput
-	// ErrAbstractionNoStdinBinding — the resolver's source-to-arg assignment has
-	// no binding feeding the cap's stdin argument.
-	ErrAbstractionNoStdinBinding
-	// ErrAbstractionNonProducerSecondaryArg — a non-primary wiring source is not
-	// another cap's output.
-	ErrAbstractionNonProducerSecondaryArg
 	// ErrAbstractionDisconnectedStrand — a strand's edges do not form a
 	// connected data-flow graph.
 	ErrAbstractionDisconnectedStrand
+	// ErrAbstractionUnknownArgName — a member names an arg the step's cap does
+	// not declare.
+	ErrAbstractionUnknownArgName
+	// ErrAbstractionUnknownOutputName — a target names an output the step's cap
+	// does not declare.
+	ErrAbstractionUnknownOutputName
+	// ErrAbstractionSourceDoesNotConformToArg — a named member's URN does not
+	// conform to the type that arg accepts.
+	ErrAbstractionSourceDoesNotConformToArg
+	// ErrAbstractionConstantFailsValidation — a constant does not satisfy the
+	// validation of the arg it is bound to.
+	ErrAbstractionConstantFailsValidation
+	// ErrAbstractionArgBoundTwice — an arg that takes one value is named by
+	// two members.
+	ErrAbstractionArgBoundTwice
+	// ErrAbstractionMainInputUnbound — a step whose cap takes an input is
+	// given no member for it.
+	ErrAbstractionMainInputUnbound
+	// ErrAbstractionOutputTakenTwice — two targets of one wiring take the same
+	// output.
+	ErrAbstractionOutputTakenTwice
+	// ErrAbstractionNoMainOutput — an unnamed target takes the main output of
+	// a step whose cap has none.
+	ErrAbstractionNoMainOutput
+	// ErrAbstractionUntypedMachineInput — a wiring holds an unnamed member
+	// that nothing produces and whose arg nothing decides.
+	ErrAbstractionUntypedMachineInput
+	// ErrAbstractionUnknownMachineReference — a machine header's reference
+	// does not resolve.
+	ErrAbstractionUnknownMachineReference
+	// ErrAbstractionCyclicMachineReference — a machine includes itself.
+	ErrAbstractionCyclicMachineReference
+	// ErrAbstractionInvalidIncludedMachine — a machine named in a header is
+	// not itself a valid machine.
+	ErrAbstractionInvalidIncludedMachine
+	// ErrAbstractionPolicyOnMachine — a policy is written on a step that is
+	// another machine.
+	ErrAbstractionPolicyOnMachine
+	// ErrAbstractionUnknownMachineInput — a member names an input the machine
+	// in step position does not have.
+	ErrAbstractionUnknownMachineInput
+	// ErrAbstractionUnknownMachineOutput — a target names an output the
+	// machine in step position does not have.
+	ErrAbstractionUnknownMachineOutput
+	// ErrAbstractionMachineInputBinding — an input of a machine in step
+	// position is not bound by exactly one member.
+	ErrAbstractionMachineInputBinding
+	// ErrAbstractionMachineOutputTakenTwice — two targets of one wiring take
+	// the same output of a machine.
+	ErrAbstractionMachineOutputTakenTwice
+	// ErrAbstractionUnnamedMachineTarget — an unnamed target of a machine
+	// step, where the other targets leave more than one output, or none.
+	ErrAbstractionUnnamedMachineTarget
+	// ErrAbstractionUntypedMachineMember — an unnamed member of a machine step
+	// that nothing gives a type.
+	ErrAbstractionUntypedMachineMember
+	// ErrAbstractionUnmatchedMachineMember — an unnamed member of a machine
+	// step conforms to no input left for it.
+	ErrAbstractionUnmatchedMachineMember
+	// ErrAbstractionAmbiguousMachineMembers — the unnamed members of a machine
+	// step fit its inputs in more than one way.
+	ErrAbstractionAmbiguousMachineMembers
+	// ErrAbstractionSourceDoesNotConformToMachineInput — a named member's URN
+	// does not conform to the type of the machine input it names.
+	ErrAbstractionSourceDoesNotConformToMachineInput
+	// ErrAbstractionNodeMediaConflict — the wirings that touch a node give it
+	// URNs that are not on one specialization chain.
+	ErrAbstractionNodeMediaConflict
 )
 
 func noCapabilityStepsError() *MachineAbstractionError {
@@ -77,6 +152,7 @@ func unmatchedSourceError(strandIndex int, capUrn, sourceUrn string) *MachineAbs
 			"in strand %d, cap '%s': source URN '%s' does not conform to any of the cap's input arguments",
 			strandIndex, capUrn, sourceUrn,
 		),
+		SourceUrn: sourceUrn,
 	}
 }
 
@@ -134,41 +210,6 @@ func capDoesNotDeclareInputError(strandIndex int, capUrn string) *MachineAbstrac
 	}
 }
 
-// noStdinBindingError reports that the resolver's source-to-arg assignment for
-// a cap edge has no binding feeding the cap's stdin argument. The primary
-// (main-input) source is missing — the wiring cannot be realized into a
-// data-flow step.
-func noStdinBindingError(strandIndex int, capUrn, stdinArg string) *MachineAbstractionError {
-	idx := strandIndex
-	return &MachineAbstractionError{
-		Kind: ErrAbstractionNoStdinBinding,
-		Message: fmt.Sprintf(
-			"strand %d: cap '%s' has no wiring source bound to its stdin argument '%s'",
-			strandIndex, capUrn, stdinArg,
-		),
-		StrandIndex: &idx,
-	}
-}
-
-// nonProducerSecondaryArgError reports that a non-primary (convergence) wiring
-// source is NOT another cap's output. Only a cap output may be wired into a
-// non-main argument; a raw input feeding a non-main argument is an argument
-// VALUE (default / setting / config / user input), delivered through the
-// argument value channel, never wired. Exposed hard rather than silently
-// mis-routed.
-func nonProducerSecondaryArgError(strandIndex int, capUrn, argUrn string) *MachineAbstractionError {
-	idx := strandIndex
-	return &MachineAbstractionError{
-		Kind: ErrAbstractionNonProducerSecondaryArg,
-		Message: fmt.Sprintf(
-			"strand %d: cap '%s' arg '%s' is wired from a source that is not a cap output; "+
-				"wire only cap outputs into non-main args, deliver everything else as an argument value",
-			strandIndex, capUrn, argUrn,
-		),
-		StrandIndex: &idx,
-	}
-}
-
 // disconnectedStrandError reports that a strand's edges do not form a
 // data-flow graph whose every source is reachable (an unreachable edge, or a
 // source whose producer never becomes available).
@@ -178,6 +219,149 @@ func disconnectedStrandError(strandIndex int) *MachineAbstractionError {
 		Kind:        ErrAbstractionDisconnectedStrand,
 		Message:     fmt.Sprintf("strand %d: edges do not form a connected data-flow graph", strandIndex),
 		StrandIndex: &idx,
+	}
+}
+
+func inStrand(kind AbstractionErrorKind, strandIndex int, format string, args ...any) *MachineAbstractionError {
+	idx := strandIndex
+	return &MachineAbstractionError{
+		Kind:        kind,
+		Message:     fmt.Sprintf("strand %d: ", strandIndex) + fmt.Sprintf(format, args...),
+		StrandIndex: &idx,
+	}
+}
+
+func atStatement(kind AbstractionErrorKind, position int, format string, args ...any) *MachineAbstractionError {
+	return &MachineAbstractionError{
+		Kind:    kind,
+		Message: fmt.Sprintf("statement %d: ", position) + fmt.Sprintf(format, args...),
+	}
+}
+
+func unknownArgNameError(strandIndex int, capUrn, name string, declared []string) *MachineAbstractionError {
+	return inStrand(ErrAbstractionUnknownArgName, strandIndex,
+		"cap '%s' declares no arg named '%s' (it declares: %s)", capUrn, name, strings.Join(declared, ", "))
+}
+
+func unknownOutputNameError(strandIndex int, capUrn, name string, declared []string) *MachineAbstractionError {
+	return inStrand(ErrAbstractionUnknownOutputName, strandIndex,
+		"cap '%s' declares no output named '%s' (it declares: %s)", capUrn, name, strings.Join(declared, ", "))
+}
+
+func sourceDoesNotConformToArgError(strandIndex int, capUrn, name, accepts, sourceUrn string) *MachineAbstractionError {
+	return inStrand(ErrAbstractionSourceDoesNotConformToArg, strandIndex,
+		"cap '%s' arg '%s' accepts '%s', and its source is '%s'", capUrn, name, accepts, sourceUrn)
+}
+
+func constantFailsValidationError(strandIndex int, capUrn, name, constant, reason string) *MachineAbstractionError {
+	return inStrand(ErrAbstractionConstantFailsValidation, strandIndex,
+		"cap '%s' arg '%s' refuses the constant %s: %s", capUrn, name, constant, reason)
+}
+
+func argBoundTwiceError(strandIndex int, capUrn, name string, count int) *MachineAbstractionError {
+	return inStrand(ErrAbstractionArgBoundTwice, strandIndex,
+		"cap '%s' arg '%s' takes one value and is named by %d members", capUrn, name, count)
+}
+
+func mainInputUnboundError(strandIndex int, capUrn, mainInput string) *MachineAbstractionError {
+	return inStrand(ErrAbstractionMainInputUnbound, strandIndex,
+		"cap '%s' takes an input ('%s') and no member of the wiring is bound to it", capUrn, mainInput)
+}
+
+func outputTakenTwiceError(strandIndex int, capUrn, output string) *MachineAbstractionError {
+	return inStrand(ErrAbstractionOutputTakenTwice, strandIndex,
+		"cap '%s' output '%s' is taken twice in one wiring", capUrn, output)
+}
+
+func noMainOutputError(strandIndex int, capUrn string) *MachineAbstractionError {
+	return inStrand(ErrAbstractionNoMainOutput, strandIndex,
+		"cap '%s' has no main output to take (its out= is media:void)", capUrn)
+}
+
+func untypedMachineInputError(position int, capUrn string, members []string) *MachineAbstractionError {
+	return atStatement(ErrAbstractionUntypedMachineInput, position,
+		"cap '%s' is given unnamed machine inputs whose arg nothing decides (%s) — name them", capUrn, strings.Join(members, ", "))
+}
+
+func unknownMachineReferenceError(alias, reference, details string) *MachineAbstractionError {
+	return &MachineAbstractionError{
+		Kind:    ErrAbstractionUnknownMachineReference,
+		Message: fmt.Sprintf("machine header '%s' refers to \"%s\", which does not resolve: %s", alias, reference, details),
+	}
+}
+
+func cyclicMachineReferenceError(chain []string) *MachineAbstractionError {
+	return &MachineAbstractionError{
+		Kind:    ErrAbstractionCyclicMachineReference,
+		Message: "a machine includes itself: " + strings.Join(chain, " -> "),
+		Chain:   chain,
+	}
+}
+
+func invalidIncludedMachineError(alias, reference string, cause *MachineParseError) *MachineAbstractionError {
+	return &MachineAbstractionError{
+		Kind:    ErrAbstractionInvalidIncludedMachine,
+		Message: fmt.Sprintf("machine '%s' (\"%s\") is not a valid machine: %s", alias, reference, cause.Error()),
+		Cause:   cause,
+	}
+}
+
+func policyOnMachineError(position int, alias string) *MachineAbstractionError {
+	return atStatement(ErrAbstractionPolicyOnMachine, position,
+		"'%s' is a machine, and a policy is written on it — write it on the steps inside", alias)
+}
+
+func unknownMachineInputError(position int, alias, name string, declared []string) *MachineAbstractionError {
+	return atStatement(ErrAbstractionUnknownMachineInput, position,
+		"machine '%s' has no input named '%s' (its inputs: %s)", alias, name, strings.Join(declared, ", "))
+}
+
+func unknownMachineOutputError(position int, alias, name string, declared []string) *MachineAbstractionError {
+	return atStatement(ErrAbstractionUnknownMachineOutput, position,
+		"machine '%s' has no output named '%s' (its outputs: %s)", alias, name, strings.Join(declared, ", "))
+}
+
+func machineInputBindingError(position int, alias, input string, count int) *MachineAbstractionError {
+	return atStatement(ErrAbstractionMachineInputBinding, position,
+		"input '%s' of machine '%s' is given %d members — every input of a machine takes exactly one", input, alias, count)
+}
+
+func machineOutputTakenTwiceError(position int, alias, output string) *MachineAbstractionError {
+	return atStatement(ErrAbstractionMachineOutputTakenTwice, position,
+		"output '%s' of machine '%s' is taken twice in one wiring", output, alias)
+}
+
+func unnamedMachineTargetError(position int, alias string, left []string) *MachineAbstractionError {
+	return atStatement(ErrAbstractionUnnamedMachineTarget, position,
+		"an unnamed target of machine '%s' has %d output(s) left to take (%s) — name it", alias, len(left), strings.Join(left, ", "))
+}
+
+func untypedMachineMemberError(position int, alias string, members []string) *MachineAbstractionError {
+	return atStatement(ErrAbstractionUntypedMachineMember, position,
+		"machine '%s' is given unnamed members that have no type to be matched by (%s) — name them", alias, strings.Join(members, ", "))
+}
+
+func unmatchedMachineMemberError(position int, alias, sourceUrn string) *MachineAbstractionError {
+	return atStatement(ErrAbstractionUnmatchedMachineMember, position,
+		"a member of type '%s' fits no input left of machine '%s'", sourceUrn, alias)
+}
+
+func ambiguousMachineMembersError(position int, alias string) *MachineAbstractionError {
+	return atStatement(ErrAbstractionAmbiguousMachineMembers, position,
+		"the unnamed members of machine '%s' fit its inputs in more than one way — name them", alias)
+}
+
+func sourceDoesNotConformToMachineInputError(position int, alias, name, accepts, sourceUrn string) *MachineAbstractionError {
+	return atStatement(ErrAbstractionSourceDoesNotConformToMachineInput, position,
+		"input '%s' of machine '%s' holds '%s', and its source is '%s'", name, alias, accepts, sourceUrn)
+}
+
+func nodeMediaConflictError(node, first, second string) *MachineAbstractionError {
+	return &MachineAbstractionError{
+		Kind: ErrAbstractionNodeMediaConflict,
+		Message: fmt.Sprintf(
+			"node '%s' is given media URNs that are not on one specialization chain: '%s' and '%s'",
+			node, first, second),
 	}
 }
 
@@ -220,20 +404,14 @@ type ErrorKind int
 const (
 	// ErrEmpty — input string is empty or contains only whitespace.
 	ErrEmpty ErrorKind = iota
-	// ErrUnterminatedStatement — a bracket '[' was opened but never closed.
-	ErrUnterminatedStatement
 	// ErrInvalidCapUrn — a cap URN in a header statement failed to parse.
 	ErrInvalidCapUrn
 	// ErrUndefinedAlias — a wiring references an alias never defined in a header.
 	ErrUndefinedAlias
 	// ErrDuplicateAlias — two header statements define the same alias.
 	ErrDuplicateAlias
-	// ErrInvalidWiring — a wiring has invalid structure or conflicting media types.
-	ErrInvalidWiring
 	// ErrInvalidMediaUrn — a media URN referenced in a header failed to parse.
 	ErrInvalidMediaUrn
-	// ErrInvalidHeader — a header statement has invalid structure.
-	ErrInvalidHeader
 	// ErrNoEdges — headers defined but no wirings.
 	ErrNoEdges
 	// ErrNodeAliasCollision — a node name collides with a cap alias.
@@ -243,17 +421,22 @@ const (
 	// ErrAliasNotACap — a cap-position name resolved to a fabric alias whose
 	// target is a media URN, not a cap.
 	ErrAliasNotACap
+	// ErrMachineReferenceWithoutSource — a machine header names another
+	// machine, and the notation is read with nothing to resolve it against.
+	ErrMachineReferenceWithoutSource
+	// ErrUnnamedConstant — a constant appears as a member without a name.
+	ErrUnnamedConstant
+	// ErrReservedNodeName — a node is named `true`, `false` or `null`.
+	ErrReservedNodeName
+	// ErrSeveralUnnamedTargets — more than one target of a wiring is unnamed.
+	ErrSeveralUnnamedTargets
+	// ErrInvalidPolicy — a step policy has an unknown key, a repeated key, or
+	// a value outside the table.
+	ErrInvalidPolicy
 )
 
 func emptyError() *MachineSyntaxError {
 	return &MachineSyntaxError{Kind: ErrEmpty, Message: "machine notation is empty"}
-}
-
-func unterminatedStatementError(position int) *MachineSyntaxError {
-	return &MachineSyntaxError{
-		Kind:    ErrUnterminatedStatement,
-		Message: fmt.Sprintf("unterminated statement starting at byte %d", position),
-	}
 }
 
 func invalidCapUrnError(alias, details string) *MachineSyntaxError {
@@ -288,13 +471,6 @@ func duplicateAliasError(alias string, firstPosition int) *MachineSyntaxError {
 	}
 }
 
-func invalidWiringError(position int, details string) *MachineSyntaxError {
-	return &MachineSyntaxError{
-		Kind:    ErrInvalidWiring,
-		Message: fmt.Sprintf("invalid wiring at statement %d: %s", position, details),
-	}
-}
-
 func invalidMediaUrnError(alias, details string) *MachineSyntaxError {
 	return &MachineSyntaxError{
 		Kind:    ErrInvalidMediaUrn,
@@ -320,5 +496,45 @@ func parseError(details string) *MachineSyntaxError {
 	return &MachineSyntaxError{
 		Kind:    ErrParse,
 		Message: fmt.Sprintf("parse error: %s", details),
+	}
+}
+
+func machineReferenceWithoutSourceError(alias, reference string) *MachineSyntaxError {
+	return &MachineSyntaxError{
+		Kind: ErrMachineReferenceWithoutSource,
+		Message: fmt.Sprintf(
+			"machine header '%s' refers to \"%s\", and no machine source was given to resolve it",
+			alias, reference),
+	}
+}
+
+func unnamedConstantError(constant string, position int) *MachineSyntaxError {
+	return &MachineSyntaxError{
+		Kind: ErrUnnamedConstant,
+		Message: fmt.Sprintf(
+			"constant %s in statement %d names no arg — write it as name=%s", constant, position, constant),
+	}
+}
+
+func reservedNodeNameError(name string, position int) *MachineSyntaxError {
+	return &MachineSyntaxError{
+		Kind:    ErrReservedNodeName,
+		Message: fmt.Sprintf("'%s' in statement %d is a constant, not a node name", name, position),
+	}
+}
+
+func severalUnnamedTargetsError(position int, targets []string) *MachineSyntaxError {
+	return &MachineSyntaxError{
+		Kind: ErrSeveralUnnamedTargets,
+		Message: fmt.Sprintf(
+			"statement %d has several unnamed targets (%s) — only the main output is taken without a name",
+			position, strings.Join(targets, ", ")),
+	}
+}
+
+func invalidPolicyError(step string, position int, details string) *MachineSyntaxError {
+	return &MachineSyntaxError{
+		Kind:    ErrInvalidPolicy,
+		Message: fmt.Sprintf("invalid policy on step '%s' in statement %d: %s", step, position, details),
 	}
 }

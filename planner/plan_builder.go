@@ -228,7 +228,7 @@ func (b *MachinePlanBuilder) BuildPlanFromPath(
 				if capStepCount == 0 && !isInsideBody {
 					bindings.AddFilePath(argName)
 				} else if info.stdinChainable {
-					bindings.Add(argName, NewPreviousOutputBinding(prevNodeID, nil))
+					bindings.Add(argName, NewPreviousOutputBinding(prevNodeID))
 				} else {
 					bindings.AddFilePath(argName)
 				}

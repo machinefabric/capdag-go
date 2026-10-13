@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fxamacker/cbor/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -563,10 +564,10 @@ func Test198_limits_default(t *testing.T) {
 	}
 }
 
-// TEST199: Test PROTOCOL_VERSION is 4
+// TEST199: Test PROTOCOL_VERSION is 5
 func Test199_protocol_version_constant(t *testing.T) {
-	if ProtocolVersion != 4 {
-		t.Errorf("PROTOCOL_VERSION must be 4, got %d", ProtocolVersion)
+	if ProtocolVersion != 5 {
+		t.Errorf("PROTOCOL_VERSION must be 5, got %d", ProtocolVersion)
 	}
 }
 
@@ -1929,7 +1930,7 @@ func Test520_reorder_buffer_per_flow_limit(t *testing.T) {
 
 // TEST521: RelayNotify CBOR roundtrip preserves manifest and limits
 func Test521_relay_notify_cbor_roundtrip(t *testing.T) {
-	manifest := []byte(`{"name":"Test","version":"1.0","description":"Test","cap_groups":[{"name":"default","caps":[{"urn":"cap:in=\"media:void\";convert;out=\"media:image\"","title":"Convert","aliases":["convert"]}]}]}`)
+	manifest := []byte(`{"name":"Test","version":"1.0","description":"Test","cap_groups":[{"name":"default","caps":[{"urn":"cap:in=\"media:void\";convert;out=\"media:image\"","title":"Convert","aliases":["convert"],"outputs":[{"media_urn":"media:image","name":"output","output_description":"output"}]}]}]}`)
 
 	frame := NewRelayNotify(manifest, 3_000_000, 256_000, 128, DefaultInitialCredit)
 	encoded, err := EncodeFrame(frame)
@@ -1992,7 +1993,7 @@ func Test526_relay_state_empty_payload(t *testing.T) {
 
 // TEST527: RelayNotify with large manifest roundtrips correctly
 func Test527_relay_notify_large_manifest(t *testing.T) {
-	largeManifest := `{"name":"Large","version":"1.0","description":"Large test","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"]}`
+	largeManifest := `{"name":"Large","version":"1.0","description":"Large test","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"],"args":[{"media_urn":"media:","name":"input","required":true,"sources":[{"stdin":"media:"}]}],"outputs":[{"media_urn":"media:","name":"output","output_description":"output"}]}`
 	for i := 0; i < 99; i++ {
 		largeManifest += fmt.Sprintf(`,{"urn":"cap:in=\"media:void\";op%d;out=\"media:void\"","title":"Op%d","aliases":["op%d"]}`, i, i, i)
 	}
@@ -2485,4 +2486,80 @@ func Test8112_half_precision_progress_survives_decode_encode_relay_hop(t *testin
 	p, ok := atEngine.LogProgress()
 	require.True(t, ok, "progress must reach the engine as a number")
 	assert.Equal(t, float32(0.5), p)
+}
+
+// TEST12718: the STREAM_START of a response stream that is not the cap's main
+// output names the output it is, beside the type of what it carries; the name
+// round-trips through CBOR under key 21, the main output's stream and a
+// request stream carry none, and no other frame type may carry one.
+func Test12718_stream_start_names_its_output(t *testing.T) {
+	rid := NewMessageIdRandom()
+	isSequence := false
+	roundTrip := func(frame *Frame) *Frame {
+		encoded, err := EncodeFrame(frame)
+		require.NoError(t, err)
+		decoded, err := DecodeFrame(encoded)
+		require.NoError(t, err)
+		return decoded
+	}
+	// Two outputs of one cap may carry the same type: the name tells them apart.
+	kept := NewStreamStart(rid, "s1", "media:enc=utf-8", &isSequence).ForOutput("media:enc=utf-8;kept")
+	dropped := NewStreamStart(rid, "s2", "media:enc=utf-8", &isSequence).ForOutput("media:dropped;enc=utf-8")
+	keptBack, droppedBack := roundTrip(kept), roundTrip(dropped)
+	output, named := keptBack.OutputUrn()
+	assert.True(t, named)
+	assert.Equal(t, "media:enc=utf-8;kept", output)
+	output, named = droppedBack.OutputUrn()
+	assert.True(t, named)
+	assert.Equal(t, "media:dropped;enc=utf-8", output)
+	require.NotNil(t, keptBack.MediaUrn)
+	require.NotNil(t, droppedBack.MediaUrn)
+	assert.Equal(t, *keptBack.MediaUrn, *droppedBack.MediaUrn, "the data's type is its own field")
+	assert.Equal(t, "media:enc=utf-8", *keptBack.MediaUrn)
+
+	// The unbounded form keeps both.
+	isFeed := true
+	feedBack := roundTrip(NewStreamStartUnbounded(rid, "s3", "media:tick", &isFeed).ForOutput("media:tick"))
+	assert.True(t, feedBack.IsUnbounded())
+	output, named = feedBack.OutputUrn()
+	assert.True(t, named)
+	assert.Equal(t, "media:tick", output)
+
+	// The main output's stream and a request stream name no output, and the
+	// key is not written.
+	encoded, err := EncodeFrame(NewStreamStart(rid, "s4", "media:enc=utf-8", nil))
+	require.NoError(t, err)
+	var written map[int]interface{}
+	require.NoError(t, cbor.Unmarshal(encoded, &written))
+	_, hasKey := written[21]
+	assert.False(t, hasKey, "a STREAM_START that names no output does not carry key 21")
+	argument, err := DecodeFrame(encoded)
+	require.NoError(t, err)
+	_, named = argument.OutputUrn()
+	assert.False(t, named)
+	assert.Equal(t, 21, keyOutput)
+
+	// Only a STREAM_START may name an output.
+	chunk := NewChunk(rid, "s1", 0, []byte("x"), 0, ComputeChecksum([]byte("x")))
+	chunk.Output = kept.Output
+	encoded, err = EncodeFrame(chunk)
+	require.NoError(t, err)
+	_, err = DecodeFrame(encoded)
+	require.Error(t, err, "a CHUNK naming an output is refused")
+	assert.Contains(t, err.Error(), "output")
+	assert.Contains(t, err.Error(), "only STREAM_START may")
+
+	// Key 21 that is not text is a malformed frame, not a stream that names
+	// no output.
+	encoded, err = EncodeFrame(kept)
+	require.NoError(t, err)
+	var entries map[int]interface{}
+	require.NoError(t, cbor.Unmarshal(encoded, &entries))
+	require.Equal(t, "media:enc=utf-8;kept", entries[21])
+	entries[21] = 7
+	malformed, err := cbor.Marshal(entries)
+	require.NoError(t, err)
+	_, err = DecodeFrame(malformed)
+	require.Error(t, err, "key 21 must be text")
+	assert.Contains(t, err.Error(), "text")
 }

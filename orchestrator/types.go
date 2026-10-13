@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/machinefabric/capdag-go/cap"
-	"github.com/machinefabric/capdag-go/planner"
 )
 
 // --- Error Types ---
@@ -18,52 +17,30 @@ import (
 type ParseOrchestrationErrorKind int
 
 const (
-	ErrMachineSyntaxParseFailed ParseOrchestrationErrorKind = iota
-	ErrCapNotFound
-	ErrNodeMediaConflict
+	// ErrCapNotFound — a cap URN is not in the registry.
+	ErrCapNotFound ParseOrchestrationErrorKind = iota
+	// ErrNotADag — the graph contains a cycle.
 	ErrNotADag
+	// ErrInvalidGraph — the plan or graph is not one that can be run as asked.
 	ErrInvalidGraph
-	ErrCapUrnParseError
-	ErrMediaUrnParseError
-	ErrOrchestratorFabricRegistryError
-	ErrStructureMismatch
 )
 
 // ParseOrchestrationError represents any error during orchestration parsing.
 type ParseOrchestrationError struct {
-	Kind              ParseOrchestrationErrorKind
-	Message           string
-	CapUrn            string
-	Node              string
-	Existing          string
-	RequiredByCap     string
-	CycleNodes        []string
-	SourceStructure   planner.InputStructure
-	ExpectedStructure planner.InputStructure
+	Kind       ParseOrchestrationErrorKind
+	Message    string
+	CapUrn     string
+	CycleNodes []string
 }
 
 func (e *ParseOrchestrationError) Error() string {
 	switch e.Kind {
-	case ErrMachineSyntaxParseFailed:
-		return fmt.Sprintf("Machine notation parse failed: %s", e.Message)
 	case ErrCapNotFound:
 		return fmt.Sprintf("Cap URN '%s' not found in registry", e.CapUrn)
-	case ErrNodeMediaConflict:
-		return fmt.Sprintf("Node '%s' has conflicting media URNs: existing='%s', required_by_cap='%s'",
-			e.Node, e.Existing, e.RequiredByCap)
 	case ErrNotADag:
 		return fmt.Sprintf("Graph is not a DAG, contains cycle involving nodes: %v", e.CycleNodes)
 	case ErrInvalidGraph:
 		return fmt.Sprintf("Invalid graph: %s", e.Message)
-	case ErrCapUrnParseError:
-		return fmt.Sprintf("Failed to parse Cap URN: %s", e.Message)
-	case ErrMediaUrnParseError:
-		return fmt.Sprintf("Failed to parse Media URN: %s", e.Message)
-	case ErrOrchestratorFabricRegistryError:
-		return fmt.Sprintf("Registry error: %s", e.Message)
-	case ErrStructureMismatch:
-		return fmt.Sprintf("Structure mismatch at node '%s': source is %v but cap expects %v",
-			e.Node, e.SourceStructure, e.ExpectedStructure)
 	default:
 		return e.Message
 	}
@@ -71,16 +48,8 @@ func (e *ParseOrchestrationError) Error() string {
 
 // Error constructors
 
-func machineNotationParseFailedError(message string) *ParseOrchestrationError {
-	return &ParseOrchestrationError{Kind: ErrMachineSyntaxParseFailed, Message: message}
-}
-
 func capNotFoundError(capUrn string) *ParseOrchestrationError {
 	return &ParseOrchestrationError{Kind: ErrCapNotFound, CapUrn: capUrn}
-}
-
-func nodeMediaConflictError(node, existing, requiredByCap string) *ParseOrchestrationError {
-	return &ParseOrchestrationError{Kind: ErrNodeMediaConflict, Node: node, Existing: existing, RequiredByCap: requiredByCap}
 }
 
 func notADagError(cycleNodes []string) *ParseOrchestrationError {
@@ -89,14 +58,6 @@ func notADagError(cycleNodes []string) *ParseOrchestrationError {
 
 func invalidGraphError(message string) *ParseOrchestrationError {
 	return &ParseOrchestrationError{Kind: ErrInvalidGraph, Message: message}
-}
-
-func mediaUrnParseError(message string) *ParseOrchestrationError {
-	return &ParseOrchestrationError{Kind: ErrMediaUrnParseError, Message: message}
-}
-
-func structureMismatchError(node string, source, expected planner.InputStructure) *ParseOrchestrationError {
-	return &ParseOrchestrationError{Kind: ErrStructureMismatch, Node: node, SourceStructure: source, ExpectedStructure: expected}
 }
 
 // --- Data Types ---

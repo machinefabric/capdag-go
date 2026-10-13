@@ -78,7 +78,7 @@ type RegistryCapResponse struct {
 	Aliases        []string          `json:"aliases"`
 	IsAbstract     bool              `json:"abstract,omitempty"`
 	Args           []CapArg          `json:"args,omitempty"`
-	Output         *CapOutput        `json:"output,omitempty"`
+	Outputs        []CapOutput       `json:"outputs,omitempty"`
 }
 
 // ToCap converts a registry response to a standard Cap
@@ -102,7 +102,7 @@ func (r *RegistryCapResponse) ToCap() (*Cap, error) {
 		cap.Metadata = r.Metadata
 	}
 	cap.Args = r.Args
-	cap.Output = r.Output
+	cap.Outputs = r.Outputs
 
 	return cap, nil
 }
@@ -166,10 +166,10 @@ func IdentityCap() (*Cap, error) {
 		CapDescription: &desc,
 		Metadata:       make(map[string]string),
 		Args: []CapArg{
-			NewCapArg("media:", true, []ArgSource{{Stdin: strPtr("media:")}}),
+			NewCapArg("media:", "input", true, []ArgSource{{Stdin: strPtr("media:")}}),
 		},
 	}
-	c.SetOutput(NewCapOutput("media:", "The input data, unchanged"))
+	c.AddOutput(*NewCapOutput("media:", "output", "The input data, unchanged"))
 	return c, nil
 }
 

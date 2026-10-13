@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/machinefabric/capdag-go/cap"
 	"github.com/machinefabric/capdag-go/standard"
 	"github.com/machinefabric/capdag-go/urn"
 )
@@ -843,10 +844,12 @@ func (h *CartridgeHost) registerCartridgeDirLocked(spec RegisteredDirSpec) {
 // the sha256 taken over the manifest bytes (the only stable artefact available
 // without a file on disk). Mirrors the reference
 // installed_cartridge_record_from_manifest. Returns nil if the manifest does not
-// parse (the caller still attaches; the record is honestly absent).
+// parse, or declares a cap definition that breaks a definition rule (the
+// caller still attaches; the record is honestly absent): an identity is not
+// made out of a manifest nobody could take.
 func installedCartridgeRecordFromManifest(manifest []byte) *InstalledCartridgeRecord {
-	var parsed CapManifest
-	if err := json.Unmarshal(manifest, &parsed); err != nil {
+	parsed, err := CapManifestFromAdvertised(manifest)
+	if err != nil {
 		return nil
 	}
 	digest := sha256.Sum256(manifest)
@@ -2301,6 +2304,20 @@ func parseCapGroupsFromManifest(manifest []byte) ([]CapGroup, error) {
 		return nil, &ParseCapsError{
 			Incompatible: false,
 			Message:      "manifest missing required cap_groups array",
+		}
+	}
+
+	// The definitions the host is about to route by are held to the
+	// definition rules here, not taken on the cartridge's word. A manifest
+	// that parses and carries a definition breaking a rule is incompatible.
+	for _, group := range parsed.CapGroups {
+		for i := range group.Caps {
+			if err := cap.ValidateCapDefinition(&group.Caps[i]); err != nil {
+				return nil, &ParseCapsError{
+					Incompatible: true,
+					Message:      fmt.Sprintf("Cartridge manifest declares an invalid cap definition: %v", err),
+				}
+			}
 		}
 	}
 

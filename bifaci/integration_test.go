@@ -142,7 +142,7 @@ func Test6433_IntegrationCapValidation(t *testing.T) {
 	})
 
 	// Set output
-	capDef.SetOutput(cap.NewCapOutput(standard.MediaJSON, "Processing result"))
+	capDef.AddOutput(*cap.NewCapOutput(standard.MediaJSON, "output", "Processing result"))
 
 	// Register cap
 	coordinator.RegisterCap(capDef)
@@ -1789,7 +1789,7 @@ func Test6330_ChunkingDataIntegrity3x(t *testing.T) {
 
 // TEST1122: Full path: engine REQ → runtime → cartridge → response back through relay
 func Test1122_FullPathEngineReqToCartridgeResponse(t *testing.T) {
-	manifest := `{"name":"EchoCartridge","version":"1.0","channel":"release","registry_url":null,"description":"Echo test cartridge","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Test","aliases":["test"],"args":[]}]}]}`
+	manifest := `{"name":"EchoCartridge","version":"1.0","channel":"release","registry_url":null,"description":"Echo test cartridge","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Test","aliases":["test"],"args":[{"media_urn":"media:","name":"input","required":true,"sources":[{"stdin":"media:"}]}],"outputs":[{"media_urn":"media:","name":"output","output_description":"output"}]}]}]}`
 
 	hostReadP, cartridgeWriteP := net.Pipe()
 	cartridgeReadP, hostWriteP := net.Pipe()
@@ -1916,7 +1916,7 @@ func Test1122_FullPathEngineReqToCartridgeResponse(t *testing.T) {
 
 // TEST1123: Cartridge ERR frame flows back to engine through relay
 func Test1123_CartridgeErrorFlowsToEngine(t *testing.T) {
-	manifest := `{"name":"ErrCartridge","version":"1.0","channel":"release","registry_url":null,"description":"Error test cartridge","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"],"args":[]},{"urn":"cap:in=\"media:void\";fail;out=\"media:void\"","title":"Test","aliases":["test"],"args":[]}]}]}`
+	manifest := `{"name":"ErrCartridge","version":"1.0","channel":"release","registry_url":null,"description":"Error test cartridge","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"],"args":[{"media_urn":"media:","name":"input","required":true,"sources":[{"stdin":"media:"}]}],"outputs":[{"media_urn":"media:","name":"output","output_description":"output"}]},{"urn":"cap:in=\"media:void\";fail;out=\"media:void\"","title":"Test","aliases":["test"],"args":[]}]}]}`
 
 	hostReadP, cartridgeWriteP := net.Pipe()
 	cartridgeReadP, hostWriteP := net.Pipe()
@@ -1994,7 +1994,7 @@ func Test1123_CartridgeErrorFlowsToEngine(t *testing.T) {
 
 // TEST898: Binary data integrity through full relay path (256 byte values)
 func Test898_BinaryIntegrityThroughRelay(t *testing.T) {
-	manifest := `{"name":"BinCartridge","version":"1.0","channel":"release","registry_url":null,"description":"Binary test cartridge","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"],"args":[]},{"urn":"cap:in=\"media:void\";binary;out=\"media:void\"","title":"Test","aliases":["test"],"args":[]}]}]}`
+	manifest := `{"name":"BinCartridge","version":"1.0","channel":"release","registry_url":null,"description":"Binary test cartridge","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"],"args":[{"media_urn":"media:","name":"input","required":true,"sources":[{"stdin":"media:"}]}],"outputs":[{"media_urn":"media:","name":"output","output_description":"output"}]},{"urn":"cap:in=\"media:void\";binary;out=\"media:void\"","title":"Test","aliases":["test"],"args":[]}]}]}`
 
 	binaryData := make([]byte, 256)
 	for i := 0; i < 256; i++ {
@@ -2123,7 +2123,7 @@ func Test898_BinaryIntegrityThroughRelay(t *testing.T) {
 
 // TEST899: Streaming chunks flow through relay without accumulation
 func Test899_StreamingChunksThroughRelay(t *testing.T) {
-	manifest := `{"name":"StreamCartridge","version":"1.0","channel":"release","registry_url":null,"description":"Streaming test cartridge","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"],"args":[]},{"urn":"cap:in=\"media:void\";stream;out=\"media:void\"","title":"Test","aliases":["test"],"args":[]}]}]}`
+	manifest := `{"name":"StreamCartridge","version":"1.0","channel":"release","registry_url":null,"description":"Streaming test cartridge","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"],"args":[{"media_urn":"media:","name":"input","required":true,"sources":[{"stdin":"media:"}]}],"outputs":[{"media_urn":"media:","name":"output","output_description":"output"}]},{"urn":"cap:in=\"media:void\";stream;out=\"media:void\"","title":"Test","aliases":["test"],"args":[]}]}]}`
 
 	hostReadP, cartridgeWriteP := net.Pipe()
 	cartridgeReadP, hostWriteP := net.Pipe()
@@ -2231,8 +2231,8 @@ func Test899_StreamingChunksThroughRelay(t *testing.T) {
 
 // TEST900: Two cartridges routed independently by cap_urn
 func Test900_TwoCartridgesRoutedIndependently(t *testing.T) {
-	manifestA := `{"name":"CartridgeA","version":"1.0","channel":"release","registry_url":null,"description":"Cartridge A","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"],"args":[]},{"urn":"cap:in=\"media:void\";alpha;out=\"media:void\"","title":"Test","aliases":["test"],"args":[]}]}]}`
-	manifestB := `{"name":"CartridgeB","version":"1.0","channel":"release","registry_url":null,"description":"Cartridge B","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"],"args":[]},{"urn":"cap:in=\"media:void\";beta;out=\"media:void\"","title":"Test","aliases":["test"],"args":[]}]}]}`
+	manifestA := `{"name":"CartridgeA","version":"1.0","channel":"release","registry_url":null,"description":"Cartridge A","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"],"args":[{"media_urn":"media:","name":"input","required":true,"sources":[{"stdin":"media:"}]}],"outputs":[{"media_urn":"media:","name":"output","output_description":"output"}]},{"urn":"cap:in=\"media:void\";alpha;out=\"media:void\"","title":"Test","aliases":["test"],"args":[]}]}]}`
+	manifestB := `{"name":"CartridgeB","version":"1.0","channel":"release","registry_url":null,"description":"Cartridge B","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"],"args":[{"media_urn":"media:","name":"input","required":true,"sources":[{"stdin":"media:"}]}],"outputs":[{"media_urn":"media:","name":"output","output_description":"output"}]},{"urn":"cap:in=\"media:void\";beta;out=\"media:void\"","title":"Test","aliases":["test"],"args":[]}]}]}`
 
 	hostReadA, cartridgeWriteA := net.Pipe()
 	cartridgeReadA, hostWriteA := net.Pipe()
@@ -2397,7 +2397,7 @@ func Test900_TwoCartridgesRoutedIndependently(t *testing.T) {
 
 // TEST901: REQ for unknown cap returns ERR frame (not fatal)
 func Test901_ReqForUnknownCapReturnsErrFrame(t *testing.T) {
-	manifest := `{"name":"OneCartridge","version":"1.0","channel":"release","registry_url":null,"description":"Known cap cartridge","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"],"args":[]},{"urn":"cap:in=\"media:void\";known;out=\"media:void\"","title":"Test","aliases":["test"],"args":[]}]}]}`
+	manifest := `{"name":"OneCartridge","version":"1.0","channel":"release","registry_url":null,"description":"Known cap cartridge","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"],"args":[{"media_urn":"media:","name":"input","required":true,"sources":[{"stdin":"media:"}]}],"outputs":[{"media_urn":"media:","name":"output","output_description":"output"}]},{"urn":"cap:in=\"media:void\";known;out=\"media:void\"","title":"Test","aliases":["test"],"args":[]}]}]}`
 
 	hostReadP, cartridgeWriteP := net.Pipe()
 	cartridgeReadP, hostWriteP := net.Pipe()
@@ -2474,7 +2474,7 @@ func Test901_ReqForUnknownCapReturnsErrFrame(t *testing.T) {
 // then verifies that after attach the cartridge is live and handles a real
 // request through the full relay path.
 func Test489_FullPathIdentityVerification(t *testing.T) {
-	manifest := `{"name":"IdentityE2E","version":"1.0","channel":"release","registry_url":null,"description":"Identity test","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"],"args":[]},{"urn":"cap:in=\"media:void\";test;out=\"media:void\"","title":"Test","aliases":["test"],"args":[]}]}]}`
+	manifest := `{"name":"IdentityE2E","version":"1.0","channel":"release","registry_url":null,"description":"Identity test","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"],"args":[{"media_urn":"media:","name":"input","required":true,"sources":[{"stdin":"media:"}]}],"outputs":[{"media_urn":"media:","name":"output","output_description":"output"}]},{"urn":"cap:in=\"media:void\";test;out=\"media:void\"","title":"Test","aliases":["test"],"args":[]}]}]}`
 
 	hostReadP, cartridgeWriteP := net.Pipe()
 	cartridgeReadP, hostWriteP := net.Pipe()
@@ -2592,8 +2592,8 @@ func Test489_FullPathIdentityVerification(t *testing.T) {
 // cartridge answers the identity REQ during attach (simulateCartridge), matching
 // Rust's attach_cartridge identity verification.
 func Test490_IdentityVerificationMultipleCartridges(t *testing.T) {
-	manifestA := `{"name":"CartridgeA","version":"1.0","channel":"release","registry_url":null,"description":"Cartridge A","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"],"args":[]},{"urn":"cap:in=\"media:void\";alpha;out=\"media:void\"","title":"Alpha","aliases":["alpha"],"args":[]}]}]}`
-	manifestB := `{"name":"CartridgeB","version":"1.0","channel":"release","registry_url":null,"description":"Cartridge B","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"],"args":[]},{"urn":"cap:in=\"media:void\";beta;out=\"media:void\"","title":"Beta","aliases":["beta"],"args":[]}]}]}`
+	manifestA := `{"name":"CartridgeA","version":"1.0","channel":"release","registry_url":null,"description":"Cartridge A","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"],"args":[{"media_urn":"media:","name":"input","required":true,"sources":[{"stdin":"media:"}]}],"outputs":[{"media_urn":"media:","name":"output","output_description":"output"}]},{"urn":"cap:in=\"media:void\";alpha;out=\"media:void\"","title":"Alpha","aliases":["alpha"],"args":[]}]}]}`
+	manifestB := `{"name":"CartridgeB","version":"1.0","channel":"release","registry_url":null,"description":"Cartridge B","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"],"args":[{"media_urn":"media:","name":"input","required":true,"sources":[{"stdin":"media:"}]}],"outputs":[{"media_urn":"media:","name":"output","output_description":"output"}]},{"urn":"cap:in=\"media:void\";beta;out=\"media:void\"","title":"Beta","aliases":["beta"],"args":[]}]}]}`
 
 	hostReadA, cartridgeWriteA := net.Pipe()
 	cartridgeReadA, hostWriteA := net.Pipe()

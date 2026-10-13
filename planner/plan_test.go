@@ -30,7 +30,7 @@ func Test728_cap_node_helpers(t *testing.T) {
 	assert.True(t, collectNode.IsFanIn())
 }
 
-// TEST729: Tests creation and classification of different edge types (Direct, Iteration, Collection, JsonField) Verifies that edge constructors produce correct EdgeType variants
+// TEST729: Tests creation and classification of different edge types (Direct, Iteration, Collection) Verifies that edge constructors produce correct EdgeType variants
 func Test729_edge_types(t *testing.T) {
 	direct := NewDirectEdge("a", "b")
 	assert.Equal(t, EdgeKindDirect, direct.Type.Kind)
@@ -40,10 +40,6 @@ func Test729_edge_types(t *testing.T) {
 
 	collection := NewCollectionEdge("body", "collect")
 	assert.Equal(t, EdgeKindCollection, collection.Type.Kind)
-
-	jsonField := NewJsonFieldEdge("a", "b", "data")
-	assert.Equal(t, EdgeKindJsonField, jsonField.Type.Kind)
-	assert.Equal(t, "data", jsonField.Type.Field)
 }
 
 // TEST734: Tests topological sort detects self-referencing cycles (A→A) Verifies that self-loops are recognized as cycles and produce an error
@@ -244,13 +240,6 @@ func Test6637_single_cap_plan_validates_and_orders_correctly(t *testing.T) {
 		"cap_0 must precede output")
 }
 
-// TEST6638: Tests MergeStrategy enum values
-// Verifies MergeConcat and MergeZipWith have correct string representations
-func Test6638_merge_strategy_values(t *testing.T) {
-	assert.Equal(t, "concat", MergeConcat.String())
-	assert.Equal(t, "zip_with", MergeZipWith.String())
-}
-
 // TEST6639: Tests Output node is automatically registered as output_node on AddNode
 // Verifies that Validate() accepts a plan where the Output node is the plan's only output_node
 func Test6639_output_node_registered_on_add(t *testing.T) {
@@ -263,56 +252,6 @@ func Test6639_output_node_registered_on_add(t *testing.T) {
 	// Output node must be auto-registered in OutputNodes
 	assert.Contains(t, plan.OutputNodes, "out",
 		"Output node must be auto-registered as an output node by AddNode")
-}
-
-// TEST747: Tests creation and validation of Merge node that combines multiple inputs Verifies that Merge nodes with multiple input nodes and a strategy can be added to plans
-func Test747_cap_node_merge(t *testing.T) {
-	plan := NewMachinePlan("merge_test")
-
-	plan.AddNode(NewMachineNode("a", "cap:a"))
-	plan.AddNode(NewMachineNode("b", "cap:b"))
-
-	mergeNode := &MachineNode{
-		ID: "merge",
-		NodeType: &ExecutionNodeType{
-			Kind:       NodeKindMerge,
-			InputNodes: []string{"a", "b"},
-			MergeStrat: MergeConcat,
-		},
-	}
-	plan.AddNode(mergeNode)
-	plan.AddEdge(NewDirectEdge("a", "merge"))
-	plan.AddEdge(NewDirectEdge("b", "merge"))
-
-	assert.NoError(t, plan.Validate())
-}
-
-// TEST6640: Tests that IsCap/IsFanOut/IsFanIn return false for Split and Merge node types
-// Verifies that node type classification methods correctly reject non-cap, non-foreach, non-collect kinds
-func Test6640_split_and_merge_not_classified_as_cap_fanout_fanin(t *testing.T) {
-	splitNode := &MachineNode{
-		ID: "split",
-		NodeType: &ExecutionNodeType{
-			Kind:        NodeKindSplit,
-			InputNode:   "input",
-			OutputCount: 3,
-		},
-	}
-	assert.False(t, splitNode.IsCap(), "Split node must not be classified as Cap")
-	assert.False(t, splitNode.IsFanOut(), "Split node must not be classified as FanOut")
-	assert.False(t, splitNode.IsFanIn(), "Split node must not be classified as FanIn")
-
-	mergeNode := &MachineNode{
-		ID: "merge",
-		NodeType: &ExecutionNodeType{
-			Kind:       NodeKindMerge,
-			InputNodes: []string{"a", "b"},
-			MergeStrat: MergeConcat,
-		},
-	}
-	assert.False(t, mergeNode.IsCap(), "Merge node must not be classified as Cap")
-	assert.False(t, mergeNode.IsFanOut(), "Merge node must not be classified as FanOut")
-	assert.False(t, mergeNode.IsFanIn(), "Merge node must not be classified as FanIn")
 }
 
 // TEST749: Tests get_node() method for looking up nodes by ID in a plan Verifies that existing nodes are found and non-existent nodes return None
@@ -757,7 +696,7 @@ func Test739_node_execution_result_success(t *testing.T) {
 	assert.Equal(t, "", result.Error)
 }
 
-// TEST742: Tests EdgeType enum serialization and deserialization to/from JSON Verifies that edge types like Direct and JsonField correctly round-trip through serde_json
+// TEST742: Tests EdgeType enum serialization and deserialization to/from JSON Verifies that every edge type round-trips by its name, and that a kind this library does not carry is refused
 func Test742_edge_type_serialization(t *testing.T) {
 	direct := DirectEdgeType()
 	data, err := json.Marshal(direct)
@@ -768,11 +707,23 @@ func Test742_edge_type_serialization(t *testing.T) {
 	require.NoError(t, json.Unmarshal(data, &deserialized))
 	assert.Equal(t, EdgeKindDirect, deserialized.Kind)
 
-	jsonField := JsonFieldEdgeType("data")
-	data, err = json.Marshal(jsonField)
-	require.NoError(t, err)
-	assert.Contains(t, string(data), "json_field")
-	assert.Contains(t, string(data), "data")
+	for name, edgeType := range map[string]*EdgeType{
+		`"direct"`: DirectEdgeType(), `"iteration"`: IterationEdgeType(), `"collection"`: CollectionEdgeType(),
+	} {
+		data, err := json.Marshal(edgeType)
+		require.NoError(t, err)
+		assert.Equal(t, name, string(data))
+		var back EdgeType
+		require.NoError(t, json.Unmarshal(data, &back), name)
+		assert.Equal(t, edgeType.Kind, back.Kind, name)
+	}
+
+	// An edge carries the whole value: a part of it is not something an
+	// edge can be asked for, in either of the forms that once said so.
+	for _, retired := range []string{`{"json_field":{"field":"data"}}`, `{"json_path":{"path":"a.b"}}`, `"json_field"`, `"sideways"`} {
+		var refused EdgeType
+		assert.Error(t, json.Unmarshal([]byte(retired), &refused), retired)
+	}
 }
 
 // TEST743: Tests ExecutionNodeType enum serialization and deserialization to/from JSON Verifies that node types like Cap and ForEach correctly serialize with their fields
@@ -805,35 +756,12 @@ func Test744_plan_serialization(t *testing.T) {
 	assert.Equal(t, len(plan.Edges), len(deserialized.Edges))
 }
 
-// TEST745: Tests MergeStrategy enum serialization to JSON Verifies that merge strategies like Concat and ZipWith serialize to correct string values
-func Test745_merge_strategy_serialization(t *testing.T) {
-	data, err := json.Marshal(MergeConcat)
-	require.NoError(t, err)
-	assert.Equal(t, `"concat"`, string(data))
-
-	data, err = json.Marshal(MergeZipWith)
-	require.NoError(t, err)
-	assert.Equal(t, `"zip_with"`, string(data))
-}
-
 // TEST746: Tests creation of Output node type that references a source node Verifies that MachineNode::output() correctly constructs an Output node with name and source
 func Test746_cap_node_output(t *testing.T) {
 	output := NewOutputNode("out", "result", "source")
 	require.Equal(t, NodeKindOutput, output.NodeType.Kind)
 	assert.Equal(t, "result", output.NodeType.OutputName)
 	assert.Equal(t, "source", output.NodeType.SourceNode)
-}
-
-// TEST748: Tests creation of Split node that distributes input to multiple outputs Verifies that Split nodes correctly specify an input node and output count
-func Test748_cap_node_split(t *testing.T) {
-	splitNode := &MachineNode{
-		ID:       "split",
-		NodeType: NewSplitNodeType("input", 3),
-	}
-
-	require.Equal(t, NodeKindSplit, splitNode.NodeType.Kind)
-	assert.Equal(t, "input", splitNode.NodeType.InputNode)
-	assert.Equal(t, 3, splitNode.NodeType.OutputCount)
 }
 
 // TEST764: extract_prefix_to with InputSlot as target (trivial prefix)

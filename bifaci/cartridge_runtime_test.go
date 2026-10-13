@@ -21,7 +21,7 @@ import (
 	"github.com/machinefabric/capdag-go/urn"
 )
 
-const testManifest = `{"name":"TestCartridge","version":"1.0.0","channel":"release","registry_url":null,"description":"Test cartridge","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"]},{"urn":"cap:in=\"media:void\";test;out=\"media:void\"","title":"Test","aliases":["test"]}]}]}`
+const testManifest = `{"name":"TestCartridge","version":"1.0.0","channel":"release","registry_url":null,"description":"Test cartridge","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"],"args":[{"media_urn":"media:","name":"input","required":true,"sources":[{"stdin":"media:"}]}],"outputs":[{"media_urn":"media:","name":"output","output_description":"output"}]},{"urn":"cap:in=\"media:void\";test;out=\"media:void\"","title":"Test","aliases":["test"]}]}]}`
 
 // Mock emitter that captures emitted data for testing
 type mockStreamEmitter struct {
@@ -2787,6 +2787,7 @@ func Test545_demux_peer_response_returns_data(t *testing.T) {
 
 	// STREAM_END + close
 	rawCh <- *NewStreamEnd(reqId, "s1", 1)
+	rawCh <- *NewEnd(reqId, nil)
 	close(rawCh)
 
 	response := DemuxPeerResponse(rawCh)
@@ -2816,6 +2817,7 @@ func Test839_peer_response_delivers_logs_before_stream_start(t *testing.T) {
 	checksum := ComputeChecksum(cborPayload)
 	rawCh <- *NewChunk(reqId, "s1", 0, cborPayload, 0, checksum)
 	rawCh <- *NewStreamEnd(reqId, "s1", 1)
+	rawCh <- *NewEnd(reqId, nil)
 	close(rawCh)
 
 	response := DemuxPeerResponse(rawCh)
@@ -2863,7 +2865,7 @@ func Test839_peer_response_delivers_logs_before_stream_start(t *testing.T) {
 
 	_, ok = response.Recv()
 	if ok {
-		t.Fatal("stream must end after STREAM_END")
+		t.Fatal("the response must end at END")
 	}
 }
 
@@ -3684,10 +3686,24 @@ func Test538_input_package_error_propagation(t *testing.T) {
 	}
 }
 
+// finishAsOnlyOutput ends a request whose one required output is `emitter`,
+// as the runtime does when the handler has returned: the stream is closed —
+// opened empty first if nothing was written to it — and then the request.
+func finishAsOnlyOutput(t *testing.T, writer *syncFrameWriter, emitter *threadSafeEmitter) {
+	t.Helper()
+	outputs := &responseOutputs{main: responseOutput{required: true, stream: emitter}}
+	if err := outputs.finish(); err != nil {
+		t.Fatalf("ending the response stream: %v", err)
+	}
+	if err := writer.WriteFrame(emitter.endFrame()); err != nil {
+		t.Fatalf("writing END: %v", err)
+	}
+}
+
 // outputEmitterCapture wires a threadSafeEmitter to an in-memory buffer and
 // reads the frames it produced back out. This is the Go OutputStream: it
-// sends STREAM_START on first emit, CHUNK(s) per emit, and STREAM_END + END
-// on Finalize.
+// sends STREAM_START on first emit, CHUNK(s) per emit, and the runtime sends
+// STREAM_END + END when the handler returns.
 func outputEmitterCapture(t *testing.T, streamID, mediaUrn string, maxChunk int, emit func(e *threadSafeEmitter)) []Frame {
 	t.Helper()
 	var buf bytes.Buffer
@@ -3695,7 +3711,7 @@ func outputEmitterCapture(t *testing.T, streamID, mediaUrn string, maxChunk int,
 	syncWriter := newSyncFrameWriter(writer, NewDropCounters(), NewStragglerCounters())
 	emitter := newThreadSafeEmitter(syncWriter, NewMessageIdRandom(), nil, streamID, mediaUrn, maxChunk, nil, 0)
 	emit(emitter)
-	emitter.Finalize()
+	finishAsOnlyOutput(t, syncWriter, emitter)
 
 	reader := NewFrameReader(bytes.NewReader(buf.Bytes()))
 	var frames []Frame
@@ -4815,6 +4831,7 @@ func Test7118_collect_bytes_forwarding_preserves_peer_side_channels(t *testing.T
 	}
 	rawCh <- *NewChunk(reqId, "s1", 0, payload, 0, ComputeChecksum(payload))
 	rawCh <- *NewStreamEnd(reqId, "s1", 1)
+	rawCh <- *NewEnd(reqId, nil)
 	close(rawCh)
 
 	emitter := &recordingEmitter{}

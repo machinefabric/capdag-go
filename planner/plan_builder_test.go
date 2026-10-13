@@ -76,11 +76,11 @@ func Test6646_analyze_path_arguments_stdin_is_from_input_file(t *testing.T) {
 	require.NoError(t, err)
 
 	inSpec := capUrnParsed.InSpec()
-	stdinArg := cap.NewCapArg(inSpec, true, []cap.ArgSource{
+	stdinArg := cap.NewCapArg(inSpec, "input", true, []cap.ArgSource{
 		{Stdin: &inSpec},
 	})
 	c := cap.NewCapWithArgs(capUrnParsed, "Extract", []string{"test"}, []cap.CapArg{stdinArg})
-	c.Output = &cap.CapOutput{MediaUrn: capUrnParsed.OutSpec()}
+	c.Outputs = []cap.CapOutput{*&cap.CapOutput{MediaUrn: capUrnParsed.OutSpec()}}
 
 	registry := fabric.NewForTest()
 	registry.AddCapsToCache([]*cap.Cap{c})
@@ -117,14 +117,14 @@ func Test6647_analyze_path_arguments_user_input_arg_appears_in_slots(t *testing.
 
 	// stdin arg (input file — resolved automatically)
 	inSpec := capUrnParsed.InSpec()
-	stdinArg := cap.NewCapArg(inSpec, true, []cap.ArgSource{
+	stdinArg := cap.NewCapArg(inSpec, "input", true, []cap.ArgSource{
 		{Stdin: &inSpec},
 	})
 	// user arg: target_language — no stdin source, no default → RequiresUserInput
-	userArg := cap.NewCapArg("media:string", true, []cap.ArgSource{})
+	userArg := cap.NewCapArg("media:string", "arg", true, []cap.ArgSource{})
 
 	c := cap.NewCapWithArgs(capUrnParsed, "Translate", []string{"test"}, []cap.CapArg{stdinArg, userArg})
-	c.Output = &cap.CapOutput{MediaUrn: capUrnParsed.OutSpec()}
+	c.Outputs = []cap.CapOutput{*&cap.CapOutput{MediaUrn: capUrnParsed.OutSpec()}}
 
 	registry := fabric.NewForTest()
 	registry.AddCapsToCache([]*cap.Cap{c})
@@ -466,7 +466,7 @@ func rewriteCap(t *testing.T) *cap.Cap {
 	stdin := "media:ext=txt;text"
 	c.Args = []cap.CapArg{
 		cap.NewCapArgWithFullDefinition(
-			"media:enc=utf-8;file-path", true,
+			"media:enc=utf-8;file-path", "input", true,
 			[]cap.ArgSource{{Stdin: &stdin}},
 			"Text to rewrite", nil, nil,
 		),

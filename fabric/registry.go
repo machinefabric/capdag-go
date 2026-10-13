@@ -508,6 +508,14 @@ func (r *FabricRegistry) loadAllCachedCaps() {
 			_ = os.Remove(path)
 			return
 		}
+		// Only a checked definition is written to the cache, so one that
+		// fails the rules was written by a capdag with other rules: it is
+		// dropped like an unparseable one and fetched anew.
+		if err := cap.ValidateCapDefinition(&c); err != nil {
+			fmt.Fprintf(os.Stderr, "[WARN] dropping cap cache file %s: %v\n", path, err)
+			_ = os.Remove(path)
+			return
+		}
 		normalized, err := NormalizeCapURN(c.Urn.String())
 		if err != nil {
 			// Hydration with a malformed URN is a graceful no-op: never cache
@@ -700,6 +708,16 @@ func (r *FabricRegistry) fetchCapFromRegistry(capURN string, defver uint32) (*ca
 	if err != nil {
 		return nil, err
 	}
+	return checkedCapDefinition(body, capURN)
+}
+
+// checkedCapDefinition reads a definition a registry served and holds it to
+// the definition rules (RULE1-RULE22) before it is cached or returned: a
+// definition is held to them by the side that receives it as well as the side
+// that sends it. One that does not parse is a parse error; one that parses
+// and breaks a rule is a validation error naming the cap and the rule.
+// Matches Rust: fn checked_cap_definition(body, normalized_urn)
+func checkedCapDefinition(body []byte, capURN string) (*cap.Cap, error) {
 	var wire cap.RegistryCapResponse
 	if err := json.Unmarshal(body, &wire); err != nil {
 		return nil, &Error{Kind: ErrParse, Message: fmt.Sprintf("parsing the registry response for cap '%s'", capURN), Err: err}
@@ -707,6 +725,9 @@ func (r *FabricRegistry) fetchCapFromRegistry(capURN string, defver uint32) (*ca
 	c, err := wire.ToCap()
 	if err != nil {
 		return nil, &Error{Kind: ErrParse, Message: fmt.Sprintf("converting the registry response for cap '%s'", capURN), Err: err}
+	}
+	if err := cap.ValidateCapDefinition(c); err != nil {
+		return nil, &Error{Kind: ErrValidation, Message: fmt.Sprintf("the registry's definition of cap '%s' breaks a definition rule", capURN), Err: err}
 	}
 	return c, nil
 }
@@ -893,19 +914,19 @@ func collectReferencedMediaURNs(c *cap.Cap) ([]string, error) {
 	if err := push(c.Urn.OutSpec()); err != nil {
 		return nil, err
 	}
-	for _, arg := range c.GetArgs() {
-		if err := push(arg.MediaUrn); err != nil {
+	// Every arg's own URN and the type it accepts (its stdin source's, or
+	// its `accepts`), and every output's URN — the main one and the others
+	// alike, since each is the type of a node a machine can hold.
+	args := c.GetArgs()
+	for i := range args {
+		if err := push(args[i].MediaUrn); err != nil {
 			return nil, err
 		}
-		for _, source := range arg.Sources {
-			if source.Stdin != nil {
-				if err := push(*source.Stdin); err != nil {
-					return nil, err
-				}
-			}
+		if err := push(args[i].AcceptedUrn()); err != nil {
+			return nil, err
 		}
 	}
-	if output := c.GetOutput(); output != nil {
+	for _, output := range c.GetOutputs() {
 		if err := push(output.MediaUrn); err != nil {
 			return nil, err
 		}

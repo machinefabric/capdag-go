@@ -54,7 +54,7 @@ func Test0123_CapExists(t *testing.T) {
 // TEST138: Test parsing registry JSON with stdin args verifies stdin media URN extraction
 func Test138_parse_registry_json_with_stdin(t *testing.T) {
 	// JSON with stdin args - means cap accepts stdin of specified media type
-	jsonData := `{"urn":"cap:in=\"media:document;ext=pdf\";disbind;out=\"media:enc=utf-8;page\"","aliases":["disbind"],"title":"Disbind PDF","args":[{"media_urn":"media:document;ext=pdf","required":true,"sources":[{"stdin":"media:document;ext=pdf"}]}]}`
+	jsonData := `{"urn":"cap:in=\"media:document;ext=pdf\";disbind;out=\"media:enc=utf-8;page\"","aliases":["disbind"],"title":"Disbind PDF","args":[{"media_urn":"media:document;ext=pdf","required":true,"sources":[{"stdin":"media:document;ext=pdf"}],"name":"input"}],"outputs":[{"media_urn":"media:enc=utf-8;page","name":"output","output_description":"output"}]}`
 
 	var registryResp cap.RegistryCapResponse
 	err := json.Unmarshal([]byte(jsonData), &registryResp)
@@ -661,7 +661,7 @@ func Test6329_CacheOperations(t *testing.T) {
 // TEST6382: Test parsing registry JSON without stdin args verifies cap structure
 func Test6382_parse_registry_json(t *testing.T) {
 	// JSON without stdin args - means cap doesn't accept stdin
-	jsonData := `{"urn":"cap:in=\"media:listing-id\";use-grinder;out=\"media:task;id\"","aliases":["grinder_task"],"title":"Create Grinder Tool Task","cap_description":"Create a task for initial document analysis - first glance phase","metadata":{},"media_defs":[{"urn":"media:listing-id","media_type":"text/plain","title":"Listing ID","profile_uri":"https://machinefabric.com/schema/listing-id","schema":{"type":"string","pattern":"[0-9a-f-]{36}","description":"Listing UUID"}},{"urn":"media:task;id","media_type":"application/json","title":"Task ID","profile_uri":"https://capdag.com/schema/grinder_task-output","schema":{"type":"object","additionalProperties":false,"properties":{"task_id":{"type":"string","description":"ID of the created task"},"task_type":{"type":"string","description":"Type of task created"}},"required":["task_id","task_type"]}}],"args":[{"media_urn":"media:listing-id","required":true,"sources":[{"cli_flag":"--listing-id"}],"arg_description":"ID of the listing to analyze"}],"output":{"media_urn":"media:task;id","output_description":"Created task information"},"registered_by":{"username":"joeharshamshiri","registered_at":"2026-01-15T00:44:29.851Z"}}`
+	jsonData := `{"urn":"cap:in=\"media:listing-id\";use-grinder;out=\"media:id;task\"","aliases": ["grinder_task"],"title":"Create Grinder Tool Task","args":[{"media_urn":"media:listing-id","name":"opt1","required":true,"sources":[{"cli_flag":"--listing-id"}]}]}`
 
 	var registryResp cap.RegistryCapResponse
 	err := json.Unmarshal([]byte(jsonData), &registryResp)
@@ -793,15 +793,15 @@ func buildCap(capUrnStr, title string, argMediaUrns []string, outputMediaUrn str
 	args := make([]cap.CapArg, len(argMediaUrns))
 	for i, mu := range argMediaUrns {
 		stdinVal := mu
-		args[i] = cap.NewCapArg(mu, true, []cap.ArgSource{{Stdin: &stdinVal}})
+		args[i] = cap.NewCapArg(mu, "input", true, []cap.ArgSource{{Stdin: &stdinVal}})
 	}
-	output := cap.NewCapOutput(outputMediaUrn, "output of "+title)
+	output := cap.NewCapOutput(outputMediaUrn, "output", "output of "+title)
 	return &cap.Cap{
 		Urn:     capUrnParsed,
 		Title:   title,
 		Aliases: []string{"test-fixture://" + title},
 		Args:    args,
-		Output:  output,
+		Outputs: []cap.CapOutput{*output},
 	}
 }
 
@@ -944,4 +944,92 @@ func Test617_normalize_media_urn(t *testing.T) {
 	assert.NotEmpty(t, urn1)
 	assert.NotEmpty(t, urn2)
 	assert.Equal(t, urn1, urn2)
+}
+
+// TEST12714: a definition a registry serves is held to the definition rules
+// before it is cached or returned. One that does not parse is a parse error;
+// one that parses and breaks a rule is a validation error naming the cap and
+// the rule.
+func Test12714_a_served_definition_is_held_to_the_definition_rules(t *testing.T) {
+	const capURN = `cap:in="media:document;ext=pdf";disbind;out="media:enc=utf-8;page"`
+	definition := func(args []any, outputs []any) []byte {
+		body, err := json.Marshal(map[string]any{
+			"urn": capURN, "aliases": []string{"disbind"}, "title": "Disbind PDF",
+			"args": args, "outputs": outputs,
+		})
+		require.NoError(t, err)
+		return body
+	}
+	main := func(stdin string) map[string]any {
+		return map[string]any{
+			"media_urn": "media:enc=utf-8;file-path", "name": "document", "required": true,
+			"sources": []any{map[string]any{"stdin": stdin}},
+		}
+	}
+	page := map[string]any{"media_urn": "media:enc=utf-8;page", "name": "pages", "output_description": "Pages"}
+
+	c, err := checkedCapDefinition(definition([]any{main("media:document;ext=pdf")}, []any{page}), capURN)
+	require.NoError(t, err, "a valid definition")
+	require.NotNil(t, c.MainOutput())
+	assert.Equal(t, "pages", c.MainOutput().Name)
+
+	_, err = checkedCapDefinition([]byte("{not json"), capURN)
+	require.Error(t, err)
+	assert.Equal(t, ErrParse, kindOf(err))
+
+	// The cap URN says it produces pages, and the definition declares no such output.
+	_, err = checkedCapDefinition(definition([]any{main("media:document;ext=pdf")}, []any{}), capURN)
+	require.Error(t, err)
+	assert.Equal(t, ErrValidation, kindOf(err))
+	assert.Contains(t, err.Error(), "RULE21")
+	assert.Contains(t, err.Error(), "disbind")
+
+	// The main input is declared under a type that is not the cap's `in=`.
+	_, err = checkedCapDefinition(definition([]any{main("media:document")}, []any{page}), capURN)
+	require.Error(t, err)
+	assert.Equal(t, ErrValidation, kindOf(err))
+	assert.Contains(t, err.Error(), "RULE15")
+}
+
+// TEST12715: the cache holds only checked definitions, so one on disk that
+// breaks a rule was written under other rules: loading drops its file and
+// keeps the rest, and the definition is fetched anew when next asked for.
+func Test12715_a_cached_definition_that_breaks_a_rule_is_dropped(t *testing.T) {
+	scratch := t.TempDir()
+	r := NewForTestInDir(DefaultConfig(), scratch)
+	entry := func(c *cap.Cap) []byte {
+		definition, err := json.Marshal(c)
+		require.NoError(t, err)
+		body, err := json.Marshal(capCacheEntry{Definition: definition, CachedAt: 0, TTLHours: 0})
+		require.NoError(t, err)
+		return body
+	}
+	capOf := func(op string) *cap.Cap {
+		u, err := urn.NewCapUrnFromString(`cap:in="media:void";` + op + `;out="media:record"`)
+		require.NoError(t, err)
+		c := cap.NewCap(u, op, []string{op})
+		c.Version = 3
+		return c
+	}
+	kept := capOf("kept")
+	kept.AddOutput(*cap.NewCapOutput("media:record", "record", "The record"))
+	// The same shape without the output its URN states (RULE21).
+	stale := capOf("stale")
+
+	keptFile := filepath.Join(scratch, "caps", "aa", "3.json")
+	staleFile := filepath.Join(scratch, "caps", "bb", "3.json")
+	for file, c := range map[string]*cap.Cap{keptFile: kept, staleFile: stale} {
+		require.NoError(t, os.MkdirAll(filepath.Dir(file), 0o755))
+		require.NoError(t, os.WriteFile(file, entry(c), 0o644))
+	}
+
+	r.loadAllCachedCaps()
+	_, hasKept := r.GetCachedCap(kept.Urn.String())
+	assert.True(t, hasKept, "the valid definition is loaded")
+	_, hasStale := r.GetCachedCap(stale.Urn.String())
+	assert.False(t, hasStale, "the definition that breaks a rule is not")
+	_, err := os.Stat(keptFile)
+	assert.NoError(t, err)
+	_, err = os.Stat(staleFile)
+	assert.True(t, os.IsNotExist(err), "the stale entry's file is removed")
 }

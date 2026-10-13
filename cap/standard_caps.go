@@ -38,6 +38,7 @@ func LookupCapFabricCap() *Cap {
 	)
 	cap.Args = append(cap.Args, NewCapArgWithDescription(
 		standard.MediaCapURN,
+		"input",
 		true,
 		[]ArgSource{
 			{Stdin: StringPtr(standard.MediaCapURN)},
@@ -47,14 +48,16 @@ func LookupCapFabricCap() *Cap {
 	))
 	cap.Args = append(cap.Args, NewCapArgWithDescription(
 		standard.MediaFabricDefver,
+		"defver",
 		false,
 		[]ArgSource{{CliFlag: StringPtr("--defver")}},
 		"Per-definition version under the caller's manifest snapshot, 1 or greater. Absent ⇒ resolved under the fabric manifest the lookup cartridge is pinned to; a URN that manifest does not list is not found.",
 	))
-	cap.Output = NewCapOutput(
+	cap.AddOutput(*NewCapOutput(
 		standard.MediaCapDefinition,
+		"output",
 		"Full flattened cap definition as published in the registry.",
-	)
+	))
 	return cap
 }
 
@@ -71,6 +74,7 @@ func LookupMediaDefFabricCap() *Cap {
 	)
 	cap.Args = append(cap.Args, NewCapArgWithDescription(
 		standard.MediaMediaURN,
+		"input",
 		true,
 		[]ArgSource{
 			{Stdin: StringPtr(standard.MediaMediaURN)},
@@ -80,13 +84,15 @@ func LookupMediaDefFabricCap() *Cap {
 	))
 	cap.Args = append(cap.Args, NewCapArgWithDescription(
 		standard.MediaFabricDefver,
+		"defver",
 		false,
 		[]ArgSource{{CliFlag: StringPtr("--defver")}},
 		"Per-definition version under the caller's manifest snapshot, 1 or greater. Absent ⇒ resolved under the fabric manifest the lookup cartridge is pinned to; a URN that manifest does not list is not found.",
 	))
-	cap.Output = NewCapOutput(
+	cap.AddOutput(*NewCapOutput(
 		standard.MediaMediaDefinition,
+		"output",
 		"Full media definition as published in the registry.",
-	)
+	))
 	return cap
 }

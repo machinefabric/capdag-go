@@ -134,7 +134,7 @@ func Test165_schema_validator_validate_output_with_schema_success(t *testing.T) 
 	}
 
 	// Create output
-	output := NewCapOutput("media:test;result;enc=utf-8;record", "Query result")
+	output := NewCapOutput("media:test;result;enc=utf-8;record", "output", "Query result")
 
 	// Test valid output data
 	validData := map[string]interface{}{
@@ -162,7 +162,7 @@ func Test6267_SchemaValidator_ValidateOutputWithSchema_Failure(t *testing.T) {
 	}
 
 	// Create output
-	output := NewCapOutput("media:test;result;enc=utf-8;record", "Query result")
+	output := NewCapOutput("media:test;result;enc=utf-8;record", "output", "Query result")
 
 	// Test invalid output data (missing required field)
 	invalidData := map[string]interface{}{
@@ -360,7 +360,7 @@ func Test6183_OutputValidator_WithSchemaValidation(t *testing.T) {
 	validator := NewOutputValidator()
 
 	// Create a capability with schema-enabled output
-	urn, err := urn.NewCapUrnFromString(`cap:in="media:void";test;out="media:fmt=json;record"`)
+	urn, err := urn.NewCapUrnFromString(`cap:in="media:void";test;out="media:result;enc=utf-8;record"`)
 	require.NoError(t, err)
 
 	cap := NewCap(urn, "Output Validator", []string{"test-command"})
@@ -385,8 +385,8 @@ func Test6183_OutputValidator_WithSchemaValidation(t *testing.T) {
 		schema,
 	)).ToStored())
 
-	output := NewCapOutput("media:result;enc=utf-8;record", "Command result")
-	cap.SetOutput(output)
+	output := NewCapOutput("media:result;enc=utf-8;record", "output", "Command result")
+	cap.AddOutput(*output)
 
 	// Test valid output
 	validOutput := map[string]interface{}{
@@ -419,7 +419,7 @@ func Test6184_CapValidationCoordinator_EndToEnd(t *testing.T) {
 	coordinator := NewCapValidationCoordinator()
 
 	// Create a capability with full schema validation
-	urn, err := urn.NewCapUrnFromString(`cap:in="media:void";query;out="media:fmt=json;record";target=structured`)
+	urn, err := urn.NewCapUrnFromString(`cap:in="media:void";query;out="media:query-results;enc=utf-8;record";target=structured`)
 	require.NoError(t, err)
 
 	cap := NewCap(urn, "Structured Query", []string{"query-command"})
@@ -476,8 +476,8 @@ func Test6184_CapValidationCoordinator_EndToEnd(t *testing.T) {
 		outputSchema,
 	)).ToStored())
 
-	output := NewCapOutput("media:query-results;enc=utf-8;record", "Query results")
-	cap.SetOutput(output)
+	output := NewCapOutput("media:query-results;enc=utf-8;record", "output", "Query results")
+	cap.AddOutput(*output)
 
 	// Register the capability
 	coordinator.RegisterCap(cap)

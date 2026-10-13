@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/machinefabric/capdag-go/cap"
@@ -228,38 +227,6 @@ func (pe *MachineExecutor) executeNode(
 			DurationMs: durationMs,
 		}, output, nil
 
-	case NodeKindMerge:
-		var merged []any
-		for _, inpID := range node.NodeType.InputNodes {
-			if val, ok := nodeOutputs[inpID]; ok {
-				merged = append(merged, val)
-			}
-		}
-		output := map[string]any{
-			"merged":   merged,
-			"strategy": node.NodeType.MergeStrat.String(),
-		}
-		durationMs := uint64(time.Since(start).Milliseconds())
-		return &NodeExecutionResult{
-			NodeID:     node.ID,
-			Success:    true,
-			DurationMs: durationMs,
-		}, output, nil
-
-	case NodeKindSplit:
-		inputNode := node.NodeType.InputNode
-		inputVal := nodeOutputs[inputNode]
-		output := map[string]any{
-			"input":        inputVal,
-			"output_count": node.NodeType.OutputCount,
-		}
-		durationMs := uint64(time.Since(start).Milliseconds())
-		return &NodeExecutionResult{
-			NodeID:     node.ID,
-			Success:    true,
-			DurationMs: durationMs,
-		}, output, nil
-
 	default:
 		return nil, nil, NewInternalError(fmt.Sprintf("Unknown node kind: %d", node.NodeType.Kind))
 	}
@@ -419,70 +386,4 @@ func (pe *MachineExecutor) executeMachineNode(
 		MediaUrnOutput: "", // populated by pipeline executor from STREAM_START metadata
 		DurationMs:     durationMs,
 	}, outputJSON, nil
-}
-
-// ApplyEdgeType applies an edge type transformation to source output.
-func ApplyEdgeType(sourceOutput any, edgeType *EdgeType) (any, error) {
-	switch edgeType.Kind {
-	case EdgeKindDirect, EdgeKindIteration, EdgeKindCollection:
-		return sourceOutput, nil
-	case EdgeKindJsonField:
-		m, ok := sourceOutput.(map[string]any)
-		if !ok {
-			return nil, NewInternalError(fmt.Sprintf("Field '%s' not found in source output", edgeType.Field))
-		}
-		val, exists := m[edgeType.Field]
-		if !exists {
-			return nil, NewInternalError(fmt.Sprintf("Field '%s' not found in source output", edgeType.Field))
-		}
-		return val, nil
-	case EdgeKindJsonPath:
-		return ExtractJsonPath(sourceOutput, edgeType.Path)
-	default:
-		return nil, NewInternalError(fmt.Sprintf("Unknown edge type kind: %d", edgeType.Kind))
-	}
-}
-
-// ExtractJsonPath navigates JSON by dot-separated path with optional array indexing.
-func ExtractJsonPath(jsonVal any, path string) (any, error) {
-	current := jsonVal
-	for _, segment := range strings.Split(path, ".") {
-		if bracketIdx := strings.Index(segment, "["); bracketIdx >= 0 {
-			fieldName := segment[:bracketIdx]
-			indexStr := strings.TrimRight(segment[bracketIdx+1:], "]")
-
-			if fieldName != "" {
-				m, ok := current.(map[string]any)
-				if !ok {
-					return nil, NewInternalError(fmt.Sprintf("Field '%s' not found in path", fieldName))
-				}
-				val, exists := m[fieldName]
-				if !exists {
-					return nil, NewInternalError(fmt.Sprintf("Field '%s' not found in path", fieldName))
-				}
-				current = val
-			}
-
-			var idx int
-			if _, err := fmt.Sscanf(indexStr, "%d", &idx); err != nil {
-				return nil, NewInternalError(fmt.Sprintf("Invalid array index: %s", indexStr))
-			}
-			arr, ok := current.([]any)
-			if !ok || idx >= len(arr) {
-				return nil, NewInternalError(fmt.Sprintf("Array index %d out of bounds", idx))
-			}
-			current = arr[idx]
-		} else {
-			m, ok := current.(map[string]any)
-			if !ok {
-				return nil, NewInternalError(fmt.Sprintf("Field '%s' not found in path", segment))
-			}
-			val, exists := m[segment]
-			if !exists {
-				return nil, NewInternalError(fmt.Sprintf("Field '%s' not found in path", segment))
-			}
-			current = val
-		}
-	}
-	return current, nil
 }

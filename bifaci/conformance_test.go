@@ -734,7 +734,7 @@ func Test12385_what_reaches_the_wire_is_a_flow_in_order(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 	emitter.Progress(0.5, "halfway")
-	emitter.Finalize()
+	finishAsOnlyOutput(t, writer, emitter)
 
 	// The handler's END, then what a detached sender does: frames that lost
 	// the race with it.

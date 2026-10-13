@@ -2,7 +2,6 @@ package machine
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/machinefabric/capdag-go/fabric"
@@ -15,25 +14,85 @@ import (
 // Scoped to a single strand — two strands use disjoint NodeId spaces.
 type NodeId = uint32
 
+// BindingSource is what feeds one cap argument of a step: a data position of
+// the strand, or a constant written in the machine (any JSON value). A
+// constant is part of the binding, not a node — nothing else can consume it.
+type BindingSource struct {
+	// IsConstant says which of the two this is.
+	IsConstant bool
+	// Node is the data position, when the source is one.
+	Node NodeId
+	// Constant is the value, when the source is a constant: nil, bool,
+	// string, int64, uint64, float64, []any or map[string]any.
+	Constant any
+}
+
+// NodeSource is a binding source that is a node of the strand.
+func NodeSource(id NodeId) BindingSource {
+	return BindingSource{Node: id}
+}
+
+// ConstantSource is a binding source that is a constant. The value is any
+// JSON value in the form encoding/json decodes it to; whole numbers and
+// floats are kept apart as notation keeps them.
+func ConstantSource(value any) BindingSource {
+	normalized, err := normalizeConstant(value)
+	if err != nil {
+		panic(fmt.Sprintf("a constant of a machine is a JSON value: %v", err))
+	}
+	return BindingSource{IsConstant: true, Constant: normalized}
+}
+
 // EdgeAssignmentBinding records which cap argument (identified by its slot
-// media URN) is fed by which data-position in the strand (NodeId).
+// media URN) is fed by what: a data position of the strand or a constant.
 //
-// MachineEdge.Assignment holds these sorted by CapArgMediaUrn so that
-// two semantically-equivalent edges produce identical assignment slices.
+// MachineEdge.Assignment holds these sorted by CapArgMediaUrn so that two
+// semantically-equivalent edges produce identical assignment slices.
 type EdgeAssignmentBinding struct {
 	CapArgMediaUrn *urn.MediaUrn // slot identity per cap definition
-	Source         NodeId        // which node feeds this arg
+	// ArgName is the arg's name in the cap definition: the label notation
+	// writes the binding under. It is carried so a machine can be written back
+	// without the definitions, and it is NOT identity — CapArgMediaUrn is, and
+	// equivalence never reads this.
+	ArgName string
+	Source  BindingSource
+}
+
+// EdgeOutput is one output of a step that its wiring takes, and the node it
+// goes to.
+//
+// OutputMediaUrn is the output's identity per the cap definition (RULE20:
+// unique among a cap's outputs). MachineEdge.Outputs holds these sorted by
+// OutputMediaUrn, a canonical form like the assignment's.
+type EdgeOutput struct {
+	OutputMediaUrn *urn.MediaUrn
+	// OutputName is the output's name in the cap definition: a label, carried
+	// like EdgeAssignmentBinding.ArgName and never compared.
+	OutputName string
+	Node       NodeId
 }
 
 // MachineEdge is one resolved cap-step inside a MachineStrand.
 //
 // Assignment carries the explicit source-to-cap-arg mapping computed by the
-// resolver: pairs of (cap arg slot URN, strand node ID). Sorted by
-// CapArgMediaUrn for canonical comparison.
+// resolver, sorted by CapArgMediaUrn for canonical comparison.
 type MachineEdge struct {
 	CapUrn     *urn.CapUrn
 	Assignment []EdgeAssignmentBinding
-	Target     NodeId
+	// Outputs are the outputs the wiring takes, sorted by output media URN. An
+	// output the cap declares and no entry names is discarded; an empty list
+	// is a sink.
+	Outputs []EdgeOutput
+	// Policy is what the step does when it fails. Part of what the machine
+	// is: two machines that differ in it behave differently.
+	Policy StepPolicy
+	// IncludedAs is the machine steps this step was included through,
+	// outermost first, each as `alias#use`: the alias its header gave the
+	// included machine and which use of it this is, counted from one in the
+	// order written. Empty for a step the machine wrote itself. It says where
+	// a step of the inlined whole came from — a label, like ArgName:
+	// equivalence never reads it, and canonical notation does not write it.
+	IncludedAs []string
 	IsLoop     bool
 	// TokenId is the stable identity of the originating resolved-strand step
 	// (see planner.StrandStep.TokenId), carried onto the executable DAG unit so
@@ -44,10 +103,54 @@ type MachineEdge struct {
 	TokenId planner.StepToken
 }
 
+// MainTarget returns the node the step's MAIN output goes to: the taken
+// output whose URN is the cap URN's `out=`. False when the wiring does not
+// take it.
+func (e *MachineEdge) MainTarget() (NodeId, bool) {
+	out, err := e.CapUrn.OutMediaUrn()
+	if err != nil {
+		return 0, false
+	}
+	for _, output := range e.Outputs {
+		if output.OutputMediaUrn.IsEquivalent(out) {
+			return output.Node, true
+		}
+	}
+	return 0, false
+}
+
+// OutputNodes returns every node this step produces.
+func (e *MachineEdge) OutputNodes() []NodeId {
+	nodes := make([]NodeId, len(e.Outputs))
+	for i, output := range e.Outputs {
+		nodes[i] = output.Node
+	}
+	return nodes
+}
+
+// SourceNodes returns every node this step consumes. A constant is not a node.
+func (e *MachineEdge) SourceNodes() []NodeId {
+	var nodes []NodeId
+	for _, binding := range e.Assignment {
+		if !binding.Source.IsConstant {
+			nodes = append(nodes, binding.Source.Node)
+		}
+	}
+	return nodes
+}
+
 func (e *MachineEdge) String() string {
 	assignments := make([]string, len(e.Assignment))
 	for i, b := range e.Assignment {
-		assignments[i] = fmt.Sprintf("%s<-#%d", b.CapArgMediaUrn, b.Source)
+		if b.Source.IsConstant {
+			assignments[i] = fmt.Sprintf("%s<-%s", b.CapArgMediaUrn, constantText(b.Source.Constant))
+		} else {
+			assignments[i] = fmt.Sprintf("%s<-#%d", b.CapArgMediaUrn, b.Source.Node)
+		}
+	}
+	outputs := make([]string, len(e.Outputs))
+	for i, o := range e.Outputs {
+		outputs[i] = fmt.Sprintf("%s->#%d", o.OutputMediaUrn, o.Node)
 	}
 	// Debug-only marker for a per-item map edge. Not notation syntax (the LOOP
 	// keyword is retired); IsLoop is a derived cardinality property.
@@ -55,11 +158,12 @@ func (e *MachineEdge) String() string {
 	if e.IsLoop {
 		loopPrefix = "map "
 	}
-	return fmt.Sprintf("%s%s (%s) -> #%d",
+	return fmt.Sprintf("%s%s%s (%s) -> (%s)",
 		loopPrefix,
 		e.CapUrn,
+		e.Policy.ToNotation(),
 		strings.Join(assignments, ", "),
-		e.Target,
+		strings.Join(outputs, ", "),
 	)
 }
 
@@ -76,6 +180,11 @@ type MachineStrand struct {
 	inputAnchorIds []NodeId
 	// NodeIds of leaf nodes (no consumer in this strand). Sorted.
 	outputAnchorIds []NodeId
+	// Whether each node holds a sequence, as its producer's output declares (a
+	// node nothing produces is a single value here: what a run gives it is the
+	// run's to say). Indexed by NodeId. A sequence bound to an arg that takes a
+	// single value is what makes a step run once per item.
+	nodeIsSequence []bool
 }
 
 // newMachineStrand constructs a MachineStrand from already-resolved fields.
@@ -85,13 +194,24 @@ func newMachineStrand(
 	edges []*MachineEdge,
 	inputAnchorIds []NodeId,
 	outputAnchorIds []NodeId,
+	nodeIsSequence []bool,
 ) *MachineStrand {
+	if len(nodes) != len(nodeIsSequence) {
+		panic("every node of a strand has a cardinality")
+	}
 	return &MachineStrand{
 		nodes:           nodes,
 		edges:           edges,
 		inputAnchorIds:  inputAnchorIds,
 		outputAnchorIds: outputAnchorIds,
+		nodeIsSequence:  nodeIsSequence,
 	}
+}
+
+// NodeIsSequence reports whether node `id` holds a sequence, as its
+// producer's output declares.
+func (s *MachineStrand) NodeIsSequence(id NodeId) bool {
+	return s.nodeIsSequence[id]
 }
 
 // Nodes returns all distinct data positions, indexed by NodeId.
@@ -137,95 +257,110 @@ func (s *MachineStrand) OutputAnchors() []*urn.MediaUrn {
 	return result
 }
 
-// IsEquivalent checks strict positional equivalence with another MachineStrand.
+// IsEquivalent checks strict equivalence with another MachineStrand.
 //
 // Walks both strands in canonical edge order, building a bijection between
-// NodeIds on the fly. Any anchor or edge mismatch fails the comparison.
+// NodeIds on the fly. Any edge mismatch (cap URN, policy, assignment, outputs,
+// or IsLoop) fails the comparison, and so does an inconsistent bijection or
+// two paired nodes that hold different types.
 func (s *MachineStrand) IsEquivalent(other *MachineStrand) bool {
-	if len(s.nodes) != len(other.nodes) {
-		return false
-	}
 	if len(s.edges) != len(other.edges) {
 		return false
 	}
-	if len(s.inputAnchorIds) != len(other.inputAnchorIds) {
-		return false
-	}
-	if len(s.outputAnchorIds) != len(other.outputAnchorIds) {
-		return false
-	}
 
-	selfToOther := make([]int, len(s.nodes))
-	otherToSelf := make([]int, len(other.nodes))
-	for i := range selfToOther {
-		selfToOther[i] = -1
-	}
-	for i := range otherToSelf {
-		otherToSelf[i] = -1
-	}
-
+	nodeMap := newNodeBijection(len(s.nodes), len(other.nodes))
 	bindNode := func(selfId, otherId NodeId) bool {
-		// URNs must be equivalent.
-		if !s.nodes[selfId].IsEquivalent(other.nodes[otherId]) {
-			return false
-		}
-		si, oi := int(selfId), int(otherId)
-		if selfToOther[si] == -1 && otherToSelf[oi] == -1 {
-			selfToOther[si] = oi
-			otherToSelf[oi] = si
-			return true
-		}
-		if selfToOther[si] == oi && otherToSelf[oi] == si {
-			return true
-		}
-		return false
+		// The two nodes must hold equivalent URNs, whatever the bijection
+		// says: nodes that stand for each other carry one type.
+		return s.nodes[selfId].IsEquivalent(other.nodes[otherId]) && nodeMap.bind(selfId, otherId)
 	}
 
-	// Compare anchors (sorted multisets).
-	for i := range s.inputAnchorIds {
-		if !bindNode(s.inputAnchorIds[i], other.inputAnchorIds[i]) {
-			return false
-		}
-	}
-	for i := range s.outputAnchorIds {
-		if !bindNode(s.outputAnchorIds[i], other.outputAnchorIds[i]) {
-			return false
-		}
-	}
-
-	// Compare edges positionally.
+	// The edges decide which node is which: every node is a source or an
+	// output of some edge, and an edge says what each of its nodes is FOR
+	// (which arg it feeds, which output it is). Two inputs of one type are told
+	// apart by that and by nothing else — not by the order they were first
+	// written in, which is not part of what a machine is.
 	for i, se := range s.edges {
 		oe := other.edges[i]
-		if se.IsLoop != oe.IsLoop {
+		if se.IsLoop != oe.IsLoop || !se.Policy.Equal(oe.Policy) || !se.CapUrn.IsEquivalent(oe.CapUrn) {
 			return false
 		}
-		if !se.CapUrn.IsEquivalent(oe.CapUrn) {
+		if len(se.Assignment) != len(oe.Assignment) || len(se.Outputs) != len(oe.Outputs) {
 			return false
 		}
-		if len(se.Assignment) != len(oe.Assignment) {
-			return false
-		}
-		// Assignment is pre-sorted by CapArgMediaUrn — positional comparison is canonical.
+		// Assignment is pre-sorted by CapArgMediaUrn — positional comparison
+		// is canonical.
 		for j, sb := range se.Assignment {
 			ob := oe.Assignment[j]
 			if !sb.CapArgMediaUrn.IsEquivalent(ob.CapArgMediaUrn) {
 				return false
 			}
-			if !bindNode(sb.Source, ob.Source) {
+			switch {
+			case sb.Source.IsConstant != ob.Source.IsConstant:
+				return false
+			case sb.Source.IsConstant:
+				// Two machines that give an arg different constants behave
+				// differently.
+				if !constantsEqual(sb.Source.Constant, ob.Source.Constant) {
+					return false
+				}
+			case !bindNode(sb.Source.Node, ob.Source.Node):
 				return false
 			}
 		}
-		if !bindNode(se.Target, oe.Target) {
-			return false
+		// Sorted by output media URN, like the assignment.
+		for j, so := range se.Outputs {
+			oo := oe.Outputs[j]
+			if !so.OutputMediaUrn.IsEquivalent(oo.OutputMediaUrn) || !bindNode(so.Node, oo.Node) {
+				return false
+			}
 		}
 	}
+
+	// Every node of a strand is a source or an output of one of its edges, so
+	// the walk has paired every node of each strand with one of the other:
+	// the strands have the same nodes, and the same of them are anchors.
+	return true
+}
+
+// nodeBijection maps the nodes of one strand to the nodes of another during an
+// equivalence walk. Each bind records a new pair or confirms one already
+// made; a node of either strand paired with two nodes of the other is refused.
+type nodeBijection struct {
+	selfToOther []int
+	otherToSelf []int
+}
+
+const unbound = -1
+
+func newNodeBijection(selfLen, otherLen int) *nodeBijection {
+	b := &nodeBijection{selfToOther: make([]int, selfLen), otherToSelf: make([]int, otherLen)}
+	for i := range b.selfToOther {
+		b.selfToOther[i] = unbound
+	}
+	for i := range b.otherToSelf {
+		b.otherToSelf[i] = unbound
+	}
+	return b
+}
+
+func (b *nodeBijection) bind(selfId, otherId NodeId) bool {
+	si, oi := int(selfId), int(otherId)
+	if b.selfToOther[si] != unbound && b.selfToOther[si] != oi {
+		return false
+	}
+	if b.otherToSelf[oi] != unbound && b.otherToSelf[oi] != si {
+		return false
+	}
+	b.selfToOther[si] = oi
+	b.otherToSelf[oi] = si
 	return true
 }
 
 // Machine is an ordered collection of resolved MachineStrands.
 //
-// Strand declaration order matters: the executor walks the strands in this
-// order at runtime, and IsEquivalent compares strand-by-strand positionally.
+// Strand declaration order matters: IsEquivalent compares strand-by-strand
+// positionally.
 type Machine struct {
 	strands []*MachineStrand
 }
@@ -310,387 +445,4 @@ func (m *Machine) String() string {
 		edgeCount += len(s.edges)
 	}
 	return fmt.Sprintf("Machine(%d strands, %d edges)", len(m.strands), edgeCount)
-}
-
-// --- Serializer ---
-
-// NotationFormat controls the serialization format for machine notation.
-type NotationFormat int
-
-const (
-	NotationFormatBracketed NotationFormat = iota
-	NotationFormatLineBased
-)
-
-// ToMachineNotation serializes this machine to canonical one-line bracketed notation.
-func (m *Machine) ToMachineNotation() string {
-	return m.ToMachineNotationFormatted(NotationFormatBracketed)
-}
-
-// ToMachineNotationMultiline serializes to multi-line notation.
-func (m *Machine) ToMachineNotationMultiline() string {
-	return m.ToMachineNotationFormatted(NotationFormatLineBased)
-}
-
-// ToMachineNotationFormatted serializes in the specified format.
-func (m *Machine) ToMachineNotationFormatted(format NotationFormat) string {
-	if m.IsEmpty() {
-		return ""
-	}
-
-	var parts []string
-	open, close_ := "", ""
-	if format == NotationFormatBracketed {
-		open, close_ = "[", "]"
-	}
-
-	edgeCounter := 0
-	nodeCounter := 0
-
-	for _, strand := range m.strands {
-		// Build per-strand node name map (NodeId -> name).
-		nodeNames := make(map[NodeId]string)
-
-		assignNodeName := func(id NodeId) string {
-			if name, ok := nodeNames[id]; ok {
-				return name
-			}
-			name := fmt.Sprintf("n%d", nodeCounter)
-			nodeCounter++
-			nodeNames[id] = name
-			return name
-		}
-
-		// Collect alias -> edge index mapping. The Rust reference
-		// implementation uses pure-index aliases (`edge_<idx>`) for every
-		// edge — there is no privileged tag (such as the legacy `op=…`
-		// tag) we can derive a friendlier name from, so we mirror that
-		// scheme here.
-		aliases := make(map[string]int) // alias -> edge index within strand
-		aliasOrder := make([]string, len(strand.edges))
-
-		for eIdx := range strand.edges {
-			alias := fmt.Sprintf("edge_%d", edgeCounter)
-			aliases[alias] = eIdx
-			aliasOrder[eIdx] = alias
-			edgeCounter++
-		}
-
-		// Sort headers by alias for determinism.
-		sortedAliases := make([]string, 0, len(aliases))
-		for alias := range aliases {
-			sortedAliases = append(sortedAliases, alias)
-		}
-		sort.Strings(sortedAliases)
-
-		for _, alias := range sortedAliases {
-			eIdx := aliases[alias]
-			edge := strand.edges[eIdx]
-			parts = append(parts, fmt.Sprintf("%s%s %s%s", open, alias, edge.CapUrn, close_))
-		}
-
-		// Emit wirings in canonical edge order. The per-item map (edge.IsLoop) is
-		// NOT emitted into notation text: it is a derived cardinality property, not
-		// authored syntax (the LOOP keyword is retired). Re-parsing this notation
-		// re-derives the same IsLoop from the cap shapes, so round-trip stays
-		// semantically stable.
-		for eIdx, edge := range strand.edges {
-			alias := aliasOrder[eIdx]
-
-			// Sort assignment by Source for wiring emission.
-			sortedAssignment := make([]EdgeAssignmentBinding, len(edge.Assignment))
-			copy(sortedAssignment, edge.Assignment)
-			sort.Slice(sortedAssignment, func(a, b int) bool {
-				return sortedAssignment[a].Source < sortedAssignment[b].Source
-			})
-
-			sources := make([]string, len(sortedAssignment))
-			for i, b := range sortedAssignment {
-				sources[i] = assignNodeName(b.Source)
-			}
-			targetName := assignNodeName(edge.Target)
-
-			if len(sources) == 1 {
-				parts = append(parts, fmt.Sprintf("%s%s -> %s -> %s%s",
-					open, sources[0], alias, targetName, close_))
-			} else {
-				group := strings.Join(sources, ", ")
-				parts = append(parts, fmt.Sprintf("%s(%s) -> %s -> %s%s",
-					open, group, alias, targetName, close_))
-			}
-		}
-	}
-
-	if format == NotationFormatBracketed {
-		return strings.Join(parts, "")
-	}
-	return strings.Join(parts, "\n")
-}
-
-// ToMachineNotationAliased serializes to machine notation rendering each cap by
-// its registered display alias (shortest name, ties alphabetical) when one
-// exists, falling back to the canonical URN otherwise.
-//
-// This is the "store aliased" form: generated and persisted machines use it so
-// the saved notation reads in terms of aliases. An aliased cap is referenced
-// DIRECTLY in the wiring's cap position by its alias name, with NO header (the
-// grammar only permits an alias — a colon-free token — in the wiring cap
-// position, never in a header, so aliasing implies header-less). An un-aliased
-// cap keeps its synthetic edge_N token plus an [edge_N cap:...] header. The
-// parser resolves the aliases back to URNs on load (its async warm-up hydrates
-// the alias cache), so the form round-trips.
-//
-// Mirrors Rust machine::serializer::Machine::to_machine_notation_aliased.
-func (m *Machine) ToMachineNotationAliased(registry *fabric.FabricRegistry, format NotationFormat) string {
-	if m.IsEmpty() {
-		return ""
-	}
-
-	var parts []string
-	open, close_ := "", ""
-	if format == NotationFormatBracketed {
-		open, close_ = "[", "]"
-	}
-
-	// Per-strand plans, allocated from global counters shared across all
-	// strands, matching the canonical serializer's counter discipline.
-	type strandPlan struct {
-		nodeNames   []string
-		edgeTokens  []string // cap-position token per edge, in canonical edge order
-		needsHeader []bool   // true for synthetic edge_N tokens, false for aliases
-	}
-	plans := make([]strandPlan, len(m.strands))
-	nextAlias := 0
-	nextNode := 0
-	for i, strand := range m.strands {
-		edgeTokens := make([]string, len(strand.edges))
-		needsHeader := make([]bool, len(strand.edges))
-		for eIdx, edge := range strand.edges {
-			if alias, ok := registry.DisplayAliasForURN(edge.CapUrn.String()); ok {
-				// Cap has a registered alias: use it directly in the wiring (the
-				// parser resolves it as a registry cap alias), no header.
-				edgeTokens[eIdx] = alias
-				needsHeader[eIdx] = false
-			} else {
-				// No alias: synthetic edge token with a header binding it to the
-				// cap URN.
-				edgeTokens[eIdx] = fmt.Sprintf("edge_%d", nextAlias)
-				needsHeader[eIdx] = true
-			}
-			nextAlias++
-		}
-		nodeNames := make([]string, len(strand.nodes))
-		for j := range strand.nodes {
-			nodeNames[j] = fmt.Sprintf("n%d", nextNode)
-			nextNode++
-		}
-		plans[i] = strandPlan{nodeNames: nodeNames, edgeTokens: edgeTokens, needsHeader: needsHeader}
-	}
-
-	// Headers across all strands — only for edges whose cap-position token is a
-	// synthetic edge_N (aliased caps are referenced directly in the wiring and
-	// need no header). Emitted in strand/edge walk order, mirroring Rust.
-	for sIdx, strand := range m.strands {
-		plan := plans[sIdx]
-		for eIdx, edge := range strand.edges {
-			if plan.needsHeader[eIdx] {
-				parts = append(parts, fmt.Sprintf("%s%s %s%s", open, plan.edgeTokens[eIdx], edge.CapUrn, close_))
-			}
-		}
-	}
-
-	// Wirings across all strands, in canonical edge order. IsLoop is a derived
-	// cardinality property, not authored syntax (the LOOP keyword is retired) —
-	// it is never emitted into notation text.
-	for sIdx, strand := range m.strands {
-		plan := plans[sIdx]
-		for eIdx, edge := range strand.edges {
-			token := plan.edgeTokens[eIdx]
-
-			sortedAssignment := make([]EdgeAssignmentBinding, len(edge.Assignment))
-			copy(sortedAssignment, edge.Assignment)
-			sort.Slice(sortedAssignment, func(a, b int) bool {
-				return sortedAssignment[a].Source < sortedAssignment[b].Source
-			})
-
-			sources := make([]string, len(sortedAssignment))
-			for i, b := range sortedAssignment {
-				sources[i] = plan.nodeNames[b.Source]
-			}
-			targetName := plan.nodeNames[edge.Target]
-
-			if len(sources) == 1 {
-				parts = append(parts, fmt.Sprintf("%s%s -> %s -> %s%s",
-					open, sources[0], token, targetName, close_))
-			} else {
-				group := strings.Join(sources, ", ")
-				parts = append(parts, fmt.Sprintf("%s(%s) -> %s -> %s%s",
-					open, group, token, targetName, close_))
-			}
-		}
-	}
-
-	if format == NotationFormatBracketed {
-		return strings.Join(parts, "")
-	}
-	return strings.Join(parts, "\n")
-}
-
-// StrandToMachineNotation knits a planner-produced Strand into a single-strand
-// Machine and serializes it to one-line bracketed machine notation rendering
-// each cap by its registered display alias (the "store aliased" form). This is
-// the notation used for generated/discovered paths and for persistence — saved
-// and surfaced machines read in terms of aliases. The parser resolves the
-// aliases back to URNs on load.
-//
-// Alias-independent canonical identity, when needed, comes from
-// Machine.ToMachineNotation() on the knitted machine — not this.
-//
-// Mirrors Rust planner::live_cap_fab::Strand::to_machine_notation.
-func StrandToMachineNotation(strand *planner.Strand, registry *fabric.FabricRegistry) (string, *MachineAbstractionError) {
-	m, err := FromStrand(strand, registry)
-	if err != nil {
-		return "", err
-	}
-	return m.ToMachineNotationAliased(registry, NotationFormatBracketed), nil
-}
-
-// jsonEscape escapes only `\` and `"` in a string.
-// MediaUrn and CapUrn produce ASCII-safe canonical text, so only
-// these two metacharacters need escaping for valid JSON output.
-func jsonEscape(s string) string {
-	var out strings.Builder
-	for _, c := range s {
-		if c == '"' {
-			out.WriteString(`\"`)
-		} else if c == '\\' {
-			out.WriteString(`\\`)
-		} else {
-			out.WriteRune(c)
-		}
-	}
-	return out.String()
-}
-
-// ToRenderPayloadJSON serializes the machine to a JSON payload intended for
-// rendering the graph in a UI. The format mirrors the Rust to_render_payload_json.
-//
-// Format: {"strands":[{"nodes":[...],"edges":[...],"input_anchor_nodes":[...],"output_anchor_nodes":[...]},...]}
-func (m *Machine) ToRenderPayloadJSON() string {
-	return m.renderPayloadJSON(nil)
-}
-
-// ToRenderPayloadJSONAliased builds the render payload labelling each edge by
-// the cap's display alias when one is registered (shortest, then alphabetical),
-// falling back to the synthetic edge_N for an un-aliased cap. The render payload
-// is a display surface, so it uses the aliased token, mirroring Rust's
-// to_render_payload_json (which always takes the registry).
-func (m *Machine) ToRenderPayloadJSONAliased(registry *fabric.FabricRegistry) string {
-	return m.renderPayloadJSON(registry)
-}
-
-// renderPayloadJSON is the shared body. When registry is non-nil, edge alias
-// labels are the cap's display alias (falling back to edge_N); when nil, every
-// edge label is the synthetic edge_N.
-func (m *Machine) renderPayloadJSON(registry *fabric.FabricRegistry) string {
-	if m.IsEmpty() {
-		return `{"strands":[]}`
-	}
-
-	// Build per-strand node and edge aliases. Counters are global across all
-	// strands, matching the Rust serializer's behavior.
-	type strandPlan struct {
-		nodeNames   []string
-		edgeAliases []string
-	}
-	plans := make([]strandPlan, len(m.strands))
-	nextNode := 0
-	nextAlias := 0
-	for i, strand := range m.strands {
-		nodeNames := make([]string, len(strand.nodes))
-		for j := range strand.nodes {
-			nodeNames[j] = fmt.Sprintf("n%d", nextNode)
-			nextNode++
-		}
-		edgeAliases := make([]string, len(strand.edges))
-		for j, edge := range strand.edges {
-			if registry != nil {
-				if alias, ok := registry.DisplayAliasForURN(edge.CapUrn.String()); ok {
-					edgeAliases[j] = alias
-					nextAlias++
-					continue
-				}
-			}
-			edgeAliases[j] = fmt.Sprintf("edge_%d", nextAlias)
-			nextAlias++
-		}
-		plans[i] = strandPlan{nodeNames: nodeNames, edgeAliases: edgeAliases}
-	}
-
-	var out strings.Builder
-	out.WriteString(`{"strands":[`)
-	for sIdx, strand := range m.strands {
-		if sIdx > 0 {
-			out.WriteByte(',')
-		}
-		plan := plans[sIdx]
-		out.WriteByte('{')
-
-		// nodes
-		out.WriteString(`"nodes":[`)
-		for id, u := range strand.nodes {
-			if id > 0 {
-				out.WriteByte(',')
-			}
-			fmt.Fprintf(&out, `{"id":%q,"urn":%q}`, plan.nodeNames[id], u.String())
-		}
-		out.WriteString(`],`)
-
-		// edges
-		out.WriteString(`"edges":[`)
-		for eIdx, edge := range strand.edges {
-			if eIdx > 0 {
-				out.WriteByte(',')
-			}
-			isLoopStr := "false"
-			if edge.IsLoop {
-				isLoopStr = "true"
-			}
-			fmt.Fprintf(&out, `{"alias":%q,"cap_urn":%q,"is_loop":%s,"assignment":[`,
-				plan.edgeAliases[eIdx], edge.CapUrn.String(), isLoopStr)
-			for bIdx, b := range edge.Assignment {
-				if bIdx > 0 {
-					out.WriteByte(',')
-				}
-				fmt.Fprintf(&out, `{"cap_arg_media_urn":%q,"source_node":%q}`,
-					b.CapArgMediaUrn.String(), plan.nodeNames[b.Source])
-			}
-			fmt.Fprintf(&out, `],"target_node":%q}`, plan.nodeNames[edge.Target])
-		}
-		out.WriteString(`],`)
-
-		// input_anchor_nodes
-		out.WriteString(`"input_anchor_nodes":[`)
-		for i, id := range strand.inputAnchorIds {
-			if i > 0 {
-				out.WriteByte(',')
-			}
-			fmt.Fprintf(&out, "%q", plan.nodeNames[id])
-		}
-		out.WriteString(`],`)
-
-		// output_anchor_nodes
-		out.WriteString(`"output_anchor_nodes":[`)
-		for i, id := range strand.outputAnchorIds {
-			if i > 0 {
-				out.WriteByte(',')
-			}
-			fmt.Fprintf(&out, "%q", plan.nodeNames[id])
-		}
-		out.WriteString(`]`)
-
-		out.WriteByte('}')
-	}
-	out.WriteString(`]}`)
-	return out.String()
 }

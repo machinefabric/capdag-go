@@ -70,7 +70,18 @@ func (s *ArgSource) GetCliFlag() *string {
 // CapArg represents an argument definition with sources
 type CapArg struct {
 	MediaUrn string `json:"media_urn"`
-	Required bool   `json:"required"`
+	// Name is the label a machine selects this argument by where types cannot
+	// decide. Required, and unique among the cap's arguments (RULE17). It is a
+	// label local to the definition and identifies nothing: the argument is
+	// identified by MediaUrn, and nothing may be derived about a URN from a
+	// name or about a name from a URN (RULE12).
+	Name string `json:"name"`
+	// Accepts is the media URN this argument's stream must conform to, when
+	// that is not its own MediaUrn. Never beside a stdin source, which says
+	// the same for the main input (RULE18). It is what lets two arguments
+	// take values of one type while keeping distinct URNs.
+	Accepts  *string `json:"accepts,omitempty"`
+	Required bool    `json:"required"`
 	// Emitted even when false, as the reference does: the manifest is compared
 	// across implementations and `omitempty` made Go's bytes differ from Rust's
 	// for the identical cap.
@@ -105,6 +116,8 @@ func decodeArbitraryJSON(data []byte) (any, error) {
 
 type capArgJSON struct {
 	MediaUrn       string           `json:"media_urn"`
+	Name           *string          `json:"name"`
+	Accepts        *string          `json:"accepts,omitempty"`
 	Required       bool             `json:"required"`
 	IsSequence     bool             `json:"is_sequence"`
 	Streaming      bool             `json:"streaming"`
@@ -127,7 +140,15 @@ func (a *CapArg) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
+	// A definition without a name is not a definition this capdag reads
+	// (matches Rust: `name` has no default).
+	if raw.Name == nil {
+		return fmt.Errorf("missing field `name`")
+	}
+
 	a.MediaUrn = raw.MediaUrn
+	a.Name = *raw.Name
+	a.Accepts = raw.Accepts
 	a.Required = raw.Required
 	a.IsSequence = raw.IsSequence
 	a.Streaming = raw.Streaming
@@ -155,20 +176,24 @@ func (a *CapArg) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// NewCapArg creates a new cap argument
-func NewCapArg(mediaUrn string, required bool, sources []ArgSource) CapArg {
+// NewCapArg creates a new cap argument. `name` is the label a machine selects
+// it by; it must be unique among the cap's arguments.
+// Matches Rust: CapArg::new(media_urn, name, required, sources)
+func NewCapArg(mediaUrn string, name string, required bool, sources []ArgSource) CapArg {
 	return CapArg{
 		MediaUrn: mediaUrn,
+		Name:     name,
 		Required: required,
 		Sources:  sources,
 	}
 }
 
 // NewCapArgWithDescription creates a new cap argument with description
-func NewCapArgWithDescription(mediaUrn string, required bool, sources []ArgSource, description string) CapArg {
+func NewCapArgWithDescription(mediaUrn string, name string, required bool, sources []ArgSource, description string) CapArg {
 	desc := description
 	return CapArg{
 		MediaUrn:       mediaUrn,
+		Name:           name,
 		Required:       required,
 		Sources:        sources,
 		ArgDescription: &desc,
@@ -178,6 +203,7 @@ func NewCapArgWithDescription(mediaUrn string, required bool, sources []ArgSourc
 // NewCapArgWithFullDefinition creates a new cap argument with all fields set
 func NewCapArgWithFullDefinition(
 	mediaUrn string,
+	name string,
 	required bool,
 	sources []ArgSource,
 	argDescription string,
@@ -187,12 +213,45 @@ func NewCapArgWithFullDefinition(
 	desc := argDescription
 	return CapArg{
 		MediaUrn:       mediaUrn,
+		Name:           name,
 		Required:       required,
 		Sources:        sources,
 		ArgDescription: &desc,
 		DefaultValue:   defaultValue,
 		Metadata:       metadata,
 	}
+}
+
+// Accepting returns this argument declaring `accepts` as the type its stream
+// must conform to.
+// Matches Rust: pub fn accepting(self, accepts) -> Self
+func (a CapArg) Accepting(accepts string) CapArg {
+	a.Accepts = &accepts
+	return a
+}
+
+// GetName returns the argument's name.
+func (a *CapArg) GetName() string {
+	return a.Name
+}
+
+// AcceptedUrn returns the media URN a value bound to this argument must
+// conform to: its stdin source's URN when it declares one (the main input),
+// else what it says it accepts, else its own media URN. This is what matching
+// reads. It is not what the stream is delivered under — that is StreamUrn,
+// which for an argument with `accepts` is its own URN, so two arguments
+// accepting one type stay distinct on the wire.
+// Matches Rust: pub fn accepted_urn(&self) -> &str
+func (a *CapArg) AcceptedUrn() string {
+	for _, s := range a.Sources {
+		if s.Stdin != nil {
+			return *s.Stdin
+		}
+	}
+	if a.Accepts != nil {
+		return *a.Accepts
+	}
+	return a.MediaUrn
 }
 
 // GetMetadata gets the metadata for CapArg
@@ -336,9 +395,26 @@ func (a *CapArg) GetMediaType(registry media.MediaDefSource) (string, error) {
 }
 
 // CapOutput represents the output definition for a cap
+// OutputCarries says what an output carries when that is not its own media URN.
+type OutputCarries string
+
+// OutputCarriesInput: the output carries the cap's main input, type unchanged.
+const OutputCarriesInput OutputCarries = "input"
+
 type CapOutput struct {
-	MediaUrn          string `json:"media_urn"`
+	MediaUrn string `json:"media_urn"`
+	// Name is the label a machine takes this output by. Required, and unique
+	// among the cap's outputs (RULE19). A label only: the output is
+	// identified by MediaUrn.
+	Name              string `json:"name"`
 	OutputDescription string `json:"output_description"`
+	// Optional: the cap may end without producing this output. What needs
+	// it is then skipped. Emitted even when false — see CapArg.IsSequence.
+	Optional bool `json:"optional"`
+	// Carries is what the output carries when that is not its own MediaUrn.
+	// Only an output other than the main one, of a cap that takes an input,
+	// may declare it (RULE22).
+	Carries *OutputCarries `json:"carries,omitempty"`
 	// Emitted even when false — see CapArg.IsSequence.
 	IsSequence bool `json:"is_sequence"`
 	// Streaming declares that this output MAY be emitted without a length
@@ -351,7 +427,10 @@ type CapOutput struct {
 
 type capOutputJSON struct {
 	MediaUrn          string           `json:"media_urn"`
+	Name              *string          `json:"name"`
 	OutputDescription string           `json:"output_description"`
+	Optional          bool             `json:"optional"`
+	Carries           *string          `json:"carries,omitempty"`
 	IsSequence        bool             `json:"is_sequence"`
 	Streaming         bool             `json:"streaming"`
 	Metadata          *json.RawMessage `json:"metadata,omitempty"`
@@ -366,8 +445,21 @@ func (co *CapOutput) UnmarshalJSON(data []byte) error {
 	if err := decoder.Decode(&raw); err != nil {
 		return err
 	}
+	if raw.Name == nil {
+		return fmt.Errorf("missing field `name`")
+	}
 	co.MediaUrn = raw.MediaUrn
+	co.Name = *raw.Name
 	co.OutputDescription = raw.OutputDescription
+	co.Optional = raw.Optional
+	co.Carries = nil
+	if raw.Carries != nil {
+		carries := OutputCarries(*raw.Carries)
+		if carries != OutputCarriesInput {
+			return fmt.Errorf("unknown variant `%s`, expected `input`", *raw.Carries)
+		}
+		co.Carries = &carries
+	}
 	co.IsSequence = raw.IsSequence
 	co.Streaming = raw.Streaming
 	co.Metadata = nil
@@ -414,21 +506,46 @@ func (co *CapOutput) SetMetadata(metadata any) {
 	co.Metadata = metadata
 }
 
-// NewCapOutput creates a new output definition with a media URN
-func NewCapOutput(mediaUrn string, description string) *CapOutput {
+// NewCapOutput creates a new output definition. `name` is the label a machine
+// takes it by; it must be unique among the cap's outputs.
+// Matches Rust: CapOutput::new(media_urn, name, description)
+func NewCapOutput(mediaUrn string, name string, description string) *CapOutput {
 	return &CapOutput{
 		MediaUrn:          mediaUrn,
+		Name:              name,
 		OutputDescription: description,
 	}
 }
 
 // NewCapOutputWithFullDefinition creates a new output definition with all fields set
-func NewCapOutputWithFullDefinition(mediaUrn string, description string, metadata any) *CapOutput {
+func NewCapOutputWithFullDefinition(mediaUrn string, name string, description string, metadata any) *CapOutput {
 	return &CapOutput{
 		MediaUrn:          mediaUrn,
+		Name:              name,
 		OutputDescription: description,
 		Metadata:          metadata,
 	}
+}
+
+// GetName returns the output's name.
+func (co *CapOutput) GetName() string {
+	return co.Name
+}
+
+// AsOptional marks whether the cap may end without producing this output.
+// Matches Rust: pub fn optional(self, optional: bool) -> Self
+func (co *CapOutput) AsOptional(optional bool) *CapOutput {
+	co.Optional = optional
+	return co
+}
+
+// CarryingInput marks the output as carrying the cap's main input, type
+// unchanged, rather than its own media URN.
+// Matches Rust: pub fn carrying_input(self) -> Self
+func (co *CapOutput) CarryingInput() *CapOutput {
+	carries := OutputCarriesInput
+	co.Carries = &carries
+	return co
 }
 
 // ClearMetadata clears the metadata for CapOutput
@@ -497,9 +614,12 @@ type Cap struct {
 	Aliases []string `json:"aliases"`
 	// IsAbstract marks a generic-input dispatch umbrella cap: a valid alias
 	// target never backed by a cartridge and never a runnable graph edge.
-	IsAbstract          bool          `json:"abstract,omitempty"`
-	Args                []CapArg      `json:"args,omitempty"`
-	Output              *CapOutput    `json:"output,omitempty"`
+	IsAbstract bool     `json:"abstract,omitempty"`
+	Args       []CapArg `json:"args,omitempty"`
+	// Outputs are the outputs the cap gives. Exactly one is the main output,
+	// whose media URN is the cap URN's out=; a cap whose out= is media:void
+	// declares none (RULE21). Each has a response stream of its own.
+	Outputs             []CapOutput   `json:"outputs,omitempty"`
 	MetadataJSON        any           `json:"metadata_json,omitempty"`
 	RegisteredBy        *RegisteredBy `json:"registered_by,omitempty"`
 	SupportedModelTypes []string      `json:"supported_model_types,omitempty"`
@@ -548,7 +668,7 @@ func NewCapWithFullDefinition(
 	metadata map[string]string,
 	aliases []string,
 	args []CapArg,
-	output *CapOutput,
+	outputs []CapOutput,
 	metadataJSON any,
 ) *Cap {
 	if metadata == nil {
@@ -564,7 +684,7 @@ func NewCapWithFullDefinition(
 		Metadata:       metadata,
 		Aliases:        aliases,
 		Args:           args,
-		Output:         output,
+		Outputs:        outputs,
 		MetadataJSON:   metadataJSON,
 	}
 }
@@ -688,14 +808,81 @@ func (c *Cap) HasAlias(name string) bool {
 	return false
 }
 
-// GetOutput gets the output definition if defined
-func (c *Cap) GetOutput() *CapOutput {
-	return c.Output
+// GetOutputs returns every output the cap declares.
+// Matches Rust: pub fn get_outputs(&self) -> &[CapOutput]
+func (c *Cap) GetOutputs() []CapOutput {
+	return c.Outputs
 }
 
-// SetOutput sets the output definition
-func (c *Cap) SetOutput(output *CapOutput) {
-	c.Output = output
+// MainOutput returns the cap's main output — the one whose media URN is
+// equivalent to the URN's out= — or nil when it declares none.
+// Matches Rust: pub fn main_output(&self) -> Option<&CapOutput>
+func (c *Cap) MainOutput() *CapOutput {
+	outSpec, err := urn.NewMediaUrnFromString(c.Urn.OutSpec())
+	if err != nil {
+		return nil
+	}
+	for i := range c.Outputs {
+		outputUrn, err := urn.NewMediaUrnFromString(c.Outputs[i].MediaUrn)
+		if err != nil {
+			continue
+		}
+		if outputUrn.IsEquivalent(outSpec) {
+			return &c.Outputs[i]
+		}
+	}
+	return nil
+}
+
+// OutputByUrn returns the output whose media URN is equivalent to mediaUrn.
+// Matches Rust: pub fn output_by_urn(&self, media_urn: &str) -> Option<&CapOutput>
+func (c *Cap) OutputByUrn(mediaUrn string) *CapOutput {
+	wanted, err := urn.NewMediaUrnFromString(mediaUrn)
+	if err != nil {
+		return nil
+	}
+	for i := range c.Outputs {
+		outputUrn, err := urn.NewMediaUrnFromString(c.Outputs[i].MediaUrn)
+		if err != nil {
+			continue
+		}
+		if outputUrn.IsEquivalent(wanted) {
+			return &c.Outputs[i]
+		}
+	}
+	return nil
+}
+
+// OutputNamed returns the output a machine takes by `name`.
+// Matches Rust: pub fn output_named(&self, name: &str) -> Option<&CapOutput>
+func (c *Cap) OutputNamed(name string) *CapOutput {
+	for i := range c.Outputs {
+		if c.Outputs[i].Name == name {
+			return &c.Outputs[i]
+		}
+	}
+	return nil
+}
+
+// ArgNamed returns the argument a machine selects by `name`.
+// Matches Rust: pub fn arg_named(&self, name: &str) -> Option<&CapArg>
+func (c *Cap) ArgNamed(name string) *CapArg {
+	for i := range c.Args {
+		if c.Args[i].Name == name {
+			return &c.Args[i]
+		}
+	}
+	return nil
+}
+
+// SetOutputs replaces the cap's outputs.
+func (c *Cap) SetOutputs(outputs []CapOutput) {
+	c.Outputs = outputs
+}
+
+// AddOutput adds an output to the cap.
+func (c *Cap) AddOutput(output CapOutput) {
+	c.Outputs = append(c.Outputs, output)
 }
 
 // GetMetadataJSON gets the metadata JSON
@@ -794,9 +981,10 @@ func (c *Cap) SequenceShape() (bool, bool) {
 			panic("cap registry invariant: every non-void cap declares its main input")
 		}
 	}
+	// The primary data path ends at the main output.
 	outputIsSequence := false
-	if c.Output != nil {
-		outputIsSequence = c.Output.IsSequence
+	if main := c.MainOutput(); main != nil {
+		outputIsSequence = main.IsSequence
 	}
 	return inputIsSequence, outputIsSequence
 }
@@ -829,8 +1017,8 @@ func (c *Cap) StreamingShape() (bool, bool) {
 		inputStreams = arg.Streaming
 	}
 	outputStreams := false
-	if c.Output != nil {
-		outputStreams = c.Output.Streaming
+	if main := c.MainOutput(); main != nil {
+		outputStreams = main.Streaming
 	}
 	return inputStreams, outputStreams
 }
@@ -998,7 +1186,7 @@ func (c *Cap) Equals(other *Cap) bool {
 		return false
 	}
 
-	if !reflect.DeepEqual(c.Output, other.Output) {
+	if len(c.Outputs) != len(other.Outputs) || (len(c.Outputs) > 0 && !reflect.DeepEqual(c.Outputs, other.Outputs)) {
 		return false
 	}
 
@@ -1045,8 +1233,8 @@ func (c *Cap) MarshalJSON() ([]byte, error) {
 		capData["args"] = c.Args
 	}
 
-	if c.Output != nil {
-		capData["output"] = c.Output
+	if len(c.Outputs) > 0 {
+		capData["outputs"] = c.Outputs
 	}
 
 	if c.MetadataJSON != nil {
@@ -1160,14 +1348,15 @@ func (c *Cap) UnmarshalJSON(data []byte) error {
 		c.Args = args
 	}
 
-	// Handle output
-	if output, ok := raw["output"]; ok {
-		outputBytes, _ := json.Marshal(output)
-		var capOutput CapOutput
-		if err := json.Unmarshal(outputBytes, &capOutput); err != nil {
-			return fmt.Errorf("failed to unmarshal output: %w", err)
+	// Handle outputs
+	c.Outputs = nil
+	if outputsRaw, ok := raw["outputs"]; ok {
+		outputsBytes, _ := json.Marshal(outputsRaw)
+		var outputs []CapOutput
+		if err := json.Unmarshal(outputsBytes, &outputs); err != nil {
+			return fmt.Errorf("failed to unmarshal outputs: %w", err)
 		}
-		c.Output = &capOutput
+		c.Outputs = outputs
 	}
 
 	if metadataJSON, ok := raw["metadata_json"]; ok {
