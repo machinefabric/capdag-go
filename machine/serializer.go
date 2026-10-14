@@ -204,30 +204,43 @@ func StrandToMachineNotation(strand *planner.Strand, registry *fabric.FabricRegi
 // ToRenderPayloadJSON serializes the machine to the JSON payload a graph view
 // draws from:
 //
-//	{"strands":[{"nodes":[{"id","urn"}],
-//	             "edges":[{"alias","cap_urn","is_loop","retry","on_error","included_as",
+//	{"strands":[{"nodes":[{"id","urn","title"}],
+//	             "edges":[{"alias","cap_urn","title","is_loop","retry","on_error","included_as",
 //	                       "assignment":[{"cap_arg_media_urn","arg_name","source_node"|"constant"}],
 //	                       "outputs":[{"output_media_urn","output_name","node"}]}],
 //	             "input_anchor_nodes":[...],"output_anchor_nodes":[...]}]}
 //
 // Node names are those of the canonical notation, so a notation string and its
-// render payload share node identities. Each step is labelled `edge_N`.
-func (m *Machine) ToRenderPayloadJSON() string {
-	return m.renderPayloadJSON(nil)
-}
-
-// ToRenderPayloadJSONAliased is ToRenderPayloadJSON labelling each step by the
-// cap's display alias when one is registered (shortest, then alphabetical),
-// and by the synthetic `edge_N` otherwise.
-func (m *Machine) ToRenderPayloadJSONAliased(registry *fabric.FabricRegistry) string {
-	return m.renderPayloadJSON(registry)
-}
-
-func (m *Machine) renderPayloadJSON(registry *fabric.FabricRegistry) string {
+// render payload share node identities; each step is its canonical `edge_N`.
+// Each node carries the title of its cached media definition and each step the
+// title of its cached cap definition. One that is not cached is refused: a
+// title is never made up from a URN.
+func (m *Machine) ToRenderPayloadJSON(registry *fabric.FabricRegistry) (string, *MachineAbstractionError) {
 	if m.IsEmpty() {
-		return `{"strands":[]}`
+		return `{"strands":[]}`, nil
 	}
-	plans := m.serializationPlan(registry)
+	plans := m.serializationPlan(nil)
+
+	// Every title first: a missing one refuses the payload before any of it
+	// is written.
+	nodeTitles := make([][]string, len(m.strands))
+	edgeTitles := make([][]string, len(m.strands))
+	for sIdx, strand := range m.strands {
+		for _, node := range strand.nodes {
+			spec := registry.GetCachedMediaDef(node.String())
+			if spec == nil {
+				return "", uncachedMediaDefError(node.String())
+			}
+			nodeTitles[sIdx] = append(nodeTitles[sIdx], spec.Title)
+		}
+		for _, edge := range strand.edges {
+			definition, ok := registry.GetCachedCap(edge.CapUrn.String())
+			if !ok {
+				return "", uncachedCapError(edge.CapUrn.String())
+			}
+			edgeTitles[sIdx] = append(edgeTitles[sIdx], definition.Title)
+		}
+	}
 
 	var out bytes.Buffer
 	text := func(value string) { writeConstantString(&out, value) }
@@ -251,6 +264,8 @@ func (m *Machine) renderPayloadJSON(registry *fabric.FabricRegistry) string {
 			text(plan.nodeNames[id])
 			out.WriteString(`,"urn":`)
 			text(strand.nodes[id].String())
+			out.WriteString(`,"title":`)
+			text(nodeTitles[sIdx][id])
 			out.WriteByte('}')
 		})
 
@@ -261,6 +276,8 @@ func (m *Machine) renderPayloadJSON(registry *fabric.FabricRegistry) string {
 			text(plan.edgeTokens[eIdx])
 			out.WriteString(`,"cap_urn":`)
 			text(edge.CapUrn.String())
+			out.WriteString(`,"title":`)
+			text(edgeTitles[sIdx][eIdx])
 			out.WriteString(`,"is_loop":` + strconv.FormatBool(edge.IsLoop))
 			out.WriteString(`,"retry":` + strconv.FormatUint(uint64(edge.Policy.Retry), 10))
 			out.WriteString(`,"on_error":`)
@@ -309,5 +326,5 @@ func (m *Machine) renderPayloadJSON(registry *fabric.FabricRegistry) string {
 		out.WriteByte('}')
 	})
 	out.WriteByte('}')
-	return out.String()
+	return out.String(), nil
 }

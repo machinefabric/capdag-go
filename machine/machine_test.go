@@ -8,6 +8,7 @@ import (
 
 	"github.com/machinefabric/capdag-go/cap"
 	"github.com/machinefabric/capdag-go/fabric"
+	"github.com/machinefabric/capdag-go/media"
 	"github.com/machinefabric/capdag-go/planner"
 	"github.com/machinefabric/capdag-go/urn"
 	"github.com/stretchr/testify/assert"
@@ -1291,7 +1292,9 @@ func Test1138_assignment_bindings_are_sorted_by_cap_arg_media_urn(t *testing.T) 
 }
 
 // TEST1176: ToRenderPayloadJSON for a populated machine includes strand with
-// nodes, edges, input_anchor_nodes, and output_anchor_nodes.
+// nodes, edges, input_anchor_nodes, and output_anchor_nodes, and the title of
+// every node and step; a title that is not cached is refused, never made up
+// from a URN.
 func Test1176_render_payload_json_includes_strand_with_anchors(t *testing.T) {
 	registry := pdfExtractEmbedRegistry()
 
@@ -1305,7 +1308,31 @@ func Test1176_render_payload_json_includes_strand_with_anchors(t *testing.T) {
 		t.Fatalf("FromStrand failed: %v", aerr)
 	}
 
-	payload := m.ToRenderPayloadJSON()
+	// No media definition is cached: there is no title for the first node.
+	_, untitled := m.ToRenderPayloadJSON(registry)
+	if untitled == nil || untitled.Kind != ErrAbstractionUncachedMediaDef {
+		t.Fatalf("a node with no cached media definition must be refused, got %v", untitled)
+	}
+	registry.AddSpec(media.StoredMediaDef{Urn: "media:document;ext=pdf", MediaType: "application/pdf", Title: "PDF"})
+	registry.AddSpec(media.StoredMediaDef{Urn: "media:txt;enc=utf-8", MediaType: "text/plain", Title: "Plain Text"})
+	registry.AddSpec(media.StoredMediaDef{Urn: "media:vec;record", MediaType: "application/json", Title: "Vector"})
+	payload, perr := m.ToRenderPayloadJSON(registry)
+	if perr != nil {
+		t.Fatalf("every title is cached: %v", perr)
+	}
+	for _, title := range []string{`"title":"PDF"`, `"title":"Plain Text"`, `"title":"Vector"`, `"title":"extract"`, `"title":"embed"`} {
+		if !containsStr(payload, title) {
+			t.Errorf("payload must carry %s, got: %q", title, payload)
+		}
+	}
+	// A cap with no cached definition has no title either.
+	noCaps := fabric.NewForTest()
+	for _, urn := range []string{"media:document;ext=pdf", "media:txt;enc=utf-8", "media:vec;record"} {
+		noCaps.AddSpec(media.StoredMediaDef{Urn: urn, MediaType: "application/json", Title: urn})
+	}
+	if _, uncached := m.ToRenderPayloadJSON(noCaps); uncached == nil || uncached.Kind != ErrAbstractionUncachedCap {
+		t.Fatalf("a step with no cached cap definition must be refused, got %v", uncached)
+	}
 
 	if !containsStr(payload, `{"strands":[`) {
 		t.Errorf("payload must start with strands array, got: %q", payload)
@@ -1333,8 +1360,8 @@ func Test1176_render_payload_json_includes_strand_with_anchors(t *testing.T) {
 // TEST1177: Rendering payload JSON for an empty machine emits an empty strands array.
 func Test1177_render_payload_for_empty_machine_has_empty_strands_array(t *testing.T) {
 	m := fromResolvedStrands(nil)
-	payload := m.ToRenderPayloadJSON()
-	if payload != `{"strands":[]}` {
+	payload, perr := m.ToRenderPayloadJSON(fabric.NewForTest())
+	if perr != nil || payload != `{"strands":[]}` {
 		t.Errorf("empty machine must produce {\"strands\":[]}, got: %q", payload)
 	}
 }

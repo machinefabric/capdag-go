@@ -179,6 +179,9 @@ func Test12735_a_step_policy(t *testing.T) {
 	// A policy that says `fail` in so many words is the default, and writes
 	// nothing.
 	assert.True(t, StepPolicy{OnError: OnErrorFail}.IsDefault())
+	// Either key said is no default.
+	assert.False(t, StepPolicy{OnError: OnErrorAbsent}.IsDefault())
+	assert.False(t, StepPolicy{Retry: 1}.IsDefault())
 	assert.True(t, StepPolicy{OnError: OnErrorFail}.Equal(StepPolicy{}))
 	assert.False(t, both.Equal(StepPolicy{Retry: 2}))
 	assert.False(t, both.Equal(StepPolicy{Retry: 3, OnError: OnErrorAbsent}))

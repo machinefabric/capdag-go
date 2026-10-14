@@ -161,6 +161,12 @@ const (
 	// ErrAbstractionNodeMediaConflict — the wirings that touch a node give it
 	// URNs that are not on one specialization chain.
 	ErrAbstractionNodeMediaConflict
+	// ErrAbstractionUncachedMediaDef — a node's media has no cached
+	// definition, so the render payload has no title for it.
+	ErrAbstractionUncachedMediaDef
+	// ErrAbstractionUncachedCap — a step's cap has no cached definition, so
+	// the render payload has no title for it.
+	ErrAbstractionUncachedCap
 )
 
 func noCapabilityStepsError() *MachineAbstractionError {
@@ -388,6 +394,20 @@ func ambiguousMachineMembersError(position int, alias string, members []Undecide
 func sourceDoesNotConformToMachineInputError(position int, alias, name, accepts, sourceUrn string) *MachineAbstractionError {
 	return atStatement(ErrAbstractionSourceDoesNotConformToMachineInput, position,
 		"input '%s' of machine '%s' holds '%s', and its source is '%s'", name, alias, accepts, sourceUrn)
+}
+
+func uncachedMediaDefError(mediaUrn string) *MachineAbstractionError {
+	return &MachineAbstractionError{
+		Kind:    ErrAbstractionUncachedMediaDef,
+		Message: fmt.Sprintf("media URN '%s' has no cached spec — cannot emit a display title for render payload", mediaUrn),
+	}
+}
+
+func uncachedCapError(capUrn string) *MachineAbstractionError {
+	return &MachineAbstractionError{
+		Kind:    ErrAbstractionUncachedCap,
+		Message: fmt.Sprintf("cap URN '%s' has no cached definition — cannot emit a display title for render payload", capUrn),
+	}
 }
 
 func nodeMediaConflictError(node, first, second string) *MachineAbstractionError {

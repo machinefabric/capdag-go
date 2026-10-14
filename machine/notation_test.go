@@ -140,7 +140,8 @@ func mediaDef(mediaUrn string, validation *media.MediaValidation, schema any) me
 
 // notationRegistry holds the caps above and the media definitions their
 // constants are held to: a window of 1 to 365, a label that is a string of
-// three allowed words, tags and references that are strings.
+// three allowed words, tags that are strings, and references of at most
+// twelve bytes.
 func notationRegistry() *fabric.FabricRegistry {
 	registry := fabric.NewForTest()
 	registry.AddCapsToCache([]*cap.Cap{compareCap(), fetchCap(), publishCap(), meanCap(), scoreCap()})
@@ -148,7 +149,19 @@ func notationRegistry() *fabric.FabricRegistry {
 	registry.AddSpec(mediaDef(windowMedia, &media.MediaValidation{Min: &minimum, Max: &maximum}, map[string]any{"type": "integer"}))
 	registry.AddSpec(mediaDef(labelMedia, &media.MediaValidation{AllowedValues: []string{"mean", "median", "max"}}, map[string]any{"type": "string"}))
 	registry.AddSpec(mediaDef(tagMedia, nil, map[string]any{"type": "string"}))
-	registry.AddSpec(mediaDef(referenceMedia, nil, nil))
+	twelve := 12
+	registry.AddSpec(mediaDef(referenceMedia, &media.MediaValidation{MaxLength: &twelve}, nil))
+	return registry
+}
+
+// titledRegistry is the notation registry with a media definition, and so a
+// title, for every media a node of the tests' machines holds: what a render
+// payload needs.
+func titledRegistry() *fabric.FabricRegistry {
+	registry := notationRegistry()
+	for _, urn := range []string{seriesMedia, benchmarkMedia, comparisonMedia, residualsMedia, noteMedia, "media:mean;numeric", "media:numeric;score"} {
+		registry.AddSpec(mediaDef(urn, nil, nil))
+	}
 	return registry
 }
 
@@ -369,6 +382,26 @@ func Test12738_a_constant_is_bound_and_validated(t *testing.T) {
 	// The bounds themselves are allowed.
 	machineOf(t, "[(path, window=1) -> compare -> result]")
 	machineOf(t, "[(path, window=365) -> compare -> result]")
+
+	// A string's length is its UTF-8 bytes: six two-byte characters fill a
+	// reference of twelve, and a seventh breaks it.
+	machineOf(t, `[(reference="éééééé") -> fetch -> s]`)
+	assert.Contains(t, refused(`[(reference="ééééééé") -> fetch -> s]`), "maximum length 12")
+
+	// A schema's required properties are held: a benchmark written as an
+	// object says its points.
+	withBenchmarkSchema := notationRegistry()
+	withBenchmarkSchema.AddSpec(mediaDef(benchmarkMedia, nil, map[string]any{
+		"type": "object", "required": []any{"points"},
+		"properties": map[string]any{"points": map[string]any{"type": "array"}},
+	}))
+	_, perr := ParseMachine(notationHeaders+`[(path, benchmark={"points": [1, 2]}) -> compare -> r]`, withBenchmarkSchema)
+	require.Nil(t, perr, "a benchmark that says its points: %v", perr)
+	_, perr = ParseMachine(notationHeaders+`[(path, benchmark={"scale": 2}) -> compare -> r]`, withBenchmarkSchema)
+	require.NotNil(t, perr, "a benchmark that does not say its points")
+	require.NotNil(t, perr.Abstraction, "%v", perr)
+	assert.Equal(t, ErrAbstractionConstantFailsValidation, perr.Abstraction.Kind)
+	assert.Contains(t, perr.Abstraction.Message, "schema")
 
 	// A constant is not a node. One input feeding two args, and the same input
 	// feeding one of them beside a constant for the other, have the same nodes
@@ -613,18 +646,21 @@ func Test12743_render_payload_carries_names_constants_and_outputs(t *testing.T) 
 	m := machineOf(t, `[(path, window=20, label="max") -> compare{retry=2, on_error=absent} -> (result, residuals=res)]`)
 	var payload struct {
 		Strands []struct {
-			Nodes []struct{ Id, Urn string }
+			Nodes []struct{ Id, Urn, Title string }
 			Edges []map[string]json.RawMessage
 			Input []string `json:"input_anchor_nodes"`
 		}
 	}
-	require.NoError(t, json.Unmarshal([]byte(m.ToRenderPayloadJSON()), &payload), "the payload is JSON")
+	text, perr := m.ToRenderPayloadJSON(titledRegistry())
+	require.Nil(t, perr)
+	require.NoError(t, json.Unmarshal([]byte(text), &payload), "the payload is JSON")
 	require.Len(t, payload.Strands, 1)
 	require.Len(t, payload.Strands[0].Edges, 1)
 	edge := payload.Strands[0].Edges[0]
 	assert.Equal(t, "2", string(edge["retry"]))
 	assert.Equal(t, `"absent"`, string(edge["on_error"]))
 	assert.Equal(t, `"edge_0"`, string(edge["alias"]))
+	assert.Equal(t, `"compare"`, string(edge["title"]), "the cap's title")
 	assert.Equal(t, `false`, string(edge["is_loop"]))
 	assert.Equal(t, "[]", string(edge["included_as"]), "a step the machine wrote itself")
 	_, hasTarget := edge["target_node"]
@@ -662,6 +698,9 @@ func Test12743_render_payload_carries_names_constants_and_outputs(t *testing.T) 
 	for _, output := range outputs {
 		// Each output goes to the node that holds its type.
 		assert.Equal(t, output.Urn, nodeUrn[output.Node], output.Name)
+	}
+	for _, node := range payload.Strands[0].Nodes {
+		assert.Equal(t, node.Urn, node.Title, "the media definition's title")
 	}
 	assert.ElementsMatch(t, []string{"comparison", "residuals"}, []string{outputs[0].Name, outputs[1].Name})
 }

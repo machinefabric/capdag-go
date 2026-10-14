@@ -168,7 +168,9 @@ func Test12803_an_included_machine_is_its_steps_written_in(t *testing.T) {
 			}
 		}
 	}
-	require.NoError(t, json.Unmarshal([]byte(inlined.ToRenderPayloadJSON()), &payload))
+	text, perr := inlined.ToRenderPayloadJSON(titledRegistry())
+	require.Nil(t, perr)
+	require.NoError(t, json.Unmarshal([]byte(text), &payload))
 	cameThrough := 0
 	for _, edge := range payload.Strands[0].Edges {
 		if len(edge.IncludedAs) == 1 && edge.IncludedAs[0] == "analyse#1" {
