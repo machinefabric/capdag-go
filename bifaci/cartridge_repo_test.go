@@ -5,8 +5,27 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/machinefabric/capdag-go/cap"
+	"github.com/machinefabric/capdag-go/standard"
 	"github.com/machinefabric/capdag-go/urn"
 )
+
+// testRegistryCap is a whole definition of `capUrn`: its input on stdin
+// unless it is void, and the output its URN states unless that is void.
+func testRegistryCap(capUrn, title, alias string) cap.Cap {
+	parsed, err := urn.NewCapUrnFromString(capUrn)
+	if err != nil {
+		panic("test fixture: invalid cap URN " + capUrn + ": " + err.Error())
+	}
+	c := cap.NewCap(parsed, title, []string{alias})
+	if in := parsed.InSpec(); in != standard.MediaVoid {
+		c.Args = append(c.Args, cap.NewCapArg(in, "input", true, []cap.ArgSource{{Stdin: &in}}))
+	}
+	if out := parsed.OutSpec(); out != standard.MediaVoid {
+		c.AddOutput(*cap.NewCapOutput(out, "output", "What it gives"))
+	}
+	return *c
+}
 
 // makeTestVersions returns a basic v4.0 versions map for testing
 func makeTestVersions(platform string) map[string]CartridgeVersionData {
@@ -38,7 +57,7 @@ func makeTestRegistry(id string, entry CartridgeRegistryEntry) CartridgeRegistry
 	return makeTestRegistryChannels(map[string]CartridgeRegistryEntry{id: entry}, nil)
 }
 
-// makeTestRegistryChannels builds a v5.0 registry with explicit
+// makeTestRegistryChannels builds a registry of this build's schema with explicit
 // per-channel maps. Either map can be nil to leave that channel empty.
 func makeTestRegistryChannels(
 	release map[string]CartridgeRegistryEntry,
@@ -51,7 +70,7 @@ func makeTestRegistryChannels(
 		nightly = map[string]CartridgeRegistryEntry{}
 	}
 	return CartridgeRegistry{
-		SchemaVersion:     "5.0",
+		SchemaVersion:     CartridgeRegistrySchemaVersion,
 		RegistryVersion:   CartridgeRegistryVersion,
 		LastUpdated:       "2026-02-07",
 		FabricRegistryURL: "https://fabric.test",
@@ -76,7 +95,7 @@ func Test320_cartridge_info_construction(t *testing.T) {
 		PageUrl:           "https://example.com/cartridge",
 		Categories:        []string{"test"},
 		Tags:              []string{"testing"},
-		CapGroups:         []RegistryCapGroup{},
+		CapGroups:         []CapGroup{},
 		Versions:          makeTestVersions("darwin-arm64"),
 		AvailableVersions: []string{"1.0.0"},
 	}
@@ -100,7 +119,7 @@ func Test321_cartridge_info_is_signed(t *testing.T) {
 		Version:   "1.0.0",
 		TeamId:    "TEAM123",
 		SignedAt:  "2026-02-07T00:00:00Z",
-		CapGroups: []RegistryCapGroup{},
+		CapGroups: []CapGroup{},
 	}
 
 	if !cartridge.IsSigned() {
@@ -125,7 +144,7 @@ func Test322_cartridge_info_build_for_platform(t *testing.T) {
 		Id:        "testcartridge",
 		Name:      "Test",
 		Version:   "1.0.0",
-		CapGroups: []RegistryCapGroup{},
+		CapGroups: []CapGroup{},
 		Versions: map[string]CartridgeVersionData{
 			"1.0.0": {
 				ReleaseDate: "2026-02-07",
@@ -175,19 +194,52 @@ func Test322_cartridge_info_build_for_platform(t *testing.T) {
 	}
 }
 
-// TEST323: CartridgeRepoServer requires schema 5.0 and rejects older.
+// TEST12849: a registry is bytes another program wrote, so reading one holds every cap definition in it to the definition rules: a cartridge whose definition breaks one is refused, naming the cartridge, its channel, the cap and the rule; whole definitions are read.
+func Test12849_reading_a_registry_holds_its_definitions_to_the_rules(t *testing.T) {
+	const compare = `cap:in="media:enc=utf-8";compare;out="media:record"`
+	entry := func(c cap.Cap) CartridgeRegistryEntry {
+		return CartridgeRegistryEntry{
+			Name: "Comparer", Description: "d", Author: "a", TeamId: "TEAM123", LatestVersion: "1.0.0",
+			Versions:  makeTestVersions("darwin-arm64"),
+			CapGroups: []CapGroup{{Name: "default", Caps: []cap.Cap{c}}},
+		}
+	}
+	whole := testRegistryCap(compare, "Compare", "compare")
+	if _, err := NewCartridgeRepoServer(makeTestRegistry("comparer", entry(whole))); err != nil {
+		t.Fatalf("whole definitions are read: %v", err)
+	}
+	// The output the cap URN states is not declared (RULE21).
+	broken := whole
+	broken.Outputs = nil
+	_, err := NewCartridgeRepoServer(makeTestRegistry("comparer", entry(broken)))
+	if err == nil {
+		t.Fatal("a definition that breaks a rule is refused")
+	}
+	for _, part := range []string{"comparer", "release", "compare", "RULE21"} {
+		if !strings.Contains(err.Error(), part) {
+			t.Errorf("the refusal names %q: %v", part, err)
+		}
+	}
+	// A nightly entry is held to the same rules, and named in its channel.
+	_, err = NewCartridgeRepoServer(makeTestRegistryChannels(nil, map[string]CartridgeRegistryEntry{"comparer": entry(broken)}))
+	if err == nil || !strings.Contains(err.Error(), "nightly") || !strings.Contains(err.Error(), "RULE21") {
+		t.Errorf("a nightly definition that breaks a rule is refused, naming its channel: %v", err)
+	}
+}
+
+// TEST323: CartridgeRepoServer requires the schema this build reads (6.0) and rejects older.
 func Test323_cartridge_repo_server_validate_registry(t *testing.T) {
 	registry := makeTestRegistryChannels(nil, nil)
 	server, err := NewCartridgeRepoServer(registry)
 	if err != nil {
-		t.Errorf("Expected no error for v5.0, got %v", err)
+		t.Errorf("Expected no error for v6.0, got %v", err)
 	}
 	if server == nil {
 		t.Error("Expected server to be created")
 	}
 
 	oldRegistry := CartridgeRegistry{
-		SchemaVersion: "4.0",
+		SchemaVersion: "5.0",
 		LastUpdated:   "2026-02-07",
 		Channels: CartridgeRegistryChannels{
 			Release: CartridgeChannelEntries{Cartridges: map[string]CartridgeRegistryEntry{}},
@@ -196,10 +248,12 @@ func Test323_cartridge_repo_server_validate_registry(t *testing.T) {
 	}
 	server, err = NewCartridgeRepoServer(oldRegistry)
 	if err == nil {
-		t.Error("Expected error for v4.0 schema")
+		t.Error("Expected error for v5.0 schema")
+	} else if !strings.Contains(err.Error(), "6.0") {
+		t.Errorf("the refusal names the schema it reads: %v", err)
 	}
 	if server != nil {
-		t.Error("Expected no server to be created for v4.0")
+		t.Error("Expected no server to be created for v5.0")
 	}
 
 	// A manifest from a different registry regime version is rejected too.
@@ -224,7 +278,7 @@ func Test324_cartridge_repo_server_transform_to_array(t *testing.T) {
 		PageUrl:       "https://example.com",
 		TeamId:        "TEAM123",
 		MinAppVersion: "1.0.0",
-		CapGroups:     []RegistryCapGroup{},
+		CapGroups:     []CapGroup{},
 		Categories:    []string{"test"},
 		Tags:          []string{"testing"},
 		LatestVersion: "1.0.0",
@@ -272,7 +326,7 @@ func Test325_cartridge_repo_server_get_cartridges(t *testing.T) {
 		TeamId:        "TEAM123",
 		LatestVersion: "1.0.0",
 		Versions:      makeTestVersions("darwin-arm64"),
-		CapGroups:     []RegistryCapGroup{},
+		CapGroups:     []CapGroup{},
 	}
 
 	registry := makeTestRegistry("testcartridge", entry)
@@ -302,7 +356,7 @@ func Test326_cartridge_repo_server_get_cartridge_by_id(t *testing.T) {
 		TeamId:        "TEAM123",
 		LatestVersion: "1.0.0",
 		Versions:      makeTestVersions("darwin-arm64"),
-		CapGroups:     []RegistryCapGroup{},
+		CapGroups:     []CapGroup{},
 	}
 
 	registry := makeTestRegistry("testcartridge", entry)
@@ -353,7 +407,7 @@ func Test327_cartridge_repo_server_search_cartridges(t *testing.T) {
 		TeamId:        "TEAM123",
 		LatestVersion: "1.0.0",
 		Versions:      makeTestVersions("darwin-arm64"),
-		CapGroups:     []RegistryCapGroup{},
+		CapGroups:     []CapGroup{},
 		Tags:          []string{"document"},
 	}
 
@@ -392,7 +446,7 @@ func Test328_cartridge_repo_server_get_by_category(t *testing.T) {
 		TeamId:        "TEAM123",
 		LatestVersion: "1.0.0",
 		Versions:      makeTestVersions("darwin-arm64"),
-		CapGroups:     []RegistryCapGroup{},
+		CapGroups:     []CapGroup{},
 		Categories:    []string{"document"},
 	}
 
@@ -432,11 +486,11 @@ func Test329_cartridge_repo_server_get_by_cap(t *testing.T) {
 		TeamId:        "TEAM123",
 		LatestVersion: "1.0.0",
 		Versions:      makeTestVersions("darwin-arm64"),
-		CapGroups: []RegistryCapGroup{
+		CapGroups: []CapGroup{
 			{
 				Name: "pdf",
-				Caps: []RegistryCap{
-					{Urn: capUrn, Title: "Disbind PDF", Aliases: []string{"disbind"}},
+				Caps: []cap.Cap{
+					testRegistryCap(capUrn, "Disbind PDF", "disbind"),
 				},
 			},
 		},
@@ -495,7 +549,7 @@ func Test330_cartridge_repo_client_update_cache(t *testing.T) {
 				Version:   "1.0.0",
 				TeamId:    "TEAM123",
 				SignedAt:  "2026-02-07",
-				CapGroups: []RegistryCapGroup{},
+				CapGroups: []CapGroup{},
 				Versions:  makeTestVersions("darwin-arm64"),
 				Channel:   CartridgeChannelRelease,
 			},
@@ -533,11 +587,11 @@ func Test331_cartridge_repo_client_get_suggestions(t *testing.T) {
 				Version: "1.0.0",
 				TeamId:  "TEAM123",
 				PageUrl: "https://example.com/pdf",
-				CapGroups: []RegistryCapGroup{
+				CapGroups: []CapGroup{
 					{
 						Name: "pdf",
-						Caps: []RegistryCap{
-							{Urn: capUrn, Title: "Disbind PDF", Aliases: []string{"disbind"}},
+						Caps: []cap.Cap{
+							testRegistryCap(capUrn, "Disbind PDF", "disbind"),
 						},
 					},
 				},
@@ -587,7 +641,7 @@ func Test332_cartridge_repo_client_get_cartridge(t *testing.T) {
 				Id:        "testcartridge",
 				Name:      "Test Cartridge",
 				Version:   "1.0.0",
-				CapGroups: []RegistryCapGroup{},
+				CapGroups: []CapGroup{},
 				Versions:  makeTestVersions("darwin-arm64"),
 				Channel:   CartridgeChannelRelease,
 			},
@@ -625,8 +679,8 @@ func Test333_cartridge_repo_client_get_all_caps(t *testing.T) {
 				Id:      "cartridge1",
 				Name:    "Cartridge 1",
 				Version: "1.0.0",
-				CapGroups: []RegistryCapGroup{
-					{Name: "g", Caps: []RegistryCap{{Urn: cap1, Title: "Cap 1", Aliases: []string{"x"}}}},
+				CapGroups: []CapGroup{
+					{Name: "g", Caps: []cap.Cap{testRegistryCap(cap1, "Cap 1", "x")}},
 				},
 				Versions: makeTestVersions("darwin-arm64"),
 				Channel:  CartridgeChannelRelease,
@@ -635,8 +689,8 @@ func Test333_cartridge_repo_client_get_all_caps(t *testing.T) {
 				Id:      "cartridge2",
 				Name:    "Cartridge 2",
 				Version: "1.0.0",
-				CapGroups: []RegistryCapGroup{
-					{Name: "g", Caps: []RegistryCap{{Urn: cap2, Title: "Cap 2", Aliases: []string{"x"}}}},
+				CapGroups: []CapGroup{
+					{Name: "g", Caps: []cap.Cap{testRegistryCap(cap2, "Cap 2", "x")}},
 				},
 				Versions: makeTestVersions("darwin-arm64"),
 				Channel:  CartridgeChannelRelease,
@@ -707,11 +761,11 @@ func Test335_cartridge_repo_server_client_integration(t *testing.T) {
 		TeamId:        "TEAM123",
 		LatestVersion: "1.0.0",
 		Versions:      makeTestVersions("darwin-arm64"),
-		CapGroups: []RegistryCapGroup{
+		CapGroups: []CapGroup{
 			{
 				Name: "test-group",
-				Caps: []RegistryCap{
-					{Urn: capUrn, Title: "Test Cap", Aliases: []string{"test"}},
+				Caps: []cap.Cap{
+					testRegistryCap(capUrn, "Test Cap", "test"),
 				},
 				AdapterUrns: []string{"media:test"},
 			},
@@ -744,7 +798,7 @@ func Test335_cartridge_repo_server_client_integration(t *testing.T) {
 	if len(caps) != 1 {
 		t.Fatalf("Expected 1 cap, got %d", len(caps))
 	}
-	if caps[0].Urn != capUrn {
+	if caps[0].Urn.String() != testRegistryCap(capUrn, "", "x").Urn.String() {
 		t.Errorf("Expected cap URN '%s', got '%s'", capUrn, caps[0].Urn)
 	}
 
@@ -778,47 +832,43 @@ func Test631_needs_sync_empty_cache(t *testing.T) {
 	}
 }
 
-// TEST319: A registry response with a malformed cap URN inside cap_groups must propagate as ParseError when indexed into the cache, not silently disappear.
+// TEST319: A registry response with a malformed cap URN inside cap_groups is refused where it is read, not silently dropped: a cap definition holds a parsed cap URN, so a cartridge entry carrying one that does not parse is not a cartridge entry.
 func Test319_update_cache_rejects_malformed_cap_urn(t *testing.T) {
-	repo := NewCartridgeRepo(3600)
-	registry := &CartridgeRegistryResponse{
-		Cartridges: []CartridgeInfo{
-			{
-				Id:      "broken",
-				Name:    "Broken",
-				Version: "1.0.0",
-				CapGroups: []RegistryCapGroup{
-					{
-						Name: "g",
-						Caps: []RegistryCap{
-							{Urn: "not a valid urn at all", Title: "Bad", Aliases: []string{"x"}},
-						},
-					},
-				},
-				Versions: makeTestVersions("darwin-arm64"),
-				Channel:  CartridgeChannelRelease,
-			},
-		},
+	good := CartridgeInfo{
+		Id: "broken", Name: "Broken", Version: "1.0.0",
+		CapGroups: []CapGroup{{Name: "g", Caps: []cap.Cap{testRegistryCap("cap:in=media:;x;out=media:", "Bad", "x")}}},
+		Versions:  makeTestVersions("darwin-arm64"),
+		Channel:   CartridgeChannelRelease,
 	}
-	err := repo.updateCache("https://x", registry)
-	if err == nil {
-		t.Fatal("Expected ParseError for malformed cap URN, got nil")
+	data, err := json.Marshal(good)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
 	}
-	repoErr, ok := err.(*CartridgeRepoError)
-	if !ok || repoErr.Kind != "ParseError" {
-		t.Errorf("Expected ParseError, got %T %v", err, err)
+	var read CartridgeInfo
+	if err := json.Unmarshal(data, &read); err != nil {
+		t.Fatalf("the entry as written reads: %v", err)
+	}
+	if len(read.IterCaps()) != 1 {
+		t.Fatalf("expected one cap, got %d", len(read.IterCaps()))
+	}
+	broken := strings.Replace(string(data), good.CapGroups[0].Caps[0].Urn.String(), "not a valid urn at all", 1)
+	if broken == string(data) {
+		t.Fatal("the fixture's URN was not found to break")
+	}
+	if err := json.Unmarshal([]byte(broken), &read); err == nil {
+		t.Fatal("an entry whose cap URN does not parse is refused")
 	}
 }
 
 // buildIdentityCapGroup builds a single-group cap-group slice with just
 // the identity cap — the common fixture shape across channel-isolation
 // and walk-order tests.
-func buildIdentityCapGroup() []RegistryCapGroup {
-	return []RegistryCapGroup{
+func buildIdentityCapGroup() []CapGroup {
+	return []CapGroup{
 		{
 			Name: "g",
-			Caps: []RegistryCap{
-				{Urn: "cap:effect=none", Title: "Identity", Aliases: []string{"identity"}},
+			Caps: []cap.Cap{
+				testRegistryCap("cap:effect=none", "Identity", "identity"),
 			},
 		},
 	}
@@ -827,7 +877,7 @@ func buildIdentityCapGroup() []RegistryCapGroup {
 // buildRegistryEntryNamed builds a CartridgeRegistryEntry with the given
 // display name, a single version with a darwin-arm64 build, and the
 // supplied cap groups.
-func buildRegistryEntryNamed(name, version, pkgName string, groups []RegistryCapGroup) CartridgeRegistryEntry {
+func buildRegistryEntryNamed(name, version, pkgName string, groups []CapGroup) CartridgeRegistryEntry {
 	return CartridgeRegistryEntry{
 		Name:          name,
 		Description:   "Test Cartridge",
@@ -930,34 +980,41 @@ func Test301_transform_walks_both_channels_release_first(t *testing.T) {
 	}
 }
 
-// TEST632: A registry cap with only the three required fields parses.
+// TEST632: A registry cap is the cartridge's cap definition as its manifest declares it: the identity cap reads with its argument and its output, and a cap whose argument or output has no name is not one.
 func Test632_deserialize_minimal_registry_cap(t *testing.T) {
-	jsonStr := `{"urn": "cap:effect=none", "title": "Identity", "aliases": ["identity"]}`
-	var cap RegistryCap
-	if err := json.Unmarshal([]byte(jsonStr), &cap); err != nil {
+	identity, err := cap.IdentityCap()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var read cap.Cap
+	if err := json.Unmarshal(data, &read); err != nil {
 		t.Fatalf("Failed to parse: %v", err)
 	}
-	if cap.Urn != "cap:effect=none" {
-		t.Errorf("Expected urn 'cap:effect=none', got '%s'", cap.Urn)
+	if !read.Urn.Equals(identity.Urn) {
+		t.Errorf("Expected the identity URN, got '%s'", read.Urn)
 	}
-	if cap.Title != "Identity" {
-		t.Errorf("Expected title 'Identity', got '%s'", cap.Title)
+	if read.Title != "Identity" || read.PrimaryAlias() != "identity" {
+		t.Errorf("Expected title 'Identity' and alias 'identity', got %q %q", read.Title, read.PrimaryAlias())
 	}
-	if cap.PrimaryAlias() != "identity" {
-		t.Errorf("Expected alias 'identity', got '%s'", cap.PrimaryAlias())
+	if len(read.Args) != 1 || read.Args[0].Name != "input" {
+		t.Errorf("Expected the named input argument, got %+v", read.Args)
 	}
-	if cap.CapDescription != nil {
-		t.Error("Expected cap_description to be nil")
+	if main := read.MainOutput(); main == nil || main.Name != "output" {
+		t.Errorf("Expected the named main output, got %+v", main)
 	}
-	if cap.Args != nil {
-		t.Error("Expected args to be nil")
-	}
-	if cap.Output != nil {
-		t.Error("Expected output to be nil")
+
+	unnamedArg := `{"urn": "cap:effect=none", "title": "Identity", "aliases": ["identity"],
+		"args": [{"media_urn": "media:", "required": true, "sources": [{"stdin": "media:"}]}]}`
+	if err := json.Unmarshal([]byte(unnamedArg), &read); err == nil {
+		t.Error("an argument has a name")
 	}
 }
 
-// TEST633: A registry cap with cap_description, args, output all parses.
+// TEST633: A registry cap with a description, named arguments and several outputs parses, each part where the definition holds it.
 func Test633_deserialize_rich_registry_cap(t *testing.T) {
 	jsonStr := `{
 		"urn": "cap:in=\"media:document;ext=pdf\";disbind;out=\"media:enc=utf-8;page\"",
@@ -967,64 +1024,68 @@ func Test633_deserialize_rich_registry_cap(t *testing.T) {
 		"args": [
 			{
 				"media_urn": "media:enc=utf-8;file-path",
+				"name": "document",
 				"required": true,
 				"is_sequence": false,
 				"sources": [{"stdin": "media:document;ext=pdf"}, {"position": 0}],
 				"arg_description": "Path to the PDF file to process"
 			}
 		],
-		"output": {
-			"media_urn": "media:enc=utf-8;page",
-			"is_sequence": true,
-			"output_description": "One page text per PDF page"
-		}
+		"outputs": [
+			{
+				"media_urn": "media:enc=utf-8;page",
+				"name": "pages",
+				"is_sequence": true,
+				"output_description": "One page text per PDF page"
+			},
+			{
+				"media_urn": "media:enc=utf-8;outline",
+				"name": "outline",
+				"optional": true,
+				"output_description": "The document's outline, when it has one"
+			}
+		]
 	}`
-	var cap RegistryCap
-	if err := json.Unmarshal([]byte(jsonStr), &cap); err != nil {
+	var read cap.Cap
+	if err := json.Unmarshal([]byte(jsonStr), &read); err != nil {
 		t.Fatalf("Failed to parse: %v", err)
 	}
-	if cap.PrimaryAlias() != "disbind" {
-		t.Errorf("Expected alias 'disbind', got '%s'", cap.PrimaryAlias())
+	if read.PrimaryAlias() != "disbind" {
+		t.Errorf("Expected alias 'disbind', got '%s'", read.PrimaryAlias())
 	}
-	if cap.CapDescription == nil || *cap.CapDescription != "Extract each PDF page as plain page text." {
-		t.Errorf("Expected cap_description, got %v", cap.CapDescription)
+	if read.CapDescription == nil || *read.CapDescription != "Extract each PDF page as plain page text." {
+		t.Errorf("Expected cap_description, got %v", read.CapDescription)
 	}
-	if len(cap.Args) != 1 {
-		t.Fatalf("Expected 1 arg, got %d", len(cap.Args))
+	if len(read.Args) != 1 || read.Args[0].Name != "document" || read.Args[0].MediaUrn != "media:enc=utf-8;file-path" {
+		t.Fatalf("Expected the named document argument, got %+v", read.Args)
 	}
-	if cap.Args[0].MediaUrn != "media:enc=utf-8;file-path" {
-		t.Errorf("Expected media_urn 'media:enc=utf-8;file-path', got '%s'", cap.Args[0].MediaUrn)
+	if len(read.Args[0].Sources) != 2 || read.Args[0].Sources[1].Position == nil || *read.Args[0].Sources[1].Position != 0 {
+		t.Errorf("Expected the stdin and position sources, got %+v", read.Args[0].Sources)
 	}
-	if len(cap.Args[0].Sources) != 2 {
-		t.Fatalf("Expected 2 sources, got %d", len(cap.Args[0].Sources))
+	main := read.MainOutput()
+	if main == nil || main.Name != "pages" || !main.IsSequence {
+		t.Fatalf("Expected the main output 'pages', a sequence, got %+v", main)
 	}
-	if cap.Args[0].Sources[0].Stdin == nil || *cap.Args[0].Sources[0].Stdin != "media:document;ext=pdf" {
-		t.Errorf("Expected source[0].stdin 'media:document;ext=pdf', got %v", cap.Args[0].Sources[0].Stdin)
+	if outline := read.OutputNamed("outline"); outline == nil || !outline.Optional {
+		t.Errorf("Expected the optional outline output, got %+v", outline)
 	}
-	if cap.Args[0].Sources[1].Position == nil || *cap.Args[0].Sources[1].Position != 0 {
-		t.Errorf("Expected source[1].position 0, got %v", cap.Args[0].Sources[1].Position)
-	}
-	if cap.Output == nil {
-		t.Fatal("Expected output to be present")
-	}
-	if cap.Output.MediaUrn != "media:enc=utf-8;page" {
-		t.Errorf("Expected output media_urn 'media:enc=utf-8;page', got '%s'", cap.Output.MediaUrn)
-	}
-	if !cap.Output.IsSequence {
-		t.Error("Expected output.is_sequence to be true")
+	if err := cap.ValidateCapDefinition(&read); err != nil {
+		t.Errorf("a whole definition: %v", err)
 	}
 }
 
 // TEST634: A registry cap_group parses with caps + adapter_urns.
 func Test634_deserialize_cap_group(t *testing.T) {
-	jsonStr := `{
-		"name": "pdf-formats",
-		"caps": [
-			{"urn": "cap:effect=none", "title": "Identity", "aliases": ["identity"]}
-		],
-		"adapter_urns": ["media:document;ext=pdf"]
-	}`
-	var group RegistryCapGroup
+	identity, err := cap.IdentityCap()
+	if err != nil {
+		t.Fatal(err)
+	}
+	identityJSON, err := json.Marshal(identity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jsonStr := `{"name": "pdf-formats", "caps": [` + string(identityJSON) + `], "adapter_urns": ["media:document;ext=pdf"]}`
+	var group CapGroup
 	if err := json.Unmarshal([]byte(jsonStr), &group); err != nil {
 		t.Fatalf("Failed to parse: %v", err)
 	}
@@ -1055,8 +1116,8 @@ func Test635_deserialize_cartridge_info_wire_shape(t *testing.T) {
 			{
 				"name": "pdf-formats",
 				"caps": [
-					{"urn": "cap:effect=none", "title": "Identity", "aliases": ["identity"]},
-					{"urn": "cap:in=\"media:document;ext=pdf\";disbind;out=\"media:enc=utf-8;page\"", "title": "Disbind PDF Into Page Text", "aliases": ["disbind"]}
+					{"urn": "cap:effect=none", "title": "Identity", "aliases": ["identity"], "args": [{"media_urn": "media:", "name": "input", "required": true, "sources": [{"stdin": "media:"}]}], "outputs": [{"media_urn": "media:", "name": "output", "output_description": "The input data, unchanged"}]},
+					{"urn": "cap:in=\"media:document;ext=pdf\";disbind;out=\"media:enc=utf-8;page\"", "title": "Disbind PDF Into Page Text", "aliases": ["disbind"], "args": [{"media_urn": "media:document;ext=pdf", "name": "document", "required": true, "sources": [{"stdin": "media:document;ext=pdf"}]}], "outputs": [{"media_urn": "media:enc=utf-8;page", "name": "pages", "is_sequence": true, "output_description": "The pages"}]}
 				],
 				"adapter_urns": ["media:document;ext=pdf"]
 			}
@@ -1144,7 +1205,7 @@ func Test637_deserialize_full_registry_response(t *testing.T) {
 					{
 						"name": "pdf-formats",
 						"caps": [
-							{"urn": "cap:effect=none", "title": "Identity", "aliases": ["identity"]}
+							{"urn": "cap:effect=none", "title": "Identity", "aliases": ["identity"], "args": [{"media_urn": "media:", "name": "input", "required": true, "sources": [{"stdin": "media:"}]}], "outputs": [{"media_urn": "media:", "name": "output", "output_description": "The input data, unchanged"}]}
 						],
 						"adapter_urns": ["media:document;ext=pdf"]
 					}
@@ -1328,7 +1389,7 @@ func cartridgeWithVersions(id string, versions []versionSpec) CartridgeInfo {
 		Version:           latest,
 		TeamId:            "TEAM123",
 		SignedAt:          "2026-02-07T00:00:00Z",
-		CapGroups:         []RegistryCapGroup{},
+		CapGroups:         []CapGroup{},
 		Versions:          versionMap,
 		AvailableVersions: available,
 		Channel:           CartridgeChannelRelease,

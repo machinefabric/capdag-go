@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/machinefabric/capdag-go/cap"
 	"github.com/machinefabric/capdag-go/urn"
 )
 
@@ -47,64 +48,11 @@ func NewNetworkBlockedError(msg string) *CartridgeRepoError {
 	return &CartridgeRepoError{Kind: "NetworkBlocked", Message: msg}
 }
 
-// RegistryArgSource is one source for a registry cap argument. Exactly
-// one of Stdin / Position / CliFlag is populated by the producer.
-type RegistryArgSource struct {
-	Stdin    *string `json:"stdin,omitempty"`
-	Position *int64  `json:"position,omitempty"`
-	CliFlag  *string `json:"cli_flag,omitempty"`
-}
-
-// RegistryCapArg is one argument descriptor on a registry cap.
-type RegistryCapArg struct {
-	MediaUrn       string              `json:"media_urn"`
-	Required       bool                `json:"required"`
-	IsSequence     bool                `json:"is_sequence,omitempty"`
-	Sources        []RegistryArgSource `json:"sources,omitempty"`
-	ArgDescription *string             `json:"arg_description,omitempty"`
-	// DefaultValue is whatever JSON the registry emits for the default
-	// (string, number, bool, object). json.RawMessage preserves it
-	// verbatim so producers and consumers can round-trip without losing
-	// type information.
-	DefaultValue json.RawMessage `json:"default_value,omitempty"`
-}
-
-// RegistryCapOutput is the output descriptor on a registry cap.
-type RegistryCapOutput struct {
-	MediaUrn          string  `json:"media_urn"`
-	IsSequence        bool    `json:"is_sequence,omitempty"`
-	OutputDescription *string `json:"output_description,omitempty"`
-}
-
-// RegistryCap is a single capability advertised by a cartridge in the
-// registry. Urn / Title / Aliases are always present; the other fields
-// appear only when the cartridge documents them.
-type RegistryCap struct {
-	Urn            string             `json:"urn"`
-	Title          string             `json:"title"`
-	Aliases        []string           `json:"aliases"`
-	IsAbstract     bool               `json:"abstract,omitempty"`
-	CapDescription *string            `json:"cap_description,omitempty"`
-	Args           []RegistryCapArg   `json:"args,omitempty"`
-	Output         *RegistryCapOutput `json:"output,omitempty"`
-}
-
-// PrimaryAlias returns the cap's first alias — the canonical CLI selection
-// name — or the empty string if it declares none.
-func (c *RegistryCap) PrimaryAlias() string {
-	if len(c.Aliases) == 0 {
-		return ""
-	}
-	return c.Aliases[0]
-}
-
-// RegistryCapGroup bundles caps + adapter URNs as one atomic
-// registration unit.
-type RegistryCapGroup struct {
-	Name        string        `json:"name"`
-	Caps        []RegistryCap `json:"caps,omitempty"`
-	AdapterUrns []string      `json:"adapter_urns,omitempty"`
-}
+// CartridgeRegistrySchemaVersion is the schema revision of the cartridge
+// registry this build reads (schemas/cartridge-registry/v6.json): its cap
+// groups carry each cartridge's cap definitions exactly as its manifest
+// declares them.
+const CartridgeRegistrySchemaVersion = "6.0"
 
 // CartridgeDistributionInfo represents package distribution data.
 // `Url` is the absolute URL of the package — every consumer downloads
@@ -201,7 +149,7 @@ type CartridgeRegistryEntry struct {
 	PageUrl       string                          `json:"pageUrl,omitempty"`
 	TeamId        string                          `json:"teamId"`
 	MinAppVersion string                          `json:"minAppVersion,omitempty"`
-	CapGroups     []RegistryCapGroup              `json:"cap_groups,omitempty"`
+	CapGroups     []CapGroup              `json:"cap_groups,omitempty"`
 	Categories    []string                        `json:"categories,omitempty"`
 	Tags          []string                        `json:"tags,omitempty"`
 	LatestVersion string                          `json:"latestVersion"`
@@ -283,7 +231,7 @@ type CartridgeRegistry struct {
 // implementation speaks. v0 was the pre-versioning legacy at the bare
 // /manifest path; this speaks only v>=1 at the versioned /v<version>/manifest
 // path, and rejects any manifest whose registryVersion differs.
-const CartridgeRegistryVersion uint32 = 1
+const CartridgeRegistryVersion uint32 = 2
 
 // CartridgeInfo represents a cartridge in the flat API response format.
 //
@@ -303,7 +251,7 @@ type CartridgeInfo struct {
 	PageUrl           string                          `json:"pageUrl,omitempty"`
 	Categories        []string                        `json:"categories,omitempty"`
 	Tags              []string                        `json:"tags,omitempty"`
-	CapGroups         []RegistryCapGroup              `json:"cap_groups"`
+	CapGroups         []CapGroup              `json:"cap_groups"`
 	Versions          map[string]CartridgeVersionData `json:"versions"`
 	AvailableVersions []string                        `json:"availableVersions,omitempty"`
 	// Channel this entry belongs to. Set by the transformer; consumers
@@ -337,7 +285,7 @@ func (c *CartridgeInfo) UnmarshalJSON(data []byte) error {
 		PageUrl           *string                         `json:"pageUrl"`
 		Categories        []string                        `json:"categories"`
 		Tags              []string                        `json:"tags"`
-		CapGroups         []RegistryCapGroup              `json:"cap_groups"`
+		CapGroups         []CapGroup              `json:"cap_groups"`
 		Versions          map[string]CartridgeVersionData `json:"versions"`
 		AvailableVersions []string                        `json:"availableVersions"`
 		Channel           CartridgeChannel                `json:"channel"`
@@ -375,8 +323,8 @@ func (c *CartridgeInfo) UnmarshalJSON(data []byte) error {
 // IterCaps yields every cap across every cap group in declaration order.
 // Use this whenever you need a flat view of the cartridge's caps now
 // that the on-wire shape groups them.
-func (p *CartridgeInfo) IterCaps() []RegistryCap {
-	var out []RegistryCap
+func (p *CartridgeInfo) IterCaps() []cap.Cap {
+	var out []cap.Cap
 	for _, g := range p.CapGroups {
 		out = append(out, g.Caps...)
 	}
@@ -586,13 +534,13 @@ type CartridgeRepoServer struct {
 	registry CartridgeRegistry
 }
 
-// NewCartridgeRepoServer creates a new server instance from a v5.0
-// channel-partitioned registry.
+// NewCartridgeRepoServer creates a new server instance from a
+// channel-partitioned registry of the schema this build reads.
 func NewCartridgeRepoServer(registry CartridgeRegistry) (*CartridgeRepoServer, error) {
-	if registry.SchemaVersion != "5.0" {
+	if registry.SchemaVersion != CartridgeRegistrySchemaVersion {
 		return nil, NewParseError(fmt.Sprintf(
-			"Unsupported registry schema version: %s. Required: 5.0",
-			registry.SchemaVersion,
+			"Unsupported registry schema version: %s. Required: %s",
+			registry.SchemaVersion, CartridgeRegistrySchemaVersion,
 		))
 	}
 	if registry.RegistryVersion != CartridgeRegistryVersion {
@@ -612,6 +560,31 @@ func NewCartridgeRepoServer(registry CartridgeRegistry) (*CartridgeRepoServer, e
 	}
 	if registry.Channels.Nightly.Cartridges == nil {
 		registry.Channels.Nightly.Cartridges = map[string]CartridgeRegistryEntry{}
+	}
+	// A registry is bytes another program wrote: every definition in it is
+	// held to the definition rules before anything routes by it, as a
+	// cartridge's own manifest is.
+	for _, channel := range []struct {
+		name    string
+		entries map[string]CartridgeRegistryEntry
+	}{
+		{"release", registry.Channels.Release.Cartridges},
+		{"nightly", registry.Channels.Nightly.Cartridges},
+	} {
+		ids := make([]string, 0, len(channel.entries))
+		for id := range channel.entries {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		for _, id := range ids {
+			for _, group := range channel.entries[id].CapGroups {
+				for i := range group.Caps {
+					if err := cap.ValidateCapDefinition(&group.Caps[i]); err != nil {
+						return nil, NewParseError(fmt.Sprintf("cartridge %s (%s): %v", id, channel.name, err))
+					}
+				}
+			}
+		}
 	}
 	return &CartridgeRepoServer{registry: registry}, nil
 }
@@ -730,7 +703,7 @@ func (s *CartridgeRepoServer) entryToCartridgeInfo(
 	}
 	capGroups := entry.CapGroups
 	if capGroups == nil {
-		capGroups = []RegistryCapGroup{}
+		capGroups = []CapGroup{}
 	}
 	categories := entry.Categories
 	if categories == nil {
@@ -910,16 +883,9 @@ func (s *CartridgeRepoServer) GetCartridgesByCap(capUrn string) ([]CartridgeInfo
 
 	results := make([]CartridgeInfo, 0)
 	for _, c := range all {
-		for _, cap := range c.IterCaps() {
-			declared, perr := urn.NewCapUrnFromString(cap.Urn)
-			if perr != nil {
-				return nil, NewParseError(fmt.Sprintf(
-					"cartridge %s (%s): invalid declared cap URN %q: %v",
-					c.Id, c.Channel, cap.Urn, perr,
-				))
-			}
+		for _, declared := range c.IterCaps() {
 			// Everything capable: the declared cap SERVES the request.
-			if declared.IsDispatchable(requested) {
+			if declared.Urn.IsDispatchable(requested) {
 				results = append(results, c)
 				break
 			}
@@ -1037,15 +1003,8 @@ func (r *CartridgeRepo) updateCache(repoUrl string, registry *CartridgeRegistryR
 			))
 		}
 		key := CartridgeKey{Channel: cartridgeInfo.Channel, Id: cartridgeInfo.Id}
-		for _, cap := range cartridgeInfo.IterCaps() {
-			parsed, err := urn.NewCapUrnFromString(cap.Urn)
-			if err != nil {
-				return NewParseError(fmt.Sprintf(
-					"cartridge %s (%s): invalid cap URN %q: %v",
-					key.Id, key.Channel, cap.Urn, err,
-				))
-			}
-			normalized := parsed.String()
+		for _, declared := range cartridgeInfo.IterCaps() {
+			normalized := declared.Urn.String()
 			capToCartridges[normalized] = append(capToCartridges[normalized], key)
 		}
 		cartridges[key] = cartridgeInfo
@@ -1120,11 +1079,7 @@ func (r *CartridgeRepo) GetSuggestionsForCap(capUrn string) []CartridgeSuggestio
 			}
 
 			for _, capInfo := range cartridge.IterCaps() {
-				parsed, perr := urn.NewCapUrnFromString(capInfo.Urn)
-				if perr != nil {
-					continue
-				}
-				if !parsed.IsEquivalent(requested) {
+				if !capInfo.Urn.IsEquivalent(requested) {
 					continue
 				}
 				pageUrl := cartridge.PageUrl
