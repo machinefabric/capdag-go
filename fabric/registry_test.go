@@ -1033,3 +1033,46 @@ func Test12715_a_cached_definition_that_breaks_a_rule_is_dropped(t *testing.T) {
 	_, err = os.Stat(staleFile)
 	assert.True(t, os.IsNotExist(err), "the stale entry's file is removed")
 }
+
+// TEST12816: fetching a cap requires the definition of every media URN a
+// machine can meet through it: its in= and out=, every arg's own URN and
+// the type it accepts, and every output's URN — not the main output's
+// alone. Each once; the wildcard names no definition; a URN that does not
+// parse fails the footprint rather than being left out of it.
+func Test12816_a_caps_media_footprint_covers_every_output_and_accepted_type(t *testing.T) {
+	u, err := urn.NewCapUrnFromString(`cap:in="media:document;ext=pdf";footprint;out="media:enc=utf-8"`)
+	require.NoError(t, err)
+	c := cap.NewCap(u, "Footprint", []string{"footprint"})
+	stdin := "media:document;ext=pdf"
+	second, anything := "--second", "--anything"
+	c.Args = append(c.Args,
+		cap.NewCapArg("media:enc=utf-8;file-path", "document", true, []cap.ArgSource{{Stdin: &stdin}}),
+		cap.NewCapArg("media:enc=utf-8;second", "second", false, []cap.ArgSource{{CliFlag: &second}}).
+			Accepting("media:enc=utf-8;accepted"),
+		cap.NewCapArg("media:", "anything", false, []cap.ArgSource{{CliFlag: &anything}}),
+	)
+	c.AddOutput(*cap.NewCapOutput("media:enc=utf-8", "text", "text"))
+	c.AddOutput(*cap.NewCapOutput("media:enc=utf-8;rest", "rest", "rest"))
+
+	var expected []string
+	for _, each := range []string{
+		"media:document;ext=pdf",
+		"media:enc=utf-8",
+		"media:enc=utf-8;file-path",
+		"media:enc=utf-8;second",
+		"media:enc=utf-8;accepted",
+		"media:enc=utf-8;rest",
+	} {
+		normalized, err := NormalizeMediaURN(each)
+		require.NoError(t, err)
+		expected = append(expected, normalized)
+	}
+	got, err := collectReferencedMediaURNs(c)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, expected, got, "each once, the wildcard left out")
+
+	c.AddOutput(*cap.NewCapOutput("not a urn", "broken", "broken"))
+	_, err = collectReferencedMediaURNs(c)
+	require.Error(t, err, "a URN that does not parse fails the footprint")
+	assert.Equal(t, ErrParse, kindOf(err))
+}

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/machinefabric/capdag-go/planner"
 	peg "github.com/yhirose/go-peg"
 )
 
@@ -107,60 +108,19 @@ func notationParser() *peg.Parser {
 }
 
 // OnError is what a step's lasting failure does to the run.
-type OnError string
+type OnError = planner.OnError
 
 const (
 	// OnErrorFail — the run fails. The default.
-	OnErrorFail OnError = "fail"
+	OnErrorFail = planner.OnErrorFail
 	// OnErrorAbsent — the step's outputs are absent and the run goes on.
-	OnErrorAbsent OnError = "absent"
+	OnErrorAbsent = planner.OnErrorAbsent
 )
 
 // StepPolicy is what a step does when it fails
-// (capdag/docs/09-machine-notation.md §Step policy). The zero value — no
-// policy written — is to fail the run at once.
-type StepPolicy struct {
-	// Retry is the number of further attempts after a failure whose class is
-	// retryable.
-	Retry uint32
-	// OnError is what a failure that stands (after its retries) does to the
-	// run. The empty value is OnErrorFail.
-	OnError OnError
-}
-
-// IsDefault reports whether this is the policy of a step that wrote none.
-func (p StepPolicy) IsDefault() bool {
-	return p.Retry == 0 && p.onError() == OnErrorFail
-}
-
-func (p StepPolicy) onError() OnError {
-	if p.OnError == "" {
-		return OnErrorFail
-	}
-	return p.OnError
-}
-
-// Equal reports whether two policies make a step behave the same.
-func (p StepPolicy) Equal(other StepPolicy) bool {
-	return p.Retry == other.Retry && p.onError() == other.onError()
-}
-
-// ToNotation writes the policy as notation writes it after a step alias:
-// `{retry=3}`, `{on_error=absent}`, both in that order, or nothing for the
-// default.
-func (p StepPolicy) ToNotation() string {
-	var entries []string
-	if p.Retry > 0 {
-		entries = append(entries, "retry="+strconv.FormatUint(uint64(p.Retry), 10))
-	}
-	if p.onError() == OnErrorAbsent {
-		entries = append(entries, "on_error=absent")
-	}
-	if len(entries) == 0 {
-		return ""
-	}
-	return "{" + strings.Join(entries, ", ") + "}"
-}
+// (capdag/docs/09-machine-notation.md §Step policy). It is defined beside the
+// plan types, whose step nodes carry it.
+type StepPolicy = planner.StepPolicy
 
 // syntaxMember is one member of a wiring's sources: a node or a constant,
 // under the arg it names when it names one.

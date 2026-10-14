@@ -18,19 +18,21 @@ func Test728_cap_node_helpers(t *testing.T) {
 	require.NotNil(t, urn)
 	assert.Equal(t, "cap:test", *urn)
 
-	foreachNode := NewForEachNode("foreach", "input", "body", "body")
+	foreachNode := NewForEachNode("foreach",
+		[]ForEachSource{{Node: "input", Item: "item"}},
+		[]NodeId{"item", "body"})
 	assert.False(t, foreachNode.IsCap())
 	assert.True(t, foreachNode.IsFanOut())
 	assert.False(t, foreachNode.IsFanIn())
 	assert.Nil(t, foreachNode.GetCapUrn())
 
-	collectNode := NewCollectNode("collect", []string{"a"})
+	collectNode := NewCollectNode("collect", []string{"a"}, "media:")
 	assert.False(t, collectNode.IsCap())
 	assert.False(t, collectNode.IsFanOut())
 	assert.True(t, collectNode.IsFanIn())
 }
 
-// TEST729: Tests creation and classification of different edge types (Direct, Iteration, Collection) Verifies that edge constructors produce correct EdgeType variants
+// TEST729: Tests creation and classification of different edge types (Direct, Iteration, Collection, Arg) Verifies that edge constructors produce correct EdgeType variants
 func Test729_edge_types(t *testing.T) {
 	direct := NewDirectEdge("a", "b")
 	assert.Equal(t, EdgeKindDirect, direct.Type.Kind)
@@ -40,6 +42,11 @@ func Test729_edge_types(t *testing.T) {
 
 	collection := NewCollectionEdge("body", "collect")
 	assert.Equal(t, EdgeKindCollection, collection.Type.Kind)
+
+	arg := NewArgEdge("a", "b", "media:data")
+	assert.Equal(t, EdgeKindArg, arg.Type.Kind)
+	assert.Equal(t, "media:data", arg.Type.ArgUrn)
+	assert.Equal(t, "", direct.Type.ArgUrn, "only an arg edge names an argument")
 }
 
 // TEST734: Tests topological sort detects self-referencing cycles (A→A) Verifies that self-loops are recognized as cycles and produce an error
@@ -158,24 +165,29 @@ func Test6634_machine_result_primary_output(t *testing.T) {
 	assert.Nil(t, empty.PrimaryOutput(), "empty outputs must return nil primary output")
 }
 
-// TEST6635: Tests that edge types determine dependency direction in TopologicalOrder
-// Iteration edges must NOT create a topological dependency (ForEach body must not block ForEach node).
-// Direct edges MUST create a dependency. Verifies that edge kind affects plan execution order.
-func Test6635_iteration_edge_does_not_create_topological_dependency(t *testing.T) {
+// TEST6635: A map and its body sort in the order a run meets them: the
+// sequence, the map, the item the body is given, then the body's step. The
+// iteration edge from a map to its item is a dependency like any other.
+func Test6635_a_map_precedes_its_item_and_its_body(t *testing.T) {
 	plan := NewMachinePlan("edge_kind_test")
 	plan.AddNode(NewInputSlotNode("input", "input", "media:document;ext=pdf", CardinalitySingle))
 	plan.AddNode(NewMachineNode("cap_0", "cap:in=media:pdf;disbind;out=media:pdf-page"))
-	plan.AddNode(NewForEachNode("foreach_0", "cap_0", "body_cap", "body_cap"))
+	plan.AddNode(NewForEachNode("foreach_0",
+		[]ForEachSource{{Node: "cap_0", Item: "page"}},
+		[]NodeId{"page", "body_cap"}))
+	plan.AddNode(NewItemNode("page", "foreach_0", "cap_0", "media:pdf-page"))
 	plan.AddNode(NewMachineNode("body_cap", "cap:in=media:pdf-page;process;out=media:text"))
 	plan.AddNode(NewOutputNode("output", "result", "body_cap"))
 
 	plan.AddEdge(NewDirectEdge("input", "cap_0"))
 	plan.AddEdge(NewDirectEdge("cap_0", "foreach_0"))
-	plan.AddEdge(NewIterationEdge("foreach_0", "body_cap")) // iteration — must not block foreach_0
+	plan.AddEdge(NewIterationEdge("foreach_0", "page"))
+	plan.AddEdge(NewDirectEdge("page", "body_cap"))
 	plan.AddEdge(NewDirectEdge("body_cap", "output"))
+	require.NoError(t, plan.Validate())
 
 	order, err := plan.TopologicalOrder()
-	require.NoError(t, err, "plan with iteration edge must be sortable")
+	require.NoError(t, err, "a plan with a map is sortable")
 
 	pos := func(id string) int {
 		for i, n := range order {
@@ -185,34 +197,9 @@ func Test6635_iteration_edge_does_not_create_topological_dependency(t *testing.T
 		}
 		return -1
 	}
-	// foreach_0 must come before body_cap in topological order
-	assert.Less(t, pos("foreach_0"), pos("body_cap"),
-		"ForEach node must precede body cap in topological order")
-}
-
-// TEST6636: Tests that ForEach node's body range fields are used correctly by ExtractForEachBody
-// The bodyEntry/bodyExit fields define which nodes are in scope. Verifies that wrong body bounds
-// produce a different extraction than correct ones — body_exit determines what gets included.
-func Test6636_foreach_body_bounds_determine_extraction(t *testing.T) {
-	// Build a plan where foreach_0 spans body_cap_0 through body_cap_1 (closed)
-	plan := buildForeachPlanWithCollect()
-
-	// Extract with the correct foreach node — body should contain 2 body caps
-	body, err := plan.ExtractForEachBody("foreach_0", "media:pdf-page")
-	require.NoError(t, err)
-
-	// The foreach node has bodyEntry="body_cap_0" and bodyExit="body_cap_1"
-	// Both must appear in the extracted body
-	assert.NotNil(t, body.GetNode("body_cap_0"),
-		"body entry cap must be included in extracted body")
-	assert.NotNil(t, body.GetNode("body_cap_1"),
-		"body exit cap must be included in extracted body")
-	// The disbind cap (cap_0) is before the foreach and must NOT be in the body
-	assert.Nil(t, body.GetNode("cap_0"),
-		"pre-foreach cap must not appear in extracted body")
-	// The post-collect cap is after foreach and must NOT be in the body
-	assert.Nil(t, body.GetNode("cap_post"),
-		"post-foreach cap must not appear in extracted body")
+	assert.Less(t, pos("cap_0"), pos("foreach_0"), "the sequence precedes the map over it")
+	assert.Less(t, pos("foreach_0"), pos("page"), "the map precedes its item")
+	assert.Less(t, pos("page"), pos("body_cap"), "the item precedes the step it is given to")
 }
 
 // TEST6637: Tests SingleCap plan passes Validate and TopologicalOrder produces correct sequence
@@ -264,187 +251,30 @@ func Test749_get_node(t *testing.T) {
 	assert.Nil(t, plan.GetNode("nonexistent"))
 }
 
-// buildForeachPlanWithCollect builds a plan with ForEach (closed with Collect)
-// Topology: input_slot → cap_0(disbind) → foreach_0 --iteration--> body_cap_0 → body_cap_1 --collection--> collect_0 → cap_post → output
-func buildForeachPlanWithCollect() *MachinePlan {
+// buildForeachPlan builds a plan with a map and a fold after it:
+// input_slot → cap_0 (a sequence) → map over it [ body_cap_0 → body_cap_1 ] → cap_post
+// (takes the sequence of body_cap_1 over the runs) → output.
+func buildForeachPlan() *MachinePlan {
 	plan := NewMachinePlan("ForEach test plan")
-
 	plan.AddNode(NewInputSlotNode("input_slot", "input", "media:document;ext=pdf", CardinalitySingle))
-	plan.AddNode(NewMachineNode("cap_0", `cap:in=media:pdf;out="media:pdf-page;list"`))
-	plan.AddNode(NewForEachNode("foreach_0", "cap_0", "body_cap_0", "body_cap_1"))
-	plan.AddNode(NewMachineNode("body_cap_0", `cap:in=media:pdf-page;out="media:text;enc=utf-8"`))
-	plan.AddNode(NewMachineNode("body_cap_1", `cap:in="media:text;enc=utf-8";out="media:decision;fmt=json;record"`))
-	plan.AddNode(NewCollectNode("collect_0", []string{"body_cap_1"}))
+	plan.AddNode(NewMachineNode("cap_0", `cap:in="media:document;ext=pdf";out="media:pdf-page;list"`))
+	plan.AddNode(NewForEachNode("foreach_0",
+		[]ForEachSource{{Node: "cap_0", Item: "foreach_0_item_0"}},
+		[]NodeId{"foreach_0_item_0", "body_cap_0", "body_cap_1"}))
+	plan.AddNode(NewItemNode("foreach_0_item_0", "foreach_0", "cap_0", "media:pdf-page"))
+	plan.AddNode(NewMachineNode("body_cap_0", `cap:in=media:pdf-page;out="media:enc=utf-8;text"`))
+	plan.AddNode(NewMachineNode("body_cap_1", `cap:in="media:enc=utf-8;text";out="media:decision;fmt=json;record"`))
 	plan.AddNode(NewMachineNode("cap_post", `cap:in="media:decision;fmt=json;record";out="media:fmt=json"`))
 	plan.AddNode(NewOutputNode("output", "result", "cap_post"))
 
 	plan.AddEdge(NewDirectEdge("input_slot", "cap_0"))
 	plan.AddEdge(NewDirectEdge("cap_0", "foreach_0"))
-	plan.AddEdge(NewIterationEdge("foreach_0", "body_cap_0"))
+	plan.AddEdge(NewIterationEdge("foreach_0", "foreach_0_item_0"))
+	plan.AddEdge(NewDirectEdge("foreach_0_item_0", "body_cap_0"))
 	plan.AddEdge(NewDirectEdge("body_cap_0", "body_cap_1"))
-	plan.AddEdge(NewCollectionEdge("body_cap_1", "collect_0"))
-	plan.AddEdge(NewDirectEdge("collect_0", "cap_post"))
+	plan.AddEdge(NewDirectEdge("body_cap_1", "cap_post"))
 	plan.AddEdge(NewDirectEdge("cap_post", "output"))
-
 	return plan
-}
-
-// buildForeachPlanUnclosed builds a plan with unclosed ForEach (no Collect)
-func buildForeachPlanUnclosed() *MachinePlan {
-	plan := NewMachinePlan("Unclosed ForEach test plan")
-
-	plan.AddNode(NewInputSlotNode("input_slot", "input", "media:document;ext=pdf", CardinalitySingle))
-	plan.AddNode(NewMachineNode("cap_0", `cap:in=media:pdf;out="media:pdf-page;list"`))
-	plan.AddNode(NewForEachNode("foreach_0", "cap_0", "body_cap_0", "body_cap_0"))
-	plan.AddNode(NewMachineNode("body_cap_0", `cap:in=media:pdf-page;out="media:decision;fmt=json;record"`))
-	plan.AddNode(NewOutputNode("output", "result", "body_cap_0"))
-
-	plan.AddEdge(NewDirectEdge("input_slot", "cap_0"))
-	plan.AddEdge(NewDirectEdge("cap_0", "foreach_0"))
-	plan.AddEdge(NewIterationEdge("foreach_0", "body_cap_0"))
-	plan.AddEdge(NewDirectEdge("body_cap_0", "output"))
-
-	return plan
-}
-
-// TEST754: extract_prefix_to with nonexistent node returns error
-func Test754_extract_prefix_nonexistent(t *testing.T) {
-	plan := buildForeachPlanWithCollect()
-	_, err := plan.ExtractPrefixTo("nonexistent")
-	assert.Error(t, err)
-}
-
-// TEST755: extract_foreach_body extracts body as standalone plan
-func Test755_extract_foreach_body(t *testing.T) {
-	plan := buildForeachPlanWithCollect()
-
-	body, err := plan.ExtractForEachBody("foreach_0", "media:pdf-page")
-	require.NoError(t, err)
-
-	assert.Equal(t, 4, len(body.Nodes))
-	assert.NotNil(t, body.GetNode("foreach_0_body_input"))
-	assert.NotNil(t, body.GetNode("body_cap_0"))
-	assert.NotNil(t, body.GetNode("body_cap_1"))
-	assert.NotNil(t, body.GetNode("foreach_0_body_output"))
-	assert.Equal(t, 1, len(body.EntryNodes))
-	assert.Equal(t, 1, len(body.OutputNodes))
-	assert.NoError(t, body.Validate())
-
-	assert.False(t, body.HasForeach())
-
-	inputNode := body.GetNode("foreach_0_body_input")
-	require.NotNil(t, inputNode)
-	assert.Equal(t, NodeKindInputSlot, inputNode.NodeType.Kind)
-	assert.Equal(t, "media:pdf-page", inputNode.NodeType.ExpectedMediaUrn)
-
-	order, err := body.TopologicalOrder()
-	require.NoError(t, err)
-	assert.Equal(t, 4, len(order))
-}
-
-// TEST756: extract_foreach_body for unclosed ForEach (single body cap)
-func Test756_extract_foreach_body_unclosed(t *testing.T) {
-	plan := buildForeachPlanUnclosed()
-
-	body, err := plan.ExtractForEachBody("foreach_0", "media:pdf-page")
-	require.NoError(t, err)
-
-	assert.Equal(t, 3, len(body.Nodes))
-	assert.NotNil(t, body.GetNode("foreach_0_body_input"))
-	assert.NotNil(t, body.GetNode("body_cap_0"))
-	assert.NotNil(t, body.GetNode("foreach_0_body_output"))
-	assert.NoError(t, body.Validate())
-	assert.False(t, body.HasForeach())
-}
-
-// TEST757: extract_foreach_body fails for non-ForEach node
-func Test757_extract_foreach_body_wrong_type(t *testing.T) {
-	plan := buildForeachPlanWithCollect()
-	_, err := plan.ExtractForEachBody("cap_0", "media:pdf-page")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not a ForEach node")
-}
-
-// TEST758: extract_suffix_from extracts collect → cap_post → output
-func Test758_extract_suffix_from(t *testing.T) {
-	plan := buildForeachPlanWithCollect()
-
-	suffix, err := plan.ExtractSuffixFrom("collect_0", "media:decision;fmt=json;record")
-	require.NoError(t, err)
-
-	assert.Equal(t, 3, len(suffix.Nodes))
-	assert.NotNil(t, suffix.GetNode("collect_0_suffix_input"))
-	assert.NotNil(t, suffix.GetNode("cap_post"))
-	assert.NotNil(t, suffix.GetNode("output"))
-	assert.Equal(t, 1, len(suffix.EntryNodes))
-	assert.Equal(t, 1, len(suffix.OutputNodes))
-	assert.NoError(t, suffix.Validate())
-	assert.False(t, suffix.HasForeach())
-}
-
-// TEST759: extract_suffix_from fails for nonexistent node
-func Test759_extract_suffix_nonexistent(t *testing.T) {
-	plan := buildForeachPlanWithCollect()
-	_, err := plan.ExtractSuffixFrom("nonexistent", "media:whatever")
-	assert.Error(t, err)
-}
-
-// TEST760: Full decomposition roundtrip — prefix + body + suffix cover all cap nodes
-func Test760_decomposition_covers_all_caps(t *testing.T) {
-	plan := buildForeachPlanWithCollect()
-
-	originalCaps := make(map[string]bool)
-	for _, n := range plan.Nodes {
-		if n.IsCap() {
-			originalCaps[n.ID] = true
-		}
-	}
-	assert.Equal(t, 4, len(originalCaps)) // cap_0, body_cap_0, body_cap_1, cap_post
-
-	prefix, err := plan.ExtractPrefixTo("cap_0")
-	require.NoError(t, err)
-	body, err := plan.ExtractForEachBody("foreach_0", "media:pdf-page")
-	require.NoError(t, err)
-	suffix, err := plan.ExtractSuffixFrom("collect_0", "media:decision;fmt=json;record")
-	require.NoError(t, err)
-
-	allCaps := make(map[string]bool)
-	for _, p := range []*MachinePlan{prefix, body, suffix} {
-		for _, n := range p.Nodes {
-			if n.IsCap() {
-				allCaps[n.ID] = true
-			}
-		}
-	}
-
-	assert.Equal(t, originalCaps, allCaps)
-}
-
-// TEST761: Prefix sub-plan can be topologically sorted (is a valid DAG)
-func Test761_prefix_is_dag(t *testing.T) {
-	plan := buildForeachPlanWithCollect()
-	prefix, err := plan.ExtractPrefixTo("cap_0")
-	require.NoError(t, err)
-	_, err = prefix.TopologicalOrder()
-	assert.NoError(t, err)
-}
-
-// TEST762: Body sub-plan can be topologically sorted (is a valid DAG)
-func Test762_body_is_dag(t *testing.T) {
-	plan := buildForeachPlanWithCollect()
-	body, err := plan.ExtractForEachBody("foreach_0", "media:pdf-page")
-	require.NoError(t, err)
-	_, err = body.TopologicalOrder()
-	assert.NoError(t, err)
-}
-
-// TEST763: Suffix sub-plan can be topologically sorted (is a valid DAG)
-func Test763_suffix_is_dag(t *testing.T) {
-	plan := buildForeachPlanWithCollect()
-	suffix, err := plan.ExtractSuffixFrom("collect_0", "media:decision;fmt=json;record")
-	require.NoError(t, err)
-	_, err = suffix.TopologicalOrder()
-	assert.NoError(t, err)
 }
 
 // TEST920: Tests creation of a simple execution plan with a single capability Verifies that single_cap() generates a valid plan with input_slot, cap node, and output node
@@ -624,56 +454,129 @@ func Test932_execution_result_failure(t *testing.T) {
 	assert.Nil(t, result.PrimaryOutput())
 }
 
-// TEST934: find_first_foreach detects ForEach in a plan
-func Test934_find_first_foreach(t *testing.T) {
-	plan := buildForeachPlanWithCollect()
-	foreachID := plan.FindFirstForEach()
-	require.NotNil(t, foreachID)
-	assert.Equal(t, "foreach_0", *foreachID)
-}
-
-// TEST935: find_first_foreach returns None for linear plans
-func Test935_find_first_foreach_linear(t *testing.T) {
-	plan := LinearChain([]string{"cap:a", "cap:b"}, "media:document;ext=pdf", "media:ext=png;image", []string{"input_a", "input_b"})
-	assert.Nil(t, plan.FindFirstForEach())
-}
-
-// TEST936: has_foreach detects ForEach nodes
+// TEST936: has_foreach detects a map, and a gather alone is not one.
 func Test936_has_foreach(t *testing.T) {
-	foreachPlan := buildForeachPlanWithCollect()
-	assert.True(t, foreachPlan.HasForeach(), "Plan with ForEach+Collect should detect ForEach")
+	foreachPlan := buildForeachPlan()
+	require.NoError(t, foreachPlan.Validate(), "the fixture is a valid plan")
+	assert.True(t, foreachPlan.HasForeach())
 
 	linearPlan := LinearChain([]string{"cap:a"}, "media:document;ext=pdf", "media:ext=png;image", []string{"input_a"})
-	assert.False(t, linearPlan.HasForeach(), "Linear plan should not detect ForEach")
+	assert.False(t, linearPlan.HasForeach())
 
-	// Standalone Collect (no ForEach) should NOT trigger HasForeach
-	standalonePlan := NewMachinePlan("collect_only")
-	standalonePlan.AddNode(NewInputSlotNode("input", "input", "media:enc=utf-8", CardinalitySingle))
-	standalonePlan.AddNode(NewMachineNode("cap_0", "cap:in=media:summarize;out=media;enc=utf-8:summary"))
-	standalonePlan.AddNode(NewCollectNode("collect_0", []string{"cap_0"}))
-	standalonePlan.AddNode(NewOutputNode("output", "result", "collect_0"))
-	assert.False(t, standalonePlan.HasForeach(), "Plan with standalone Collect (no ForEach) should NOT trigger HasForeach")
+	gatherPlan := NewMachinePlan("gather_only")
+	gatherPlan.AddNode(NewInputSlotNode("input", "input", "media:enc=utf-8", CardinalitySingle))
+	gatherPlan.AddNode(NewMachineNode("cap_0", `cap:in="media:enc=utf-8";summarize;out=media:summary`))
+	gatherPlan.AddNode(NewCollectNode("collect_0", []string{"cap_0"}, "media:summary"))
+	gatherPlan.AddNode(NewOutputNode("output", "result", "collect_0"))
+	require.NoError(t, gatherPlan.Validate())
+	assert.False(t, gatherPlan.HasForeach())
 }
 
-// TEST937: extract_prefix_to extracts input_slot -> cap_0 as a standalone plan
-func Test937_extract_prefix_to(t *testing.T) {
-	plan := buildForeachPlanWithCollect()
+// TEST12753: a plan says which map each node runs in — the map whose body
+// lists it — and which nodes are inside a map at any depth.
+func Test12753_a_plan_says_which_map_a_node_runs_in(t *testing.T) {
+	plan := buildForeachPlan()
+	enclosing := plan.EnclosingMaps()
+	assert.Equal(t, "foreach_0", enclosing["body_cap_0"])
+	assert.Equal(t, "foreach_0", enclosing["body_cap_1"])
+	assert.Equal(t, "foreach_0", enclosing["foreach_0_item_0"])
+	for _, outside := range []string{"input_slot", "cap_0", "foreach_0", "cap_post", "output"} {
+		_, inside := enclosing[outside]
+		assert.False(t, inside, "%s is the machine's own", outside)
+	}
 
-	prefix, err := plan.ExtractPrefixTo("cap_0")
-	require.NoError(t, err)
+	// A map opened inside the body: its nodes are inside the outer map,
+	// and the outer body lists the inner map, not the inner body.
+	plan.AddNode(NewForEachNode("foreach_1",
+		[]ForEachSource{{Node: "body_cap_0", Item: "foreach_1_item_0"}},
+		[]NodeId{"foreach_1_item_0", "inner_cap"}))
+	plan.AddNode(NewItemNode("foreach_1_item_0", "foreach_1", "body_cap_0", "media:enc=utf-8;text"))
+	plan.AddNode(NewMachineNode("inner_cap", `cap:in="media:enc=utf-8;text";out=media:word`))
+	outer := plan.Nodes["foreach_0"].NodeType
+	outer.Body = append(outer.Body, "foreach_1")
+	require.NoError(t, plan.Validate())
+	enclosing = plan.EnclosingMaps()
+	assert.Equal(t, "foreach_1", enclosing["inner_cap"])
+	assert.Equal(t, "foreach_0", enclosing["foreach_1"])
+	inside := plan.MapMembers("foreach_0")
+	for _, id := range []string{"body_cap_0", "body_cap_1", "foreach_0_item_0", "foreach_1", "foreach_1_item_0", "inner_cap"} {
+		assert.True(t, inside[id], "%s is inside the outer map", id)
+	}
+	assert.False(t, inside["cap_post"])
+	assert.False(t, inside["foreach_0"])
+	assert.Len(t, plan.MapMembers("foreach_1"), 2)
+	assert.Empty(t, plan.MapMembers("cap_0"), "a step is no map")
+}
 
-	// Should have: input_slot, cap_0, and a synthetic output
-	assert.Equal(t, 3, len(prefix.Nodes))
-	assert.NotNil(t, prefix.GetNode("input_slot"))
-	assert.NotNil(t, prefix.GetNode("cap_0"))
-	assert.NotNil(t, prefix.GetNode("cap_0_prefix_output"))
-	assert.Equal(t, 1, len(prefix.EntryNodes))
-	assert.Equal(t, 1, len(prefix.OutputNodes))
-	assert.NoError(t, prefix.Validate())
+// TEST12754: a plan whose nodes name what is not there, or name it as what
+// it is not, is refused: a map that iterates nothing, an item its map does
+// not list, a node in two bodies, an output node of something that is not
+// a step, a gather of a missing node.
+func Test12754_a_plan_that_names_what_is_not_there_is_refused(t *testing.T) {
+	refused := func(change func(plan *MachinePlan), expect string) {
+		t.Helper()
+		plan := buildForeachPlan()
+		change(plan)
+		err := plan.Validate()
+		require.Error(t, err, expect)
+		assert.Contains(t, err.Error(), expect)
+	}
+	theMap := func(plan *MachinePlan) *ExecutionNodeType { return plan.Nodes["foreach_0"].NodeType }
+	refused(func(plan *MachinePlan) { theMap(plan).Sources = nil }, "map 'foreach_0' iterates nothing")
+	refused(func(plan *MachinePlan) {
+		plan.AddNode(NewForEachNode("lonely", nil, nil))
+	}, "map 'lonely' iterates nothing")
+	refused(func(plan *MachinePlan) { theMap(plan).Sources[0].Item = "body_cap_0" }, "which is not that")
+	refused(func(plan *MachinePlan) { theMap(plan).Sources[0].Node = "nowhere" },
+		"node 'foreach_0' names source 'nowhere', which is not in the plan")
+	refused(func(plan *MachinePlan) { theMap(plan).Sources[0].Item = "nowhere" },
+		"node 'foreach_0' names item 'nowhere', which is not in the plan")
+	// The item it lists is an item — of another source, or of another map.
+	refused(func(plan *MachinePlan) { theMap(plan).Sources[0].Node = "input_slot" },
+		"map 'foreach_0' lists 'foreach_0_item_0' as its item of 'input_slot', which is not that")
+	refused(func(plan *MachinePlan) {
+		plan.AddNode(NewForEachNode("second",
+			[]ForEachSource{{Node: "cap_0", Item: "foreach_0_item_0"}},
+			[]NodeId{"foreach_0_item_0"}))
+	}, "map 'second' lists 'foreach_0_item_0' as its item of 'cap_0', which is not that")
+	refused(func(plan *MachinePlan) {
+		theMap(plan).Body = []NodeId{"body_cap_0", "body_cap_1"}
+	}, "does not list its item 'foreach_0_item_0' in its body")
+	refused(func(plan *MachinePlan) {
+		plan.AddNode(NewForEachNode("second",
+			[]ForEachSource{{Node: "cap_0", Item: "second_item"}},
+			[]NodeId{"second_item", "body_cap_1"}))
+		plan.AddNode(NewItemNode("second_item", "second", "cap_0", "media:pdf-page"))
+	}, "node 'body_cap_1' is in the body of two maps")
+	refused(func(plan *MachinePlan) {
+		theMap(plan).Body = append(theMap(plan).Body, "foreach_0")
+	}, "map 'foreach_0' lists itself in its body")
+	refused(func(plan *MachinePlan) {
+		plan.AddNode(NewCapOutputNode("o", "input_slot", "media:x", "x", false))
+	}, "names 'input_slot' as its step, which is not a step")
+	refused(func(plan *MachinePlan) {
+		plan.AddNode(NewCapOutputNode("o", "nowhere", "media:x", "x", false))
+	}, "node 'o' names step 'nowhere', which is not in the plan")
+	refused(func(plan *MachinePlan) {
+		plan.AddNode(NewCollectNode("g", []string{"nowhere"}, "media:"))
+	}, "node 'g' names gathered node 'nowhere', which is not in the plan")
+	refused(func(plan *MachinePlan) {
+		plan.AddNode(NewOutputNode("o2", "result", "nowhere"))
+	}, "node 'o2' names source 'nowhere', which is not in the plan")
+	refused(func(plan *MachinePlan) {
+		plan.AddNode(NewItemNode("stray", "foreach_0", "cap_0", "media:pdf-page"))
+	}, "item node 'stray' names map 'foreach_0'")
+	refused(func(plan *MachinePlan) {
+		plan.AddNode(NewItemNode("stray", "cap_0", "input_slot", "media:pdf-page"))
+	}, "item node 'stray' names map 'cap_0'")
+	refused(func(plan *MachinePlan) {
+		theMap(plan).Body = append(theMap(plan).Body, "nowhere")
+	}, "node 'foreach_0' names body node 'nowhere', which is not in the plan")
 
-	order, err := prefix.TopologicalOrder()
-	require.NoError(t, err)
-	assert.Equal(t, 3, len(order))
+	// A step's other output, of a step: accepted.
+	plan := buildForeachPlan()
+	plan.AddNode(NewCapOutputNode("o", "cap_0", "media:x", "x", false))
+	require.NoError(t, plan.Validate())
 }
 
 // TEST739: Tests NodeExecutionResult structure for successful node execution Verifies that success status, outputs (binary and text), and error fields work correctly
@@ -709,14 +612,18 @@ func Test742_edge_type_serialization(t *testing.T) {
 
 	for name, edgeType := range map[string]*EdgeType{
 		`"direct"`: DirectEdgeType(), `"iteration"`: IterationEdgeType(), `"collection"`: CollectionEdgeType(),
+		`{"arg":{"arg_urn":"media:data"}}`: ArgEdgeType("media:data"),
 	} {
 		data, err := json.Marshal(edgeType)
 		require.NoError(t, err)
 		assert.Equal(t, name, string(data))
 		var back EdgeType
 		require.NoError(t, json.Unmarshal(data, &back), name)
-		assert.Equal(t, edgeType.Kind, back.Kind, name)
+		assert.Equal(t, *edgeType, back, name)
 	}
+	// An arg edge that names no argument is not one.
+	var unnamed EdgeType
+	assert.Error(t, json.Unmarshal([]byte(`{"arg":{}}`), &unnamed))
 
 	// An edge carries the whole value: a part of it is not something an
 	// edge can be asked for, in either of the forms that once said so.
@@ -728,16 +635,97 @@ func Test742_edge_type_serialization(t *testing.T) {
 
 // TEST743: Tests ExecutionNodeType enum serialization and deserialization to/from JSON Verifies that node types like Cap and ForEach correctly serialize with their fields
 func Test743_execution_node_type_serialization(t *testing.T) {
-	capNode := NewMachineNodeType("cap:test", NewArgumentBindings(), nil)
-	data, err := json.Marshal(capNode)
-	require.NoError(t, err)
-	assert.Contains(t, string(data), "cap")
-	assert.Contains(t, string(data), "cap:test")
+	asValue := func(node *ExecutionNodeType) map[string]any {
+		t.Helper()
+		data, err := json.Marshal(node)
+		require.NoError(t, err)
+		var value map[string]any
+		require.NoError(t, json.Unmarshal(data, &value))
+		return value
+	}
+	back := func(node *ExecutionNodeType) *ExecutionNodeType {
+		t.Helper()
+		data, err := json.Marshal(node)
+		require.NoError(t, err)
+		var read ExecutionNodeType
+		require.NoError(t, json.Unmarshal(data, &read))
+		return &read
+	}
 
-	foreachNode := NewForEachNodeType("input", "body", "body")
-	data, err = json.Marshal(foreachNode)
+	capNode := NewMachineNodeType("cap:test", NewArgumentBindings(), nil, mustStepToken(t, "tok-cap-test"))
+	written := asValue(capNode)
+	assert.Equal(t, "cap", written["node_type"])
+	assert.Equal(t, "cap:test", written["cap_urn"])
+	assert.Equal(t, "tok-cap-test", written["token_id"], "a step node carries its identity")
+	assert.NotContains(t, written, "policy", "the default policy is not written")
+	assert.Equal(t, capNode.TokenId, back(capNode).TokenId)
+	// A step that wrote a policy carries it.
+	capNode.Policy = StepPolicy{Retry: 2, OnError: OnErrorAbsent}
+	assert.Equal(t, map[string]any{"retry": float64(2), "on_error": "absent"}, asValue(capNode)["policy"])
+	assert.True(t, back(capNode).Policy.Equal(capNode.Policy))
+	// A policy is written whole: retries alone still say what a failure does.
+	retrying, err := json.Marshal(StepPolicy{Retry: 1})
 	require.NoError(t, err)
-	assert.Contains(t, string(data), "for_each")
+	assert.JSONEq(t, `{"retry":1,"on_error":"fail"}`, string(retrying))
+	var read StepPolicy
+	require.NoError(t, json.Unmarshal([]byte(`{"retry":3}`), &read))
+	assert.True(t, read.Equal(StepPolicy{Retry: 3, OnError: OnErrorFail}), "a field left out is its default")
+
+	foreachNode := &ExecutionNodeType{
+		Kind:    NodeKindForEach,
+		TokenId: mustStepToken(t, "tok-foreach"),
+		Sources: []ForEachSource{{Node: "input", Item: "item"}},
+		Body:    []NodeId{"item", "body"},
+	}
+	assert.Equal(t, map[string]any{
+		"node_type": "for_each",
+		"token_id":  "tok-foreach",
+		"sources":   []any{map[string]any{"node": "input", "item": "item"}},
+		"body":      []any{"item", "body"},
+	}, asValue(foreachNode))
+	assert.Equal(t, foreachNode, back(foreachNode))
+
+	outputNode := NewCapOutputNode("o", "tok-cap-test", "media:residuals", "residuals", false).NodeType
+	assert.Equal(t, map[string]any{
+		"node_type":        "cap_output",
+		"cap_node":         "tok-cap-test",
+		"output_media_urn": "media:residuals",
+		"output_name":      "residuals",
+		"carries_input":    false,
+	}, asValue(outputNode))
+	assert.Equal(t, outputNode, back(outputNode))
+	carrying := NewCapOutputNode("o", "route", "media:dropped", "no", true).NodeType
+	assert.True(t, back(carrying).CarriesInput)
+
+	itemNode := NewItemNode("item", "each", "input", "media:page").NodeType
+	assert.Equal(t, map[string]any{
+		"node_type": "item", "foreach": "each", "source": "input", "media_urn": "media:page",
+	}, asValue(itemNode))
+	assert.Equal(t, itemNode, back(itemNode))
+
+	gather := NewCollectNode("g", []string{"a", "b"}, "media:summary").NodeType
+	assert.Equal(t, map[string]any{
+		"node_type": "collect", "input_nodes": []any{"a", "b"}, "output_media_urn": "media:summary",
+	}, asValue(gather))
+	assert.Equal(t, gather, back(gather))
+
+	// A node type nothing produces is not read, nor is a node missing a
+	// field its kind has, nor a map in the shape it once had.
+	for _, refused := range []string{
+		`{"node_type":"merge","input_nodes":["a"],"merge_strategy":"concat"}`,
+		`{"node_type":"split","input_node":"a","output_count":2}`,
+		`{"node_type":"for_each","input_node":"a","body_entry":"b","body_exit":"b"}`,
+		`{"node_type":"for_each","token_id":"t","sources":[{"node":"a","item":"i"}]}`,
+		`{"node_type":"collect","input_nodes":["a"]}`,
+		`{"node_type":"cap","cap_urn":"cap:test"}`,
+		`{"node_type":"cap","token_id":"","cap_urn":"cap:test"}`,
+		`{"node_type":"cap","token_id":"t","cap_urn":"cap:test","policy":{"on_error":"shrug"}}`,
+		`{"node_type":"item","foreach":"each","source":"input"}`,
+		`{"cap_urn":"cap:test"}`,
+	} {
+		var node ExecutionNodeType
+		assert.Error(t, json.Unmarshal([]byte(refused), &node), refused)
+	}
 }
 
 // TEST744: Tests MachinePlan serialization and deserialization to/from JSON Verifies that complete plans with nodes and edges correctly round-trip through JSON
@@ -762,17 +750,6 @@ func Test746_cap_node_output(t *testing.T) {
 	require.Equal(t, NodeKindOutput, output.NodeType.Kind)
 	assert.Equal(t, "result", output.NodeType.OutputName)
 	assert.Equal(t, "source", output.NodeType.SourceNode)
-}
-
-// TEST764: extract_prefix_to with InputSlot as target (trivial prefix)
-func Test764_extract_prefix_to_input_slot(t *testing.T) {
-	plan := buildForeachPlanWithCollect()
-	prefix, err := plan.ExtractPrefixTo("input_slot")
-	require.NoError(t, err)
-
-	// Should have: input_slot + synthetic output
-	assert.Equal(t, 2, len(prefix.Nodes))
-	assert.NoError(t, prefix.Validate())
 }
 
 // TEST6525: Body outcomes preserve explicit null attribution coordinates and preview fields in JSON.
@@ -821,6 +798,15 @@ func Test6525_body_outcome_serialization_preserves_attribution_shape(t *testing.
 	_, err = json.Marshal(BodyOutcome{BodyIndex: 1, Success: true})
 	require.ErrorContains(t, err, "linear body outcome must use body_index 0")
 
+	// The runs a body is inside are written as a list, empty for a body of
+	// the machine's own map; a linear outcome is inside no map.
+	assert.Equal(t, []any{}, encoded["enclosing"])
+	outer := MapRun{ForEachTokenID: mustStepToken(t, "tok-outer"), BodyIndex: 2}
+	_, err = json.Marshal(BodyOutcome{Success: true, Enclosing: []MapRun{outer}})
+	require.ErrorContains(t, err, "a linear body outcome is inside no map")
+	insideLinear := []byte(`{"body_index":0,"foreach_token_id":null,"enclosing":[{"foreach_token_id":"tok-outer","body_index":2}],"success":true,"cap_urns":[],"failed_token_id":null,"failed_arg_urn":null,"saved_paths":[],"total_bytes":0,"duration_ms":0,"item_preview_text":null,"item_byte_count":0}`)
+	require.ErrorContains(t, json.Unmarshal(insideLinear, &decoded), "a linear body outcome is inside no map")
+
 	foreachToken := mustStepToken(t, "tok-foreach")
 	foreachOutcome := BodyOutcome{
 		ForEachTokenID: &foreachToken,
@@ -835,4 +821,17 @@ func Test6525_body_outcome_serialization_preserves_attribution_shape(t *testing.
 	assert.Equal(t, 3, decoded.BodyIndex)
 	require.NotNil(t, decoded.ForEachTokenID)
 	assert.Equal(t, foreachToken, *decoded.ForEachTokenID)
+	assert.Empty(t, decoded.Enclosing)
+
+	// A body of a map opened inside another names the run it is inside.
+	foreachOutcome.Enclosing = []MapRun{outer}
+	nestedData, err := json.Marshal(foreachOutcome)
+	require.NoError(t, err)
+	assert.Contains(t, string(nestedData), `"enclosing":[{"foreach_token_id":"tok-outer","body_index":2}]`)
+	require.NoError(t, json.Unmarshal(nestedData, &decoded))
+	assert.Equal(t, []MapRun{outer}, decoded.Enclosing)
+	// A run that names no map is not a run.
+	var run MapRun
+	assert.Error(t, json.Unmarshal([]byte(`{"body_index":2}`), &run))
+	assert.Error(t, json.Unmarshal([]byte(`{"foreach_token_id":"","body_index":2}`), &run))
 }

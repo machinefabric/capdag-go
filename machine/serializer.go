@@ -257,7 +257,7 @@ func (m *Machine) renderPayloadJSON(registry *fabric.FabricRegistry) string {
 			out.WriteString(`,"is_loop":` + strconv.FormatBool(edge.IsLoop))
 			out.WriteString(`,"retry":` + strconv.FormatUint(uint64(edge.Policy.Retry), 10))
 			out.WriteString(`,"on_error":`)
-			text(string(edge.Policy.onError()))
+			text(string(edge.Policy.EffectiveOnError()))
 			// The machine steps the step was included through, outermost
 			// first: what a view groups the steps of an included machine by.
 			out.WriteString(`,"included_as":`)

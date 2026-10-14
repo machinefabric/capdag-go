@@ -673,6 +673,30 @@ func driveOneRequest(t *testing.T, runtime *CartridgeRuntime, rid MessageId, fra
 	}
 }
 
+// TEST12721: a request stream names no output: the argument of a peer call
+// is identified by its media URN alone. (That one which does name an output
+// is refused where it is read is TEST12731.)
+func Test12721_a_request_stream_names_no_output(t *testing.T) {
+	var wire bytes.Buffer
+	writer := newSyncFrameWriter(NewFrameWriter(&wire), NewDropCounters(), NewStragglerCounters())
+	var pending sync.Map
+	peer := newPeerInvokerImpl(writer, &pending, DefaultMaxChunk, nil, 0)
+
+	_, err := peer.Invoke(`cap:in="media:enc=utf-8;prompt";ask;out="media:enc=utf-8"`, []cap.CapArgumentValue{
+		{MediaUrn: "media:enc=utf-8;prompt", Value: []byte("why")},
+		{MediaUrn: "media:enc=utf-8;model-spec", Value: []byte("small")},
+	})
+	require.NoError(t, err)
+
+	sent := startsOf(decodeWireFrames(t, wire.Bytes()))
+	require.Len(t, sent, 2, "one stream per argument")
+	for _, start := range sent {
+		assert.Equal(t, "", start.output, "an argument stream does not carry key 21")
+	}
+	assert.Equal(t, "media:enc=utf-8;prompt", sent[0].label)
+	assert.Equal(t, "media:enc=utf-8;model-spec", sent[1].label)
+}
+
 // TEST12731: a request stream names no output: an argument is identified by
 // its media URN alone. A request stream that does name one is refused where
 // it is read — the request ends with a protocol error, nothing of the stream

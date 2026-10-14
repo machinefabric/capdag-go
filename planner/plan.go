@@ -3,6 +3,7 @@ package planner
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 )
 
 // NodeId is a string alias for node identifiers.
@@ -12,70 +13,119 @@ type NodeId = string
 type ExecutionNodeKind int
 
 const (
+	// NodeKindCap — execute a single cap.
 	NodeKindCap ExecutionNodeKind = iota
+	// NodeKindCapOutput — one output of a step other than its main one, as a
+	// node of its own.
+	NodeKindCapOutput
+	// NodeKindForEach — a map: its body runs once per item of its sources,
+	// zipped.
 	NodeKindForEach
+	// NodeKindItem — what one run of a map's body is given of one of the
+	// map's sources.
+	NodeKindItem
+	// NodeKindCollect — a gather: several values delivered to one sequence
+	// arg as one sequence, in order.
 	NodeKindCollect
+	// NodeKindInputSlot — entry point for user-provided files.
 	NodeKindInputSlot
+	// NodeKindOutput — terminal node marking a result.
 	NodeKindOutput
 )
 
-// ExecutionNodeType holds the variant data for an execution node.
+// ForEachSource is one sequence a map iterates.
+type ForEachSource struct {
+	// Node is the node that holds the sequence, as the map's own scope sees it.
+	Node NodeId `json:"node"`
+	// Item is the Item node the body is given each item as.
+	Item NodeId `json:"item"`
+}
+
+// ExecutionNodeType holds the variant data for an execution node. Only the
+// fields of its Kind mean anything.
 type ExecutionNodeType struct {
 	Kind ExecutionNodeKind
+
+	// Cap, ForEach: the stable identity of the step or the map (the
+	// StrandStep.TokenId it came from). A run's progress is reported under
+	// it, so it maps back to the graph element a client rendered.
+	TokenId StepToken
 
 	// Cap fields
 	CapUrn       string
 	ArgBindings  *ArgumentBindings
 	PreferredCap *string
+	// Policy is what the step does when it fails: how many further attempts
+	// a retryable failure gets, and whether a failure that stands leaves the
+	// step's outputs absent instead of failing the run. The zero value is to
+	// fail at once.
+	Policy StepPolicy
 
-	// ForEach fields
-	InputNode string
-	BodyEntry string
-	BodyExit  string
+	// CapOutput fields. A step's main output is the step's node. Every other
+	// output something takes is one of these: what consumes it wires from
+	// this node, and its value in a run is stored under this node's id.
+	//
+	// CapNode is the step whose output this is.
+	CapNode NodeId
+	// CarriesInput: the output carries the step's input, type unchanged,
+	// rather than its own URN (a router's outputs).
+	CarriesInput bool
 
-	// Collect fields
-	InputNodes     []string
-	OutputMediaUrn *string
+	// OutputMediaUrn is, for a CapOutput, the output's media URN in the cap's
+	// definition (its identity, and what its response stream names); for a
+	// Collect, the element type of the gathered sequence.
+	OutputMediaUrn string
+
+	// ForEach fields. Run `i` of the body is given item `i` of every source;
+	// sources of unequal length fail the run. What a body node produces is,
+	// from outside the map, the sequence of it over the runs in item order —
+	// one flat sequence when the map is inside another.
+	//
+	// Sources are the sequences the map zips, each with the node the body is
+	// given its item as. At least one.
+	Sources []ForEachSource
+	// Body is every node that runs once per item: the item nodes, the steps,
+	// the outputs and gathers that belong to them, and the maps opened inside
+	// this one (whose own bodies are theirs, not listed here).
+	Body []NodeId
+
+	// Item fields
+	//
+	// Foreach is the map this is an item of.
+	Foreach NodeId
+	// Source is the source node whose item it is.
+	Source NodeId
+	// MediaUrn is the item's media URN: the element type of the source
+	// sequence.
+	MediaUrn string
+
+	// Collect fields: the nodes gathered, in the order they are delivered. A
+	// single value contributes one item, a sequence its items; a member that
+	// is absent contributes none.
+	InputNodes []NodeId
 
 	// InputSlot fields
 	SlotName         string
 	ExpectedMediaUrn string
 	Cardinality      InputCardinality
 
-	// Output fields
+	// Output fields. OutputName is also the output's name in the cap's
+	// definition for a CapOutput (a label; unique per cap).
 	OutputName string
-	SourceNode string
+	SourceNode NodeId
 }
 
-// NewMachineNodeType creates a Cap execution node type.
-func NewMachineNodeType(capUrn string, bindings *ArgumentBindings, preferredCap *string) *ExecutionNodeType {
+// NewMachineNodeType creates a Cap execution node type under `token`.
+func NewMachineNodeType(capUrn string, bindings *ArgumentBindings, preferredCap *string, token StepToken) *ExecutionNodeType {
 	if bindings == nil {
 		bindings = NewArgumentBindings()
 	}
 	return &ExecutionNodeType{
 		Kind:         NodeKindCap,
+		TokenId:      token,
 		CapUrn:       capUrn,
 		ArgBindings:  bindings,
 		PreferredCap: preferredCap,
-	}
-}
-
-// NewForEachNodeType creates a ForEach execution node type.
-func NewForEachNodeType(inputNode, bodyEntry, bodyExit string) *ExecutionNodeType {
-	return &ExecutionNodeType{
-		Kind:      NodeKindForEach,
-		InputNode: inputNode,
-		BodyEntry: bodyEntry,
-		BodyExit:  bodyExit,
-	}
-}
-
-// NewCollectNodeType creates a Collect execution node type.
-func NewCollectNodeType(inputNodes []string, outputMediaUrn *string) *ExecutionNodeType {
-	return &ExecutionNodeType{
-		Kind:           NodeKindCollect,
-		InputNodes:     inputNodes,
-		OutputMediaUrn: outputMediaUrn,
 	}
 }
 
@@ -106,45 +156,109 @@ type MachineNode struct {
 }
 
 // NewMachineNode creates a Cap node with empty bindings.
+//
+// Mints a fresh token: this constructor builds cap nodes for plans that are
+// not derived from a resolved strand. A run whose progress must map back to a
+// client-rendered strand uses NewMachineNodeWithBindingsToken to keep the
+// strand's identity.
 func NewMachineNode(id, capUrn string) *MachineNode {
 	return &MachineNode{
 		ID:       id,
-		NodeType: NewMachineNodeType(capUrn, nil, nil),
+		NodeType: NewMachineNodeType(capUrn, nil, nil, MintStepToken()),
 	}
 }
 
-// NewMachineNodeWithBindings creates a Cap node with bindings.
+// NewMachineNodeWithBindings creates a Cap node with bindings. Mints a fresh
+// token.
 func NewMachineNodeWithBindings(id, capUrn string, bindings *ArgumentBindings) *MachineNode {
 	return &MachineNode{
 		ID:       id,
-		NodeType: NewMachineNodeType(capUrn, bindings, nil),
+		NodeType: NewMachineNodeType(capUrn, bindings, nil, MintStepToken()),
 	}
 }
 
-// NewMachineNodeWithPreference creates a Cap node with bindings and preferred cap.
+// NewMachineNodeWithBindingsToken creates a Cap node with bindings, keeping a
+// strand step's identity.
+func NewMachineNodeWithBindingsToken(id, capUrn string, bindings *ArgumentBindings, token StepToken) *MachineNode {
+	return &MachineNode{
+		ID:       id,
+		NodeType: NewMachineNodeType(capUrn, bindings, nil, token),
+	}
+}
+
+// NewMachineNodeWithPreference creates a Cap node with bindings and preferred
+// cap. Mints a fresh token.
 func NewMachineNodeWithPreference(id, capUrn string, bindings *ArgumentBindings, preferredCap *string) *MachineNode {
 	return &MachineNode{
 		ID:       id,
-		NodeType: NewMachineNodeType(capUrn, bindings, preferredCap),
+		NodeType: NewMachineNodeType(capUrn, bindings, preferredCap, MintStepToken()),
 	}
 }
 
-// NewForEachNode creates a ForEach node.
-func NewForEachNode(id, inputNode, bodyEntry, bodyExit string) *MachineNode {
-	desc := "Fan-out: process each item in vector"
+// NewForEachNode creates a map node. Mints a fresh token; a run whose
+// progress must map back to a rendered strand uses NewForEachNodeToken.
+func NewForEachNode(id string, sources []ForEachSource, body []NodeId) *MachineNode {
+	return NewForEachNodeToken(id, sources, body, MintStepToken())
+}
+
+// NewForEachNodeToken creates a map node, keeping the originating step's
+// identity.
+func NewForEachNodeToken(id string, sources []ForEachSource, body []NodeId, token StepToken) *MachineNode {
+	desc := "Map: run the body once per item"
 	return &MachineNode{
-		ID:          id,
-		NodeType:    NewForEachNodeType(inputNode, bodyEntry, bodyExit),
+		ID: id,
+		NodeType: &ExecutionNodeType{
+			Kind:    NodeKindForEach,
+			TokenId: token,
+			Sources: sources,
+			Body:    body,
+		},
 		Description: &desc,
 	}
 }
 
-// NewCollectNode creates a Collect node.
-func NewCollectNode(id string, inputNodes []string) *MachineNode {
-	desc := "Fan-in: collect results into vector"
+// NewItemNode creates the node a map's body is given one source's item as.
+func NewItemNode(id, foreach, source, mediaUrn string) *MachineNode {
+	desc := fmt.Sprintf("Item of %s", source)
 	return &MachineNode{
-		ID:          id,
-		NodeType:    NewCollectNodeType(inputNodes, nil),
+		ID: id,
+		NodeType: &ExecutionNodeType{
+			Kind:     NodeKindItem,
+			Foreach:  foreach,
+			Source:   source,
+			MediaUrn: mediaUrn,
+		},
+		Description: &desc,
+	}
+}
+
+// NewCapOutputNode creates the node of an output of `capNode` other than its
+// main one.
+func NewCapOutputNode(id, capNode, outputMediaUrn, outputName string, carriesInput bool) *MachineNode {
+	desc := fmt.Sprintf("Output: %s", outputName)
+	return &MachineNode{
+		ID: id,
+		NodeType: &ExecutionNodeType{
+			Kind:           NodeKindCapOutput,
+			CapNode:        capNode,
+			OutputMediaUrn: outputMediaUrn,
+			OutputName:     outputName,
+			CarriesInput:   carriesInput,
+		},
+		Description: &desc,
+	}
+}
+
+// NewCollectNode creates a gather node.
+func NewCollectNode(id string, inputNodes []string, outputMediaUrn string) *MachineNode {
+	desc := "Gather: several values into one sequence"
+	return &MachineNode{
+		ID: id,
+		NodeType: &ExecutionNodeType{
+			Kind:           NodeKindCollect,
+			InputNodes:     inputNodes,
+			OutputMediaUrn: outputMediaUrn,
+		},
 		Description: &desc,
 	}
 }
@@ -198,8 +312,16 @@ func (n *MachineNode) GetPreferredCap() *string {
 type EdgeKind int
 
 const (
+	// EdgeKindDirect — into a step: its MAIN input. Into any other node:
+	// what that node is of — a map's source, an output node's step, a plan
+	// output's source.
 	EdgeKindDirect EdgeKind = iota
+	// EdgeKindArg — into a specific NON-main argument of the target step,
+	// identified by the URN that argument's stream is delivered under.
+	EdgeKindArg
+	// EdgeKindIteration — from a map to one of its item nodes.
 	EdgeKindIteration
+	// EdgeKindCollection — from a gathered node into its gather.
 	EdgeKindCollection
 )
 
@@ -207,10 +329,16 @@ const (
 // produced: there is no reading of a part of it.
 type EdgeType struct {
 	Kind EdgeKind
+	// ArgUrn is, for an Arg edge, the URN the argument's stream is delivered
+	// under.
+	ArgUrn string
 }
 
 // DirectEdgeType creates a Direct edge type.
 func DirectEdgeType() *EdgeType { return &EdgeType{Kind: EdgeKindDirect} }
+
+// ArgEdgeType creates an Arg edge type.
+func ArgEdgeType(argUrn string) *EdgeType { return &EdgeType{Kind: EdgeKindArg, ArgUrn: argUrn} }
 
 // IterationEdgeType creates an Iteration edge type.
 func IterationEdgeType() *EdgeType { return &EdgeType{Kind: EdgeKindIteration} }
@@ -230,12 +358,18 @@ func NewDirectEdge(from, to string) *MachinePlanEdge {
 	return &MachinePlanEdge{FromNode: from, ToNode: to, Type: DirectEdgeType()}
 }
 
-// NewIterationEdge creates an iteration edge.
+// NewArgEdge creates an edge feeding a specific non-main argument (by its
+// media URN) of the target cap.
+func NewArgEdge(from, to, argUrn string) *MachinePlanEdge {
+	return &MachinePlanEdge{FromNode: from, ToNode: to, Type: ArgEdgeType(argUrn)}
+}
+
+// NewIterationEdge creates an iteration edge (map → item).
 func NewIterationEdge(from, to string) *MachinePlanEdge {
 	return &MachinePlanEdge{FromNode: from, ToNode: to, Type: IterationEdgeType()}
 }
 
-// NewCollectionEdge creates a collection edge.
+// NewCollectionEdge creates a collection edge (gathered node → gather).
 func NewCollectionEdge(from, to string) *MachinePlanEdge {
 	return &MachinePlanEdge{FromNode: from, ToNode: to, Type: CollectionEdgeType()}
 }
@@ -280,7 +414,8 @@ func (p *MachinePlan) GetNode(id string) *MachineNode {
 	return p.Nodes[id]
 }
 
-// Validate checks plan structure. Returns error on invalid references.
+// Validate checks plan structure: every edge, entry and output names a node
+// of the plan, and what a node names is there and is what it is named as.
 func (p *MachinePlan) Validate() error {
 	for _, edge := range p.Edges {
 		if _, ok := p.Nodes[edge.FromNode]; !ok {
@@ -300,7 +435,141 @@ func (p *MachinePlan) Validate() error {
 			return NewInternalError(fmt.Sprintf("Output node '%s' not found in plan", outputID))
 		}
 	}
+
+	known := func(owner, what, id string) error {
+		if _, ok := p.Nodes[id]; ok {
+			return nil
+		}
+		return NewInternalError(fmt.Sprintf("node '%s' names %s '%s', which is not in the plan", owner, what, id))
+	}
+	inBody := make(map[string]string)
+	// In node-id order, so the same plan is refused the same way every time.
+	ids := make([]string, 0, len(p.Nodes))
+	for id := range p.Nodes {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		nt := p.Nodes[id].NodeType
+		switch nt.Kind {
+		case NodeKindCap, NodeKindInputSlot:
+		case NodeKindOutput:
+			if err := known(id, "source", nt.SourceNode); err != nil {
+				return err
+			}
+		case NodeKindCollect:
+			for _, input := range nt.InputNodes {
+				if err := known(id, "gathered node", input); err != nil {
+					return err
+				}
+			}
+		case NodeKindCapOutput:
+			if err := known(id, "step", nt.CapNode); err != nil {
+				return err
+			}
+			if !p.Nodes[nt.CapNode].IsCap() {
+				return NewInternalError(fmt.Sprintf(
+					"output node '%s' names '%s' as its step, which is not a step", id, nt.CapNode))
+			}
+		case NodeKindItem:
+			if err := known(id, "map", nt.Foreach); err != nil {
+				return err
+			}
+			listed := false
+			if of := p.Nodes[nt.Foreach].NodeType; of.Kind == NodeKindForEach {
+				for _, source := range of.Sources {
+					if source.Item == id && source.Node == nt.Source {
+						listed = true
+					}
+				}
+			}
+			if !listed {
+				return NewInternalError(fmt.Sprintf(
+					"item node '%s' names map '%s' and source '%s', and that map does not list it so",
+					id, nt.Foreach, nt.Source))
+			}
+		case NodeKindForEach:
+			if len(nt.Sources) == 0 {
+				return NewInternalError(fmt.Sprintf("map '%s' iterates nothing", id))
+			}
+			for _, source := range nt.Sources {
+				if err := known(id, "source", source.Node); err != nil {
+					return err
+				}
+				if err := known(id, "item", source.Item); err != nil {
+					return err
+				}
+				item := p.Nodes[source.Item].NodeType
+				if item.Kind != NodeKindItem || item.Foreach != id || item.Source != source.Node {
+					return NewInternalError(fmt.Sprintf(
+						"map '%s' lists '%s' as its item of '%s', which is not that", id, source.Item, source.Node))
+				}
+				inBodyOfThis := false
+				for _, member := range nt.Body {
+					if member == source.Item {
+						inBodyOfThis = true
+					}
+				}
+				if !inBodyOfThis {
+					return NewInternalError(fmt.Sprintf(
+						"map '%s' does not list its item '%s' in its body", id, source.Item))
+				}
+			}
+			for _, member := range nt.Body {
+				if err := known(id, "body node", member); err != nil {
+					return err
+				}
+				if member == id {
+					return NewInternalError(fmt.Sprintf("map '%s' lists itself in its body", id))
+				}
+				if other, taken := inBody[member]; taken {
+					return NewInternalError(fmt.Sprintf(
+						"node '%s' is in the body of two maps ('%s' and '%s')", member, other, id))
+				}
+				inBody[member] = id
+			}
+		default:
+			return NewInternalError(fmt.Sprintf("node '%s' is of no kind a plan has", id))
+		}
+	}
 	return nil
+}
+
+// EnclosingMaps returns the map each node runs in: node id → the id of the
+// map whose body lists it. A node of the machine itself has no entry.
+func (p *MachinePlan) EnclosingMaps() map[string]string {
+	enclosing := make(map[string]string)
+	for id, node := range p.Nodes {
+		if node.NodeType.Kind != NodeKindForEach {
+			continue
+		}
+		for _, member := range node.NodeType.Body {
+			enclosing[member] = id
+		}
+	}
+	return enclosing
+}
+
+// MapMembers returns every node inside map `foreachID`: its body, and the
+// bodies of the maps opened inside it.
+func (p *MachinePlan) MapMembers(foreachID string) map[string]bool {
+	members := make(map[string]bool)
+	pending := []string{foreachID}
+	for len(pending) > 0 {
+		id := pending[len(pending)-1]
+		pending = pending[:len(pending)-1]
+		node, ok := p.Nodes[id]
+		if !ok || node.NodeType.Kind != NodeKindForEach {
+			continue
+		}
+		for _, member := range node.NodeType.Body {
+			if !members[member] {
+				members[member] = true
+				pending = append(pending, member)
+			}
+		}
+	}
+	return members
 }
 
 // TopologicalOrder returns nodes in topological order using Kahn's algorithm.
@@ -391,26 +660,7 @@ func LinearChain(capUrns []string, inputMedia, _ string, filePathArgNames []stri
 	return plan
 }
 
-// FindFirstForEach finds the first ForEach node in topological order.
-func (p *MachinePlan) FindFirstForEach() *string {
-	order, err := p.TopologicalOrder()
-	if err != nil {
-		return nil
-	}
-	for _, node := range order {
-		if node.NodeType.Kind == NodeKindForEach {
-			return &node.ID
-		}
-	}
-	return nil
-}
-
-// HasForeach returns true if any node is a ForEach node (requiring decomposition).
-//
-// ForEach nodes require special handling: the plan is decomposed into
-// prefix/body/suffix, and the body is executed per-item. Standalone Collect
-// nodes (scalar→list without ForEach) are pass-throughs handled by
-// plan_converter and do NOT require decomposition.
+// HasForeach reports whether this plan contains a map.
 func (p *MachinePlan) HasForeach() bool {
 	for _, node := range p.Nodes {
 		if node.NodeType.Kind == NodeKindForEach {
@@ -418,223 +668,6 @@ func (p *MachinePlan) HasForeach() bool {
 		}
 	}
 	return false
-}
-
-// HasForeachCollectPair returns true if the plan has both a ForEach and a Collect node.
-//
-// A Collect node following a ForEach marks the re-assembly point.
-// Standalone Collect nodes (no ForEach) are pass-throughs.
-func (p *MachinePlan) HasForeachCollectPair() bool {
-	hasForeach := false
-	hasCollect := false
-	for _, node := range p.Nodes {
-		if node.NodeType.Kind == NodeKindForEach {
-			hasForeach = true
-		}
-		if node.NodeType.Kind == NodeKindCollect {
-			hasCollect = true
-		}
-	}
-	return hasForeach && hasCollect
-}
-
-// ExtractPrefixTo extracts ancestor subgraph up to and including targetNodeID.
-func (p *MachinePlan) ExtractPrefixTo(targetNodeID string) (*MachinePlan, error) {
-	if _, ok := p.Nodes[targetNodeID]; !ok {
-		return nil, NewInternalError(fmt.Sprintf("Target node '%s' not found in plan", targetNodeID))
-	}
-
-	// Build reverse adjacency
-	reverseAdj := make(map[string][]string)
-	for id := range p.Nodes {
-		reverseAdj[id] = nil
-	}
-	for _, edge := range p.Edges {
-		reverseAdj[edge.ToNode] = append(reverseAdj[edge.ToNode], edge.FromNode)
-	}
-
-	// BFS backward from target
-	ancestors := make(map[string]bool)
-	queue := []string{targetNodeID}
-	for len(queue) > 0 {
-		id := queue[0]
-		queue = queue[1:]
-		if ancestors[id] {
-			continue
-		}
-		ancestors[id] = true
-		for _, pred := range reverseAdj[id] {
-			if !ancestors[pred] {
-				queue = append(queue, pred)
-			}
-		}
-	}
-
-	subPlan := NewMachinePlan(p.Name + "_prefix")
-	for id := range ancestors {
-		node := p.Nodes[id]
-		if node.NodeType.Kind == NodeKindOutput {
-			continue
-		}
-		subPlan.AddNode(node)
-	}
-
-	for _, edge := range p.Edges {
-		if ancestors[edge.FromNode] && ancestors[edge.ToNode] {
-			fromNode := p.Nodes[edge.FromNode]
-			toNode := p.Nodes[edge.ToNode]
-			if fromNode.NodeType.Kind != NodeKindOutput && toNode.NodeType.Kind != NodeKindOutput {
-				subPlan.AddEdge(edge)
-			}
-		}
-	}
-
-	outputID := targetNodeID + "_prefix_output"
-	subPlan.AddNode(NewOutputNode(outputID, "prefix_result", targetNodeID))
-	subPlan.AddEdge(NewDirectEdge(targetNodeID, outputID))
-
-	if err := subPlan.Validate(); err != nil {
-		return nil, err
-	}
-	return subPlan, nil
-}
-
-// ExtractForEachBody extracts the body of a ForEach node as a standalone plan.
-func (p *MachinePlan) ExtractForEachBody(foreachNodeID, itemMediaUrn string) (*MachinePlan, error) {
-	node, ok := p.Nodes[foreachNodeID]
-	if !ok {
-		return nil, NewInternalError(fmt.Sprintf("ForEach node '%s' not found in plan", foreachNodeID))
-	}
-	if node.NodeType.Kind != NodeKindForEach {
-		return nil, NewInternalError(fmt.Sprintf("Node '%s' is not a ForEach node", foreachNodeID))
-	}
-
-	bodyEntry := node.NodeType.BodyEntry
-	bodyExit := node.NodeType.BodyExit
-
-	// Build forward adjacency
-	forwardAdj := make(map[string][]string)
-	for id := range p.Nodes {
-		forwardAdj[id] = nil
-	}
-	for _, edge := range p.Edges {
-		forwardAdj[edge.FromNode] = append(forwardAdj[edge.FromNode], edge.ToNode)
-	}
-
-	bodyNodes := make(map[string]bool)
-	queue := []string{bodyEntry}
-	for len(queue) > 0 {
-		id := queue[0]
-		queue = queue[1:]
-		if bodyNodes[id] {
-			continue
-		}
-		bodyNodes[id] = true
-		if id == bodyExit {
-			continue
-		}
-		origNode := p.Nodes[id]
-		if origNode != nil && (origNode.NodeType.Kind == NodeKindOutput || origNode.NodeType.Kind == NodeKindCollect) {
-			continue
-		}
-		for _, succ := range forwardAdj[id] {
-			if !bodyNodes[succ] {
-				queue = append(queue, succ)
-			}
-		}
-	}
-	bodyNodes[bodyExit] = true
-
-	bodyPlan := NewMachinePlan(p.Name + "_foreach_body")
-
-	inputID := foreachNodeID + "_body_input"
-	bodyPlan.AddNode(NewInputSlotNode(inputID, "item_input", itemMediaUrn, CardinalitySingle))
-
-	for id := range bodyNodes {
-		if bodyNode, ok := p.Nodes[id]; ok {
-			bodyPlan.AddNode(bodyNode)
-		}
-	}
-
-	bodyPlan.AddEdge(NewDirectEdge(inputID, bodyEntry))
-
-	for _, edge := range p.Edges {
-		if bodyNodes[edge.FromNode] && bodyNodes[edge.ToNode] {
-			if edge.Type.Kind == EdgeKindIteration || edge.Type.Kind == EdgeKindCollection {
-				continue
-			}
-			bodyPlan.AddEdge(edge)
-		}
-	}
-
-	outputID := foreachNodeID + "_body_output"
-	bodyPlan.AddNode(NewOutputNode(outputID, "item_result", bodyExit))
-	bodyPlan.AddEdge(NewDirectEdge(bodyExit, outputID))
-
-	if err := bodyPlan.Validate(); err != nil {
-		return nil, err
-	}
-	return bodyPlan, nil
-}
-
-// ExtractSuffixFrom extracts all descendants of sourceNodeID as a standalone plan.
-func (p *MachinePlan) ExtractSuffixFrom(sourceNodeID, sourceMediaUrn string) (*MachinePlan, error) {
-	if _, ok := p.Nodes[sourceNodeID]; !ok {
-		return nil, NewInternalError(fmt.Sprintf("Source node '%s' not found in plan", sourceNodeID))
-	}
-
-	// Build forward adjacency
-	forwardAdj := make(map[string][]string)
-	for id := range p.Nodes {
-		forwardAdj[id] = nil
-	}
-	for _, edge := range p.Edges {
-		forwardAdj[edge.FromNode] = append(forwardAdj[edge.FromNode], edge.ToNode)
-	}
-
-	descendants := make(map[string]bool)
-	queue := []string{sourceNodeID}
-	for len(queue) > 0 {
-		id := queue[0]
-		queue = queue[1:]
-		if descendants[id] {
-			continue
-		}
-		descendants[id] = true
-		for _, succ := range forwardAdj[id] {
-			if !descendants[succ] {
-				queue = append(queue, succ)
-			}
-		}
-	}
-
-	subPlan := NewMachinePlan(p.Name + "_suffix")
-
-	inputID := sourceNodeID + "_suffix_input"
-	subPlan.AddNode(NewInputSlotNode(inputID, "collected_input", sourceMediaUrn, CardinalitySingle))
-
-	for id := range descendants {
-		if id == sourceNodeID {
-			continue
-		}
-		descNode := p.Nodes[id]
-		if descNode != nil && descNode.NodeType.Kind != NodeKindInputSlot {
-			subPlan.AddNode(descNode)
-		}
-	}
-
-	for _, edge := range p.Edges {
-		if edge.FromNode == sourceNodeID && descendants[edge.ToNode] {
-			subPlan.AddEdge(NewDirectEdge(inputID, edge.ToNode))
-		} else if descendants[edge.FromNode] && descendants[edge.ToNode] && edge.FromNode != sourceNodeID {
-			subPlan.AddEdge(edge)
-		}
-	}
-
-	if err := subPlan.Validate(); err != nil {
-		return nil, err
-	}
-	return subPlan, nil
 }
 
 // NodeExecutionResult holds the result of executing a single node.
@@ -658,6 +691,37 @@ type NodeExecutionResult struct {
 	DurationMs     uint64 `json:"duration_ms"`
 }
 
+// MapRun is one run of a map's body: which map, and which of its runs.
+type MapRun struct {
+	// ForEachTokenID is the stable identity of the map.
+	ForEachTokenID StepToken `json:"foreach_token_id"`
+	// BodyIndex is the index of the run within the map (0-based, item order).
+	BodyIndex int `json:"body_index"`
+}
+
+// UnmarshalJSON reads a run. One that names no map is not a run.
+func (r *MapRun) UnmarshalJSON(data []byte) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	for _, field := range []string{"foreach_token_id", "body_index"} {
+		if _, present := fields[field]; !present {
+			return fmt.Errorf("a map run is missing field `%s`", field)
+		}
+	}
+	type mapRun MapRun
+	var decoded mapRun
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	if decoded.BodyIndex < 0 {
+		return fmt.Errorf("a map run's body_index must be non-negative")
+	}
+	*r = MapRun(decoded)
+	return nil
+}
+
 // BodyOutcome tracks what happened during a single ForEach body execution.
 //
 // For linear (non-ForEach) pipelines, a single BodyOutcome with BodyIndex=0
@@ -668,6 +732,11 @@ type BodyOutcome struct {
 	ForEachTokenID *StepToken `json:"foreach_token_id"`
 	// BodyIndex is the index of this body within the ForEach (0-based). 0 for linear pipelines.
 	BodyIndex int `json:"body_index"`
+	// Enclosing is the runs this body is inside, when its map is opened
+	// inside another's body: outermost first. Empty for a map of the machine
+	// itself, and for a linear pipeline. A body index alone does not name a
+	// run of a nested map — it recurs under every run of the map around it.
+	Enclosing []MapRun `json:"enclosing"`
 	// Success indicates whether this body completed successfully.
 	Success bool `json:"success"`
 	// CapUrns are the cap URNs in the body's execution pathway (in execution order).
@@ -700,6 +769,14 @@ func (b BodyOutcome) validate() error {
 	if b.ForEachTokenID == nil && b.BodyIndex != 0 {
 		return fmt.Errorf("linear body outcome must use body_index 0")
 	}
+	if b.ForEachTokenID == nil && len(b.Enclosing) != 0 {
+		return fmt.Errorf("a linear body outcome is inside no map")
+	}
+	for _, run := range b.Enclosing {
+		if run.BodyIndex < 0 {
+			return fmt.Errorf("body outcome enclosing body_index must be non-negative")
+		}
+	}
 	// foreach_token_id and failed_token_id need no emptiness check here: a
 	// StepToken cannot BE empty, and decoding one from "" already failed before
 	// this outcome existed.
@@ -716,7 +793,9 @@ func (b BodyOutcome) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 	type bodyOutcome BodyOutcome
-	return json.Marshal(bodyOutcome(b))
+	written := bodyOutcome(b)
+	written.Enclosing = nonNil(b.Enclosing)
+	return json.Marshal(written)
 }
 
 // UnmarshalJSON keeps the required-but-nullable execution-coordinate shape.
@@ -766,61 +845,83 @@ func (r *MachineResult) PrimaryOutput() any {
 	return nil
 }
 
-// edgeKindName returns the snake_case wire name for an EdgeKind.
-func edgeKindName(k EdgeKind) string {
-	switch k {
-	case EdgeKindDirect:
-		return "direct"
-	case EdgeKindIteration:
-		return "iteration"
-	case EdgeKindCollection:
-		return "collection"
-	default:
-		return "direct"
-	}
-}
-
-// MarshalJSON serializes EdgeType as its snake_case name ("direct"), mirroring
-// serde's `rename_all = "snake_case"` for unit variants.
+// MarshalJSON serializes EdgeType as serde writes the reference's enum: a
+// kind that carries nothing is its snake_case name ("direct"); an Arg edge is
+// {"arg":{"arg_urn":"…"}}.
 func (e *EdgeType) MarshalJSON() ([]byte, error) {
-	return json.Marshal(edgeKindName(e.Kind))
+	switch e.Kind {
+	case EdgeKindDirect:
+		return json.Marshal("direct")
+	case EdgeKindIteration:
+		return json.Marshal("iteration")
+	case EdgeKindCollection:
+		return json.Marshal("collection")
+	case EdgeKindArg:
+		return json.Marshal(map[string]any{"arg": map[string]any{"arg_urn": e.ArgUrn}})
+	default:
+		return nil, fmt.Errorf("an edge of no kind a plan has: %d", e.Kind)
+	}
 }
 
-// UnmarshalJSON reads an EdgeType from its name. A name this library does not
-// know is refused: an edge of a kind nobody here can carry is not an edge.
+// UnmarshalJSON reads an EdgeType. A kind this library does not know is
+// refused: an edge of a kind nobody here can carry is not an edge.
 func (e *EdgeType) UnmarshalJSON(data []byte) error {
-	var s string
-	if err := json.Unmarshal(data, &s); err != nil {
-		return fmt.Errorf("an EdgeType is a name: %s", string(data))
+	var name string
+	if err := json.Unmarshal(data, &name); err == nil {
+		switch name {
+		case "direct":
+			*e = EdgeType{Kind: EdgeKindDirect}
+		case "iteration":
+			*e = EdgeType{Kind: EdgeKindIteration}
+		case "collection":
+			*e = EdgeType{Kind: EdgeKindCollection}
+		default:
+			return fmt.Errorf("unknown EdgeType: %s", name)
+		}
+		return nil
 	}
-	switch s {
-	case "direct":
-		e.Kind = EdgeKindDirect
-	case "iteration":
-		e.Kind = EdgeKindIteration
-	case "collection":
-		e.Kind = EdgeKindCollection
-	default:
-		return fmt.Errorf("unknown EdgeType: %s", s)
+	var carrying map[string]json.RawMessage
+	if err := json.Unmarshal(data, &carrying); err != nil || len(carrying) != 1 {
+		return fmt.Errorf("an EdgeType is a name, or one kind with what it carries: %s", string(data))
 	}
+	body, isArg := carrying["arg"]
+	if !isArg {
+		for kind := range carrying {
+			return fmt.Errorf("unknown EdgeType: %s", kind)
+		}
+	}
+	var arg struct {
+		ArgUrn *string `json:"arg_urn"`
+	}
+	if err := json.Unmarshal(body, &arg); err != nil {
+		return err
+	}
+	if arg.ArgUrn == nil {
+		return fmt.Errorf("an arg edge is missing field `arg_urn`")
+	}
+	*e = EdgeType{Kind: EdgeKindArg, ArgUrn: *arg.ArgUrn}
 	return nil
 }
 
 // nodeKindName returns the snake_case wire name for an ExecutionNodeKind.
-func nodeKindName(k ExecutionNodeKind) string {
+func nodeKindName(k ExecutionNodeKind) (string, error) {
 	switch k {
 	case NodeKindCap:
-		return "cap"
+		return "cap", nil
+	case NodeKindCapOutput:
+		return "cap_output", nil
 	case NodeKindForEach:
-		return "for_each"
+		return "for_each", nil
+	case NodeKindItem:
+		return "item", nil
 	case NodeKindCollect:
-		return "collect"
+		return "collect", nil
 	case NodeKindInputSlot:
-		return "input_slot"
+		return "input_slot", nil
 	case NodeKindOutput:
-		return "output"
+		return "output", nil
 	default:
-		return "cap"
+		return "", fmt.Errorf("a node of no kind a plan has: %d", k)
 	}
 }
 
@@ -828,9 +929,14 @@ func nodeKindName(k ExecutionNodeKind) string {
 // serde's `tag = "node_type", rename_all = "snake_case"`. The variant name is
 // written under the "node_type" key and the variant fields are flattened in.
 func (n *ExecutionNodeType) MarshalJSON() ([]byte, error) {
-	m := map[string]any{"node_type": nodeKindName(n.Kind)}
+	name, err := nodeKindName(n.Kind)
+	if err != nil {
+		return nil, err
+	}
+	m := map[string]any{"node_type": name}
 	switch n.Kind {
 	case NodeKindCap:
+		m["token_id"] = n.TokenId
 		m["cap_urn"] = n.CapUrn
 		bindings := n.ArgBindings
 		if bindings == nil {
@@ -840,15 +946,25 @@ func (n *ExecutionNodeType) MarshalJSON() ([]byte, error) {
 		if n.PreferredCap != nil {
 			m["preferred_cap"] = *n.PreferredCap
 		}
-	case NodeKindForEach:
-		m["input_node"] = n.InputNode
-		m["body_entry"] = n.BodyEntry
-		m["body_exit"] = n.BodyExit
-	case NodeKindCollect:
-		m["input_nodes"] = n.InputNodes
-		if n.OutputMediaUrn != nil {
-			m["output_media_urn"] = *n.OutputMediaUrn
+		if !n.Policy.IsDefault() {
+			m["policy"] = n.Policy
 		}
+	case NodeKindCapOutput:
+		m["cap_node"] = n.CapNode
+		m["output_media_urn"] = n.OutputMediaUrn
+		m["output_name"] = n.OutputName
+		m["carries_input"] = n.CarriesInput
+	case NodeKindForEach:
+		m["token_id"] = n.TokenId
+		m["sources"] = nonNil(n.Sources)
+		m["body"] = nonNil(n.Body)
+	case NodeKindItem:
+		m["foreach"] = n.Foreach
+		m["source"] = n.Source
+		m["media_urn"] = n.MediaUrn
+	case NodeKindCollect:
+		m["input_nodes"] = nonNil(n.InputNodes)
+		m["output_media_urn"] = n.OutputMediaUrn
 	case NodeKindInputSlot:
 		m["slot_name"] = n.SlotName
 		m["expected_media_urn"] = n.ExpectedMediaUrn
@@ -860,56 +976,121 @@ func (n *ExecutionNodeType) MarshalJSON() ([]byte, error) {
 	return json.Marshal(m)
 }
 
-// UnmarshalJSON deserializes the internally-tagged ExecutionNodeType form.
-func (n *ExecutionNodeType) UnmarshalJSON(data []byte) error {
-	var tag struct {
-		NodeType string `json:"node_type"`
+// nonNil is `items`, or an empty list where there are none: a list a plan
+// carries is written as a list.
+func nonNil[T any](items []T) []T {
+	if items == nil {
+		return []T{}
 	}
-	if err := json.Unmarshal(data, &tag); err != nil {
+	return items
+}
+
+// requireFields refuses a node that leaves out a field its kind has: a node
+// read with a part of it missing is not the node that was written.
+func requireFields(fields map[string]json.RawMessage, kind string, names ...string) error {
+	for _, name := range names {
+		if _, present := fields[name]; !present {
+			return fmt.Errorf("a %s node is missing field `%s`", kind, name)
+		}
+	}
+	return nil
+}
+
+// UnmarshalJSON deserializes the internally-tagged ExecutionNodeType form. A
+// node type this library does not know is refused, and so is a node missing a
+// field its kind has.
+func (n *ExecutionNodeType) UnmarshalJSON(data []byte) error {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
 		return err
 	}
-	switch tag.NodeType {
+	var kind string
+	if raw, present := fields["node_type"]; !present {
+		return fmt.Errorf("a plan node is missing field `node_type`")
+	} else if err := json.Unmarshal(raw, &kind); err != nil {
+		return err
+	}
+	switch kind {
 	case "cap":
+		if err := requireFields(fields, kind, "token_id", "cap_urn"); err != nil {
+			return err
+		}
 		var v struct {
+			TokenId      StepToken         `json:"token_id"`
 			CapUrn       string            `json:"cap_urn"`
 			ArgBindings  *ArgumentBindings `json:"arg_bindings"`
 			PreferredCap *string           `json:"preferred_cap"`
+			Policy       StepPolicy        `json:"policy"`
 		}
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
-		n.Kind = NodeKindCap
-		n.CapUrn = v.CapUrn
 		if v.ArgBindings == nil {
 			v.ArgBindings = NewArgumentBindings()
 		}
-		n.ArgBindings = v.ArgBindings
-		n.PreferredCap = v.PreferredCap
-	case "for_each":
+		*n = ExecutionNodeType{
+			Kind: NodeKindCap, TokenId: v.TokenId, CapUrn: v.CapUrn,
+			ArgBindings: v.ArgBindings, PreferredCap: v.PreferredCap, Policy: v.Policy,
+		}
+	case "cap_output":
+		if err := requireFields(fields, kind, "cap_node", "output_media_urn", "output_name"); err != nil {
+			return err
+		}
 		var v struct {
-			InputNode string `json:"input_node"`
-			BodyEntry string `json:"body_entry"`
-			BodyExit  string `json:"body_exit"`
+			CapNode        string `json:"cap_node"`
+			OutputMediaUrn string `json:"output_media_urn"`
+			OutputName     string `json:"output_name"`
+			CarriesInput   bool   `json:"carries_input"`
 		}
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
-		n.Kind = NodeKindForEach
-		n.InputNode = v.InputNode
-		n.BodyEntry = v.BodyEntry
-		n.BodyExit = v.BodyExit
+		*n = ExecutionNodeType{
+			Kind: NodeKindCapOutput, CapNode: v.CapNode, OutputMediaUrn: v.OutputMediaUrn,
+			OutputName: v.OutputName, CarriesInput: v.CarriesInput,
+		}
+	case "for_each":
+		if err := requireFields(fields, kind, "token_id", "sources", "body"); err != nil {
+			return err
+		}
+		var v struct {
+			TokenId StepToken       `json:"token_id"`
+			Sources []ForEachSource `json:"sources"`
+			Body    []NodeId        `json:"body"`
+		}
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		*n = ExecutionNodeType{Kind: NodeKindForEach, TokenId: v.TokenId, Sources: v.Sources, Body: v.Body}
+	case "item":
+		if err := requireFields(fields, kind, "foreach", "source", "media_urn"); err != nil {
+			return err
+		}
+		var v struct {
+			Foreach  string `json:"foreach"`
+			Source   string `json:"source"`
+			MediaUrn string `json:"media_urn"`
+		}
+		if err := json.Unmarshal(data, &v); err != nil {
+			return err
+		}
+		*n = ExecutionNodeType{Kind: NodeKindItem, Foreach: v.Foreach, Source: v.Source, MediaUrn: v.MediaUrn}
 	case "collect":
+		if err := requireFields(fields, kind, "input_nodes", "output_media_urn"); err != nil {
+			return err
+		}
 		var v struct {
 			InputNodes     []string `json:"input_nodes"`
-			OutputMediaUrn *string  `json:"output_media_urn"`
+			OutputMediaUrn string   `json:"output_media_urn"`
 		}
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
-		n.Kind = NodeKindCollect
-		n.InputNodes = v.InputNodes
-		n.OutputMediaUrn = v.OutputMediaUrn
+		*n = ExecutionNodeType{Kind: NodeKindCollect, InputNodes: v.InputNodes, OutputMediaUrn: v.OutputMediaUrn}
 	case "input_slot":
+		if err := requireFields(fields, kind, "slot_name", "expected_media_urn", "cardinality"); err != nil {
+			return err
+		}
 		var v struct {
 			SlotName         string           `json:"slot_name"`
 			ExpectedMediaUrn string           `json:"expected_media_urn"`
@@ -918,11 +1099,14 @@ func (n *ExecutionNodeType) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
-		n.Kind = NodeKindInputSlot
-		n.SlotName = v.SlotName
-		n.ExpectedMediaUrn = v.ExpectedMediaUrn
-		n.Cardinality = v.Cardinality
+		*n = ExecutionNodeType{
+			Kind: NodeKindInputSlot, SlotName: v.SlotName,
+			ExpectedMediaUrn: v.ExpectedMediaUrn, Cardinality: v.Cardinality,
+		}
 	case "output":
+		if err := requireFields(fields, kind, "output_name", "source_node"); err != nil {
+			return err
+		}
 		var v struct {
 			OutputName string `json:"output_name"`
 			SourceNode string `json:"source_node"`
@@ -930,11 +1114,9 @@ func (n *ExecutionNodeType) UnmarshalJSON(data []byte) error {
 		if err := json.Unmarshal(data, &v); err != nil {
 			return err
 		}
-		n.Kind = NodeKindOutput
-		n.OutputName = v.OutputName
-		n.SourceNode = v.SourceNode
+		*n = ExecutionNodeType{Kind: NodeKindOutput, OutputName: v.OutputName, SourceNode: v.SourceNode}
 	default:
-		return fmt.Errorf("unknown ExecutionNodeType node_type: %s", tag.NodeType)
+		return fmt.Errorf("unknown ExecutionNodeType node_type: %s", kind)
 	}
 	return nil
 }
