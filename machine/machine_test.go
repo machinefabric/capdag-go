@@ -897,6 +897,30 @@ func Test6700_line_based_format_round_trips(t *testing.T) {
 	if !m1.IsEquivalent(m2) {
 		t.Error("line-based round-trip must yield equivalent machine")
 	}
+
+	// The multi-line form is the canonical statements, one bracketed
+	// statement per line: joined without the newlines it is the canonical
+	// text, and it reads back as the same machine.
+	multiline := m1.ToMachineNotationMultiline()
+	lines := strings.Split(multiline, "\n")
+	if len(lines) != 4 {
+		t.Fatalf("two headers and two wirings, one per line, got %d: %q", len(lines), multiline)
+	}
+	for _, line := range lines {
+		if !strings.HasPrefix(line, "[") || !strings.HasSuffix(line, "]") {
+			t.Errorf("every statement of the multi-line form is bracketed, got: %q", line)
+		}
+	}
+	if joined := strings.Join(lines, ""); joined != m1.ToMachineNotation() {
+		t.Errorf("the multi-line form is the canonical statements: %q", joined)
+	}
+	m3, parseErr := FromString(multiline, registry)
+	if parseErr != nil {
+		t.Fatalf("multi-line form must parse: %v", parseErr)
+	}
+	if !m1.IsEquivalent(m3) {
+		t.Error("multi-line round-trip must yield equivalent machine")
+	}
 }
 
 // TEST1178: One source is assigned to the single compatible cap argument.
@@ -956,13 +980,31 @@ func Test1181_match_two_sources_disambiguated_by_specificity(t *testing.T) {
 	}
 	assert.True(t, foundImage && foundText, "both arg slots must be assigned")
 
-	// One source that fits two args takes the one it is closest to.
-	page := []*urn.MediaUrn{mediaUrn("media:enc=utf-8;page")}
-	either := []*urn.MediaUrn{mediaUrn("media:enc=utf-8"), mediaUrn("media:enc=utf-8;page")}
-	pairs, err = matchSourcesToArgs(page, either, make([]bool, 2), -1)
+	// The pairs come by arg URN — its parts, not its text — whatever order
+	// the sources stand in.
+	for _, ordered := range [][]*urn.MediaUrn{sources, {sources[1], sources[0]}} {
+		pairs, err := matchSourcesToArgs(ordered, args, make([]bool, len(args)), -1)
+		require.Nil(t, err)
+		require.Len(t, pairs, 2)
+		assert.Negative(t, pairs[0].arg.Compare(pairs[1].arg))
+	}
+	fileThings := []*urn.MediaUrn{mediaUrn("media:file-path"), mediaUrn("media:file;sample")}
+	byParts, err := matchSourcesToArgs(fileThings, fileThings, make([]bool, 2), -1)
 	require.Nil(t, err)
-	require.Len(t, pairs, 1)
-	assert.True(t, pairs[0].arg.IsEquivalent(mediaUrn("media:enc=utf-8;page")), "the exact arg, not the general one: %s", pairs[0].arg)
+	require.Len(t, byParts, 2)
+	assert.Equal(t, mediaUrn("media:file;sample").String(), byParts[0].arg.String())
+	assert.Equal(t, mediaUrn("media:file-path").String(), byParts[1].arg.String())
+
+	// One source that fits two args takes the one it is closest to, whichever
+	// of the two is tried first.
+	page := []*urn.MediaUrn{mediaUrn("media:enc=utf-8;page")}
+	general, exact := mediaUrn("media:enc=utf-8"), mediaUrn("media:enc=utf-8;page")
+	for _, either := range [][]*urn.MediaUrn{{general, exact}, {exact, general}} {
+		pairs, err = matchSourcesToArgs(page, either, make([]bool, 2), -1)
+		require.Nil(t, err)
+		require.Len(t, pairs, 1)
+		assert.True(t, pairs[0].arg.IsEquivalent(exact), "the exact arg, not the general one: %s", pairs[0].arg)
+	}
 }
 
 // TEST1182: Matching fails as ambiguous when two sources can be swapped at equal minimum cost.
@@ -1332,6 +1374,104 @@ func Test1308_CyclicStrandFailsHard(t *testing.T) {
 	if err.StrandIndex == nil || *err.StrandIndex != 5 {
 		t.Fatalf("expected strand_index 5, got %v", err.StrandIndex)
 	}
+}
+
+// TEST12836: a strand's steps name where each input comes from. A strand's own
+// input, taken by two steps, is one node holding the most specific type either
+// declares for it; a step that names a producer no step of the strand is makes
+// the strand disconnected, and is refused.
+func Test12836_a_strand_input_is_one_node_and_a_missing_producer_is_refused(t *testing.T) {
+	const (
+		looseUrn = `cap:in="media:enc=utf-8";count;out="media:count;numeric"`
+		tightUrn = `cap:in="media:enc=utf-8;page";title;out="media:enc=utf-8;title"`
+	)
+	registry := registryWith([]*cap.Cap{
+		buildCap(looseUrn, "count", []string{"media:enc=utf-8"}, "media:count;numeric"),
+		buildCap(tightUrn, "title", []string{"media:enc=utf-8;page"}, "media:enc=utf-8;title"),
+	})
+	loose := func() *planner.StrandStep {
+		return capStep(looseUrn, "count", "media:enc=utf-8", "media:count;numeric")
+	}
+	tight := func() *planner.StrandStep {
+		return capStep(tightUrn, "title", "media:enc=utf-8;page", "media:enc=utf-8;title")
+	}
+	fromInput := func(step *planner.StrandStep) *planner.StrandStep {
+		step.Inputs = []planner.CapInput{{ArgUrn: step.FromSpec, Source: planner.NewArgSourceStrandInput()}}
+		return step
+	}
+	// The steps as given: each names its own source, and none is chained to
+	// the one before it.
+	strandOf := func(steps ...*planner.StrandStep) *planner.Strand {
+		return &planner.Strand{
+			Steps:          steps,
+			SourceMediaUrn: steps[0].FromSpec,
+			TargetMediaUrn: steps[len(steps)-1].ToSpec,
+			TotalSteps:     len(steps),
+			CapStepCount:   len(steps),
+			Description:    "fan-out",
+		}
+	}
+
+	// Both steps take the strand's input; one declares it more tightly.
+	for _, steps := range [][]*planner.StrandStep{
+		{fromInput(loose()), fromInput(tight())},
+		{fromInput(tight()), fromInput(loose())},
+	} {
+		resolved, err := resolveStrand(strandOf(steps...), registry, 0)
+		require.Nil(t, err)
+		require.Len(t, resolved.Nodes(), 3, "the input once, and what each step makes")
+		require.Len(t, resolved.InputAnchorIds(), 1)
+		anchor := resolved.InputAnchorIds()[0]
+		assert.True(t, resolved.NodeUrn(anchor).IsEquivalent(mediaUrn("media:enc=utf-8;page")),
+			"the most specific type a step declares for it, whichever step comes first")
+		for _, edge := range resolved.Edges() {
+			assert.Equal(t, []NodeId{anchor}, edge.SourceNodes())
+		}
+	}
+
+	// A producer that is no step of the strand.
+	orphan := tight()
+	orphan.Inputs = []planner.CapInput{{ArgUrn: orphan.FromSpec, Source: planner.NewArgSourceStep(mustStepToken(t, "no-such-step"))}}
+	_, err := resolveStrand(strandOf(fromInput(loose()), orphan), registry, 4)
+	require.NotNil(t, err)
+	assert.Equal(t, ErrAbstractionDisconnectedStrand, err.Kind)
+	require.NotNil(t, err.StrandIndex)
+	assert.Equal(t, 4, *err.StrandIndex)
+}
+
+// TEST12837: the resolver holds a wiring it is handed to the names its cap's
+// definition declares, whoever built the wiring: a member or a target naming
+// what the cap does not declare is refused by name, with what it does declare.
+func Test12837_the_resolver_refuses_names_a_definition_does_not_declare(t *testing.T) {
+	const capUrnStr = `cap:in="media:document;ext=pdf";extract;out="media:enc=utf-8;ext=txt"`
+	registry := registryWith([]*cap.Cap{buildCap(capUrnStr, "extract", []string{"media:document;ext=pdf"}, "media:enc=utf-8;ext=txt")})
+	nodes := func() []*urn.MediaUrn {
+		return []*urn.MediaUrn{mediaUrn("media:document;ext=pdf"), mediaUrn("media:enc=utf-8;ext=txt")}
+	}
+	wiring := func(arg string, target wiringTarget) []preInternedWiring {
+		return []preInternedWiring{{
+			tokenId:      planner.MintStepToken(),
+			capUrn:       capUrnVal(capUrnStr),
+			namedSources: []namedSource{{name: arg, source: NodeSource(0)}},
+			targets:      []wiringTarget{target},
+		}}
+	}
+
+	// By the names the definition declares, it resolves.
+	resolved, err := resolvePreInterned(nodes(), wiring("input", wiringTarget{name: "output", hasName: true, node: 1}), registry, 0)
+	require.Nil(t, err)
+	assert.Equal(t, NodeId(1), mainTarget(t, resolved.Edges()[0]))
+
+	_, err = resolvePreInterned(nodes(), wiring("document", wiringTarget{node: 1}), registry, 2)
+	require.NotNil(t, err)
+	assert.Equal(t, ErrAbstractionUnknownArgName, err.Kind)
+	assert.Contains(t, err.Message, "strand 2: ")
+	assert.Contains(t, err.Message, "declares no arg named 'document' (it declares: input)")
+
+	_, err = resolvePreInterned(nodes(), wiring("input", wiringTarget{name: "text", hasName: true, node: 1}), registry, 2)
+	require.NotNil(t, err)
+	assert.Equal(t, ErrAbstractionUnknownOutputName, err.Kind)
+	assert.Contains(t, err.Message, "declares no output named 'text' (it declares: output)")
 }
 
 // ===================================================================

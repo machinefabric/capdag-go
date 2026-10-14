@@ -204,6 +204,15 @@ func Test12804_each_use_of_a_machine_has_nodes_of_its_own(t *testing.T) {
 	}
 	assert.ElementsMatch(t, []NodeId{first, second}, reads)
 	assert.Equal(t, []string{"c1", "c2", "s1", "s2"}, namesOfNodes(inlined, names, outputAnchors))
+
+	// Two headers may name one machine: reading it for the first does not
+	// make the second a circle, and each alias counts its own uses.
+	aliased, names := including(t, `[one machine "analyse"][two machine "analyse"]`+fetchTwo+
+		`[(series=a, bench=b) -> one -> (cmp=c1, scores=s1)]`+
+		`[(series=b, bench=a) -> two -> (cmp=c2, scores=s2)]`)
+	assert.True(t, aliased.IsEquivalent(inlined))
+	assert.Contains(t, names[0], "one#1/res")
+	assert.Contains(t, names[0], "two#1/res")
 }
 
 // TEST12805: an unnamed member of a machine step is matched to an input by
@@ -232,6 +241,12 @@ func Test12805_unnamed_members_of_a_machine_step_are_matched_by_type(t *testing.
 	oneNamed, _ := including(t, `[analyse machine "analyse"]`+fetchTwo+`[(series=a, bench=b) -> analyse -> (c, scores=s)]`)
 	bothNamed, _ := including(t, `[analyse machine "analyse"]`+fetchTwo+`[(series=a, bench=b) -> analyse -> (cmp=c, scores=s)]`)
 	assert.True(t, oneNamed.IsEquivalent(bothNamed))
+	// An input a member named is said: the unnamed member beside it has the
+	// other input, though both hold one type.
+	oneUnnamed, _ := including(t, `[analyse machine "analyse"]`+fetchTwo+`[(series=a, b) -> analyse -> (cmp=c, scores=s)]`)
+	assert.True(t, oneUnnamed.IsEquivalent(bothNamed))
+	otherUnnamed, _ := including(t, `[analyse machine "analyse"]`+fetchTwo+`[(a, series=b) -> analyse -> (cmp=c, scores=s)]`)
+	assert.False(t, otherUnnamed.IsEquivalent(bothNamed))
 
 	// Two sources of the one type its two inputs hold.
 	ambiguous := refusal(t, `[analyse machine "analyse"]`+fetchTwo+`[(a, b) -> analyse -> (cmp=c, scores=s)]`,
@@ -351,6 +366,11 @@ func Test12807_a_reference_must_resolve_to_a_valid_machine_and_never_to_itself(t
 	circle = parseFrom(a, nil)
 	require.Equal(t, ErrAbstractionCyclicMachineReference, circle.Kind)
 	assert.Equal(t, []string{"b", "a", "b"}, circle.Chain)
+	// A machine that only leads to the circle is not on it.
+	top := "top"
+	circle = parseFrom(withHeaders(`[first machine "a"][(reference="z") -> fetch -> u]`), &top)
+	require.Equal(t, ErrAbstractionCyclicMachineReference, circle.Kind)
+	assert.Equal(t, []string{"a", "b", "a"}, circle.Chain)
 }
 
 // TEST12808: a constant written for an input of a machine step is the value of

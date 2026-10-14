@@ -570,6 +570,18 @@ func Test12754_a_plan_that_names_what_is_not_there_is_refused(t *testing.T) {
 		plan.AddNode(NewItemNode("stray", "cap_0", "input_slot", "media:pdf-page"))
 	}, "item node 'stray' names map 'cap_0'")
 	refused(func(plan *MachinePlan) {
+		plan.AddNode(NewItemNode("stray", "nowhere", "cap_0", "media:pdf-page"))
+	}, "node 'stray' names map 'nowhere', which is not in the plan")
+	// An item its map lists for another source: nodes are checked in the
+	// order of their ids, so it is the item — which comes first — that is
+	// named.
+	refused(func(plan *MachinePlan) {
+		plan.AddNode(NewForEachNode("second",
+			[]ForEachSource{{Node: "cap_0", Item: "an_item"}},
+			[]NodeId{"an_item"}))
+		plan.AddNode(NewItemNode("an_item", "second", "input_slot", "media:pdf-page"))
+	}, "item node 'an_item' names map 'second' and source 'input_slot', and that map does not list it so")
+	refused(func(plan *MachinePlan) {
 		theMap(plan).Body = append(theMap(plan).Body, "nowhere")
 	}, "node 'foreach_0' names body node 'nowhere', which is not in the plan")
 
@@ -627,7 +639,11 @@ func Test742_edge_type_serialization(t *testing.T) {
 
 	// An edge carries the whole value: a part of it is not something an
 	// edge can be asked for, in either of the forms that once said so.
-	for _, retired := range []string{`{"json_field":{"field":"data"}}`, `{"json_path":{"path":"a.b"}}`, `"json_field"`, `"sideways"`} {
+	// — and a kind nothing has is no kind, whatever it carries.
+	for _, retired := range []string{
+		`{"json_field":{"field":"data"}}`, `{"json_path":{"path":"a.b"}}`, `"json_field"`, `"sideways"`, `"arg"`,
+		`{"sideways":{"arg_urn":"media:data"}}`,
+	} {
 		var refused EdgeType
 		assert.Error(t, json.Unmarshal([]byte(retired), &refused), retired)
 	}

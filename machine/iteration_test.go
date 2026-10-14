@@ -212,6 +212,32 @@ func Test12750_steps_over_one_sequence_share_a_map(t *testing.T) {
 	_, isItem = s.ItemMap(0, ScopeRoot)
 	assert.False(t, isItem)
 
+	// A step joins the map whichever of its members is listed first: a value
+	// of the machine beside a value of the map, in either order.
+	// 8 a single value of the machine. (8, text=1) -> annotate -> 9, and swapped.
+	for _, members := range [][]MemberShape{
+		{member(8, false), member(1, false)},
+		{member(1, false), member(8, false)},
+	} {
+		joined := placedSteps(t, append(append([]StepShape(nil), steps...), shape(members, single(9))), 0)
+		assert.Equal(t, once(mapOf(t, joined, 0)), joined.Steps()[4], "%v", members)
+	}
+
+	// A map is opened by the first of the steps that map in it, whichever of
+	// them was placed first. Step 0 maps over the docs and waits for a value
+	// step 2 makes, so step 1 — which maps over the docs too — is placed
+	// before it.
+	// (0, with=5) -> a -> 1 ; 0 -> b -> 2 ; 7 -> c -> 5
+	waiting := []StepShape{
+		shape([]MemberShape{member(0, false), member(5, false)}, single(1)),
+		shape([]MemberShape{member(0, false)}, single(2)),
+		shape([]MemberShape{member(7, false)}, single(5)),
+	}
+	w := placedSteps(t, waiting, 0)
+	assert.Equal(t, mapOf(t, w, 0), mapOf(t, w, 1))
+	opener, _ = w.OpenedBy(mapOf(t, w, 0))
+	assert.Equal(t, 0, opener)
+
 	// A map is what it iterates IN THE SCOPE IT IS OPENED IN: the same
 	// sequence mapped from two scopes is two maps.
 	// 0 docs, 5 others: sequences. 0 -> split -> 1 (a declared sequence per doc)

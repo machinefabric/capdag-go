@@ -229,6 +229,7 @@ func Test12736_what_the_text_alone_refuses(t *testing.T) {
 		{"a -> f{retry=-1} -> b", "-1"},
 		{"a -> f{retry=1.5} -> b", "1.5"},
 		{"a -> f{retry=many} -> b", "many"},
+		{"a -> f{retry=4294967296} -> b", "4294967296"},
 		{"a -> f{on_error=ignore} -> b", "ignore"},
 		{"a -> f{on_error=3} -> b", "3"},
 		{"a -> f{retry=1, retry=2} -> b", "twice"},
@@ -239,15 +240,28 @@ func Test12736_what_the_text_alone_refuses(t *testing.T) {
 		assert.Contains(t, err.Message, each[1], each[0])
 	}
 
+	// The largest count a policy holds is read.
+	assert.Equal(t, uint32(4294967295), oneWiring(t, "a -> f{retry=4294967295} -> b").policy.Retry)
+
 	// What the grammar does not accept at all.
 	for _, input := range []string{
 		"a -> f", "a -> -> b", "(a,) -> f -> b", "a -> f -> (b", "(a b) -> f -> c", "x machine clean", "(a=) -> f -> b",
 		// A string that is not a JSON string: an escape JSON does not have,
 		// and a raw line break.
 		`(a="\q") -> f -> b`, "(a=\"x\ny\") -> f -> b", `x machine "bad \q ref"`,
+		// A number no constant can hold.
+		"(a=1e999) -> f -> b",
+		// An escape that names half a character: text has no such thing.
+		`(a="\ud800") -> f -> b`, `(a="\udc00x") -> f -> b`, `(a="\ud83d\ud83d") -> f -> b`,
+		`(a={"k\ud800": 1}) -> f -> b`, `(a=["\udc00"]) -> f -> b`, `(a={"k": "\ud800"}) -> f -> b`,
+		`x machine "\ud800"`,
 	} {
 		assert.Equal(t, ErrParse, refusedSyntax(t, input).Kind, input)
 	}
+	// Both halves of a character, written as their two escapes, are it; and
+	// an escaped backslash before a `u` is no escape of a character.
+	assert.Equal(t, []part{named("a", "=\"\U0001F600\"")}, membersOf(oneWiring(t, `(a="\ud83d\ude00") -> f -> b`)))
+	assert.Equal(t, []part{named("a", `="\\ud800"`)}, membersOf(oneWiring(t, `(a="\\ud800") -> f -> b`)))
 }
 
 // TEST12832: a constant has one text, the same in every implementation: an
@@ -263,27 +277,35 @@ func Test12832_a_constant_has_one_text(t *testing.T) {
 	}
 	// Each spelling below is what the reference writes for that text.
 	for written, want := range map[string]string{
-		`20`:                                 `20`,
-		`-7`:                                 `-7`,
-		`18446744073709551615`:               `18446744073709551615`,
-		`18446744073709551616`:               `1.8446744073709552e+19`,
-		`-9223372036854775809`:               `-9.223372036854776e+18`,
-		`1.0`:                                `1.0`,
-		`1.50`:                               `1.5`,
-		`-1.5e3`:                             `-1500.0`,
-		`1e3`:                                `1000.0`,
-		`0.0001`:                             `0.0001`,
-		`0.00001`:                            `0.00001`,
-		`0.000001`:                           `1e-6`,
-		`1.25e-7`:                            `1.25e-7`,
-		`1e15`:                               `1000000000000000.0`,
-		`1e16`:                               `1e+16`,
-		`1234567890123456.0`:                 `1234567890123456.0`,
-		`1e21`:                               `1e+21`,
-		`1.5e300`:                            `1.5e+300`,
-		`5e-324`:                             `5e-324`,
-		`0.0`:                                `0.0`,
-		`-0.0`:                               `-0.0`,
+		`20`:                   `20`,
+		`-7`:                   `-7`,
+		`18446744073709551615`: `18446744073709551615`,
+		`18446744073709551616`: `1.8446744073709552e+19`,
+		`-9223372036854775809`: `-9.223372036854776e+18`,
+		`1.0`:                  `1.0`,
+		`1.50`:                 `1.5`,
+		`-1.5e3`:               `-1500.0`,
+		`1e3`:                  `1000.0`,
+		`0.0001`:               `0.0001`,
+		`0.00001`:              `0.00001`,
+		`0.000001`:             `1e-6`,
+		`1.25e-7`:              `1.25e-7`,
+		`1e15`:                 `1000000000000000.0`,
+		`1e16`:                 `1e+16`,
+		`1234567890123456.0`:   `1234567890123456.0`,
+		// Seventeen digits: the nearest float, not the one below it.
+		`12345678901234567.0`: `1.2345678901234568e+16`,
+		`1e21`:                `1e+21`,
+		`1.5e300`:             `1.5e+300`,
+		`5e-324`:              `5e-324`,
+		`0.0`:                 `0.0`,
+		`-0.0`:                `-0.0`,
+		// A whole number has no sign to keep at zero: `-0` is the float.
+		`0`:                                  `0`,
+		`-0`:                                 `-0.0`,
+		`-9223372036854775808`:               `-9223372036854775808`,
+		`1E3`:                                `1000.0`,
+		`2.50e0`:                             `2.5`,
 		`123.456`:                            `123.456`,
 		`{"b": 1, "a": [true, null]}`:        `{"a":[true,null],"b":1}`,
 		`"a<b>&c é"`:                         `"a<b>&c é"`,
@@ -307,7 +329,7 @@ func Test12832_a_constant_has_one_text(t *testing.T) {
 	for _, pair := range [][2]string{
 		{`1`, `1.0`}, {`1`, `2`}, {`"1"`, `1`}, {`null`, `false`}, {`[1,2]`, `[2,1]`}, {`[1]`, `[1,1]`},
 		{`{"a":1}`, `{"a":2}`}, {`{"a":1}`, `{"b":1}`}, {`{"a":1}`, `{"a":1,"b":2}`}, {`true`, `false`}, {`"a"`, `"b"`},
-		{`1.5`, `2.5`}, {`null`, `0`},
+		{`1.5`, `2.5`}, {`null`, `0`}, {`true`, `1`}, {`false`, `0`}, {`true`, `1.0`},
 	} {
 		assert.False(t, constantsEqual(value(pair[0]), value(pair[1])), "%s and %s", pair[0], pair[1])
 		assert.False(t, constantsEqual(value(pair[1]), value(pair[0])), "%s and %s", pair[1], pair[0])
@@ -321,4 +343,6 @@ func Test12832_a_constant_has_one_text(t *testing.T) {
 	assert.Error(t, err, "one value, not two")
 	_, err = decodeConstant(`1e999`)
 	assert.Error(t, err, "a number no float holds")
+	_, err = decodeConstant("\"\xff\"")
+	assert.Error(t, err, "bytes that are no text are not read as some other text")
 }

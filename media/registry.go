@@ -74,7 +74,8 @@ func (v *MediaValidation) Violation(value any) (string, error) {
 			return fmt.Sprintf("pattern '%s'", *v.Pattern), nil
 		}
 	}
-	if len(v.AllowedValues) > 0 && isText {
+	// A list that allows nothing is still a rule: it refuses every string.
+	if v.AllowedValues != nil && isText {
 		allowed := false
 		quoted := make([]string, len(v.AllowedValues))
 		for i, each := range v.AllowedValues {

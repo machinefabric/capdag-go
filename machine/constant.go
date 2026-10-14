@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf16"
+	"unicode/utf8"
 )
 
 // A constant of machine notation is a JSON value. In this package it is one of
@@ -22,6 +24,15 @@ import (
 
 // decodeConstant reads one JSON value from its text.
 func decodeConstant(text string) (any, error) {
+	// The decoder below reads text that is not text — a byte sequence that is
+	// no UTF-8, an escape that names half a character — as U+FFFD. A constant
+	// is the value that was written, so both are refused instead.
+	if !utf8.ValidString(text) {
+		return nil, fmt.Errorf("%q is not UTF-8 text", text)
+	}
+	if err := refuseLoneSurrogateEscapes(text); err != nil {
+		return nil, err
+	}
 	decoder := json.NewDecoder(strings.NewReader(text))
 	decoder.UseNumber()
 	var raw any
@@ -34,6 +45,51 @@ func decodeConstant(text string) (any, error) {
 	return normalizeConstant(raw)
 }
 
+// refuseLoneSurrogateEscapes refuses JSON text one of whose strings holds a
+// `\uXXXX` escape for half of a surrogate pair without its other half.
+func refuseLoneSurrogateEscapes(text string) error {
+	// escapeAt reads the `\uXXXX` escape at `at`, when there is one.
+	escapeAt := func(at int) (rune, bool) {
+		if at+6 > len(text) || text[at] != '\\' || text[at+1] != 'u' {
+			return 0, false
+		}
+		code, err := strconv.ParseUint(text[at+2:at+6], 16, 32)
+		if err != nil {
+			return 0, false
+		}
+		return rune(code), true
+	}
+	inString := false
+	for at := 0; at < len(text); at++ {
+		switch {
+		case !inString:
+			inString = text[at] == '"'
+		case text[at] == '"':
+			inString = false
+		case text[at] == '\\':
+			code, isUnicode := escapeAt(at)
+			if !isUnicode {
+				// Any other escape is two bytes: skip what it escapes.
+				at++
+				continue
+			}
+			switch {
+			case utf16.IsSurrogate(code) && code < 0xDC00:
+				low, follows := escapeAt(at + 6)
+				if !follows || low < 0xDC00 || low > 0xDFFF {
+					return fmt.Errorf("the escape %s names half a character", text[at:at+6])
+				}
+				at += 11
+			case utf16.IsSurrogate(code):
+				return fmt.Errorf("the escape %s names half a character", text[at:at+6])
+			default:
+				at += 5
+			}
+		}
+	}
+	return nil
+}
+
 // normalizeConstant turns a value decoded with UseNumber into this package's
 // constant form.
 func normalizeConstant(raw any) (any, error) {
@@ -44,6 +100,11 @@ func normalizeConstant(raw any) (any, error) {
 		text := value.String()
 		if !strings.ContainsAny(text, ".eE") {
 			if whole, err := strconv.ParseInt(text, 10, 64); err == nil {
+				if whole == 0 && strings.HasPrefix(text, "-") {
+					// A whole number has no sign to keep at zero: `-0` is
+					// the float, as the reference reads it.
+					return math.Copysign(0, -1), nil
+				}
 				return whole, nil
 			}
 			if whole, err := strconv.ParseUint(text, 10, 64); err == nil {

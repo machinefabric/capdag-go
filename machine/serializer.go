@@ -41,9 +41,11 @@ func (m *Machine) ToMachineNotation() string {
 	return m.ToMachineNotationFormatted(NotationFormatBracketed)
 }
 
-// ToMachineNotationMultiline serializes to line-based notation.
+// ToMachineNotationMultiline serializes to multi-line bracketed notation: one
+// statement per line, each wrapped in `[...]`. The same statements as the
+// canonical form, with newlines between them for reading.
 func (m *Machine) ToMachineNotationMultiline() string {
-	return m.ToMachineNotationFormatted(NotationFormatLineBased)
+	return m.emitStatements(m.serializationPlan(nil), "[", "]", "\n")
 }
 
 // ToMachineNotationFormatted serializes in the specified format, caps written
@@ -153,12 +155,17 @@ func formatWiring(edge *MachineEdge, token string, plan strandPlan) string {
 }
 
 func (m *Machine) emitNotation(plans []strandPlan, format NotationFormat) string {
+	if format == NotationFormatLineBased {
+		return m.emitStatements(plans, "", "", "\n")
+	}
+	return m.emitStatements(plans, "[", "]", "")
+}
+
+// emitStatements writes every statement between `open` and `closing`, joined
+// by `between`.
+func (m *Machine) emitStatements(plans []strandPlan, open, closing, between string) string {
 	if m.IsEmpty() {
 		return ""
-	}
-	open, closing, between := "[", "]", ""
-	if format == NotationFormatLineBased {
-		open, closing, between = "", "", "\n"
 	}
 	var statements []string
 	// Headers across all strands — only for edges whose step token is a

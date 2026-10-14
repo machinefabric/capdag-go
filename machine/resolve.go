@@ -264,7 +264,7 @@ func resolveWirings(
 		}
 		// Canonical order, like the assignment's.
 		sort.SliceStable(outputs, func(a, b int) bool {
-			return outputs[a].OutputMediaUrn.String() < outputs[b].OutputMediaUrn.String()
+			return outputs[a].OutputMediaUrn.Compare(outputs[b].OutputMediaUrn) < 0
 		})
 		wiringOutputs[index] = outputs
 	}
@@ -426,7 +426,7 @@ func resolveWirings(
 		// several bindings gathered onto one arg keep their declaration order
 		// — the gathered sequence's item order.
 		sort.SliceStable(bindings, func(a, b int) bool {
-			return bindings[a].CapArgMediaUrn.String() < bindings[b].CapArgMediaUrn.String()
+			return bindings[a].CapArgMediaUrn.Compare(bindings[b].CapArgMediaUrn) < 0
 		})
 
 		// A cap that takes an input is given it.
@@ -528,9 +528,8 @@ func resolveWirings(
 	// across node-allocation orders that yield equivalent strands.
 	byUrnThenId := func(ids []NodeId) {
 		sort.Slice(ids, func(a, b int) bool {
-			ua, ub := nodes[ids[a]].String(), nodes[ids[b]].String()
-			if ua != ub {
-				return ua < ub
+			if order := nodes[ids[a]].Compare(nodes[ids[b]]); order != 0 {
+				return order < 0
 			}
 			return ids[a] < ids[b]
 		})
@@ -759,7 +758,7 @@ func assignmentToPairs(assignment []int, sources, args []*urn.MediaUrn) []matche
 	for s, a := range assignment {
 		pairs[s] = matchedPair{arg: args[a], source: sources[s]}
 	}
-	sort.SliceStable(pairs, func(x, y int) bool { return pairs[x].arg.String() < pairs[y].arg.String() })
+	sort.SliceStable(pairs, func(x, y int) bool { return pairs[x].arg.Compare(pairs[y].arg) < 0 })
 	return pairs
 }
 
@@ -880,38 +879,44 @@ func topoSort(edges []*MachineEdge, nodes []*urn.MediaUrn) []int {
 // sortReady sorts the ready set in canonical structural order so Kahn's
 // algorithm produces a deterministic output. The order is:
 //
-//  1. cap URN
+//  1. cap URN, structurally (CapUrn.Compare)
 //  2. assignment (element-wise: the arg's slot URN, then the source — a node
 //     by its URN, a constant by its text, after every node)
 //  3. outputs (element-wise: the output's URN, then the URN of the node it
 //     goes to)
 //  4. the IsLoop flag
+//
+// A URN is ordered by its parts (MediaUrn.Compare), never by its text: the
+// two orders differ wherever one tag key is the beginning of another.
 func sortReady(ready []int, edges []*MachineEdge, nodes []*urn.MediaUrn) {
-	sourceKey := func(source BindingSource) (bool, string) {
-		if source.IsConstant {
-			return true, constantText(source.Constant)
+	// How two sources stand: a node by its URN, a constant by its text, after
+	// every node.
+	sources := func(a, b BindingSource) int {
+		switch {
+		case !a.IsConstant && !b.IsConstant:
+			return nodes[a.Node].Compare(nodes[b.Node])
+		case !a.IsConstant:
+			return -1
+		case !b.IsConstant:
+			return 1
+		default:
+			return strings.Compare(constantText(a.Constant), constantText(b.Constant))
 		}
-		return false, nodes[source.Node].String()
 	}
 	sort.SliceStable(ready, func(i, j int) bool {
 		ea, eb := edges[ready[i]], edges[ready[j]]
 
-		if capA, capB := ea.CapUrn.String(), eb.CapUrn.String(); capA != capB {
-			return capA < capB
+		if order := ea.CapUrn.Compare(eb.CapUrn); order != 0 {
+			return order < 0
 		}
 
 		for k := 0; k < len(ea.Assignment) && k < len(eb.Assignment); k++ {
 			ba, bb := ea.Assignment[k], eb.Assignment[k]
-			if argA, argB := ba.CapArgMediaUrn.String(), bb.CapArgMediaUrn.String(); argA != argB {
-				return argA < argB
+			if order := ba.CapArgMediaUrn.Compare(bb.CapArgMediaUrn); order != 0 {
+				return order < 0
 			}
-			constantA, keyA := sourceKey(ba.Source)
-			constantB, keyB := sourceKey(bb.Source)
-			if constantA != constantB {
-				return !constantA
-			}
-			if keyA != keyB {
-				return keyA < keyB
+			if order := sources(ba.Source, bb.Source); order != 0 {
+				return order < 0
 			}
 		}
 		if len(ea.Assignment) != len(eb.Assignment) {
@@ -920,11 +925,11 @@ func sortReady(ready []int, edges []*MachineEdge, nodes []*urn.MediaUrn) {
 
 		for k := 0; k < len(ea.Outputs) && k < len(eb.Outputs); k++ {
 			oa, ob := ea.Outputs[k], eb.Outputs[k]
-			if outA, outB := oa.OutputMediaUrn.String(), ob.OutputMediaUrn.String(); outA != outB {
-				return outA < outB
+			if order := oa.OutputMediaUrn.Compare(ob.OutputMediaUrn); order != 0 {
+				return order < 0
 			}
-			if nodeA, nodeB := nodes[oa.Node].String(), nodes[ob.Node].String(); nodeA != nodeB {
-				return nodeA < nodeB
+			if order := nodes[oa.Node].Compare(nodes[ob.Node]); order != 0 {
+				return order < 0
 			}
 		}
 		if len(ea.Outputs) != len(eb.Outputs) {

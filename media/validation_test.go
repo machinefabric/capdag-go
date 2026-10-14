@@ -34,12 +34,15 @@ func Test12835_a_value_is_held_to_the_rules_that_are_about_it(t *testing.T) {
 	assert.Equal(t, "", broken(rangeOf, "0"))
 	assert.Equal(t, "", broken(rangeOf, []any{int64(0)}))
 	assert.Equal(t, "", broken(rangeOf, nil))
+	assert.Equal(t, "", broken(rangeOf, false), "a truth value is no number")
 
 	length := MediaValidation{MinLength: count(2), MaxLength: count(3)}
 	assert.Equal(t, "", broken(length, "ab"))
 	assert.Equal(t, "", broken(length, "abc"))
 	assert.Equal(t, "minimum length 2", broken(length, "a"))
 	assert.Equal(t, "maximum length 3", broken(length, "abcd"))
+	// A string's length is its bytes.
+	assert.Equal(t, "maximum length 3", broken(length, "éé"))
 	// An array has a length too, and the rule says which it measured.
 	assert.Equal(t, "", broken(length, []any{"a", "b"}))
 	assert.Equal(t, "minimum array length 2", broken(length, []any{"a"}))
@@ -51,6 +54,8 @@ func Test12835_a_value_is_held_to_the_rules_that_are_about_it(t *testing.T) {
 	assert.Equal(t, "", broken(pattern, "abc"))
 	assert.Equal(t, "pattern '^[a-z]+$'", broken(pattern, "abc1"))
 	assert.Equal(t, "", broken(pattern, int64(1)), "a pattern is about strings")
+	// A pattern is searched for, not anchored unless it says so.
+	assert.Equal(t, "", broken(MediaValidation{Pattern: text(`b`)}, "abc"))
 	_, err := (&MediaValidation{Pattern: text(`(`)}).Violation("x")
 	require.Error(t, err, "a pattern that is no regular expression")
 	assert.Contains(t, err.Error(), "Invalid regex pattern '('")
@@ -62,6 +67,8 @@ func Test12835_a_value_is_held_to_the_rules_that_are_about_it(t *testing.T) {
 	assert.Equal(t, "", broken(allowed, "median"))
 	assert.Equal(t, `allowed values: ["mean", "median"]`, broken(allowed, "mode"))
 	assert.Equal(t, "", broken(allowed, int64(3)), "allowed values are about strings")
+	// A list that allows nothing is a rule that refuses every string.
+	assert.Equal(t, "allowed values: []", broken(MediaValidation{AllowedValues: []string{}}, "mean"))
 
 	// The first rule broken is the one named: the range before the length,
 	// the length before the pattern, the pattern before the allowed values.

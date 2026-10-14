@@ -1032,33 +1032,63 @@ func (c *CapUrn) IsMoreSpecificThan(other *CapUrn) bool {
 	return c.Specificity() > other.Specificity()
 }
 
-// Less returns true if this CapUrn is ordered before other.
-// Comparison is structural over in/out/effect/tags; it does not route through
-// flat full-string comparison.
+// effectOrder is where each effect stands in the order of caps: as the
+// reference declares them, the unspecified effect last.
+func effectOrder(effect CapEffect) int {
+	switch effect {
+	case CapEffectDeclared:
+		return 0
+	case CapEffectNone:
+		return 1
+	case CapEffectPatch:
+		return 2
+	case CapEffectAny:
+		return 3
+	default:
+		panic(fmt.Sprintf("CapUrn invariant: no effect '%s'", effect))
+	}
+}
+
+// Compare orders two cap URNs: negative when c stands before other, positive
+// when after, zero when they are the same cap. The order is structural — `in=`
+// and `out=` as media URNs (MediaUrn.Compare), then the effect, then the
+// remaining tags as (key, stored value) pairs in key order — and not the order
+// of the canonical text, which would fold the four axes into one string.
+func (c *CapUrn) Compare(other *CapUrn) int {
+	if c == nil && other == nil {
+		return 0
+	}
+	if c == nil {
+		return -1
+	}
+	if other == nil {
+		return 1
+	}
+	mediaOf := func(spec string) *MediaUrn {
+		media, err := NewMediaUrnFromString(spec)
+		if err != nil {
+			panic(fmt.Sprintf("CapUrn invariant: '%s' parses as a media URN: %v", spec, err))
+		}
+		return media
+	}
+	if cmp := mediaOf(c.inSpec).Compare(mediaOf(other.inSpec)); cmp != 0 {
+		return cmp
+	}
+	if cmp := mediaOf(c.outSpec).Compare(mediaOf(other.outSpec)); cmp != 0 {
+		return cmp
+	}
+	if cmp := effectOrder(c.Effect()) - effectOrder(other.Effect()); cmp != 0 {
+		return cmp
+	}
+	return taggedurn.NewTaggedUrnFromTags("cap", c.tags).Compare(taggedurn.NewTaggedUrnFromTags("cap", other.tags))
+}
+
+// Less returns true if this CapUrn is ordered before other (see Compare).
 func (c *CapUrn) Less(other *CapUrn) bool {
 	if other == nil {
 		return false
 	}
-	selfIn, errA := NewMediaUrnFromString(c.inSpec)
-	otherIn, errB := NewMediaUrnFromString(other.inSpec)
-	if errA == nil && errB == nil {
-		if cmp := selfIn.Compare(otherIn); cmp != 0 {
-			return cmp < 0
-		}
-	}
-	selfOut, errC := NewMediaUrnFromString(c.outSpec)
-	otherOut, errD := NewMediaUrnFromString(other.outSpec)
-	if errC == nil && errD == nil {
-		if cmp := selfOut.Compare(otherOut); cmp != 0 {
-			return cmp < 0
-		}
-	}
-	if c.effect != other.effect {
-		return c.effect < other.effect
-	}
-	selfTagged := taggedurn.NewTaggedUrnFromTags("cap", c.tags)
-	otherTagged := taggedurn.NewTaggedUrnFromTags("cap", other.tags)
-	return selfTagged.Compare(otherTagged) < 0
+	return c.Compare(other) < 0
 }
 
 // WithWildcardTag returns a new cap with a specific tag set to wildcard

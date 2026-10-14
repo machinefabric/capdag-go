@@ -137,6 +137,9 @@ func Test1403_resolve_gather_emits_n_bindings_on_sequence_arg(t *testing.T) {
 	// Anchors: two inputs (pdf, md), one output (txt).
 	assert.Len(t, strand.InputAnchors(), 2)
 	assert.Len(t, strand.OutputAnchors(), 1)
+	// Anchors come by the URN they hold, not by when their node was made.
+	assert.Equal(t, []NodeId{0, 1}, strand.InputAnchorIds())
+	assert.Less(t, strand.InputAnchors()[0].String(), strand.InputAnchors()[1].String())
 	// The gather is written as its arg's name once per member, in item order.
 	// Nodes are named in the order the canonical walk meets them: the pdf and
 	// its page, the markdown and its page, then the text.

@@ -253,6 +253,8 @@ func Test12737_a_named_member_binds_the_arg_it_names(t *testing.T) {
 	// addresses the two by the names as written.
 	assert.Equal(t, names[0]["bench"], benchmark.Source.Node)
 	assert.Equal(t, names[0]["path"], series.Source.Node)
+	// Two inputs that hold one type come in the order their nodes were made.
+	assert.Equal(t, []NodeId{names[0]["path"], names[0]["bench"]}, m.Strands()[0].InputAnchorIds())
 
 	// Unnamed, nothing says which of the two series is the benchmark.
 	untyped := resolutionError(t, "[(path, bench) -> compare -> result]")
@@ -465,6 +467,17 @@ func Test12739_outputs_sources_and_sinks(t *testing.T) {
 	assert.False(t, loops(folded, "mean"))
 	assert.True(t, loops(mapped, "score"))
 	assert.False(t, loops(mapped, "compare"))
+	// Whether a step maps is part of what the machine is: the same text, read
+	// where the residuals are one value, is another machine.
+	oneValue := notationRegistry()
+	single := compareCap()
+	single.OutputNamed("residuals").IsSequence = false
+	oneValue.AddCapsToCache([]*cap.Cap{single})
+	unmapped, parseErr := ParseMachine(notationHeaders+"[path -> compare -> (residuals=res)][res -> score -> s]", oneValue)
+	require.Nil(t, parseErr)
+	assert.False(t, loops(unmapped, "score"))
+	assert.False(t, unmapped.IsEquivalent(mapped))
+	assert.False(t, mapped.IsEquivalent(unmapped))
 }
 
 // TEST12740: the media URN of a node comes from the wirings that touch it and
@@ -565,6 +578,22 @@ func Test12741_canonical_notation_round_trips(t *testing.T) {
 	two := "[p -> compare -> (residuals=res)][res -> score -> s]"
 	assert.False(t, equivalentNotation(t, one, two))
 	assert.False(t, equivalentNotation(t, two, one))
+
+	// Two steps of one cap that differ only in what feeds an arg have one
+	// order in the canonical text, whichever was written first: the one fed
+	// by a node, then the one fed by a constant.
+	withBenchmarkDef := notationRegistry()
+	withBenchmarkDef.AddSpec(mediaDef(benchmarkMedia, nil, nil))
+	byNode := "[(series=p, benchmark=q) -> compare -> (note=a)]"
+	byConstant := "[(series=p, benchmark=[1, 2]) -> compare -> (note=b)]"
+	var texts []string
+	for _, wirings := range []string{byNode + byConstant, byConstant + byNode} {
+		parsed, err := ParseMachine(notationHeaders+wirings, withBenchmarkDef)
+		require.Nil(t, err, "%v", err)
+		texts = append(texts, parsed.ToMachineNotation())
+	}
+	assert.Equal(t, texts[0], texts[1])
+	assert.Less(t, strings.Index(texts[0], "benchmark=n"), strings.Index(texts[0], "benchmark=[1,2]"), texts[0])
 }
 
 // TEST12742: a machine header names another machine. Read with nothing to
@@ -706,4 +735,88 @@ func Test12834_a_node_stands_for_one_node(t *testing.T) {
 	assert.True(t, nodes.bind(1, 1))
 	assert.True(t, nodes.bind(2, 0))
 	assert.True(t, nodes.bind(1, 1), "and a pair made stays made")
+}
+
+// TEST12838: what a machine sorts by URN, it sorts by the URN's parts — the
+// prefix, then the tags by key and value; for a cap its input, its output, its
+// effect and then its tags — and never by the URN's text. The two orders
+// differ wherever one tag key is the beginning of another (`file`,
+// `file-path`), and the canonical form is the same in every implementation
+// only because all of them use the first.
+func Test12838_urns_are_ordered_by_their_parts_not_their_text(t *testing.T) {
+	standsBefore := func(first, second string) bool {
+		return mediaUrn(first).Compare(mediaUrn(second)) < 0
+	}
+	const sample, path = "media:file;sample", "media:file-path"
+	assert.True(t, standsBefore(sample, path))
+	assert.False(t, standsBefore(path, sample))
+	assert.Less(t, mediaUrn(path).String(), mediaUrn(sample).String(), "the text orders them the other way")
+	// A URN that is the beginning of another stands first; a tag with any
+	// value before the same tag with one; values in their own order.
+	assert.True(t, standsBefore("media:file", "media:file;sample"))
+	assert.True(t, standsBefore("media:enc", "media:enc=ascii"))
+	assert.True(t, standsBefore("media:enc=ascii", "media:enc=utf-8"))
+	assert.Zero(t, mediaUrn("media:sample;file").Compare(mediaUrn(sample)))
+
+	capBefore := func(first, second string) bool {
+		return capUrnVal(first).Compare(capUrnVal(second)) < 0
+	}
+	// A cap's input decides before anything else it says.
+	assert.True(t, capBefore(`cap:in="`+sample+`";zz;out="media:x"`, `cap:in="`+path+`";aa;out="media:x"`))
+	// Then its output — and only then: an input that stands first wins over
+	// an output that stands last.
+	assert.True(t, capBefore(`cap:in="media:x";zz;out="`+sample+`"`, `cap:in="media:x";aa;out="`+path+`"`))
+	assert.True(t, capBefore(`cap:in="`+sample+`";op;out="`+path+`"`, `cap:in="`+path+`";op;out="`+sample+`"`))
+	// Then its effect, in the order: declared, none, patch, unspecified.
+	effects := []string{
+		`cap:in="media:x";op;out="media:x"`,
+		`cap:effect=none;in="media:x";op;out="media:x"`,
+		`cap:effect=patch;in="media:x";op;out="media:x"`,
+		`cap:effect=?;in="media:x";op;out="media:x"`,
+	}
+	for i := 0; i+1 < len(effects); i++ {
+		assert.True(t, capBefore(effects[i], effects[i+1]), "%s before %s", effects[i], effects[i+1])
+		assert.False(t, capBefore(effects[i+1], effects[i]))
+		assert.True(t, capUrnVal(effects[i]).Less(capUrnVal(effects[i+1])))
+	}
+	// Then its other tags — after the effect, whatever they say.
+	assert.True(t, capBefore(`cap:in="media:x";aa;out="media:x"`, `cap:in="media:x";zz;out="media:x"`))
+	assert.True(t, capBefore(`cap:in="media:x";zz;out="media:x"`, `cap:effect=patch;in="media:x";aa;out="media:x"`))
+	assert.Zero(t, capUrnVal(effects[2]).Compare(capUrnVal(effects[2])))
+
+	// In a machine: the bindings of a step, the outputs it takes, the inputs
+	// of the strand and the steps themselves all stand in that order.
+	const result, where = "media:file;result", "media:file-path;written"
+	pairUrn := `cap:in="` + sample + `";pair;out="` + result + `"`
+	firstUrn := `cap:in="` + sample + `";zz-first;out="media:file;a"`
+	secondUrn := `cap:in="` + sample + `";aa-second;out="` + path + `"`
+	registry := fabric.NewForTest()
+	registry.AddCapsToCache([]*cap.Cap{
+		definition(pairUrn, "pair",
+			[]cap.CapArg{stdinArg(sample, "sample"), flagArg(path, "path")},
+			[]cap.CapOutput{outputOf(result, "result", ""), outputOf(where, "where", "")}),
+		definition(firstUrn, "first", []cap.CapArg{stdinArg(sample, "sample")}, []cap.CapOutput{outputOf("media:file;a", "made", "")}),
+		definition(secondUrn, "second", []cap.CapArg{stdinArg(sample, "sample")}, []cap.CapOutput{outputOf(path, "made", "")}),
+	})
+
+	m, names, parseErr := ParseMachineWithNodeNames("[pair "+pairUrn+"][(path=p, s) -> pair -> (where=w, r)]", registry)
+	require.Nil(t, parseErr, "%v", parseErr)
+	edge := onlyEdge(t, m)
+	require.Len(t, edge.Assignment, 2)
+	assert.Equal(t, []string{"sample", "path"}, []string{edge.Assignment[0].ArgName, edge.Assignment[1].ArgName})
+	require.Len(t, edge.Outputs, 2)
+	assert.Equal(t, []string{"result", "where"}, []string{edge.Outputs[0].OutputName, edge.Outputs[1].OutputName})
+	assert.Equal(t, []NodeId{names[0]["s"], names[0]["p"]}, m.Strands()[0].InputAnchorIds())
+	assert.Equal(t, []NodeId{names[0]["r"], names[0]["w"]}, m.Strands()[0].OutputAnchorIds())
+	assert.Contains(t, m.ToMachineNotation(), "[(sample=n0, path=n1) -> edge_0 -> (result=n2, where=n3)]")
+
+	headers := "[first " + firstUrn + "][second " + secondUrn + "]"
+	for _, wirings := range []string{"[x -> first -> a][x -> second -> b]", "[x -> second -> b][x -> first -> a]"} {
+		parsed, err := ParseMachine(headers+wirings, registry)
+		require.Nil(t, err, "%v", err)
+		steps := parsed.Strands()[0].Edges()
+		require.Len(t, steps, 2)
+		assert.Contains(t, steps[0].CapUrn.String(), "zz-first", wirings)
+		assert.Contains(t, steps[1].CapUrn.String(), "aa-second", wirings)
+	}
 }
