@@ -16,8 +16,7 @@ import (
 func Test1400_gather_n_sources_into_sequence_arg(t *testing.T) {
 	sources := []*urn.MediaUrn{mediaUrn("media:enc=utf-8;page"), mediaUrn("media:enc=utf-8;page"), mediaUrn("media:enc=utf-8;page")}
 	args := []*urn.MediaUrn{mediaUrn("media:enc=utf-8")}
-	step := `cap:in="media:enc=utf-8";concat;out="media:enc=utf-8;ext=txt"`
-	pairs, err := matchSourcesToArgs(sources, args, []bool{true}, -1, step, 0)
+	pairs, err := matchSourcesToArgs(sources, args, []bool{true}, -1)
 	require.Nil(t, err, "three sources must gather into the sequence arg")
 	require.Len(t, pairs, 3, "one binding per gathered source")
 	for _, pair := range pairs {
@@ -25,9 +24,8 @@ func Test1400_gather_n_sources_into_sequence_arg(t *testing.T) {
 		assert.True(t, pair.source.IsEquivalent(mediaUrn("media:enc=utf-8;page")))
 	}
 	// The same three with an arg that takes one value have nowhere to go.
-	_, err = matchSourcesToArgs(sources, args, []bool{false}, -1, step, 0)
-	require.NotNil(t, err)
-	assert.Equal(t, ErrAbstractionUnmatchedSourceInCapArgs, err.Kind)
+	_, err = matchSourcesToArgs(sources, args, []bool{false}, -1)
+	assert.Equal(t, &matchFailure{source: 0}, err)
 }
 
 // TEST1401: product precedence — when a valid injection exists it wins, even
@@ -36,8 +34,7 @@ func Test1400_gather_n_sources_into_sequence_arg(t *testing.T) {
 func Test1401_product_precedence_over_gather(t *testing.T) {
 	sources := []*urn.MediaUrn{mediaUrn("media:enc=utf-8;page"), mediaUrn("media:enc=utf-8;summary")}
 	args := []*urn.MediaUrn{mediaUrn("media:enc=utf-8;page"), mediaUrn("media:enc=utf-8")}
-	pairs, err := matchSourcesToArgs(sources, args, []bool{false, true}, -1,
-		`cap:in="media:enc=utf-8;page";compose;out="media:enc=utf-8;ext=txt"`, 0)
+	pairs, err := matchSourcesToArgs(sources, args, []bool{false, true}, -1)
 	require.Nil(t, err, "unique injection must resolve")
 	require.Len(t, pairs, 2)
 	// The page source must claim the scalar page arg (injection), NOT be
@@ -56,9 +53,10 @@ func Test1401_product_precedence_over_gather(t *testing.T) {
 	// both into the sequence arg would be cheaper and unique, and it is not
 	// what is asked: a tied product is ambiguous, it does not become a gather.
 	pages := []*urn.MediaUrn{mediaUrn("media:enc=utf-8;page"), mediaUrn("media:enc=utf-8;page")}
-	_, err = matchSourcesToArgs(pages, args, []bool{true, false}, -1, "compose", 0)
-	require.NotNil(t, err)
-	assert.Equal(t, ErrAbstractionAmbiguousMachineNotation, err.Kind)
+	_, err = matchSourcesToArgs(pages, args, []bool{true, false}, -1)
+	assert.Equal(t, &matchFailure{ambiguous: true, undecided: []undecidedSource{
+		{source: 0, args: []int{0, 1}}, {source: 1, args: []int{0, 1}},
+	}}, err)
 }
 
 // TEST1402: a gather tie between two sequence args is ambiguous, not silently
@@ -70,9 +68,10 @@ func Test1402_gather_ambiguity_and_scalar_pigeonhole_fail_hard(t *testing.T) {
 	chunk := mediaUrn("media:chunk;enc=utf-8;page")
 	sources := []*urn.MediaUrn{chunk, chunk, chunk}
 	args := []*urn.MediaUrn{mediaUrn("media:enc=utf-8;page"), mediaUrn("media:chunk;enc=utf-8")}
-	_, err := matchSourcesToArgs(sources, args, []bool{true, true}, -1, `cap:in="media:enc=utf-8";t;out="media:enc=utf-8"`, 0)
-	require.NotNil(t, err)
-	assert.Equal(t, ErrAbstractionAmbiguousMachineNotation, err.Kind, "tied gather distributions must be ambiguous, got %v", err)
+	_, err := matchSourcesToArgs(sources, args, []bool{true, true}, -1)
+	assert.Equal(t, &matchFailure{ambiguous: true, undecided: []undecidedSource{
+		{source: 0, args: []int{0, 1}}, {source: 1, args: []int{0, 1}}, {source: 2, args: []int{0, 1}},
+	}}, err, "tied gather distributions must be ambiguous")
 }
 
 // gatherFixture is two producers of a page and a `concat` whose one arg takes

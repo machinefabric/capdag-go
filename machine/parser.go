@@ -413,7 +413,13 @@ func parseProgram(
 			preInterned = append(preInterned, wiring)
 		}
 
-		strand, absErr := resolvePreInterned(nodes, preInterned, registry, strandIndex)
+		// The name the text gave each node, by NodeId: what a refusal about a
+		// member names it by.
+		namesById := make([]string, len(nodes))
+		for name, id := range nameToId {
+			namesById[id] = name
+		}
+		strand, absErr := resolveNamedWirings(nodes, namesById, preInterned, registry, strandIndex)
 		if absErr != nil {
 			return nil, nil, abstractionParseError(absErr)
 		}
@@ -611,15 +617,19 @@ func includeMachines(
 			for i, input := range free {
 				accepts[i] = input.media
 			}
-			pairs, matchErr := matchSourcesToArgs(sources, accepts, make([]bool, len(accepts)), -1, alias, 0)
-			if matchErr != nil {
-				switch matchErr.Kind {
-				case ErrAbstractionUnmatchedSourceInCapArgs:
-					return nil, abstractionParseError(unmatchedMachineMemberError(position, alias, matchErr.SourceUrn))
-				case ErrAbstractionAmbiguousMachineNotation:
-					return nil, abstractionParseError(ambiguousMachineMembersError(position, alias))
+			pairs, failure := matchSourcesToArgs(sources, accepts, make([]bool, len(accepts)), -1)
+			if failure != nil {
+				if !failure.ambiguous {
+					return nil, abstractionParseError(unmatchedMachineMemberError(position, alias, sources[failure.source].String()))
 				}
-				return nil, abstractionParseError(matchErr)
+				members := make([]UndecidedMember, len(failure.undecided))
+				for i, each := range failure.undecided {
+					members[i] = UndecidedMember{Node: unnamed[each.source], SourceUrn: sources[each.source].String()}
+					for _, input := range each.args {
+						members[i].CouldBe = append(members[i].CouldBe, free[input].name)
+					}
+				}
+				return nil, abstractionParseError(ambiguousMachineMembersError(position, alias, members))
 			}
 			// The matching answers in types. Where it is unique no two
 			// members and no two inputs it paired hold one type — two that

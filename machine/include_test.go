@@ -237,6 +237,12 @@ func Test12805_unnamed_members_of_a_machine_step_are_matched_by_type(t *testing.
 	ambiguous := refusal(t, `[analyse machine "analyse"]`+fetchTwo+`[(a, b) -> analyse -> (cmp=c, scores=s)]`,
 		ErrAbstractionAmbiguousMachineMembers)
 	assert.Contains(t, ambiguous.Message, "machine 'analyse'")
+	// Which members to name, and the inputs each could be.
+	series := mediaUrn(seriesMedia).String()
+	assert.Equal(t, []UndecidedMember{
+		{Node: "a", SourceUrn: series, CouldBe: []string{"bench", "series"}},
+		{Node: "b", SourceUrn: series, CouldBe: []string{"bench", "series"}},
+	}, ambiguous.Members)
 	// An input of the including machine, unnamed: nothing says what it is.
 	untyped := refusal(t, `[analyse machine "analyse"]`+fetchTwo+`[(x, bench=b) -> analyse -> (cmp=c, scores=s)]`,
 		ErrAbstractionUntypedMachineMember)
@@ -246,6 +252,10 @@ func Test12805_unnamed_members_of_a_machine_step_are_matched_by_type(t *testing.
 	unmatched := refusal(t, `[analyse machine "analyse"]`+produce+`[(c, bench=a) -> analyse -> (cmp=c2, scores=s)]`,
 		ErrAbstractionUnmatchedMachineMember)
 	assert.Contains(t, unmatched.Message, "a member of type '"+mediaUrn(comparisonMedia).String()+"' fits no input left of machine 'analyse'")
+	// The member that fits no input is the one named, wherever it stands.
+	second := refusal(t, `[analyse machine "analyse"]`+produce+`[(a, c) -> analyse -> (cmp=c2, scores=s)]`,
+		ErrAbstractionUnmatchedMachineMember)
+	assert.Contains(t, second.Message, "a member of type '"+mediaUrn(comparisonMedia).String()+"'")
 	// Two outputs left for one unnamed target, and none left for it.
 	twoLeft := refusal(t, `[analyse machine "analyse"]`+fetchTwo+`[(series=a, bench=b) -> analyse -> c]`,
 		ErrAbstractionUnnamedMachineTarget)

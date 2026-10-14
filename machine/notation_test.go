@@ -261,8 +261,40 @@ func Test12737_a_named_member_binds_the_arg_it_names(t *testing.T) {
 
 	// The same two, produced by steps: each has a type, and it fits two args.
 	produced := `[(reference="a") -> fetch -> a][(reference="b") -> fetch -> b]`
-	assert.Equal(t, ErrAbstractionAmbiguousMachineNotation,
-		resolutionError(t, produced+"[(a, b) -> compare -> result]").Kind)
+	// The refusal says which members to name, by the names the text gave
+	// them, and the args each could be for.
+	seriesUrn := mediaUrn(seriesMedia).String()
+	ambiguous := resolutionError(t, produced+"[(a, b) -> compare -> result]")
+	require.Equal(t, ErrAbstractionAmbiguousMachineNotation, ambiguous.Kind)
+	assert.Equal(t, []UndecidedMember{
+		{Node: "a", SourceUrn: seriesUrn, CouldBe: []string{"series", "benchmark"}},
+		{Node: "b", SourceUrn: seriesUrn, CouldBe: []string{"series", "benchmark"}},
+	}, ambiguous.Members)
+	assert.Contains(t, ambiguous.Message, "name them: 'a' ("+seriesUrn+") could be series or benchmark; 'b' (")
+	// A member is named by the name the text gave it, wherever it stands in
+	// its group and whichever node was written first.
+	swapped := resolutionError(t, produced+"[(b, a) -> compare -> result]")
+	require.Equal(t, ErrAbstractionAmbiguousMachineNotation, swapped.Kind)
+	require.Len(t, swapped.Members, 2)
+	assert.Equal(t, []string{"b", "a"}, []string{swapped.Members[0].Node, swapped.Members[1].Node})
+	// The args a member could be for are the ones no name took: with the
+	// first of three bound by name, the other two are what is left to say.
+	mixUrn := fmt.Sprintf(`cap:in="%s";mix;out="%s"`, seriesMedia, comparisonMedia)
+	withMix := notationRegistry()
+	withMix.AddCapsToCache([]*cap.Cap{definition(mixUrn, "mix",
+		[]cap.CapArg{
+			stdinArg(seriesMedia, "first"),
+			flagArg("media:second;fmt=json;list;record;time-series", "second").Accepting(seriesMedia),
+			flagArg("media:third;fmt=json;list;record;time-series", "third").Accepting(seriesMedia),
+		},
+		[]cap.CapOutput{outputOf(comparisonMedia, "mixed", "The mix")})})
+	_, mixErr := ParseMachine(notationHeaders+"[mix "+mixUrn+"]"+produced+`[(reference="c") -> fetch -> c][(first=c, a, b) -> mix -> result]`, withMix)
+	require.NotNil(t, mixErr)
+	require.NotNil(t, mixErr.Abstraction, "%v", mixErr)
+	assert.Equal(t, []UndecidedMember{
+		{Node: "a", SourceUrn: seriesUrn, CouldBe: []string{"second", "third"}},
+		{Node: "b", SourceUrn: seriesUrn, CouldBe: []string{"second", "third"}},
+	}, mixErr.Abstraction.Members)
 	said := machineOf(t, produced+"[(a, benchmark=b) -> compare -> result]")
 	assert.Len(t, said.Strands()[0].Edges(), 3)
 	// An arg a member named is said: an unnamed member is not matched into it
@@ -271,6 +303,12 @@ func Test12737_a_named_member_binds_the_arg_it_names(t *testing.T) {
 	third := `[(reference="c") -> fetch -> c]`
 	assert.Equal(t, ErrAbstractionUnmatchedSourceInCapArgs,
 		resolutionError(t, produced+third+"[(a, c, benchmark=b) -> compare -> result]").Kind)
+
+	// A member that fits no arg at all is the one the refusal names, wherever
+	// it stands: here the second, a comparison where a series is taken.
+	unfit := resolutionError(t, produced+"[a -> compare -> made][(b, made) -> compare -> result]")
+	require.Equal(t, ErrAbstractionUnmatchedSourceInCapArgs, unfit.Kind)
+	assert.Contains(t, unfit.Message, "source URN '"+mediaUrn(comparisonMedia).String()+"'")
 
 	// A name the cap does not declare, with the names it does.
 	unknown := resolutionError(t, "[(path, baseline=bench) -> compare -> result]")

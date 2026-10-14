@@ -3,6 +3,7 @@ package machine
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/machinefabric/capdag-go/cap"
@@ -841,11 +842,24 @@ func Test1148_machine_parse_error_from_syntax_preserves_variant(t *testing.T) {
 
 // TEST1149: MachineParseError::from(MachineAbstractionError) preserves the resolution error variant
 func Test1149_machine_parse_error_from_resolution_preserves_variant(t *testing.T) {
-	absErr := ambiguousNotationError(2, "cap:in=\"media:document;ext=pdf\";out=media:text")
+	undecided := func(node string) UndecidedMember {
+		return UndecidedMember{Node: node, SourceUrn: "media:enc=utf-8", CouldBe: []string{"left", "right"}}
+	}
+	absErr := ambiguousNotationError(2, "cap:in=\"media:document;ext=pdf\";out=media:text",
+		[]UndecidedMember{undecided("a"), undecided("")})
 	parseErr := abstractionParseError(absErr)
 
 	if parseErr.Abstraction == nil {
 		t.Fatal("Abstraction field must be set")
+	}
+	// What it says is which members to name, and what each could be.
+	said := parseErr.Error()
+	wanted := "name them: 'a' (media:enc=utf-8) could be left or right; a member of type 'media:enc=utf-8' could be left or right"
+	if !strings.HasSuffix(said, wanted) {
+		t.Fatalf("the refusal must end with %q: %s", wanted, said)
+	}
+	if len(parseErr.Abstraction.Members) != 2 {
+		t.Fatalf("the members are carried: %v", parseErr.Abstraction.Members)
 	}
 	if parseErr.Abstraction.Kind != ErrAbstractionAmbiguousMachineNotation {
 		t.Fatalf("expected ErrAbstractionAmbiguousMachineNotation, got %v", parseErr.Abstraction.Kind)
@@ -889,9 +903,7 @@ func Test6700_line_based_format_round_trips(t *testing.T) {
 func Test1178_match_single_source_picks_unique_arg(t *testing.T) {
 	sources := []*urn.MediaUrn{mediaUrn("media:document;ext=pdf")}
 	args := []*urn.MediaUrn{mediaUrn("media:document;ext=pdf")}
-	capUrnStr := `cap:in="media:document;ext=pdf";extract;out="media:txt;enc=utf-8"`
-
-	pairs, err := matchSourcesToArgs(sources, args, make([]bool, len(args)), -1, capUrnStr, 0)
+	pairs, err := matchSourcesToArgs(sources, args, make([]bool, len(args)), -1)
 	require.Nil(t, err, "trivial single-source match must succeed")
 	require.Equal(t, 1, len(pairs))
 	assert.True(t, pairs[0].arg.IsEquivalent(mediaUrn("media:document;ext=pdf")), "arg must be media:document;ext=pdf")
@@ -902,9 +914,7 @@ func Test1178_match_single_source_picks_unique_arg(t *testing.T) {
 func Test1179_match_more_specific_source_assigned_to_general_arg(t *testing.T) {
 	sources := []*urn.MediaUrn{mediaUrn("media:page;enc=utf-8")}
 	args := []*urn.MediaUrn{mediaUrn("media:enc=utf-8")}
-	capUrnStr := `cap:in="media:enc=utf-8";make-decision;out="media:decision;fmt=json;record"`
-
-	pairs, err := matchSourcesToArgs(sources, args, make([]bool, len(args)), -1, capUrnStr, 0)
+	pairs, err := matchSourcesToArgs(sources, args, make([]bool, len(args)), -1)
 	require.Nil(t, err, "more-specific source must be matched to its arg")
 	require.Equal(t, 1, len(pairs))
 	assert.True(t, pairs[0].arg.IsEquivalent(mediaUrn("media:enc=utf-8")), "arg must be media:enc=utf-8")
@@ -915,20 +925,21 @@ func Test1179_match_more_specific_source_assigned_to_general_arg(t *testing.T) {
 func Test1180_match_unmatched_source_fails_hard(t *testing.T) {
 	sources := []*urn.MediaUrn{mediaUrn("media:numeric")}
 	args := []*urn.MediaUrn{mediaUrn("media:enc=utf-8")}
-	capUrnStr := `cap:in="media:enc=utf-8";t;out="media:enc=utf-8"`
+	_, failure := matchSourcesToArgs(sources, args, make([]bool, len(args)), -1)
+	assert.Equal(t, &matchFailure{source: 0}, failure, "unmatched source must fail hard")
 
-	_, err := matchSourcesToArgs(sources, args, make([]bool, len(args)), -1, capUrnStr, 7)
-	require.NotNil(t, err, "unmatched source must fail hard")
-	assert.Equal(t, ErrAbstractionUnmatchedSourceInCapArgs, err.Kind)
+	// It is the source that fits nothing that is named, wherever it stands.
+	sources = []*urn.MediaUrn{mediaUrn("media:enc=utf-8;page"), mediaUrn("media:numeric")}
+	args = []*urn.MediaUrn{mediaUrn("media:enc=utf-8"), mediaUrn("media:enc=utf-8;page")}
+	_, failure = matchSourcesToArgs(sources, args, make([]bool, len(args)), -1)
+	assert.Equal(t, &matchFailure{source: 1}, failure)
 }
 
 // TEST1181: matchSourcesToArgs disambiguates two sources by specificity.
 func Test1181_match_two_sources_disambiguated_by_specificity(t *testing.T) {
 	sources := []*urn.MediaUrn{mediaUrn("media:ext=png;image"), mediaUrn("media:model-spec;enc=utf-8")}
 	args := []*urn.MediaUrn{mediaUrn("media:ext=png;image"), mediaUrn("media:enc=utf-8")}
-	capUrnStr := `cap:in="media:ext=png;image";describe;out="media:image-description;enc=utf-8"`
-
-	pairs, err := matchSourcesToArgs(sources, args, make([]bool, len(args)), -1, capUrnStr, 0)
+	pairs, err := matchSourcesToArgs(sources, args, make([]bool, len(args)), -1)
 	require.Nil(t, err, "two sources disambiguated by specificity must succeed")
 	require.Equal(t, 2, len(pairs))
 
@@ -948,7 +959,7 @@ func Test1181_match_two_sources_disambiguated_by_specificity(t *testing.T) {
 	// One source that fits two args takes the one it is closest to.
 	page := []*urn.MediaUrn{mediaUrn("media:enc=utf-8;page")}
 	either := []*urn.MediaUrn{mediaUrn("media:enc=utf-8"), mediaUrn("media:enc=utf-8;page")}
-	pairs, err = matchSourcesToArgs(page, either, make([]bool, 2), -1, capUrnStr, 0)
+	pairs, err = matchSourcesToArgs(page, either, make([]bool, 2), -1)
 	require.Nil(t, err)
 	require.Len(t, pairs, 1)
 	assert.True(t, pairs[0].arg.IsEquivalent(mediaUrn("media:enc=utf-8;page")), "the exact arg, not the general one: %s", pairs[0].arg)
@@ -956,24 +967,39 @@ func Test1181_match_two_sources_disambiguated_by_specificity(t *testing.T) {
 
 // TEST1182: Matching fails as ambiguous when two sources can be swapped at equal minimum cost.
 func Test1182_match_ambiguous_when_two_sources_could_swap(t *testing.T) {
-	sources := []*urn.MediaUrn{mediaUrn("media:enc=utf-8"), mediaUrn("media:enc=utf-8")}
-	args := []*urn.MediaUrn{mediaUrn("media:enc=utf-8"), mediaUrn("media:enc=utf-8")}
-	capUrnStr := `cap:in="media:enc=utf-8";t;out="media:enc=utf-8"`
+	text := mediaUrn("media:enc=utf-8")
+	sources := []*urn.MediaUrn{text, text}
+	args := []*urn.MediaUrn{text, text}
+	// Both are left open, and each could go to either arg.
+	_, failure := matchSourcesToArgs(sources, args, make([]bool, len(args)), -1)
+	assert.Equal(t, &matchFailure{ambiguous: true, undecided: []undecidedSource{
+		{source: 0, args: []int{0, 1}}, {source: 1, args: []int{0, 1}},
+	}}, failure, "ambiguous matching must fail hard")
 
-	_, err := matchSourcesToArgs(sources, args, make([]bool, len(args)), -1, capUrnStr, 0)
-	require.NotNil(t, err, "ambiguous matching must fail hard")
-	assert.Equal(t, ErrAbstractionAmbiguousMachineNotation, err.Kind)
+	// Only the sources the tie is about are named: a third that fits one arg
+	// alone is decided, whatever the other two do.
+	number := mediaUrn("media:numeric")
+	sources = []*urn.MediaUrn{text, number, text}
+	args = []*urn.MediaUrn{text, text, number}
+	_, failure = matchSourcesToArgs(sources, args, make([]bool, len(args)), -1)
+	assert.Equal(t, &matchFailure{ambiguous: true, undecided: []undecidedSource{
+		{source: 0, args: []int{0, 1}}, {source: 2, args: []int{0, 1}},
+	}}, failure)
 }
 
 // TEST1183: Matching fails when more sources are provided than the cap has input arguments.
 func Test1183_match_more_sources_than_args_fails_hard(t *testing.T) {
 	sources := []*urn.MediaUrn{mediaUrn("media:document;ext=pdf"), mediaUrn("media:document;ext=pdf"), mediaUrn("media:document;ext=pdf")}
 	args := []*urn.MediaUrn{mediaUrn("media:document;ext=pdf"), mediaUrn("media:document;ext=pdf")}
-	capUrnStr := "cap:in=\"media:document;ext=pdf\";t;out=\"media:document;ext=pdf\""
+	// Every source has somewhere to go and one of them must go without: the
+	// first stands for it.
+	_, failure := matchSourcesToArgs(sources, args, make([]bool, len(args)), -1)
+	assert.Equal(t, &matchFailure{source: 0}, failure, "more sources than args must fail hard")
 
-	_, err := matchSourcesToArgs(sources, args, make([]bool, len(args)), -1, capUrnStr, 0)
-	require.NotNil(t, err, "more sources than args must fail hard")
-	assert.Equal(t, ErrAbstractionUnmatchedSourceInCapArgs, err.Kind)
+	// Where one of them fits nothing at all, that is the one named.
+	sources[1] = mediaUrn("media:numeric")
+	_, failure = matchSourcesToArgs(sources, args, make([]bool, len(args)), -1)
+	assert.Equal(t, &matchFailure{source: 1}, failure)
 }
 
 // TEST1184: Resolving a strand with one cap produces one resolved machine edge.

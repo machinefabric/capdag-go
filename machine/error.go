@@ -22,9 +22,10 @@ type MachineAbstractionError struct {
 	// StrandIndex carries the strand index for ErrAbstractionCyclicMachineStrand,
 	// mirroring Rust's CyclicMachineStrand { strand_index }. nil for other kinds.
 	StrandIndex *int
-	// SourceUrn is the source that fits no arg
-	// (ErrAbstractionUnmatchedSourceInCapArgs).
-	SourceUrn string
+	// Members are the members to name, each with what it could be for
+	// (ErrAbstractionAmbiguousMachineNotation,
+	// ErrAbstractionAmbiguousMachineMembers).
+	Members []UndecidedMember
 	// Chain is every machine on the way round an inclusion that closes on
 	// itself, from the first to the one that closes the circle
 	// (ErrAbstractionCyclicMachineReference).
@@ -38,6 +39,36 @@ func (e *MachineAbstractionError) Error() string {
 	return e.Message
 }
 
+// UndecidedMember is a member of a wiring whose arg the types alone do not
+// decide.
+type UndecidedMember struct {
+	// Node is the node, as the notation named it. Empty where no notation is
+	// at hand (a strand resolved from a planner path): the member is then
+	// known by its type alone.
+	Node string
+	// SourceUrn is the media URN the member holds.
+	SourceUrn string
+	// CouldBe is the args — or, for a machine in step position, the inputs —
+	// it could go to, by name, in the order the definition declares them.
+	CouldBe []string
+}
+
+func (m UndecidedMember) String() string {
+	who := fmt.Sprintf("a member of type '%s'", m.SourceUrn)
+	if m.Node != "" {
+		who = fmt.Sprintf("'%s' (%s)", m.Node, m.SourceUrn)
+	}
+	return who + " could be " + strings.Join(m.CouldBe, " or ")
+}
+
+func undecidedList(members []UndecidedMember) string {
+	said := make([]string, len(members))
+	for i, member := range members {
+		said[i] = member.String()
+	}
+	return strings.Join(said, "; ")
+}
+
 // AbstractionErrorKind identifies the category of abstraction error.
 type AbstractionErrorKind int
 
@@ -48,7 +79,8 @@ const (
 	ErrAbstractionUnknownCap
 	// ErrAbstractionUnmatchedSourceInCapArgs — source URN doesn't conform to any cap input arg.
 	ErrAbstractionUnmatchedSourceInCapArgs
-	// ErrAbstractionAmbiguousMachineNotation — multiple minimum-cost matchings exist.
+	// ErrAbstractionAmbiguousMachineNotation — the types do not say which arg
+	// some unnamed member is for.
 	ErrAbstractionAmbiguousMachineNotation
 	// ErrAbstractionCyclicMachineStrand — resolved data-flow graph contains a cycle.
 	ErrAbstractionCyclicMachineStrand
@@ -152,17 +184,17 @@ func unmatchedSourceError(strandIndex int, capUrn, sourceUrn string) *MachineAbs
 			"in strand %d, cap '%s': source URN '%s' does not conform to any of the cap's input arguments",
 			strandIndex, capUrn, sourceUrn,
 		),
-		SourceUrn: sourceUrn,
 	}
 }
 
-func ambiguousNotationError(strandIndex int, capUrn string) *MachineAbstractionError {
+func ambiguousNotationError(strandIndex int, capUrn string, members []UndecidedMember) *MachineAbstractionError {
 	return &MachineAbstractionError{
 		Kind: ErrAbstractionAmbiguousMachineNotation,
 		Message: fmt.Sprintf(
-			"in strand %d, cap '%s': source-to-cap-arg assignment is ambiguous (multiple minimum-cost matchings exist)",
-			strandIndex, capUrn,
+			"in strand %d, cap '%s': the types do not say which arg these members are for — name them: %s",
+			strandIndex, capUrn, undecidedList(members),
 		),
+		Members: members,
 	}
 }
 
@@ -346,9 +378,11 @@ func unmatchedMachineMemberError(position int, alias, sourceUrn string) *Machine
 		"a member of type '%s' fits no input left of machine '%s'", sourceUrn, alias)
 }
 
-func ambiguousMachineMembersError(position int, alias string) *MachineAbstractionError {
-	return atStatement(ErrAbstractionAmbiguousMachineMembers, position,
-		"the unnamed members of machine '%s' fit its inputs in more than one way — name them", alias)
+func ambiguousMachineMembersError(position int, alias string, members []UndecidedMember) *MachineAbstractionError {
+	err := atStatement(ErrAbstractionAmbiguousMachineMembers, position,
+		"the types do not say which input of machine '%s' these members are for — name them: %s", alias, undecidedList(members))
+	err.Members = members
+	return err
 }
 
 func sourceDoesNotConformToMachineInputError(position int, alias, name, accepts, sourceUrn string) *MachineAbstractionError {

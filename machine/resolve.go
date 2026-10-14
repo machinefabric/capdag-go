@@ -29,8 +29,9 @@ import (
 // The members that name no arg are matched by type over the args no name
 // bound, by minimum-cost assignment in two phases of strict precedence:
 //
-//   - Cost of pairing source s with arg a: |spec(s) - spec(a)| if s conforms
-//     to what a accepts; otherwise the pair is impossible.
+//   - Cost of pairing source s with arg a: spec(s) - spec(a) if s conforms
+//     to what a accepts — how much more the source says than the arg asks;
+//     otherwise the pair is impossible.
 //   - Phase 1 — product: each source claims a distinct arg. Whenever such an
 //     assignment exists, this phase decides.
 //   - Phase 2 — gather: only when no such assignment exists, a sequence arg
@@ -181,6 +182,32 @@ func mustMedia(text, what string) *urn.MediaUrn {
 //  4. Anchor computation (NodeIds with no producer / no consumer in the strand).
 func resolvePreInterned(
 	nodes []*urn.MediaUrn,
+	wirings []preInternedWiring,
+	registry *fabric.FabricRegistry,
+	strandIndex int,
+) (*MachineStrand, *MachineAbstractionError) {
+	return resolveWirings(nodes, nil, wirings, registry, strandIndex)
+}
+
+// resolveNamedWirings is resolvePreInterned for wirings read from notation:
+// nodeNames is the name the text gave each node, indexed by NodeId, so that a
+// refusal about a member can say which member.
+func resolveNamedWirings(
+	nodes []*urn.MediaUrn,
+	nodeNames []string,
+	wirings []preInternedWiring,
+	registry *fabric.FabricRegistry,
+	strandIndex int,
+) (*MachineStrand, *MachineAbstractionError) {
+	if len(nodes) != len(nodeNames) {
+		panic("every node of a strand read from notation has a name")
+	}
+	return resolveWirings(nodes, nodeNames, wirings, registry, strandIndex)
+}
+
+func resolveWirings(
+	nodes []*urn.MediaUrn,
+	nodeNames []string,
 	wirings []preInternedWiring,
 	registry *fabric.FabricRegistry,
 	strandIndex int,
@@ -343,9 +370,24 @@ func resolvePreInterned(
 		}
 
 		if len(sourceUrns) > 0 {
-			matched, matchErr := matchSourcesToArgs(sourceUrns, freeAccepts, freeIsSequence, mustBind, capUrn, strandIndex)
-			if matchErr != nil {
-				return nil, matchErr
+			matched, failure := matchSourcesToArgs(sourceUrns, freeAccepts, freeIsSequence, mustBind)
+			if failure != nil {
+				if !failure.ambiguous {
+					return nil, unmatchedSourceError(strandIndex, capUrn, sourceUrns[failure.source].String())
+				}
+				// Which members the types leave open, by the names the text
+				// gave them, and the args each could go to.
+				members := make([]UndecidedMember, len(failure.undecided))
+				for i, each := range failure.undecided {
+					members[i] = UndecidedMember{SourceUrn: sourceUrns[each.source].String()}
+					if nodeNames != nil {
+						members[i].Node = nodeNames[wiring.sourceNodeIds[each.source]]
+					}
+					for _, arg := range each.args {
+						members[i].CouldBe = append(members[i].CouldBe, definition.Args[free[arg]].Name)
+					}
+				}
+				return nil, ambiguousNotationError(strandIndex, capUrn, members)
 			}
 			// The matching answers in URNs. Each accepted URN is translated
 			// back to its slot identity, and each source URN to its position
@@ -544,6 +586,26 @@ type matchedPair struct {
 	source *urn.MediaUrn
 }
 
+// matchFailure is why the unnamed members of a wiring could not be placed. It
+// speaks in positions — of the sources and args the matching was given —
+// because what a source or an arg is CALLED is its caller's to say.
+type matchFailure struct {
+	// ambiguous: the types leave more than one answer, and undecided says
+	// about which sources. Otherwise the source at `source` fits no arg left
+	// for it.
+	ambiguous bool
+	source    int
+	// undecided is each source the minimum-cost assignments place
+	// differently, and the args they place it on, in the order the args were
+	// given.
+	undecided []undecidedSource
+}
+
+type undecidedSource struct {
+	source int
+	args   []int
+}
+
 // matchSourcesToArgs matches a wiring's sources to a cap's args by minimum
 // total specificity-distance, with a uniqueness requirement.
 //
@@ -558,8 +620,7 @@ type matchedPair struct {
 //     must be unique.
 //
 // `mustBind` is the index of the arg an assignment MUST bind — the cap's main
-// input, when these sources are what can feed it — or -1. `step` is what the
-// errors name the step by.
+// input, when these sources are what can feed it — or -1.
 //
 // The pairs come sorted by arg URN (stably: several sources gathered into one
 // arg keep their declaration order, which fixes the gathered sequence's item
@@ -569,55 +630,53 @@ func matchSourcesToArgs(
 	args []*urn.MediaUrn,
 	argIsSequence []bool,
 	mustBind int,
-	step string,
-	strandIndex int,
-) ([]matchedPair, *MachineAbstractionError) {
+) ([]matchedPair, *matchFailure) {
 	hasSequenceArg := false
 	for _, isSequence := range argIsSequence {
 		hasSequenceArg = hasSequenceArg || isSequence
 	}
+	fitsSomething := func(source *urn.MediaUrn) bool {
+		for _, arg := range args {
+			if source.ConformsTo(arg) {
+				return true
+			}
+		}
+		return false
+	}
 
 	if len(sources) > len(args) && !hasSequenceArg {
 		// Pigeonhole: at least one source has no arg slot and no sequence arg
-		// exists to gather the surplus. Report the first source with no
-		// candidate arg; if every source has one, the first source stands for
-		// the one that must go unmatched.
-		for _, source := range sources {
-			hasCandidate := false
-			for _, arg := range args {
-				hasCandidate = hasCandidate || source.ConformsTo(arg)
-			}
-			if !hasCandidate {
-				return nil, unmatchedSourceError(strandIndex, step, source.String())
+		// exists to gather the surplus. The first source with no candidate
+		// arg is the one named; when every source has one, at least one of
+		// them MUST end up unmatched, and the first stands for it.
+		for position, source := range sources {
+			if !fitsSomething(source) {
+				return nil, &matchFailure{source: position}
 			}
 		}
-		return nil, unmatchedSourceError(strandIndex, step, sources[0].String())
+		return nil, &matchFailure{source: 0}
 	}
 
 	// cost[s][a] is the distance when sources[s] conforms to args[a], else
 	// impossible.
 	cost := make([][]int, len(sources))
 	for s, source := range sources {
+		if !fitsSomething(source) {
+			return nil, &matchFailure{source: s}
+		}
 		cost[s] = make([]int, len(args))
-		hasCandidate := false
 		for a, arg := range args {
 			cost[s][a] = impossible
 			if source.ConformsTo(arg) {
-				// Absolute specificity gap. A source is USUALLY at least as
-				// specific as the arg it conforms to, but a wildcard-carrying
-				// source conforms to a value-exact arg while being LESS
-				// specific. Either direction of mismatch is a worse fit than an
-				// exact one, so both cost.
+				// The specificity distance: how much more the source says
+				// than the arg asks. It is never negative — refining never
+				// scores lower (04 §Predicates, tagScore_monotone).
 				distance := source.Specificity() - arg.Specificity()
 				if distance < 0 {
-					distance = -distance
+					panic(fmt.Sprintf("a source that conforms to an arg is never less specific than it: %s conforms to %s", source, arg))
 				}
 				cost[s][a] = distance
-				hasCandidate = true
 			}
-		}
-		if !hasCandidate {
-			return nil, unmatchedSourceError(strandIndex, step, source.String())
 		}
 	}
 
@@ -646,10 +705,7 @@ func matchSourcesToArgs(
 		if search.bestCost != impossible {
 			// A tie among minimum-cost assignments is a hard ambiguity; it
 			// never falls through to gather, which would mask it.
-			if len(search.best) != 1 {
-				return nil, ambiguousNotationError(strandIndex, step)
-			}
-			return assignmentToPairs(search.best[0], sources, args), nil
+			return oneAssignment(search.best, sources, args)
 		}
 	}
 
@@ -658,16 +714,38 @@ func matchSourcesToArgs(
 		// Every source has a candidate, but the candidates cannot all be
 		// claimed by distinct args (a Hall violation). The first source stands
 		// for the one that goes unmatched.
-		return nil, unmatchedSourceError(strandIndex, step, sources[0].String())
+		return nil, &matchFailure{source: 0}
 	}
 	search.run(argIsSequence)
 	if search.bestCost == impossible {
-		return nil, unmatchedSourceError(strandIndex, step, sources[0].String())
+		return nil, &matchFailure{source: 0}
 	}
-	if len(search.best) != 1 {
-		return nil, ambiguousNotationError(strandIndex, step)
+	return oneAssignment(search.best, sources, args)
+}
+
+// oneAssignment is the one minimum-cost assignment, as pairs — or, when
+// several tie, the sources they disagree about.
+func oneAssignment(best [][]int, sources, args []*urn.MediaUrn) ([]matchedPair, *matchFailure) {
+	if len(best) == 1 {
+		return assignmentToPairs(best[0], sources, args), nil
 	}
-	return assignmentToPairs(search.best[0], sources, args), nil
+	failure := &matchFailure{ambiguous: true}
+	for source := range sources {
+		placed := map[int]bool{}
+		for _, assignment := range best {
+			placed[assignment[source]] = true
+		}
+		if len(placed) < 2 {
+			continue
+		}
+		on := make([]int, 0, len(placed))
+		for arg := range placed {
+			on = append(on, arg)
+		}
+		sort.Ints(on)
+		failure.undecided = append(failure.undecided, undecidedSource{source: source, args: on})
+	}
+	return nil, failure
 }
 
 // impossible marks a pairing that cannot be made, and a search that found no
