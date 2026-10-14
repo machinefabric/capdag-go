@@ -859,3 +859,40 @@ func Test12838_urns_are_ordered_by_their_parts_not_their_text(t *testing.T) {
 		assert.Contains(t, steps[1].CapUrn.String(), "aa-second", wirings)
 	}
 }
+
+// TEST12867: the render payload says which binding feeds a step's main input
+// and which output is its main one, by the step's definition, so a view can
+// draw the main wires plain and name the others.
+func Test12867_render_payload_marks_the_main_input_and_output(t *testing.T) {
+	registry := titledRegistry()
+	m, err := ParseMachine(notationHeaders+"[(path, benchmark=bench) -> compare -> (result, residuals=res)]", registry)
+	require.Nil(t, err)
+	text, abstraction := m.ToRenderPayloadJSON(registry)
+	require.Nil(t, abstraction)
+	var payload struct {
+		Strands []struct {
+			Edges []struct {
+				Assignment []struct {
+					ArgName     string `json:"arg_name"`
+					IsMainInput bool   `json:"is_main_input"`
+				} `json:"assignment"`
+				Outputs []struct {
+					OutputName   string `json:"output_name"`
+					IsMainOutput bool   `json:"is_main_output"`
+				} `json:"outputs"`
+			} `json:"edges"`
+		} `json:"strands"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(text), &payload))
+	edge := payload.Strands[0].Edges[0]
+	inputs := map[string]bool{}
+	for _, binding := range edge.Assignment {
+		inputs[binding.ArgName] = binding.IsMainInput
+	}
+	assert.Equal(t, map[string]bool{"series": true, "benchmark": false}, inputs)
+	outputs := map[string]bool{}
+	for _, output := range edge.Outputs {
+		outputs[output.OutputName] = output.IsMainOutput
+	}
+	assert.Equal(t, map[string]bool{"comparison": true, "residuals": false}, outputs)
+}

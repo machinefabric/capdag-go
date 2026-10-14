@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/machinefabric/capdag-go/cap"
 	"github.com/machinefabric/capdag-go/fabric"
 	"github.com/machinefabric/capdag-go/planner"
 )
@@ -206,15 +207,17 @@ func StrandToMachineNotation(strand *planner.Strand, registry *fabric.FabricRegi
 //
 //	{"strands":[{"nodes":[{"id","urn","title"}],
 //	             "edges":[{"alias","cap_urn","title","is_loop","retry","on_error","included_as",
-//	                       "assignment":[{"cap_arg_media_urn","arg_name","source_node"|"constant"}],
-//	                       "outputs":[{"output_media_urn","output_name","node"}]}],
+//	                       "assignment":[{"cap_arg_media_urn","arg_name","is_main_input","source_node"|"constant"}],
+//	                       "outputs":[{"output_media_urn","output_name","is_main_output","node"}]}],
 //	             "input_anchor_nodes":[...],"output_anchor_nodes":[...]}]}
 //
 // Node names are those of the canonical notation, so a notation string and its
 // render payload share node identities; each step is its canonical `edge_N`.
 // Each node carries the title of its cached media definition and each step the
 // title of its cached cap definition. One that is not cached is refused: a
-// title is never made up from a URN.
+// title is never made up from a URN. Each binding and output says whether it
+// is the step's main input or main output, by the step's definition, so a
+// view draws the main wires plain and names the others.
 func (m *Machine) ToRenderPayloadJSON(registry *fabric.FabricRegistry) (string, *MachineAbstractionError) {
 	if m.IsEmpty() {
 		return `{"strands":[]}`, nil
@@ -225,6 +228,7 @@ func (m *Machine) ToRenderPayloadJSON(registry *fabric.FabricRegistry) (string, 
 	// is written.
 	nodeTitles := make([][]string, len(m.strands))
 	edgeTitles := make([][]string, len(m.strands))
+	edgeDefinitions := make([][]*cap.Cap, len(m.strands))
 	for sIdx, strand := range m.strands {
 		for _, node := range strand.nodes {
 			spec := registry.GetCachedMediaDef(node.String())
@@ -239,6 +243,7 @@ func (m *Machine) ToRenderPayloadJSON(registry *fabric.FabricRegistry) (string, 
 				return "", uncachedCapError(edge.CapUrn.String())
 			}
 			edgeTitles[sIdx] = append(edgeTitles[sIdx], definition.Title)
+			edgeDefinitions[sIdx] = append(edgeDefinitions[sIdx], definition)
 		}
 	}
 
@@ -272,6 +277,18 @@ func (m *Machine) ToRenderPayloadJSON(registry *fabric.FabricRegistry) (string, 
 		out.WriteString(`,"edges":`)
 		list(len(strand.edges), func(eIdx int) {
 			edge := strand.edges[eIdx]
+			// A binding and an output carry the name the resolver read from
+			// this same definition, where a name is unique: the definition's
+			// main arg and main output are found by it.
+			definition := edgeDefinitions[sIdx][eIdx]
+			mainInput, mainOutput := "", ""
+			hasMainInput, hasMainOutput := false, false
+			if arg := definition.MainInputArg(); arg != nil {
+				mainInput, hasMainInput = arg.Name, true
+			}
+			if output := definition.MainOutput(); output != nil {
+				mainOutput, hasMainOutput = output.Name, true
+			}
 			out.WriteString(`{"alias":`)
 			text(plan.edgeTokens[eIdx])
 			out.WriteString(`,"cap_urn":`)
@@ -295,6 +312,7 @@ func (m *Machine) ToRenderPayloadJSON(registry *fabric.FabricRegistry) (string, 
 				text(binding.CapArgMediaUrn.String())
 				out.WriteString(`,"arg_name":`)
 				text(binding.ArgName)
+				out.WriteString(`,"is_main_input":` + strconv.FormatBool(hasMainInput && binding.ArgName == mainInput))
 				if binding.Source.IsConstant {
 					out.WriteString(`,"constant":`)
 					writeConstant(&out, binding.Source.Constant)
@@ -312,6 +330,7 @@ func (m *Machine) ToRenderPayloadJSON(registry *fabric.FabricRegistry) (string, 
 				text(output.OutputMediaUrn.String())
 				out.WriteString(`,"output_name":`)
 				text(output.OutputName)
+				out.WriteString(`,"is_main_output":` + strconv.FormatBool(hasMainOutput && output.OutputName == mainOutput))
 				out.WriteString(`,"node":`)
 				text(plan.nodeNames[output.Node])
 				out.WriteByte('}')
