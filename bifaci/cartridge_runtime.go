@@ -168,11 +168,12 @@ func (pr *PeerResponse) CollectBytesForwarding(output StreamEmitter, progressBas
 			}
 			continue
 		}
-		if item.Output != "" {
-			continue // another output of the peer: not its answer
-		}
+		// What went wrong on any output's stream is an error of the response.
 		if item.DataErr != nil {
 			return nil, item.DataErr
+		}
+		if item.Output != "" {
+			continue // another output of the peer: not its answer
 		}
 		switch v := item.DataValue.(type) {
 		case []byte:
@@ -198,11 +199,12 @@ func (pr *PeerResponse) CollectBytes() ([]byte, error) {
 		if item.LogFrame != nil {
 			return nil, errors.New("peer response emitted a LOG frame; collect with explicit diagnostic forwarding")
 		}
-		if item.Output != "" {
-			continue // another output of the peer: not its answer
-		}
+		// What went wrong on any output's stream is an error of the response.
 		if item.DataErr != nil {
 			return nil, item.DataErr
+		}
+		if item.Output != "" {
+			continue // another output of the peer: not its answer
 		}
 		switch v := item.DataValue.(type) {
 		case []byte:
@@ -229,11 +231,12 @@ func (pr *PeerResponse) CollectValue() (interface{}, error) {
 		if item.LogFrame != nil {
 			return nil, errors.New("peer response emitted a LOG frame; collect with explicit diagnostic forwarding")
 		}
-		if item.Output != "" {
-			continue // another output of the peer: not its answer
-		}
+		// What went wrong on any output's stream is an error of the response.
 		if item.DataErr != nil {
 			return nil, item.DataErr
+		}
+		if item.Output != "" {
+			continue // another output of the peer: not its answer
 		}
 		if hasValue {
 			return nil, errors.New("peer response contained more than one value")
@@ -302,9 +305,15 @@ func DemuxPeerResponse(rawFrames <-chan Frame) *PeerResponse {
 		for frame := range rawFrames {
 			switch frame.FrameType {
 			case FrameTypeStreamStart:
+				// A frame that breaks the protocol ends the response: what
+				// follows it cannot be read as any output's data.
 				if frame.StreamId == nil {
 					protocol("peer response STREAM_START has no stream_id")
-					continue
+					return
+				}
+				if _, started := streams[*frame.StreamId]; started {
+					protocol("a second STREAM_START for stream '%s'", *frame.StreamId)
+					return
 				}
 				stream := &peerStream{}
 				if frame.Output != nil {
@@ -331,7 +340,7 @@ func DemuxPeerResponse(rawFrames <-chan Frame) *PeerResponse {
 						id = *frame.StreamId
 					}
 					protocol("peer response CHUNK for a stream that was not started: %s", id)
-					continue
+					return
 				}
 				if frame.Checksum == nil {
 					item(stream, nil, errors.New("CHUNK frame missing required checksum field"))

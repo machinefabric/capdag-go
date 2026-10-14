@@ -520,14 +520,74 @@ func Test12730_a_peer_response_has_a_stream_per_output(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []byte("H1"), value)
 
-	// A chunk for a stream that was never started is not data of any output.
-	stray := DemuxPeerResponse(feedFrames(valueChunk(t, rid, "ghost", 0, []byte("?")), *NewEnd(rid, nil)))
+	// A chunk for a stream that was never started is not data of any output,
+	// and the response ends there: what follows it is not read.
+	stray := DemuxPeerResponse(feedFrames(
+		valueChunk(t, rid, "ghost", 0, []byte("?")),
+		*NewStreamStart(rid, "head", "media:enc=utf-8", &single),
+		valueChunk(t, rid, "head", 0, []byte("H1")),
+		*NewEnd(rid, nil),
+	))
 	item, more := stray.Recv()
 	require.True(t, more)
 	require.Error(t, item.DataErr)
 	assert.Contains(t, item.DataErr.Error(), "was not started: ghost")
 	_, more = stray.Recv()
 	assert.False(t, more)
+	// So does a second STREAM_START for a stream: which of the two the chunks
+	// after it belong to is not something to guess.
+	twice := DemuxPeerResponse(feedFrames(
+		*NewStreamStart(rid, "head", "media:enc=utf-8", &single),
+		valueChunk(t, rid, "head", 0, []byte("H1")),
+		*NewStreamStart(rid, "head", "media:enc=utf-8", &single).ForOutput(rest),
+		valueChunk(t, rid, "head", 1, []byte("H2")),
+		*NewEnd(rid, nil),
+	))
+	item, more = twice.Recv()
+	require.True(t, more)
+	require.NoError(t, item.DataErr)
+	item, more = twice.Recv()
+	require.True(t, more)
+	require.Error(t, item.DataErr)
+	assert.Contains(t, item.DataErr.Error(), "a second STREAM_START for stream 'head'")
+	_, more = twice.Recv()
+	assert.False(t, more)
+
+	// What goes wrong on another output's stream is an error of the response:
+	// it is tagged with its output, and a collector does not pass over it.
+	broken := func() <-chan Frame {
+		damaged := valueChunk(t, rid, "rest", 0, []byte("R1"))
+		wrong := *damaged.Checksum + 1
+		damaged.Checksum = &wrong
+		return feedFrames(
+			*NewStreamStart(rid, "rest", "media:enc=utf-8", &single).ForOutput(rest),
+			*NewStreamStart(rid, "head", "media:enc=utf-8", &single),
+			valueChunk(t, rid, "head", 0, []byte("H1")),
+			damaged,
+			*NewStreamEnd(rid, "rest", 1),
+			*NewStreamEnd(rid, "head", 1),
+			*NewEnd(rid, nil),
+		)
+	}
+	var tagged []PeerResponseItem
+	failing := DemuxPeerResponse(broken())
+	for {
+		item, more := failing.Recv()
+		if !more {
+			break
+		}
+		if item.DataErr != nil {
+			tagged = append(tagged, item)
+		}
+	}
+	require.Len(t, tagged, 1)
+	assert.Equal(t, rest, tagged[0].Output)
+	_, err = DemuxPeerResponse(broken()).CollectBytes()
+	require.ErrorContains(t, err, "checksum mismatch")
+	_, err = DemuxPeerResponse(broken()).CollectValue()
+	require.ErrorContains(t, err, "checksum mismatch")
+	_, err = DemuxPeerResponse(broken()).CollectBytesForwarding(&cliStreamEmitter{unprinted: true}, 0, 1)
+	require.ErrorContains(t, err, "checksum mismatch")
 
 	// A response whose frames stop before END was cut short, however many of
 	// its streams had ended.
