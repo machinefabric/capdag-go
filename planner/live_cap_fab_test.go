@@ -858,3 +858,71 @@ func Test791_sync_from_cap_urns_adds_edges(t *testing.T) {
 	_, edgeCount := graph.Stats()
 	assert.Equal(t, 2, edgeCount, "Should have exactly 2 Cap edges, got %d", edgeCount)
 }
+
+// splitCaps: `split` takes text; its main output `head`, another output
+// `rest`, a sequence output `parts`, and an output `same` that carries the
+// input unchanged. And `count`, which takes `rest`.
+func splitCaps() (*cap.Cap, *cap.Cap) {
+	split := makeTestCapForGraph("media:enc=utf-8;ext=txt", "media:enc=utf-8;head", "split", "Split")
+	split.AddOutput(*cap.NewCapOutput("media:enc=utf-8;head", "head", "the head"))
+	split.AddOutput(*cap.NewCapOutput("media:enc=utf-8;rest", "rest", "the rest"))
+	parts := cap.NewCapOutput("media:enc=utf-8;part", "parts", "the parts")
+	parts.IsSequence = true
+	split.AddOutput(*parts)
+	split.AddOutput(*cap.NewCapOutput("media:enc=utf-8;same", "same", "the input").CarryingInput())
+	count := makeTestCapForGraph("media:enc=utf-8;rest", "media:integer;numeric", "count", "Count")
+	count.AddOutput(*cap.NewCapOutput("media:integer;numeric", "output", "Count"))
+	return split, count
+}
+
+// TEST12847: every output of a cap other than its main one is reachable by
+// planning: the search has an edge from the cap's input to that output's own
+// type, and a strand that reaches it records which output it took (by URN),
+// with that output's cardinality. An output that carries the input has no
+// type of its own and no edge; the main output's edge is the cap's.
+func Test12847_a_caps_other_outputs_are_reachable_by_planning(t *testing.T) {
+	split, count := splitCaps()
+	graph := NewLiveCapFab()
+	graph.AddCap(split)
+	graph.AddCap(count)
+	_, edgeCount := graph.Stats()
+	assert.Equal(t, 4, edgeCount, "split: head, rest, parts; count: one")
+
+	media := func(s string) *urn.MediaUrn {
+		u, err := urn.NewMediaUrnFromString(s)
+		require.NoError(t, err)
+		return u
+	}
+	text := media("media:enc=utf-8;ext=txt")
+	onlyStep := func(target string) *StrandStep {
+		paths := graph.FindPathsToExactTarget(text, media(target), false, 3, 10)
+		require.Len(t, paths, 1, "one path to %s", target)
+		require.Len(t, paths[0].Steps, 1)
+		return paths[0].Steps[0]
+	}
+
+	assert.Nil(t, onlyStep("media:enc=utf-8;head").OutputUrn)
+
+	rest := onlyStep("media:enc=utf-8;rest")
+	assert.True(t, rest.CapUrnVal.IsEquivalent(split.Urn))
+	require.NotNil(t, rest.OutputUrn)
+	assert.Equal(t, "media:enc=utf-8;rest", rest.OutputUrn.String())
+	assert.False(t, rest.OutputIsSequence)
+	assert.Equal(t, "media:enc=utf-8;rest", rest.ToSpec.String(), "the output's own type, not the effect's")
+
+	assert.True(t, onlyStep("media:enc=utf-8;part").OutputIsSequence, "the output's own cardinality")
+
+	assert.Empty(t, graph.FindPathsToExactTarget(text, media("media:enc=utf-8;same"), false, 3, 10),
+		"a carried output is reached by no edge")
+
+	// Through another output and on: count is fed by split, by token.
+	paths := graph.FindPathsToExactTarget(text, media("media:integer;numeric"), false, 3, 10)
+	require.Len(t, paths, 1)
+	steps := paths[0].Steps
+	require.Len(t, steps, 2)
+	assert.NotNil(t, steps[0].OutputUrn)
+	assert.Nil(t, steps[1].OutputUrn)
+	require.Len(t, steps[1].Inputs, 1)
+	assert.Equal(t, NewArgSourceStep(steps[0].TokenId), steps[1].Inputs[0].Source)
+	assert.False(t, steps[0].TokenId.IsZero())
+}

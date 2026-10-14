@@ -1551,3 +1551,50 @@ func mainTarget(t *testing.T, edge *MachineEdge) NodeId {
 	require.True(t, taken, "the edge takes its cap's main output: %s", edge)
 	return node
 }
+
+// TEST12848: a strand that takes another output of a cap knits into a machine
+// whose step takes that output by its name; the notation says so and reads
+// back as the same machine. A strand that takes an output its cap does not
+// declare as another output — an unknown URN, or the main one — is refused,
+// naming the outputs it could take.
+func Test12848_a_strand_through_another_output_knits_into_a_machine(t *testing.T) {
+	split := buildCap(`cap:in="media:enc=utf-8;ext=txt";split;out="media:enc=utf-8;head"`, "split", []string{"media:enc=utf-8;ext=txt"}, "media:enc=utf-8;head")
+	split.Outputs[0].Name = "head"
+	split.AddOutput(*cap.NewCapOutput("media:enc=utf-8;rest", "rest", "the rest"))
+	parts := cap.NewCapOutput("media:enc=utf-8;part", "parts", "the parts")
+	parts.IsSequence = true
+	split.AddOutput(*parts)
+	split.AddOutput(*cap.NewCapOutput("media:enc=utf-8;same", "same", "the input").CarryingInput())
+	count := buildCap(`cap:in="media:enc=utf-8;rest";count;out="media:integer;numeric"`, "count", []string{"media:enc=utf-8;rest"}, "media:integer;numeric")
+	registry := registryWith([]*cap.Cap{split, count})
+
+	first := capStep(split.Urn.String(), "split", "media:enc=utf-8;ext=txt", "media:enc=utf-8;rest")
+	first.OutputUrn = mediaUrn("media:enc=utf-8;rest")
+	second := capStep(count.Urn.String(), "count", "media:enc=utf-8;rest", "media:integer;numeric")
+	m, err := FromStrand(strandFromSteps([]*planner.StrandStep{first, second}, "split then count"), registry)
+	require.Nil(t, err, "a strand through another output knits: %v", err)
+	var splitEdge *MachineEdge
+	for _, edge := range m.Strands()[0].Edges() {
+		if edge.CapUrn.IsEquivalent(split.Urn) {
+			splitEdge = edge
+		}
+	}
+	require.NotNil(t, splitEdge, "split's step")
+	require.Len(t, splitEdge.Outputs, 1)
+	assert.Equal(t, "rest", splitEdge.Outputs[0].OutputName)
+	notation := m.ToMachineNotation()
+	assert.Contains(t, notation, "rest=")
+	reread, parseErr := ParseMachine(notation, registry)
+	require.Nil(t, parseErr, "the notation reads back: %v", parseErr)
+	assert.True(t, reread.IsEquivalent(m), notation)
+
+	for _, wrong := range []string{"media:enc=utf-8;nowhere", "media:enc=utf-8;head"} {
+		step := capStep(split.Urn.String(), "split", "media:enc=utf-8;ext=txt", wrong)
+		step.OutputUrn = mediaUrn(wrong)
+		_, err := FromStrand(strandFromSteps([]*planner.StrandStep{step}, "wrong"), registry)
+		require.NotNil(t, err, wrong)
+		assert.Equal(t, ErrAbstractionUnknownStrandOutput, err.Kind, err.Error())
+		assert.Contains(t, err.Error(), "declares no other output '"+wrong+"'")
+		assert.Contains(t, err.Error(), "it declares: media:enc=utf-8;rest, media:enc=utf-8;part, media:enc=utf-8;same")
+	}
+}

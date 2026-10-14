@@ -99,6 +99,9 @@ const (
 	// ErrAbstractionUnknownOutputName — a target names an output the step's cap
 	// does not declare.
 	ErrAbstractionUnknownOutputName
+	// ErrAbstractionUnknownStrandOutput — a strand step takes, by media URN, an
+	// output its cap does not declare as another output.
+	ErrAbstractionUnknownStrandOutput
 	// ErrAbstractionSourceDoesNotConformToArg — a named member's URN does not
 	// conform to the type that arg accepts.
 	ErrAbstractionSourceDoesNotConformToArg
@@ -284,6 +287,11 @@ func unknownArgNameError(strandIndex int, capUrn, name string, declared []string
 func unknownOutputNameError(strandIndex int, capUrn, name string, declared []string) *MachineAbstractionError {
 	return inStrand(ErrAbstractionUnknownOutputName, strandIndex,
 		"cap '%s' declares no output named '%s' (it declares: %s)", capUrn, name, strings.Join(declared, ", "))
+}
+
+func unknownStrandOutputError(strandIndex int, capUrn, outputUrn string, declared []string) *MachineAbstractionError {
+	return inStrand(ErrAbstractionUnknownStrandOutput, strandIndex,
+		"cap '%s' declares no other output '%s' (it declares: %s)", capUrn, outputUrn, strings.Join(declared, ", "))
 }
 
 func sourceDoesNotConformToArgError(strandIndex int, capUrn, name, accepts, sourceUrn string) *MachineAbstractionError {

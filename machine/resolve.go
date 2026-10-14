@@ -82,6 +82,30 @@ type preInternedWiring struct {
 	includedAs []string
 }
 
+// strandOutputName is the name a strand step's taken output has in its cap's
+// definition. A strand records an output by its media URN, its identity; a
+// wiring takes it by its name, a label that is unique per cap. The main output
+// is not another output.
+func strandOutputName(registry *fabric.FabricRegistry, capUrn *urn.CapUrn, outputUrn *urn.MediaUrn, strandIndex int) (string, *MachineAbstractionError) {
+	definition, cached := registry.GetCachedCap(capUrn.String())
+	if !cached {
+		return "", unknownCapError(capUrn.String())
+	}
+	main := definition.MainOutput()
+	isMain := func(output *cap.CapOutput) bool { return main != nil && main.MediaUrn == output.MediaUrn }
+	if output := definition.OutputByUrn(outputUrn.String()); output != nil && !isMain(output) {
+		return output.Name, nil
+	}
+	var declared []string
+	for i := range definition.GetOutputs() {
+		output := &definition.GetOutputs()[i]
+		if !isMain(output) {
+			declared = append(declared, output.MediaUrn)
+		}
+	}
+	return "", unknownStrandOutputError(strandIndex, capUrn.String(), outputUrn.String(), declared)
+}
+
 // resolveStrand converts a planner-produced Strand into a single MachineStrand.
 //
 // Every cap step names each of its inputs' producers explicitly (StrandInput or
@@ -138,12 +162,22 @@ func resolveStrand(
 			targetId := NodeId(len(nodes))
 			nodes = append(nodes, step.ToSpec)
 
+			// A strand step produces the output it takes: its cap's main
+			// output, or the other output its URN identifies.
+			target := wiringTarget{node: targetId}
+			if step.OutputUrn != nil {
+				name, err := strandOutputName(registry, step.CapUrnVal, step.OutputUrn, strandIndex)
+				if err != nil {
+					return nil, err
+				}
+				target.name, target.hasName = name, true
+			}
+
 			preInterned = append(preInterned, preInternedWiring{
 				tokenId:       step.TokenId,
 				capUrn:        step.CapUrnVal,
 				sourceNodeIds: sourceNodeIds,
-				// A strand step produces its cap's main output.
-				targets: []wiringTarget{{node: targetId}},
+				targets:       []wiringTarget{target},
 			})
 
 			producerNode[step.TokenId] = targetId

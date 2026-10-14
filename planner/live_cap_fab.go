@@ -3,6 +3,7 @@ package planner
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -33,7 +34,13 @@ type LiveMachinePlanEdge struct {
 	CapTitle         string
 	SpecificityVal   int
 	InputIsSequence  bool
+	// OutputIsSequence says whether the output this edge reaches produces a
+	// sequence.
 	OutputIsSequence bool
+	// OutputUrn is the output this edge reaches, when it is not the cap's main
+	// one: that output's media URN, its identity in the definition. Nil: the
+	// main output.
+	OutputUrn *urn.MediaUrn
 }
 
 // Title returns a human-readable title for this edge.
@@ -220,7 +227,14 @@ type StrandStep struct {
 	SpecificityVal   int
 	MediaDef         *urn.MediaUrn
 	InputIsSequence  bool
+	// OutputIsSequence says whether the output this step takes produces a
+	// sequence.
 	OutputIsSequence bool
+	// OutputUrn is the output this step takes, when it is not the cap's main
+	// one: that output's media URN, its identity in the definition (never its
+	// name, which is a label). Nil: the main output. Only meaningful when
+	// StepType == StepTypeCap.
+	OutputUrn *urn.MediaUrn
 	// Inputs lists ALL of this cap step's data-flow inputs — the primary
 	// (stdin) input plus any convergence inputs — each naming its producer
 	// explicitly. Only meaningful when StepType == StepTypeCap. The primary is
@@ -454,14 +468,37 @@ func (g *LiveCapFab) AddCap(c *cap.Cap) {
 		return
 	}
 
+	inputIsSequence, outputIsSequence := c.SequenceShape()
+	g.pushCapEdge(c, fromSpec, toSpec, inputIsSequence, outputIsSequence, nil)
+
+	// Every other output the cap declares is reachable too: an edge from the
+	// cap's input to that output's own type. An output that carries the input
+	// unchanged (a router's) has no type of its own to reach.
+	main := c.MainOutput()
+	for _, output := range c.GetOutputs() {
+		if output.Carries != nil {
+			continue
+		}
+		if main != nil && main.MediaUrn == output.MediaUrn {
+			continue
+		}
+		outputUrn, err := urn.NewMediaUrnFromString(output.MediaUrn)
+		if err != nil {
+			panic(fmt.Sprintf("cap registry invariant: output media_urn '%s' of '%s' is a valid MediaUrn: %v",
+				output.MediaUrn, c.Urn, err))
+		}
+		g.pushCapEdge(c, fromSpec, outputUrn, inputIsSequence, output.IsSequence, outputUrn)
+	}
+}
+
+// pushCapEdge stores one edge of `c`, from its input to one of its outputs.
+func (g *LiveCapFab) pushCapEdge(c *cap.Cap, fromSpec, toSpec *urn.MediaUrn, inputIsSequence, outputIsSequence bool, outputUrn *urn.MediaUrn) {
 	fromCanonical := fromSpec.String()
 	toCanonical := toSpec.String()
 	capCanonical := c.Urn.String()
 
-	inputIsSequence, outputIsSequence := c.SequenceShape()
-
 	edgeIdx := len(g.edges)
-	edge := &LiveMachinePlanEdge{
+	g.edges = append(g.edges, &LiveMachinePlanEdge{
 		FromSpec:         fromSpec,
 		ToSpec:           toSpec,
 		Type:             EdgeTypeCap,
@@ -470,8 +507,8 @@ func (g *LiveCapFab) AddCap(c *cap.Cap) {
 		SpecificityVal:   c.Urn.Specificity(),
 		InputIsSequence:  inputIsSequence,
 		OutputIsSequence: outputIsSequence,
-	}
-	g.edges = append(g.edges, edge)
+		OutputUrn:        outputUrn,
+	})
 
 	g.outgoing[fromCanonical] = append(g.outgoing[fromCanonical], edgeIdx)
 	g.incoming[toCanonical] = append(g.incoming[toCanonical], edgeIdx)
@@ -767,10 +804,24 @@ func (g *LiveCapFab) iddfsFind(
 		if depthLimit == 0 && !pendingForEach {
 			var steps []*StrandStep
 			capCount := 0
+			// A found cap's single input is its MAIN input, fed by the
+			// previous cap of the path, or by the strand input when it is the
+			// first: the planner routes main input to output only.
+			var previousCap *StrandStep
 			for _, edge := range path {
 				step := edgeToStep(edge)
 				steps = append(steps, step)
 				if step.IsCap() {
+					source := NewArgSourceStrandInput()
+					if previousCap != nil {
+						source = NewArgSourceStep(previousCap.TokenId)
+					}
+					inSpec, err := urn.NewMediaUrnFromString(step.CapUrnVal.InSpec())
+					if err != nil {
+						panic(fmt.Sprintf("cap registry invariant: in= of '%s' is a valid MediaUrn: %v", step.CapUrnVal, err))
+					}
+					step.Inputs = []CapInput{{ArgUrn: inSpec, Source: source}}
+					previousCap = step
 					capCount++
 				}
 			}
@@ -839,6 +890,7 @@ func edgeToStep(edge *LiveMachinePlanEdge) *StrandStep {
 	switch edge.Type {
 	case EdgeTypeCap:
 		return &StrandStep{
+			TokenId:          MintStepToken(),
 			StepType:         StepTypeCap,
 			FromSpec:         edge.FromSpec,
 			ToSpec:           edge.ToSpec,
@@ -847,9 +899,11 @@ func edgeToStep(edge *LiveMachinePlanEdge) *StrandStep {
 			SpecificityVal:   edge.SpecificityVal,
 			InputIsSequence:  edge.InputIsSequence,
 			OutputIsSequence: edge.OutputIsSequence,
+			OutputUrn:        edge.OutputUrn,
 		}
 	case EdgeTypeForEach:
 		return &StrandStep{
+			TokenId:  MintStepToken(),
 			StepType: StepTypeForEach,
 			FromSpec: edge.FromSpec,
 			ToSpec:   edge.ToSpec,
@@ -857,6 +911,7 @@ func edgeToStep(edge *LiveMachinePlanEdge) *StrandStep {
 		}
 	case EdgeTypeCollect:
 		return &StrandStep{
+			TokenId:  MintStepToken(),
 			StepType: StepTypeCollect,
 			FromSpec: edge.FromSpec,
 			ToSpec:   edge.ToSpec,
