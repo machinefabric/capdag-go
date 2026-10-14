@@ -27,13 +27,13 @@ const (
 
 // LiveMachinePlanEdge represents an edge in the live capability graph.
 type LiveMachinePlanEdge struct {
-	FromSpec         *urn.MediaUrn
-	ToSpec           *urn.MediaUrn
-	Type             LiveMachinePlanEdgeType
-	CapUrnVal        *urn.CapUrn
-	CapTitle         string
-	SpecificityVal   int
-	InputIsSequence  bool
+	FromSpec        *urn.MediaUrn
+	ToSpec          *urn.MediaUrn
+	Type            LiveMachinePlanEdgeType
+	CapUrnVal       *urn.CapUrn
+	CapTitle        string
+	SpecificityVal  int
+	InputIsSequence bool
 	// OutputIsSequence says whether the output this edge reaches produces a
 	// sequence.
 	OutputIsSequence bool
@@ -218,15 +218,15 @@ type StrandStep struct {
 	// Alias-free and notation-independent; it travels verbatim through
 	// serialization, the run's persisted resolved strand, the render payload,
 	// and every progress message.
-	TokenId          StepToken
-	StepType         StrandStepType
-	FromSpec         *urn.MediaUrn
-	ToSpec           *urn.MediaUrn
-	CapUrnVal        *urn.CapUrn
-	StepTitle        string
-	SpecificityVal   int
-	MediaDef         *urn.MediaUrn
-	InputIsSequence  bool
+	TokenId         StepToken
+	StepType        StrandStepType
+	FromSpec        *urn.MediaUrn
+	ToSpec          *urn.MediaUrn
+	CapUrnVal       *urn.CapUrn
+	StepTitle       string
+	SpecificityVal  int
+	MediaDef        *urn.MediaUrn
+	InputIsSequence bool
 	// OutputIsSequence says whether the output this step takes produces a
 	// sequence.
 	OutputIsSequence bool

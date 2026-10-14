@@ -670,27 +670,6 @@ func (p *MachinePlan) HasForeach() bool {
 	return false
 }
 
-// NodeExecutionResult holds the result of executing a single node.
-type NodeExecutionResult struct {
-	NodeID       string `json:"node_id"`
-	Success      bool   `json:"success"`
-	BinaryOutput []byte `json:"-"`
-	// BinaryItems holds individual output items when the terminal cap emitted a sequence (is_sequence=true).
-	// Used by the standalone executor. Pipeline executor uses SavedPaths.
-	BinaryItems [][]byte `json:"-"`
-	// SavedPaths holds file paths of output already saved to disk by an IncrementalWriter.
-	// Populated by the pipeline executor. Empty for the standalone executor.
-	SavedPaths []string `json:"saved_paths,omitempty"`
-	// IsSequenceOutput indicates whether the output is a sequence (from is_sequence on STREAM_START).
-	IsSequenceOutput bool `json:"is_sequence_output,omitempty"`
-	// TotalBytes is the total bytes written to disk. 0 when BinaryOutput is used instead.
-	TotalBytes uint64 `json:"total_bytes,omitempty"`
-	// MediaUrnOutput is the output media URN from the terminal cap's STREAM_START or plan derivation.
-	MediaUrnOutput string `json:"media_urn_output,omitempty"`
-	Error          string `json:"error,omitempty"`
-	DurationMs     uint64 `json:"duration_ms"`
-}
-
 // MapRun is one run of a map's body: which map, and which of its runs.
 type MapRun struct {
 	// ForEachTokenID is the stable identity of the map.
@@ -822,26 +801,6 @@ func (b *BodyOutcome) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*b = BodyOutcome(decoded)
-	return nil
-}
-
-// MachineResult holds the result of executing a complete plan.
-type MachineResult struct {
-	Success         bool                            `json:"success"`
-	NodeResults     map[string]*NodeExecutionResult `json:"node_results"`
-	Outputs         map[string]any                  `json:"outputs"`
-	Error           string                          `json:"error,omitempty"`
-	TotalDurationMs uint64                          `json:"total_duration_ms"`
-	// BodyOutcomes holds per-body outcomes for ForEach pipelines, or a single entry for linear plans.
-	// Populated by the pipeline executor; empty for the standalone executor.
-	BodyOutcomes []BodyOutcome `json:"body_outcomes"`
-}
-
-// PrimaryOutput returns the first output value (non-deterministic).
-func (r *MachineResult) PrimaryOutput() any {
-	for _, v := range r.Outputs {
-		return v
-	}
 	return nil
 }
 

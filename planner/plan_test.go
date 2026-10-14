@@ -149,22 +149,6 @@ func Test738_linear_chain_empty(t *testing.T) {
 	assert.Equal(t, 0, len(plan.Edges))
 }
 
-// TEST6634: Tests MachineResult PrimaryOutput returns populated output and nil when empty
-// Verifies the PrimaryOutput() accessor distinguishes populated vs empty outputs maps
-func Test6634_machine_result_primary_output(t *testing.T) {
-	populated := &MachineResult{
-		Success: true,
-		Outputs: map[string]any{"result": map[string]any{"data": "success"}},
-	}
-	assert.NotNil(t, populated.PrimaryOutput(), "populated outputs must return non-nil primary output")
-
-	empty := &MachineResult{
-		Success: false,
-		Outputs: map[string]any{},
-	}
-	assert.Nil(t, empty.PrimaryOutput(), "empty outputs must return nil primary output")
-}
-
 // TEST6635: A map and its body sort in the order a run meets them: the
 // sequence, the map, the item the body is given, then the body's step. The
 // iteration edge from a map to its item is a dependency like any other.
@@ -376,21 +360,6 @@ func Test926_topological_order_detects_cycle(t *testing.T) {
 	assert.Contains(t, err.Error(), "Cycle detected")
 }
 
-// TEST927: Tests MachineResult structure for successful execution outcomes Verifies that success status, outputs, and primary_output() accessor work correctly
-func Test927_execution_result(t *testing.T) {
-	result := &MachineResult{
-		Success:     true,
-		NodeResults: map[string]*NodeExecutionResult{},
-		Outputs: map[string]any{
-			"output": map[string]any{"result": "success"},
-		},
-		TotalDurationMs: 100,
-	}
-
-	assert.True(t, result.Success)
-	assert.NotNil(t, result.PrimaryOutput())
-}
-
 // TEST928: Tests plan validation detects edges originating from non-existent nodes Verifies that validate() returns an error when an edge references a missing from_node
 func Test928_validate_invalid_from_node(t *testing.T) {
 	plan := NewMachinePlan("invalid")
@@ -422,36 +391,6 @@ func Test930_validate_invalid_output_node(t *testing.T) {
 	err := plan.Validate()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "nonexistent_output")
-}
-
-// TEST931: Tests NodeExecutionResult structure for failed node execution Verifies that failure status, error message, and absence of outputs are correctly represented
-func Test931_node_execution_result_failure(t *testing.T) {
-	result := &NodeExecutionResult{
-		NodeID:       "node_0",
-		Success:      false,
-		BinaryOutput: nil,
-		Error:        "Cap execution failed",
-		DurationMs:   10,
-	}
-
-	assert.False(t, result.Success)
-	assert.Nil(t, result.BinaryOutput)
-	assert.Equal(t, "Cap execution failed", result.Error)
-}
-
-// TEST932: Tests MachineResult structure for failed chain execution Verifies that failure status, error message, and absence of outputs are correctly represented
-func Test932_execution_result_failure(t *testing.T) {
-	result := &MachineResult{
-		Success:         false,
-		NodeResults:     map[string]*NodeExecutionResult{},
-		Outputs:         map[string]any{},
-		Error:           "Chain failed",
-		TotalDurationMs: 100,
-	}
-
-	assert.False(t, result.Success)
-	assert.Equal(t, "Chain failed", result.Error)
-	assert.Nil(t, result.PrimaryOutput())
 }
 
 // TEST936: has_foreach detects a map, and a gather alone is not one.
@@ -589,26 +528,6 @@ func Test12754_a_plan_that_names_what_is_not_there_is_refused(t *testing.T) {
 	plan := buildForeachPlan()
 	plan.AddNode(NewCapOutputNode("o", "cap_0", "media:x", "x", false))
 	require.NoError(t, plan.Validate())
-}
-
-// TEST739: Tests NodeExecutionResult structure for successful node execution Verifies that success status, outputs (binary and text), and error fields work correctly
-func Test739_node_execution_result_success(t *testing.T) {
-	result := &NodeExecutionResult{
-		NodeID:           "node_0",
-		Success:          true,
-		BinaryOutput:     []byte{1, 2, 3},
-		BinaryItems:      nil,
-		SavedPaths:       nil,
-		IsSequenceOutput: false,
-		TotalBytes:       0,
-		MediaUrnOutput:   "",
-		Error:            "",
-		DurationMs:       50,
-	}
-
-	assert.True(t, result.Success)
-	assert.NotNil(t, result.BinaryOutput)
-	assert.Equal(t, "", result.Error)
 }
 
 // TEST742: Tests EdgeType enum serialization and deserialization to/from JSON Verifies that every edge type round-trips by its name, and that a kind this library does not carry is refused

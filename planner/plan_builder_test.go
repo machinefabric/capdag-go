@@ -6,9 +6,7 @@ import (
 	"testing"
 
 	"github.com/machinefabric/capdag-go/cap"
-	"github.com/machinefabric/capdag-go/fabric"
 	"github.com/machinefabric/capdag-go/media"
-	"github.com/machinefabric/capdag-go/standard"
 	"github.com/machinefabric/capdag-go/urn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -55,113 +53,22 @@ func Test6645_argument_resolution_string_representations(t *testing.T) {
 		resolution ArgumentResolution
 		expected   string
 	}{
-		{ResolutionFromInputFile, "from_input_file"},
-		{ResolutionFromPreviousOutput, "from_previous_output"},
+		{ResolutionFromInput, "from_input"},
+		{ResolutionFromStep, "from_step"},
+		{ResolutionConstant, "constant"},
 		{ResolutionHasDefault, "has_default"},
 		{ResolutionRequiresUserInput, "requires_user_input"},
 	}
 	for _, tc := range cases {
 		assert.Equal(t, tc.expected, tc.resolution.String(),
 			"ArgumentResolution %d must stringify to %q", tc.resolution, tc.expected)
+		var back ArgumentResolution
+		require.NoError(t, json.Unmarshal([]byte(`"`+tc.expected+`"`), &back))
+		assert.Equal(t, tc.resolution, back, "%q reads back as what wrote it", tc.expected)
 	}
-}
-
-// TEST6646: Tests AnalyzePathArguments classifies stdin arg as FromInputFile for first cap
-// Verifies that the argument analysis correctly identifies input-file arguments when the
-// cap's stdin arg media URN matches the cap's in_spec.
-func Test6646_analyze_path_arguments_stdin_is_from_input_file(t *testing.T) {
-	// Build a cap whose stdin arg is the cap's in_spec (media:document;ext=pdf) — should resolve as FromInputFile
-	capUrnStr := `cap:in="media:document;ext=pdf";extract;out="media:txt;enc=utf-8"`
-	capUrnParsed, err := urn.NewCapUrnFromString(capUrnStr)
-	require.NoError(t, err)
-
-	inSpec := capUrnParsed.InSpec()
-	stdinArg := cap.NewCapArg(inSpec, "input", true, []cap.ArgSource{
-		{Stdin: &inSpec},
-	})
-	c := cap.NewCapWithArgs(capUrnParsed, "Extract", []string{"test"}, []cap.CapArg{stdinArg})
-	c.Outputs = []cap.CapOutput{*&cap.CapOutput{MediaUrn: capUrnParsed.OutSpec()}}
-
-	registry := fabric.NewForTest()
-	registry.AddCapsToCache([]*cap.Cap{c})
-	builder := NewMachinePlanBuilder(registry)
-
-	// Build a single-step path
-	graph := NewLiveCapFab()
-	graph.AddCap(c)
-	source, err := urn.NewMediaUrnFromString("media:document;ext=pdf")
-	require.NoError(t, err)
-	target, err := urn.NewMediaUrnFromString(`media:txt;enc=utf-8`)
-	require.NoError(t, err)
-	paths := graph.FindPathsToExactTarget(source, target, false, 3, 5)
-	require.NotEmpty(t, paths, "should find at least one path")
-
-	req, err := builder.AnalyzePathArguments(paths[0])
-	require.NoError(t, err)
-
-	require.Equal(t, 1, len(req.Steps), "should have one step")
-	require.Equal(t, 1, len(req.Steps[0].Arguments), "step should have one argument")
-	assert.Equal(t, ResolutionFromInputFile, req.Steps[0].Arguments[0].Resolution,
-		"stdin arg for first-cap input must resolve as FromInputFile")
-	assert.Empty(t, req.Steps[0].Slots,
-		"FromInputFile args must not appear in slots (not user-input)")
-}
-
-// TEST6647: Tests AnalyzePathArguments puts RequiresUserInput args in slots and sets CanExecuteWithoutInput=false
-// Verifies that caps with non-stdin, non-default arguments are identified as requiring user input,
-// appear in slots, and the requirements reflect that execution cannot proceed without them.
-func Test6647_analyze_path_arguments_user_input_arg_appears_in_slots(t *testing.T) {
-	capUrnStr := `cap:in="media:txt;enc=utf-8";translate;out="media:translated;enc=utf-8"`
-	capUrnParsed, err := urn.NewCapUrnFromString(capUrnStr)
-	require.NoError(t, err)
-
-	// stdin arg (input file — resolved automatically)
-	inSpec := capUrnParsed.InSpec()
-	stdinArg := cap.NewCapArg(inSpec, "input", true, []cap.ArgSource{
-		{Stdin: &inSpec},
-	})
-	// user arg: target_language — no stdin source, no default → RequiresUserInput
-	userArg := cap.NewCapArg("media:string", "arg", true, []cap.ArgSource{})
-
-	c := cap.NewCapWithArgs(capUrnParsed, "Translate", []string{"test"}, []cap.CapArg{stdinArg, userArg})
-	c.Outputs = []cap.CapOutput{*&cap.CapOutput{MediaUrn: capUrnParsed.OutSpec()}}
-
-	registry := fabric.NewForTest()
-	registry.AddCapsToCache([]*cap.Cap{c})
-	builder := NewMachinePlanBuilder(registry)
-
-	graph := NewLiveCapFab()
-	graph.AddCap(c)
-	source, err := urn.NewMediaUrnFromString(`media:txt;enc=utf-8`)
-	require.NoError(t, err)
-	target, err := urn.NewMediaUrnFromString(`media:translated;enc=utf-8`)
-	require.NoError(t, err)
-	paths := graph.FindPathsToExactTarget(source, target, false, 3, 5)
-	require.NotEmpty(t, paths, "should find at least one path")
-
-	req, err := builder.AnalyzePathArguments(paths[0])
-	require.NoError(t, err)
-
-	require.Equal(t, 1, len(req.Steps))
-	require.Equal(t, 2, len(req.Steps[0].Arguments),
-		"step should have 2 arguments (stdin + user)")
-
-	// Find the user-input arg
-	var userInputArg *ArgumentInfo
-	for _, a := range req.Steps[0].Arguments {
-		if a.Resolution == ResolutionRequiresUserInput {
-			userInputArg = a
-			break
-		}
-	}
-	require.NotNil(t, userInputArg,
-		"expected at least one argument resolved as RequiresUserInput")
-
-	assert.Equal(t, 1, len(req.Steps[0].Slots),
-		"RequiresUserInput arg must appear in slots")
-	assert.Equal(t, ResolutionRequiresUserInput, req.Steps[0].Slots[0].Resolution)
-	assert.False(t, req.CanExecuteWithoutInput,
-		"plan requiring user input must have CanExecuteWithoutInput=false")
+	var unknown ArgumentResolution
+	assert.Error(t, json.Unmarshal([]byte(`"from_input_file"`), &unknown),
+		"a name that is not a resolution is refused")
 }
 
 // TEST765: Tests validation_to_json() returns None for empty validation constraints Verifies that default MediaValidation with no constraints produces JSON None
@@ -181,13 +88,6 @@ func Test766_validation_to_json_with_constraints(t *testing.T) {
 	s := string(result)
 	assert.Contains(t, s, "50")
 	assert.Contains(t, s, "2000")
-}
-
-// TEST886: Tests optional non-IO arguments with default values are marked as HasDefault Verifies that optional arguments with defaults behave the same as required ones with defaults
-func Test886_optional_non_io_arg_with_default_has_default(t *testing.T) {
-	defaultVal := 300
-	resolution := determineResolutionWithIOCheck(standard.MediaInteger, "media:document;ext=pdf", "media:ext=png;image", 0, defaultVal)
-	assert.Equal(t, ResolutionHasDefault, resolution)
 }
 
 // TEST880: Tests duplicate detection passes for caps with unique URN combinations Verifies that check_for_duplicate_caps() correctly accepts caps with different op/in/out combinations
@@ -240,58 +140,6 @@ func Test993_same_op_different_input_types_not_duplicates(t *testing.T) {
 	count, err := checkForDuplicateCaps([]*cap.Cap{c1, c2})
 	require.NoError(t, err, "Same op with different inputs should not be duplicates")
 	assert.Equal(t, 2, count, "Should have 2 edges")
-}
-
-// TEST994: Tests first cap's input argument is automatically resolved from input file Verifies that determine_resolution_with_io_check() returns FromInputFile for the first cap in a chain
-func Test994_input_arg_first_cap_auto_resolved_from_input(t *testing.T) {
-	resolution := determineResolutionWithIOCheck("media:document;ext=pdf", "media:document;ext=pdf", "media:ext=png;image", 0, nil)
-	assert.Equal(t, ResolutionFromInputFile, resolution)
-}
-
-// TEST995: Tests subsequent caps' input arguments are automatically resolved from previous output Verifies that determine_resolution_with_io_check() returns FromPreviousOutput for caps after the first
-func Test995_input_arg_subsequent_cap_auto_resolved_from_previous(t *testing.T) {
-	resolution := determineResolutionWithIOCheck("media:document;ext=pdf", "media:document;ext=pdf", "media:ext=png;image", 1, nil)
-	assert.Equal(t, ResolutionFromPreviousOutput, resolution)
-
-	resolution = determineResolutionWithIOCheck("media:document;ext=pdf", "media:document;ext=pdf", "media:ext=png;image", 2, nil)
-	assert.Equal(t, ResolutionFromPreviousOutput, resolution)
-}
-
-// TEST996: Tests output arguments are automatically resolved from previous cap's output Verifies that arguments matching the output spec are always resolved as FromPreviousOutput
-func Test996_output_arg_auto_resolved(t *testing.T) {
-	resolution := determineResolutionWithIOCheck("media:ext=png;image", "media:document;ext=pdf", "media:ext=png;image", 0, nil)
-	assert.Equal(t, ResolutionFromPreviousOutput, resolution)
-}
-
-// TEST997: Tests MEDIA_FILE_PATH argument type resolves to input file for first cap Verifies that generic file-path arguments are bound to input file in the first cap
-func Test997_file_path_type_fallback_first_cap(t *testing.T) {
-	resolution := determineResolutionWithIOCheck(standard.MediaFilePath, "media:document;ext=pdf", "media:ext=png;image", 0, nil)
-	assert.Equal(t, ResolutionFromInputFile, resolution)
-}
-
-// TEST998: Tests MEDIA_FILE_PATH argument type resolves to previous output for subsequent caps Verifies that generic file-path arguments are bound to previous cap's output after the first cap
-func Test998_file_path_type_fallback_subsequent_cap(t *testing.T) {
-	resolution := determineResolutionWithIOCheck(standard.MediaFilePath, "media:document;ext=pdf", "media:ext=png;image", 1, nil)
-	assert.Equal(t, ResolutionFromPreviousOutput, resolution)
-}
-
-// TEST1009: Tests required non-IO arguments with default values are marked as HasDefault Verifies that arguments like integers with defaults don't require user input
-func Test1009_non_io_arg_with_default_has_default(t *testing.T) {
-	defaultVal := 200
-	resolution := determineResolutionWithIOCheck(standard.MediaInteger, "media:document;ext=pdf", "media:ext=png;image", 0, defaultVal)
-	assert.Equal(t, ResolutionHasDefault, resolution)
-}
-
-// TEST1012: Tests required non-IO arguments without defaults require user input Verifies that arguments like strings without defaults are marked as RequiresUserInput
-func Test1012_non_io_arg_without_default_requires_user_input(t *testing.T) {
-	resolution := determineResolutionWithIOCheck("media:string", "media:document;ext=pdf", "media:ext=png;image", 0, nil)
-	assert.Equal(t, ResolutionRequiresUserInput, resolution)
-}
-
-// TEST1015: Tests optional non-IO arguments without defaults still require user input Verifies that optional arguments without defaults must be explicitly provided or skipped
-func Test1015_optional_non_io_arg_without_default_requires_user_input(t *testing.T) {
-	resolution := determineResolutionWithIOCheck("media:boolean", "media:document;ext=pdf", "media:ext=png;image", 0, nil)
-	assert.Equal(t, ResolutionRequiresUserInput, resolution)
 }
 
 // TEST1019: Tests validation_to_json() returns None for None input Verifies that missing validation metadata is converted to JSON None
@@ -364,90 +212,6 @@ func Test767_argument_info_serialization(t *testing.T) {
 	assert.Contains(t, string(data), `"default_value":200`)
 }
 
-// TEST768: Tests PathArgumentRequirements structure for single-step execution paths Verifies that argument requirements are correctly organized by step with resolution information
-func Test768_path_argument_requirements_structure(t *testing.T) {
-	requirements := &PathArgumentRequirements{
-		SourceMediaUrn: "media:document;ext=pdf",
-		TargetMediaUrn: "media:ext=png;image",
-		Steps: []*StepArgumentRequirements{
-			{
-				CapUrn:  "cap:generate-thumbnail;in=pdf;out=png",
-				TokenId: mustStepToken(t, "tok-thumbnail"),
-				Title:   "Generate Thumbnail",
-				Arguments: []*ArgumentInfo{
-					{
-						Name:        "file_path",
-						MediaUrn:    "media:string",
-						Description: "Path to file",
-						Resolution:  ResolutionFromInputFile,
-						IsRequired:  true,
-						IsSequence:  false,
-					},
-				},
-				Slots:               []*ArgumentInfo{},
-				SupportedModelTypes: []string{},
-				DefaultModelSpec:    nil,
-			},
-		},
-		CanExecuteWithoutInput: true,
-	}
-
-	assert.True(t, requirements.CanExecuteWithoutInput)
-	assert.Equal(t, 1, len(requirements.Steps))
-	assert.Equal(t, 0, len(requirements.Steps[0].Slots))
-	assert.Equal(t, ResolutionFromInputFile, requirements.Steps[0].Arguments[0].Resolution)
-}
-
-// TEST769: Tests PathArgumentRequirements tracking of required user-input slots Verifies that arguments requiring user input are collected in slots and can_execute_without_input is false
-func Test769_path_with_required_slot(t *testing.T) {
-	requirements := &PathArgumentRequirements{
-		SourceMediaUrn: "media:text",
-		TargetMediaUrn: "media:translated",
-		Steps: []*StepArgumentRequirements{
-			{
-				CapUrn:  "cap:translate;in=text;out=translated",
-				TokenId: mustStepToken(t, "tok-translate"),
-				Title:   "Translate",
-				Arguments: []*ArgumentInfo{
-					{
-						Name:        "file_path",
-						MediaUrn:    "media:string",
-						Description: "Path to file",
-						Resolution:  ResolutionFromInputFile,
-						IsRequired:  true,
-						IsSequence:  false,
-					},
-					{
-						Name:        "target_language",
-						MediaUrn:    "media:string",
-						Description: "Target language code",
-						Resolution:  ResolutionRequiresUserInput,
-						IsRequired:  true,
-						IsSequence:  false,
-					},
-				},
-				Slots: []*ArgumentInfo{
-					{
-						Name:        "target_language",
-						MediaUrn:    "media:string",
-						Description: "Target language code",
-						Resolution:  ResolutionRequiresUserInput,
-						IsRequired:  true,
-						IsSequence:  false,
-					},
-				},
-				SupportedModelTypes: []string{},
-				DefaultModelSpec:    nil,
-			},
-		},
-		CanExecuteWithoutInput: false,
-	}
-
-	assert.False(t, requirements.CanExecuteWithoutInput)
-	assert.Equal(t, 1, len(requirements.Steps[0].Slots))
-	assert.Equal(t, "target_language", requirements.Steps[0].Slots[0].Name)
-}
-
 // mustStepToken parses a fixture's literal token through the one door tokens
 // come in by. A fixture that names an empty token is a broken fixture.
 func mustStepToken(t *testing.T, raw string) StepToken {
@@ -455,78 +219,6 @@ func mustStepToken(t *testing.T, raw string) StepToken {
 	token, err := ParseStepToken(raw)
 	require.NoError(t, err)
 	return token
-}
-
-// rewriteCap is a cap with one stdin main input.
-func rewriteCap(t *testing.T) *cap.Cap {
-	t.Helper()
-	capUrn, err := urn.NewCapUrnFromString(`cap:rewrite;in="media:ext=txt;text";out="media:ext=txt;text"`)
-	require.NoError(t, err)
-	c := cap.NewCap(capUrn, "Rewrite", []string{"rewrite"})
-	stdin := "media:ext=txt;text"
-	c.Args = []cap.CapArg{
-		cap.NewCapArgWithFullDefinition(
-			"media:enc=utf-8;file-path", "input", true,
-			[]cap.ArgSource{{Stdin: &stdin}},
-			"Text to rewrite", nil, nil,
-		),
-	}
-	return c
-}
-
-// repeatedCapStrand builds two steps running the SAME cap — the shape where
-// positional identity is indistinguishable from token identity unless the
-// tokens are actually carried.
-func repeatedCapStrand(t *testing.T, c *cap.Cap) *Strand {
-	t.Helper()
-	mediaUrn, err := urn.NewMediaUrnFromString("media:ext=txt;text")
-	require.NoError(t, err)
-	argUrn, err := urn.NewMediaUrnFromString("media:enc=utf-8;file-path")
-	require.NoError(t, err)
-
-	newStep := func() *StrandStep {
-		step := NewStrandStep(StepTypeCap, mediaUrn, mediaUrn)
-		step.CapUrnVal = c.Urn
-		step.StepTitle = "Rewrite"
-		step.SpecificityVal = 1
-		step.Inputs = []CapInput{{ArgUrn: argUrn, Source: NewArgSourceStrandInput()}}
-		return step
-	}
-
-	return &Strand{
-		Steps:          []*StrandStep{newStep(), newStep()},
-		SourceMediaUrn: mediaUrn,
-		TargetMediaUrn: mediaUrn,
-		TotalSteps:     2,
-		CapStepCount:   2,
-		Description:    "Rewrite twice",
-	}
-}
-
-// TEST1461: Step requirements are addressed by the plan's own token. Two steps of the SAME cap must yield the two DISTINCT StrandStep.TokenId values the planner minted, in correspondence with the steps they describe
-func TestTest1461StepRequirementsCarryThePlansOwnTokens(t *testing.T) {
-	c := rewriteCap(t)
-	registry := fabric.NewForTest()
-	registry.AddCapsToCache([]*cap.Cap{c})
-	builder := NewMachinePlanBuilder(registry)
-	strand := repeatedCapStrand(t, c)
-
-	strandTokens := []StepToken{strand.Steps[0].TokenId, strand.Steps[1].TokenId}
-	assert.NotEqual(t, strandTokens[0], strandTokens[1],
-		"the planner mints a distinct token per step even for a repeated cap")
-
-	requirements, err := builder.AnalyzePathArguments(strand)
-	require.NoError(t, err)
-	require.Equal(t, 2, len(requirements.Steps))
-
-	requirementTokens := []StepToken{requirements.Steps[0].TokenId, requirements.Steps[1].TokenId}
-	assert.Equal(t, strandTokens, requirementTokens,
-		"each requirement carries the token of the step it describes — the address a "+
-			"value is bound to, not a position to be counted")
-	for _, step := range requirements.Steps {
-		assert.False(t, step.TokenId.IsZero(),
-			"a requirement without a token cannot be bound to and must never be emitted")
-	}
 }
 
 // TEST1462: An unidentified step is not a state the program can hold. StepToken is the type that makes it so - minting is the only way to create one and ParseStepToken, the sole path back from text, refuses an empty id

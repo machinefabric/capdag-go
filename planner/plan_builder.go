@@ -4,36 +4,51 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/machinefabric/capdag-go/cap"
-	"github.com/machinefabric/capdag-go/fabric"
 	"github.com/machinefabric/capdag-go/media"
-	"github.com/machinefabric/capdag-go/urn"
 )
 
-// ArgumentResolution describes how an argument will be resolved at execution time.
+// ArgumentResolution says where a step's argument gets its value in a run of
+// a plan. Mirrors Rust planner::plan_builder::ArgumentResolution; the analysis
+// that produces it reads a plan, and plans are built by the reference only.
 type ArgumentResolution int
 
 const (
-	ResolutionFromInputFile ArgumentResolution = iota
-	ResolutionFromPreviousOutput
+	// ResolutionFromInput: wired from an input of the machine (through a
+	// map's item or a gather of inputs, when it is reached through one).
+	ResolutionFromInput ArgumentResolution = iota
+	// ResolutionFromStep: wired from what another step produces.
+	ResolutionFromStep
+	// ResolutionConstant: bound to a constant the machine writes.
+	ResolutionConstant
+	// ResolutionHasDefault: not bound by the machine; its definition gives a
+	// default.
 	ResolutionHasDefault
+	// ResolutionRequiresUserInput: not bound by the machine and no default.
 	ResolutionRequiresUserInput
 )
 
-// String returns the snake_case name.
+var argumentResolutionNames = map[ArgumentResolution]string{
+	ResolutionFromInput:         "from_input",
+	ResolutionFromStep:          "from_step",
+	ResolutionConstant:          "constant",
+	ResolutionHasDefault:        "has_default",
+	ResolutionRequiresUserInput: "requires_user_input",
+}
+
+// String returns the snake_case name. A value outside the enumeration is a
+// programming error and panics rather than naming something it is not.
 func (r ArgumentResolution) String() string {
-	switch r {
-	case ResolutionFromInputFile:
-		return "from_input_file"
-	case ResolutionFromPreviousOutput:
-		return "from_previous_output"
-	case ResolutionHasDefault:
-		return "has_default"
-	case ResolutionRequiresUserInput:
-		return "requires_user_input"
-	default:
-		return "requires_user_input"
+	name, ok := argumentResolutionNames[r]
+	if !ok {
+		panic(fmt.Sprintf("ArgumentResolution %d is not a resolution", int(r)))
 	}
+	return name
+}
+
+// IsBound reports whether the machine itself binds the arg. A bound arg takes
+// no value from the run.
+func (r ArgumentResolution) IsBound() bool {
+	return r == ResolutionFromInput || r == ResolutionFromStep || r == ResolutionConstant
 }
 
 // MarshalJSON implements json.Marshaler, serializing as a snake_case string
@@ -48,23 +63,19 @@ func (r *ArgumentResolution) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &s); err != nil {
 		return err
 	}
-	switch s {
-	case "from_input_file":
-		*r = ResolutionFromInputFile
-	case "from_previous_output":
-		*r = ResolutionFromPreviousOutput
-	case "has_default":
-		*r = ResolutionHasDefault
-	case "requires_user_input":
-		*r = ResolutionRequiresUserInput
-	default:
-		return fmt.Errorf("unknown ArgumentResolution: %s", s)
+	for resolution, name := range argumentResolutionNames {
+		if name == s {
+			*r = resolution
+			return nil
+		}
 	}
-	return nil
+	return fmt.Errorf("unknown ArgumentResolution: %s", s)
 }
 
 // ArgumentInfo holds full argument metadata for one cap argument.
 type ArgumentInfo struct {
+	// Name is the arg's name in its cap definition: a label, unique within
+	// the cap.
 	Name         string             `json:"name"`
 	MediaUrn     string             `json:"media_urn"`
 	Description  string             `json:"description"`
@@ -75,27 +86,26 @@ type ArgumentInfo struct {
 	IsSequence bool `json:"is_sequence"`
 	// IsMainInput reports whether this argument is the cap's MAIN input: it
 	// declares a Stdin source whose URN is tagged-URN-equivalent to the cap
-	// URN's in= spec. Populated from CapArg.IsMainInput during
-	// step-argument-requirements assembly. Mirrors Rust
-	// planner::plan_builder::ArgumentInfo::is_main_input.
+	// URN's in= spec. Mirrors Rust planner::plan_builder::ArgumentInfo::is_main_input.
 	IsMainInput bool `json:"is_main_input"`
 	Validation  any  `json:"validation,omitempty"`
 }
 
-// StepArgumentRequirements holds argument info for one step in a path.
+// StepArgumentRequirements holds argument info for one step of a plan.
 type StepArgumentRequirements struct {
 	CapUrn string `json:"cap_urn"`
-	// TokenId is the planner-minted StrandStep.TokenId of the step these
-	// requirements describe — the ONLY address an argument value is ever bound
-	// to. A token exists because a plan exists; it is never derived from a
-	// position, a notation string, or anything else. Positions cannot address a
-	// step because a strand is a DAG: parallel branches merging downstream have
-	// no ordinal, and two identical caps on separate branches differ only by
-	// token.
+	// TokenId is the token of the plan's cap node these requirements describe
+	// — the ONLY address an argument value is ever bound to. A token exists
+	// because a plan exists; it is never derived from a position, a notation
+	// string, or anything else. Positions cannot address a step because a plan
+	// is a DAG: parallel branches merging downstream have no ordinal, and two
+	// identical caps on separate branches differ only by token.
 	TokenId   StepToken       `json:"token_id"`
 	Title     string          `json:"title"`
 	Arguments []*ArgumentInfo `json:"arguments"`
-	Slots     []*ArgumentInfo `json:"slots"`
+	// Slots are the arguments the machine does not bind: the ones a run may
+	// give a value (and must, when they have no default).
+	Slots []*ArgumentInfo `json:"slots"`
 	// SupportedModelTypes are the architecture identifiers (config.json
 	// model_type) the cap can run. Empty when the cap declares no restriction.
 	SupportedModelTypes []string `json:"supported_model_types"`
@@ -104,145 +114,14 @@ type StepArgumentRequirements struct {
 	DefaultModelSpec *string `json:"default_model_spec,omitempty"`
 }
 
-// PathArgumentRequirements holds argument info for an entire path.
-type PathArgumentRequirements struct {
-	SourceMediaUrn         string                      `json:"source_media_urn"`
-	TargetMediaUrn         string                      `json:"target_media_urn"`
-	Steps                  []*StepArgumentRequirements `json:"steps"`
-	CanExecuteWithoutInput bool                        `json:"can_execute_without_input"`
-}
-
-// MachinePlanBuilder builds execution plans from resolved paths.
-type MachinePlanBuilder struct {
-	fabricRegistry *fabric.FabricRegistry
-}
-
-// NewMachinePlanBuilder creates a new plan builder.
-func NewMachinePlanBuilder(fabricRegistry *fabric.FabricRegistry) *MachinePlanBuilder {
-	return &MachinePlanBuilder{
-		fabricRegistry: fabricRegistry,
-	}
-}
-
-// AnalyzePathArguments analyzes all argument requirements for a path.
-func (b *MachinePlanBuilder) AnalyzePathArguments(
-	path *Strand,
-) (*PathArgumentRequirements, error) {
-	caps := b.fabricRegistry.GetCachedCaps()
-
-	var stepRequirements []*StepArgumentRequirements
-	capStepIndex := 0
-
-	for _, step := range path.Steps {
-		if step.CapUrnVal == nil {
-			continue
-		}
-
-		capUrnStr := step.CapUrnVal.String()
-		c := findCapInList(caps, capUrnStr)
-		if c == nil {
-			return nil, NewNotFoundError(fmt.Sprintf("Cap not found: %s", capUrnStr))
-		}
-
-		inSpec := c.Urn.InSpec()
-		outSpec := c.Urn.OutSpec()
-		// Parse the cap's in= spec once for main-input detection. A spec
-		// that fails to parse yields nil, and CapArg.IsMainInput(nil) is
-		// false — no arg can be the main input of an unparseable in=.
-		var inSpecUrn *urn.MediaUrn
-		if parsed, err := urn.NewMediaUrnFromString(inSpec); err == nil {
-			inSpecUrn = parsed
-		}
-		var arguments []*ArgumentInfo
-		var slots []*ArgumentInfo
-
-		for _, arg := range c.GetArgs() {
-			resolution := determineResolutionWithIOCheck(
-				arg.MediaUrn, inSpec, outSpec, capStepIndex, arg.DefaultValue)
-			description := ""
-			if arg.ArgDescription != nil {
-				description = *arg.ArgDescription
-			}
-
-			argInfo := &ArgumentInfo{
-				Name:         arg.MediaUrn,
-				MediaUrn:     arg.MediaUrn,
-				Description:  description,
-				Resolution:   resolution,
-				DefaultValue: arg.DefaultValue,
-				IsRequired:   arg.Required,
-				IsSequence:   arg.IsSequence,
-				IsMainInput:  arg.IsMainInput(inSpecUrn),
-			}
-
-			isIOArg := resolution == ResolutionFromInputFile || resolution == ResolutionFromPreviousOutput
-			if !isIOArg {
-				slots = append(slots, argInfo)
-			}
-			arguments = append(arguments, argInfo)
-		}
-
-		stepRequirements = append(stepRequirements, &StepArgumentRequirements{
-			CapUrn:              capUrnStr,
-			TokenId:             step.TokenId,
-			Title:               step.Title(),
-			Arguments:           arguments,
-			Slots:               slots,
-			SupportedModelTypes: c.SupportedModelTypes,
-			DefaultModelSpec:    c.DefaultModelSpec,
-		})
-		capStepIndex++
-	}
-
-	canExec := true
-	for _, s := range stepRequirements {
-		if len(s.Slots) > 0 {
-			canExec = false
-			break
-		}
-	}
-
-	return &PathArgumentRequirements{
-		SourceMediaUrn:         path.SourceMediaUrn.String(),
-		TargetMediaUrn:         path.TargetMediaUrn.String(),
-		Steps:                  stepRequirements,
-		CanExecuteWithoutInput: canExec,
-	}, nil
-}
-
-// determineResolutionWithIOCheck determines how an argument will be resolved.
-func determineResolutionWithIOCheck(
-	mediaUrnStr, inSpec, outSpec string,
-	stepIndex int,
-	defaultValue any,
-) ArgumentResolution {
-	// 1. Input spec match
-	if mediaUrnStr == inSpec {
-		if stepIndex == 0 {
-			return ResolutionFromInputFile
-		}
-		return ResolutionFromPreviousOutput
-	}
-
-	// 2. Output spec match
-	if mediaUrnStr == outSpec {
-		return ResolutionFromPreviousOutput
-	}
-
-	// 3. File-path type
-	mu, err := urn.NewMediaUrnFromString(mediaUrnStr)
-	if err == nil && mu.IsFilePath() {
-		if stepIndex == 0 {
-			return ResolutionFromInputFile
-		}
-		return ResolutionFromPreviousOutput
-	}
-
-	// 4. Default or user input
-	if defaultValue != nil {
-		return ResolutionHasDefault
-	}
-	return ResolutionRequiresUserInput
+// PlanArgumentRequirements holds argument info for a whole plan: one entry per
+// cap node, in the plan's topological order.
+type PlanArgumentRequirements struct {
+	Steps []*StepArgumentRequirements `json:"steps"`
+	// CanExecuteWithoutInput reports whether a run of the plan needs no value
+	// from the user: every required arg the machine leaves unbound has a
+	// default.
+	CanExecuteWithoutInput bool `json:"can_execute_without_input"`
 }
 
 // ValidationToJSON converts a MediaValidation to a JSON object, or nil if the
@@ -260,14 +139,4 @@ func ValidationToJSON(v *media.MediaValidation) json.RawMessage {
 		panic("ValidationToJSON: failed to marshal MediaValidation: " + err.Error())
 	}
 	return data
-}
-
-// findCapInList finds a cap in a list by URN string.
-func findCapInList(caps []*cap.Cap, capUrnStr string) *cap.Cap {
-	for _, c := range caps {
-		if c.Urn.String() == capUrnStr {
-			return c
-		}
-	}
-	return nil
 }

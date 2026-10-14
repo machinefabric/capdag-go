@@ -149,7 +149,7 @@ type CartridgeRegistryEntry struct {
 	PageUrl       string                          `json:"pageUrl,omitempty"`
 	TeamId        string                          `json:"teamId"`
 	MinAppVersion string                          `json:"minAppVersion,omitempty"`
-	CapGroups     []CapGroup              `json:"cap_groups,omitempty"`
+	CapGroups     []CapGroup                      `json:"cap_groups,omitempty"`
 	Categories    []string                        `json:"categories,omitempty"`
 	Tags          []string                        `json:"tags,omitempty"`
 	LatestVersion string                          `json:"latestVersion"`
@@ -251,7 +251,7 @@ type CartridgeInfo struct {
 	PageUrl           string                          `json:"pageUrl,omitempty"`
 	Categories        []string                        `json:"categories,omitempty"`
 	Tags              []string                        `json:"tags,omitempty"`
-	CapGroups         []CapGroup              `json:"cap_groups"`
+	CapGroups         []CapGroup                      `json:"cap_groups"`
 	Versions          map[string]CartridgeVersionData `json:"versions"`
 	AvailableVersions []string                        `json:"availableVersions,omitempty"`
 	// Channel this entry belongs to. Set by the transformer; consumers
@@ -285,7 +285,7 @@ func (c *CartridgeInfo) UnmarshalJSON(data []byte) error {
 		PageUrl           *string                         `json:"pageUrl"`
 		Categories        []string                        `json:"categories"`
 		Tags              []string                        `json:"tags"`
-		CapGroups         []CapGroup              `json:"cap_groups"`
+		CapGroups         []CapGroup                      `json:"cap_groups"`
 		Versions          map[string]CartridgeVersionData `json:"versions"`
 		AvailableVersions []string                        `json:"availableVersions"`
 		Channel           CartridgeChannel                `json:"channel"`
