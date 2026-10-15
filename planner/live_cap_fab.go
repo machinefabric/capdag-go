@@ -468,6 +468,14 @@ func (g *LiveCapFab) AddCap(c *cap.Cap) {
 		return
 	}
 
+	// A sink (`out=media:void`) produces nothing, so a path cannot go on
+	// through it: it has no main output, and declares no other. Every type
+	// conforms to `media:`, so an edge to `media:void` would let a path
+	// continue from a value that never exists into any cap that takes anything.
+	if toSpec.IsVoid() {
+		return
+	}
+
 	inputIsSequence, outputIsSequence := c.SequenceShape()
 	g.pushCapEdge(c, fromSpec, toSpec, inputIsSequence, outputIsSequence, nil)
 

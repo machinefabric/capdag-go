@@ -926,3 +926,38 @@ func Test12847_a_caps_other_outputs_are_reachable_by_planning(t *testing.T) {
 	assert.Equal(t, NewArgSourceStep(steps[0].TokenId), steps[1].Inputs[0].Source)
 	assert.False(t, steps[0].TokenId.IsZero())
 }
+
+// TEST12877: a sink is never a step of a path. A discard takes anything and
+// produces nothing; with it in the graph, text reached `media:void`, which
+// conforms to `media:`, and went on into a cap that takes anything — a path to
+// the target through a value that never exists.
+func Test12877_a_sink_is_never_a_step_of_a_path(t *testing.T) {
+	discard := makeTestCapForGraph("media:", "media:void", "discard", "Discard")
+	render := makeTestCapForGraph("media:enc=utf-8;ext=txt", "media:ext=png;image", "render", "Render")
+	thumbnail := makeTestCapForGraph("media:", "media:ext=png;image", "thumbnail", "Thumbnail")
+	graph := NewLiveCapFab()
+	graph.AddCap(discard)
+	graph.AddCap(render)
+	graph.AddCap(thumbnail)
+	_, edgeCount := graph.Stats()
+	assert.Equal(t, 2, edgeCount, "the sink adds no edge")
+
+	text, err := urn.NewMediaUrnFromString("media:enc=utf-8;ext=txt")
+	require.NoError(t, err)
+	png, err := urn.NewMediaUrnFromString("media:ext=png;image")
+	require.NoError(t, err)
+	paths := graph.FindPathsToExactTarget(text, png, false, 4, 50)
+	var titles [][]string
+	for _, path := range paths {
+		var steps []string
+		for _, step := range path.Steps {
+			steps = append(steps, step.Title())
+		}
+		titles = append(titles, steps)
+	}
+	require.Len(t, paths, 2, "render, and thumbnail on the text itself: %v", titles)
+	for _, path := range paths {
+		require.Len(t, path.Steps, 1, "%v", titles)
+		assert.False(t, path.Steps[0].ToSpec.IsVoid(), "a step to media:void: %v", titles)
+	}
+}
