@@ -4479,6 +4479,10 @@ func startTestCartridge(t *testing.T, rt *CartridgeRuntime, initialCredit int) (
 	if resp.FrameType != FrameTypeHello {
 		t.Fatalf("expected HELLO response, got %v", resp.FrameType)
 	}
+	// A host gives its policy before it routes anything (12.2 §Policy).
+	if err := hostWriter.WriteFrame(NewPolicyFrame(HostPolicy{Network: NetworkPolicyFull})); err != nil {
+		t.Fatalf("failed to send POLICY: %v", err)
+	}
 	negotiated, err := NegotiateLimits(DefaultLimits(), Limits{
 		MaxFrame:         DefaultMaxFrame,
 		MaxChunk:         DefaultMaxChunk,

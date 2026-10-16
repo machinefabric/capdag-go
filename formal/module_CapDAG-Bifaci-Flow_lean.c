@@ -3,7 +3,7 @@
 #include "capdagFormal_program.h"
 
 /* Lean: CapDAG.Bifaci.Flow.Accepted.ctorElim */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:110:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:113:1 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_dctorElim(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3, lungo_obj x_4, lungo_obj x_5) {
     (void)x_1;
     (void)x_2;
@@ -15,7 +15,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_dctorElim(lungo_obj x_1
 
 /* Lean: CapDAG.Bifaci.Flow.Accepted.ctorElim._boxed */
 /* Compiled from: CapDAG.Bifaci.Flow.Accepted.ctorElim */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:110:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:113:1 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_dctorElim_d__boxed(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3, lungo_obj x_4, lungo_obj x_5) {
     lungo_obj x_6;
     x_6 = capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_dctorElim(x_1, x_2, x_3, x_4, x_5);
@@ -25,7 +25,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_dctorElim_d__boxed(lung
 
 /* Lean: CapDAG.Bifaci.Flow.Accepted.ctorElim._redArg */
 /* Compiled from: CapDAG.Bifaci.Flow.Accepted.ctorElim */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:110:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:113:1 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_dctorElim_d__redArg(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     lungo_obj x_4;
@@ -99,7 +99,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_dctorIdx_d__boxed(lungo
 }
 
 /* Lean: CapDAG.Bifaci.Flow.Accepted.deliver.elim */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:112:3 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:115:3 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_ddeliver_delim(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3, lungo_obj x_4) {
     (void)x_1;
     (void)x_3;
@@ -110,7 +110,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_ddeliver_delim(lungo_ob
 
 /* Lean: CapDAG.Bifaci.Flow.Accepted.deliver.elim._redArg */
 /* Compiled from: CapDAG.Bifaci.Flow.Accepted.deliver.elim */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:112:3 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:115:3 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_ddeliver_delim_d__redArg(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     x_3 = capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_dctorElim_d__redArg(x_1, x_2);
@@ -118,7 +118,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_ddeliver_delim_d__redAr
 }
 
 /* Lean: CapDAG.Bifaci.Flow.Accepted.duplicate.elim */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:118:3 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:121:3 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_dduplicate_delim(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3, lungo_obj x_4) {
     (void)x_1;
     (void)x_3;
@@ -129,7 +129,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_dduplicate_delim(lungo_
 
 /* Lean: CapDAG.Bifaci.Flow.Accepted.duplicate.elim._redArg */
 /* Compiled from: CapDAG.Bifaci.Flow.Accepted.duplicate.elim */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:118:3 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:121:3 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_dduplicate_delim_d__redArg(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     x_3 = capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_dctorElim_d__redArg(x_1, x_2);
@@ -137,7 +137,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_dduplicate_delim_d__red
 }
 
 /* Lean: CapDAG.Bifaci.Flow.Accepted.hold.elim */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:114:3 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:117:3 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_dhold_delim(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3, lungo_obj x_4) {
     (void)x_1;
     (void)x_3;
@@ -148,7 +148,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_dhold_delim(lungo_obj x
 
 /* Lean: CapDAG.Bifaci.Flow.Accepted.hold.elim._redArg */
 /* Compiled from: CapDAG.Bifaci.Flow.Accepted.hold.elim */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:114:3 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:117:3 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_dhold_delim_d__redArg(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     x_3 = capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_dctorElim_d__redArg(x_1, x_2);
@@ -156,7 +156,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_dhold_delim_d__redArg(l
 }
 
 /* Lean: CapDAG.Bifaci.Flow.Accepted.overflow.elim */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:120:3 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:123:3 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_doverflow_delim(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3, lungo_obj x_4) {
     (void)x_1;
     (void)x_3;
@@ -167,7 +167,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_doverflow_delim(lungo_o
 
 /* Lean: CapDAG.Bifaci.Flow.Accepted.overflow.elim._redArg */
 /* Compiled from: CapDAG.Bifaci.Flow.Accepted.overflow.elim */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:120:3 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:123:3 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_doverflow_delim_d__redArg(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     x_3 = capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_dctorElim_d__redArg(x_1, x_2);
@@ -175,7 +175,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_doverflow_delim_d__redA
 }
 
 /* Lean: CapDAG.Bifaci.Flow.Accepted.stale.elim */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:116:3 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:119:3 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_dstale_delim(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3, lungo_obj x_4) {
     (void)x_1;
     (void)x_3;
@@ -186,7 +186,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_dstale_delim(lungo_obj 
 
 /* Lean: CapDAG.Bifaci.Flow.Accepted.stale.elim._redArg */
 /* Compiled from: CapDAG.Bifaci.Flow.Accepted.stale.elim */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:116:3 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:119:3 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_dstale_delim_d__redArg(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     x_3 = capdagFormal__l_CapDAG_dBifaci_dFlow_dAccepted_dctorElim_d__redArg(x_1, x_2);
@@ -314,7 +314,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dcloseStream_delim_d__
 }
 
 /* Lean: CapDAG.Bifaci.Flow.FrameType.code */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:37:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:38:1 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dcode(uint8_t x_1) {
     lungo_obj x_2;
     lungo_obj x_3;
@@ -330,6 +330,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dcode(uint8_t x_1) {
     lungo_obj x_13;
     lungo_obj x_14;
     lungo_obj x_15;
+    lungo_obj x_16;
     switch (x_1) {
         case 0: {
             x_2 = lungo_usize_to_nat(0u);
@@ -383,16 +384,20 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dcode(uint8_t x_1) {
             x_14 = lungo_usize_to_nat(13u);
             return x_14;
         }
-        default: {
+        case 13: {
             x_15 = lungo_usize_to_nat(14u);
             return x_15;
+        }
+        default: {
+            x_16 = lungo_usize_to_nat(15u);
+            return x_16;
         }
     }
 }
 
 /* Lean: CapDAG.Bifaci.Flow.FrameType.code._boxed */
 /* Compiled from: CapDAG.Bifaci.Flow.FrameType.code */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:37:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:38:1 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dcode_d__boxed(lungo_obj x_1) {
     uint8_t x_2;
     lungo_obj x_3;
@@ -500,6 +505,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dctorIdx(uint8_t x_1) 
     lungo_obj x_13;
     lungo_obj x_14;
     lungo_obj x_15;
+    lungo_obj x_16;
     switch (x_1) {
         case 0: {
             x_2 = lungo_usize_to_nat(0u);
@@ -553,9 +559,13 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dctorIdx(uint8_t x_1) 
             x_14 = lungo_usize_to_nat(12u);
             return x_14;
         }
-        default: {
+        case 13: {
             x_15 = lungo_usize_to_nat(13u);
             return x_15;
+        }
+        default: {
+            x_16 = lungo_usize_to_nat(14u);
+            return x_16;
         }
     }
 }
@@ -732,7 +742,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dhello_delim_d__redArg
 }
 
 /* Lean: CapDAG.Bifaci.Flow.FrameType.isFlow */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:72:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:75:1 */
 uint8_t capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_disFlow(uint8_t x_1) {
     uint8_t x_2;
     uint8_t x_3;
@@ -742,6 +752,7 @@ uint8_t capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_disFlow(uint8_t x_1) {
     uint8_t x_7;
     uint8_t x_8;
     uint8_t x_9;
+    uint8_t x_10;
     switch (x_1) {
         case 0: {
             x_2 = (uint8_t)0u;
@@ -771,16 +782,20 @@ uint8_t capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_disFlow(uint8_t x_1) {
             x_8 = (uint8_t)0u;
             return x_8;
         }
-        default: {
-            x_9 = (uint8_t)1u;
+        case 14: {
+            x_9 = (uint8_t)0u;
             return x_9;
+        }
+        default: {
+            x_10 = (uint8_t)1u;
+            return x_10;
         }
     }
 }
 
 /* Lean: CapDAG.Bifaci.Flow.FrameType.isFlow._boxed */
 /* Compiled from: CapDAG.Bifaci.Flow.FrameType.isFlow */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:72:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:75:1 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_disFlow_d__boxed(lungo_obj x_1) {
     uint8_t x_2;
     uint8_t x_3;
@@ -792,7 +807,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_disFlow_d__boxed(lungo
 }
 
 /* Lean: CapDAG.Bifaci.Flow.FrameType.isTerminal */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:78:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:81:1 */
 uint8_t capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_disTerminal(uint8_t x_1) {
     uint8_t x_2;
     uint8_t x_3;
@@ -815,7 +830,7 @@ uint8_t capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_disTerminal(uint8_t x_1)
 
 /* Lean: CapDAG.Bifaci.Flow.FrameType.isTerminal._boxed */
 /* Compiled from: CapDAG.Bifaci.Flow.FrameType.isTerminal */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:78:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:81:1 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_disTerminal_d__boxed(lungo_obj x_1) {
     uint8_t x_2;
     uint8_t x_3;
@@ -867,7 +882,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dlog_delim_d__redArg_d
 }
 
 /* Lean: CapDAG.Bifaci.Flow.FrameType.ofCode */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:54:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:56:1 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode(lungo_obj x_1) {
     lungo_obj x_2;
     uint8_t x_3;
@@ -898,7 +913,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode(lungo_obj x_1)
     lungo_obj x_28;
     uint8_t x_29;
     lungo_obj x_30;
-    lungo_obj x_31;
+    uint8_t x_31;
     lungo_obj x_32;
     lungo_obj x_33;
     lungo_obj x_34;
@@ -912,6 +927,9 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode(lungo_obj x_1)
     lungo_obj x_42;
     lungo_obj x_43;
     lungo_obj x_44;
+    lungo_obj x_45;
+    lungo_obj x_46;
+    lungo_obj x_47;
     x_2 = lungo_usize_to_nat(0u);
     x_3 = capdagFormal__l_Nat_ddecEq(x_1, x_2);
     switch (x_3) {
@@ -968,97 +986,107 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode(lungo_obj x_1)
                                                                                                             x_29 = capdagFormal__l_Nat_ddecEq(x_1, x_28);
                                                                                                             switch (x_29) {
                                                                                                                 case 0: {
-                                                                                                                    x_30 = lungo_box(0);
-                                                                                                                    return x_30;
+                                                                                                                    x_30 = lungo_usize_to_nat(15u);
+                                                                                                                    x_31 = capdagFormal__l_Nat_ddecEq(x_1, x_30);
+                                                                                                                    switch (x_31) {
+                                                                                                                        case 0: {
+                                                                                                                            x_32 = lungo_box(0);
+                                                                                                                            return x_32;
+                                                                                                                        }
+                                                                                                                        default: {
+                                                                                                                            x_33 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__0();
+                                                                                                                            return x_33;
+                                                                                                                        }
+                                                                                                                    }
                                                                                                                 }
                                                                                                                 default: {
-                                                                                                                    x_31 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__0();
-                                                                                                                    return x_31;
+                                                                                                                    x_34 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__1();
+                                                                                                                    return x_34;
                                                                                                                 }
                                                                                                             }
                                                                                                         }
                                                                                                         default: {
-                                                                                                            x_32 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__1();
-                                                                                                            return x_32;
+                                                                                                            x_35 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__2();
+                                                                                                            return x_35;
                                                                                                         }
                                                                                                     }
                                                                                                 }
                                                                                                 default: {
-                                                                                                    x_33 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__2();
-                                                                                                    return x_33;
+                                                                                                    x_36 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__3();
+                                                                                                    return x_36;
                                                                                                 }
                                                                                             }
                                                                                         }
                                                                                         default: {
-                                                                                            x_34 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__3();
-                                                                                            return x_34;
+                                                                                            x_37 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__4();
+                                                                                            return x_37;
                                                                                         }
                                                                                     }
                                                                                 }
                                                                                 default: {
-                                                                                    x_35 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__4();
-                                                                                    return x_35;
+                                                                                    x_38 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__5();
+                                                                                    return x_38;
                                                                                 }
                                                                             }
                                                                         }
                                                                         default: {
-                                                                            x_36 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__5();
-                                                                            return x_36;
+                                                                            x_39 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__6();
+                                                                            return x_39;
                                                                         }
                                                                     }
                                                                 }
                                                                 default: {
-                                                                    x_37 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__6();
-                                                                    return x_37;
+                                                                    x_40 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__7();
+                                                                    return x_40;
                                                                 }
                                                             }
                                                         }
                                                         default: {
-                                                            x_38 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__7();
-                                                            return x_38;
+                                                            x_41 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__8();
+                                                            return x_41;
                                                         }
                                                     }
                                                 }
                                                 default: {
-                                                    x_39 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__8();
-                                                    return x_39;
+                                                    x_42 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__9();
+                                                    return x_42;
                                                 }
                                             }
                                         }
                                         default: {
-                                            x_40 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__9();
-                                            return x_40;
+                                            x_43 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__10();
+                                            return x_43;
                                         }
                                     }
                                 }
                                 default: {
-                                    x_41 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__10();
-                                    return x_41;
+                                    x_44 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__11();
+                                    return x_44;
                                 }
                             }
                         }
                         default: {
-                            x_42 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__11();
-                            return x_42;
+                            x_45 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__12();
+                            return x_45;
                         }
                     }
                 }
                 default: {
-                    x_43 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__12();
-                    return x_43;
+                    x_46 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__13();
+                    return x_46;
                 }
             }
         }
         default: {
-            x_44 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__13();
-            return x_44;
+            x_47 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__14();
+            return x_47;
         }
     }
 }
 
 /* Lean: CapDAG.Bifaci.Flow.FrameType.ofCode._boxed */
 /* Compiled from: CapDAG.Bifaci.Flow.FrameType.ofCode */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:54:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:56:1 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__boxed(lungo_obj x_1) {
     lungo_obj x_2;
     x_2 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode(x_1);
@@ -1068,12 +1096,12 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__boxed(lungo
 
 /* Lean: CapDAG.Bifaci.Flow.FrameType.ofCode._closed_0 */
 /* Compiled from: CapDAG.Bifaci.Flow.FrameType.ofCode */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:54:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:56:1 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__0__init(void) {
     uint8_t x_1;
     lungo_obj x_2;
     lungo_obj x_3;
-    x_1 = (uint8_t)13u;
+    x_1 = (uint8_t)14u;
     x_2 = lungo_box((size_t)x_1);
     x_3 = lungo_alloc_ctor(1, 1, 0);
     lungo_ctor_set(x_3, 0, x_2);
@@ -1086,12 +1114,12 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__0(v
 
 /* Lean: CapDAG.Bifaci.Flow.FrameType.ofCode._closed_1 */
 /* Compiled from: CapDAG.Bifaci.Flow.FrameType.ofCode */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:54:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:56:1 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__1__init(void) {
     uint8_t x_1;
     lungo_obj x_2;
     lungo_obj x_3;
-    x_1 = (uint8_t)12u;
+    x_1 = (uint8_t)13u;
     x_2 = lungo_box((size_t)x_1);
     x_3 = lungo_alloc_ctor(1, 1, 0);
     lungo_ctor_set(x_3, 0, x_2);
@@ -1104,12 +1132,12 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__1(v
 
 /* Lean: CapDAG.Bifaci.Flow.FrameType.ofCode._closed_10 */
 /* Compiled from: CapDAG.Bifaci.Flow.FrameType.ofCode */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:54:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:56:1 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__10__init(void) {
     uint8_t x_1;
     lungo_obj x_2;
     lungo_obj x_3;
-    x_1 = (uint8_t)3u;
+    x_1 = (uint8_t)4u;
     x_2 = lungo_box((size_t)x_1);
     x_3 = lungo_alloc_ctor(1, 1, 0);
     lungo_ctor_set(x_3, 0, x_2);
@@ -1122,12 +1150,12 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__10(
 
 /* Lean: CapDAG.Bifaci.Flow.FrameType.ofCode._closed_11 */
 /* Compiled from: CapDAG.Bifaci.Flow.FrameType.ofCode */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:54:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:56:1 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__11__init(void) {
     uint8_t x_1;
     lungo_obj x_2;
     lungo_obj x_3;
-    x_1 = (uint8_t)2u;
+    x_1 = (uint8_t)3u;
     x_2 = lungo_box((size_t)x_1);
     x_3 = lungo_alloc_ctor(1, 1, 0);
     lungo_ctor_set(x_3, 0, x_2);
@@ -1140,12 +1168,12 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__11(
 
 /* Lean: CapDAG.Bifaci.Flow.FrameType.ofCode._closed_12 */
 /* Compiled from: CapDAG.Bifaci.Flow.FrameType.ofCode */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:54:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:56:1 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__12__init(void) {
     uint8_t x_1;
     lungo_obj x_2;
     lungo_obj x_3;
-    x_1 = (uint8_t)1u;
+    x_1 = (uint8_t)2u;
     x_2 = lungo_box((size_t)x_1);
     x_3 = lungo_alloc_ctor(1, 1, 0);
     lungo_ctor_set(x_3, 0, x_2);
@@ -1158,12 +1186,12 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__12(
 
 /* Lean: CapDAG.Bifaci.Flow.FrameType.ofCode._closed_13 */
 /* Compiled from: CapDAG.Bifaci.Flow.FrameType.ofCode */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:54:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:56:1 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__13__init(void) {
     uint8_t x_1;
     lungo_obj x_2;
     lungo_obj x_3;
-    x_1 = (uint8_t)0u;
+    x_1 = (uint8_t)1u;
     x_2 = lungo_box((size_t)x_1);
     x_3 = lungo_alloc_ctor(1, 1, 0);
     lungo_ctor_set(x_3, 0, x_2);
@@ -1174,14 +1202,32 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__13(
     return lungo_lazy_obj_get(&capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__13__cell, capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__13__init);
 }
 
+/* Lean: CapDAG.Bifaci.Flow.FrameType.ofCode._closed_14 */
+/* Compiled from: CapDAG.Bifaci.Flow.FrameType.ofCode */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:56:1 */
+static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__14__init(void) {
+    uint8_t x_1;
+    lungo_obj x_2;
+    lungo_obj x_3;
+    x_1 = (uint8_t)0u;
+    x_2 = lungo_box((size_t)x_1);
+    x_3 = lungo_alloc_ctor(1, 1, 0);
+    lungo_ctor_set(x_3, 0, x_2);
+    return x_3;
+}
+static lungo_lazy_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__14__cell;
+lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__14(void) {
+    return lungo_lazy_obj_get(&capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__14__cell, capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__14__init);
+}
+
 /* Lean: CapDAG.Bifaci.Flow.FrameType.ofCode._closed_2 */
 /* Compiled from: CapDAG.Bifaci.Flow.FrameType.ofCode */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:54:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:56:1 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__2__init(void) {
     uint8_t x_1;
     lungo_obj x_2;
     lungo_obj x_3;
-    x_1 = (uint8_t)11u;
+    x_1 = (uint8_t)12u;
     x_2 = lungo_box((size_t)x_1);
     x_3 = lungo_alloc_ctor(1, 1, 0);
     lungo_ctor_set(x_3, 0, x_2);
@@ -1194,12 +1240,12 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__2(v
 
 /* Lean: CapDAG.Bifaci.Flow.FrameType.ofCode._closed_3 */
 /* Compiled from: CapDAG.Bifaci.Flow.FrameType.ofCode */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:54:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:56:1 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__3__init(void) {
     uint8_t x_1;
     lungo_obj x_2;
     lungo_obj x_3;
-    x_1 = (uint8_t)10u;
+    x_1 = (uint8_t)11u;
     x_2 = lungo_box((size_t)x_1);
     x_3 = lungo_alloc_ctor(1, 1, 0);
     lungo_ctor_set(x_3, 0, x_2);
@@ -1212,12 +1258,12 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__3(v
 
 /* Lean: CapDAG.Bifaci.Flow.FrameType.ofCode._closed_4 */
 /* Compiled from: CapDAG.Bifaci.Flow.FrameType.ofCode */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:54:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:56:1 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__4__init(void) {
     uint8_t x_1;
     lungo_obj x_2;
     lungo_obj x_3;
-    x_1 = (uint8_t)9u;
+    x_1 = (uint8_t)10u;
     x_2 = lungo_box((size_t)x_1);
     x_3 = lungo_alloc_ctor(1, 1, 0);
     lungo_ctor_set(x_3, 0, x_2);
@@ -1230,12 +1276,12 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__4(v
 
 /* Lean: CapDAG.Bifaci.Flow.FrameType.ofCode._closed_5 */
 /* Compiled from: CapDAG.Bifaci.Flow.FrameType.ofCode */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:54:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:56:1 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__5__init(void) {
     uint8_t x_1;
     lungo_obj x_2;
     lungo_obj x_3;
-    x_1 = (uint8_t)8u;
+    x_1 = (uint8_t)9u;
     x_2 = lungo_box((size_t)x_1);
     x_3 = lungo_alloc_ctor(1, 1, 0);
     lungo_ctor_set(x_3, 0, x_2);
@@ -1248,12 +1294,12 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__5(v
 
 /* Lean: CapDAG.Bifaci.Flow.FrameType.ofCode._closed_6 */
 /* Compiled from: CapDAG.Bifaci.Flow.FrameType.ofCode */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:54:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:56:1 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__6__init(void) {
     uint8_t x_1;
     lungo_obj x_2;
     lungo_obj x_3;
-    x_1 = (uint8_t)7u;
+    x_1 = (uint8_t)8u;
     x_2 = lungo_box((size_t)x_1);
     x_3 = lungo_alloc_ctor(1, 1, 0);
     lungo_ctor_set(x_3, 0, x_2);
@@ -1266,12 +1312,12 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__6(v
 
 /* Lean: CapDAG.Bifaci.Flow.FrameType.ofCode._closed_7 */
 /* Compiled from: CapDAG.Bifaci.Flow.FrameType.ofCode */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:54:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:56:1 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__7__init(void) {
     uint8_t x_1;
     lungo_obj x_2;
     lungo_obj x_3;
-    x_1 = (uint8_t)6u;
+    x_1 = (uint8_t)7u;
     x_2 = lungo_box((size_t)x_1);
     x_3 = lungo_alloc_ctor(1, 1, 0);
     lungo_ctor_set(x_3, 0, x_2);
@@ -1284,12 +1330,12 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__7(v
 
 /* Lean: CapDAG.Bifaci.Flow.FrameType.ofCode._closed_8 */
 /* Compiled from: CapDAG.Bifaci.Flow.FrameType.ofCode */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:54:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:56:1 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__8__init(void) {
     uint8_t x_1;
     lungo_obj x_2;
     lungo_obj x_3;
-    x_1 = (uint8_t)5u;
+    x_1 = (uint8_t)6u;
     x_2 = lungo_box((size_t)x_1);
     x_3 = lungo_alloc_ctor(1, 1, 0);
     lungo_ctor_set(x_3, 0, x_2);
@@ -1302,12 +1348,12 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__8(v
 
 /* Lean: CapDAG.Bifaci.Flow.FrameType.ofCode._closed_9 */
 /* Compiled from: CapDAG.Bifaci.Flow.FrameType.ofCode */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:54:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:56:1 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofCode_d__closed__9__init(void) {
     uint8_t x_1;
     lungo_obj x_2;
     lungo_obj x_3;
-    x_1 = (uint8_t)4u;
+    x_1 = (uint8_t)5u;
     x_2 = lungo_box((size_t)x_1);
     x_3 = lungo_alloc_ctor(1, 1, 0);
     lungo_ctor_set(x_3, 0, x_2);
@@ -1341,61 +1387,64 @@ uint8_t capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofNat(lungo_obj x_1) {
     uint8_t x_19;
     uint8_t x_20;
     uint8_t x_21;
-    uint8_t x_22;
-    lungo_obj x_23;
+    lungo_obj x_22;
+    uint8_t x_23;
     uint8_t x_24;
-    lungo_obj x_25;
-    uint8_t x_26;
-    lungo_obj x_27;
-    uint8_t x_28;
+    uint8_t x_25;
+    lungo_obj x_26;
+    uint8_t x_27;
+    lungo_obj x_28;
     uint8_t x_29;
-    uint8_t x_30;
-    lungo_obj x_31;
+    lungo_obj x_30;
+    uint8_t x_31;
     uint8_t x_32;
     uint8_t x_33;
-    uint8_t x_34;
-    lungo_obj x_35;
+    lungo_obj x_34;
+    uint8_t x_35;
     uint8_t x_36;
-    lungo_obj x_37;
-    uint8_t x_38;
+    uint8_t x_37;
+    lungo_obj x_38;
     uint8_t x_39;
-    uint8_t x_40;
+    lungo_obj x_40;
     uint8_t x_41;
+    uint8_t x_42;
+    uint8_t x_43;
+    uint8_t x_44;
     x_2 = lungo_usize_to_nat(6u);
     x_3 = capdagFormal__l_Nat_dble(x_1, x_2);
     switch (x_3) {
         case 0: {
-            x_4 = lungo_usize_to_nat(9u);
+            x_4 = lungo_usize_to_nat(10u);
             x_5 = capdagFormal__l_Nat_dble(x_1, x_4);
             switch (x_5) {
                 case 0: {
-                    x_6 = lungo_usize_to_nat(11u);
+                    x_6 = lungo_usize_to_nat(12u);
                     x_7 = capdagFormal__l_Nat_dble(x_1, x_6);
                     switch (x_7) {
                         case 0: {
-                            x_8 = lungo_usize_to_nat(12u);
+                            x_8 = lungo_usize_to_nat(13u);
                             x_9 = capdagFormal__l_Nat_dble(x_1, x_8);
                             switch (x_9) {
                                 case 0: {
-                                    x_10 = (uint8_t)13u;
+                                    x_10 = (uint8_t)14u;
                                     return x_10;
                                 }
                                 default: {
-                                    x_11 = (uint8_t)12u;
+                                    x_11 = (uint8_t)13u;
                                     return x_11;
                                 }
                             }
                         }
                         default: {
-                            x_12 = lungo_usize_to_nat(10u);
+                            x_12 = lungo_usize_to_nat(11u);
                             x_13 = capdagFormal__l_Nat_dble(x_1, x_12);
                             switch (x_13) {
                                 case 0: {
-                                    x_14 = (uint8_t)11u;
+                                    x_14 = (uint8_t)12u;
                                     return x_14;
                                 }
                                 default: {
-                                    x_15 = (uint8_t)10u;
+                                    x_15 = (uint8_t)11u;
                                     return x_15;
                                 }
                             }
@@ -1403,90 +1452,100 @@ uint8_t capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofNat(lungo_obj x_1) {
                     }
                 }
                 default: {
-                    x_16 = lungo_usize_to_nat(7u);
+                    x_16 = lungo_usize_to_nat(8u);
                     x_17 = capdagFormal__l_Nat_dble(x_1, x_16);
                     switch (x_17) {
                         case 0: {
-                            x_18 = lungo_usize_to_nat(8u);
+                            x_18 = lungo_usize_to_nat(9u);
                             x_19 = capdagFormal__l_Nat_dble(x_1, x_18);
                             switch (x_19) {
                                 case 0: {
-                                    x_20 = (uint8_t)9u;
+                                    x_20 = (uint8_t)10u;
                                     return x_20;
                                 }
                                 default: {
-                                    x_21 = (uint8_t)8u;
+                                    x_21 = (uint8_t)9u;
                                     return x_21;
                                 }
                             }
                         }
                         default: {
-                            x_22 = (uint8_t)7u;
-                            return x_22;
+                            x_22 = lungo_usize_to_nat(7u);
+                            x_23 = capdagFormal__l_Nat_dble(x_1, x_22);
+                            switch (x_23) {
+                                case 0: {
+                                    x_24 = (uint8_t)8u;
+                                    return x_24;
+                                }
+                                default: {
+                                    x_25 = (uint8_t)7u;
+                                    return x_25;
+                                }
+                            }
                         }
                     }
                 }
             }
         }
         default: {
-            x_23 = lungo_usize_to_nat(2u);
-            x_24 = capdagFormal__l_Nat_dble(x_1, x_23);
-            switch (x_24) {
+            x_26 = lungo_usize_to_nat(2u);
+            x_27 = capdagFormal__l_Nat_dble(x_1, x_26);
+            switch (x_27) {
                 case 0: {
-                    x_25 = lungo_usize_to_nat(4u);
-                    x_26 = capdagFormal__l_Nat_dble(x_1, x_25);
-                    switch (x_26) {
+                    x_28 = lungo_usize_to_nat(4u);
+                    x_29 = capdagFormal__l_Nat_dble(x_1, x_28);
+                    switch (x_29) {
                         case 0: {
-                            x_27 = lungo_usize_to_nat(5u);
-                            x_28 = capdagFormal__l_Nat_dble(x_1, x_27);
-                            switch (x_28) {
+                            x_30 = lungo_usize_to_nat(5u);
+                            x_31 = capdagFormal__l_Nat_dble(x_1, x_30);
+                            switch (x_31) {
                                 case 0: {
-                                    x_29 = (uint8_t)6u;
-                                    return x_29;
+                                    x_32 = (uint8_t)6u;
+                                    return x_32;
                                 }
                                 default: {
-                                    x_30 = (uint8_t)5u;
-                                    return x_30;
+                                    x_33 = (uint8_t)5u;
+                                    return x_33;
                                 }
                             }
                         }
                         default: {
-                            x_31 = lungo_usize_to_nat(3u);
-                            x_32 = capdagFormal__l_Nat_dble(x_1, x_31);
-                            switch (x_32) {
+                            x_34 = lungo_usize_to_nat(3u);
+                            x_35 = capdagFormal__l_Nat_dble(x_1, x_34);
+                            switch (x_35) {
                                 case 0: {
-                                    x_33 = (uint8_t)4u;
-                                    return x_33;
+                                    x_36 = (uint8_t)4u;
+                                    return x_36;
                                 }
                                 default: {
-                                    x_34 = (uint8_t)3u;
-                                    return x_34;
+                                    x_37 = (uint8_t)3u;
+                                    return x_37;
                                 }
                             }
                         }
                     }
                 }
                 default: {
-                    x_35 = lungo_usize_to_nat(0u);
-                    x_36 = capdagFormal__l_Nat_dble(x_1, x_35);
-                    switch (x_36) {
+                    x_38 = lungo_usize_to_nat(0u);
+                    x_39 = capdagFormal__l_Nat_dble(x_1, x_38);
+                    switch (x_39) {
                         case 0: {
-                            x_37 = lungo_usize_to_nat(1u);
-                            x_38 = capdagFormal__l_Nat_dble(x_1, x_37);
-                            switch (x_38) {
+                            x_40 = lungo_usize_to_nat(1u);
+                            x_41 = capdagFormal__l_Nat_dble(x_1, x_40);
+                            switch (x_41) {
                                 case 0: {
-                                    x_39 = (uint8_t)2u;
-                                    return x_39;
+                                    x_42 = (uint8_t)2u;
+                                    return x_42;
                                 }
                                 default: {
-                                    x_40 = (uint8_t)1u;
-                                    return x_40;
+                                    x_43 = (uint8_t)1u;
+                                    return x_43;
                                 }
                             }
                         }
                         default: {
-                            x_41 = (uint8_t)0u;
-                            return x_41;
+                            x_44 = (uint8_t)0u;
+                            return x_44;
                         }
                     }
                 }
@@ -1505,6 +1564,46 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dofNat_d__boxed(lungo_
     lungo_dec(x_1);
     x_3 = lungo_box((size_t)x_2);
     return x_3;
+}
+
+/* Lean: CapDAG.Bifaci.Flow.FrameType.policy.elim */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:3 */
+lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dpolicy_delim(lungo_obj x_1, uint8_t x_2, lungo_obj x_3, lungo_obj x_4) {
+    (void)x_1;
+    (void)x_2;
+    (void)x_3;
+    lungo_inc(x_4);
+    return x_4;
+}
+
+/* Lean: CapDAG.Bifaci.Flow.FrameType.policy.elim._boxed */
+/* Compiled from: CapDAG.Bifaci.Flow.FrameType.policy.elim */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:3 */
+lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dpolicy_delim_d__boxed(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3, lungo_obj x_4) {
+    uint8_t x_5;
+    lungo_obj x_6;
+    x_5 = (uint8_t)lungo_unbox(x_2);
+    x_6 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dpolicy_delim(x_1, x_5, x_3, x_4);
+    lungo_dec(x_4);
+    return x_6;
+}
+
+/* Lean: CapDAG.Bifaci.Flow.FrameType.policy.elim._redArg */
+/* Compiled from: CapDAG.Bifaci.Flow.FrameType.policy.elim */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:3 */
+lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dpolicy_delim_d__redArg(lungo_obj x_1) {
+    lungo_inc(x_1);
+    return x_1;
+}
+
+/* Lean: CapDAG.Bifaci.Flow.FrameType.policy.elim._redArg._boxed */
+/* Compiled from: CapDAG.Bifaci.Flow.FrameType.policy.elim */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:3 */
+lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dpolicy_delim_d__redArg_d__boxed(lungo_obj x_1) {
+    lungo_obj x_2;
+    x_2 = capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dpolicy_delim_d__redArg(x_1);
+    lungo_dec(x_1);
+    return x_2;
 }
 
 /* Lean: CapDAG.Bifaci.Flow.FrameType.relayNotify.elim */
@@ -1708,7 +1807,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dFrameType_dstreamStart_delim_d__
 }
 
 /* Lean: CapDAG.Bifaci.Flow.Reorder.accept */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:124:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:127:1 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dReorder_daccept(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3) {
     lungo_obj x_4;
     lungo_obj x_5;
@@ -1896,7 +1995,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dReorder_daccept(lungo_obj x_1, l
 
 /* Lean: CapDAG.Bifaci.Flow.Reorder.accept._boxed */
 /* Compiled from: CapDAG.Bifaci.Flow.Reorder.accept */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:124:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:127:1 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dReorder_daccept_d__boxed(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3) {
     lungo_obj x_4;
     x_4 = capdagFormal__l_CapDAG_dBifaci_dFlow_dReorder_daccept(x_1, x_2, x_3);
@@ -1905,7 +2004,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dReorder_daccept_d__boxed(lungo_o
 }
 
 /* Lean: CapDAG.Bifaci.Flow.Reorder.start */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:92:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:95:1 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dReorder_dstart__init(void) {
     lungo_obj x_1;
     x_1 = capdagFormal__l_CapDAG_dBifaci_dFlow_dReorder_dstart_d__closed__0();
@@ -1918,7 +2017,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dReorder_dstart(void) {
 
 /* Lean: CapDAG.Bifaci.Flow.Reorder.start._closed_0 */
 /* Compiled from: CapDAG.Bifaci.Flow.Reorder.start */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:92:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:95:1 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dReorder_dstart_d__closed__0__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -1936,7 +2035,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dReorder_dstart_d__closed__0(void
 }
 
 /* Lean: CapDAG.Bifaci.Flow.insertAscending */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:95:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:98:1 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinsertAscending(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     lungo_obj x_4;
@@ -2015,7 +2114,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinsertAscending(lungo_obj x_1, l
 }
 
 /* Lean: CapDAG.Bifaci.Flow.instDecidableEqAccepted */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:122:18 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:125:18 */
 uint8_t capdagFormal__l_CapDAG_dBifaci_dFlow_dinstDecidableEqAccepted(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     x_3 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstDecidableEqAccepted_ddecEq(x_1, x_2);
@@ -2024,7 +2123,7 @@ uint8_t capdagFormal__l_CapDAG_dBifaci_dFlow_dinstDecidableEqAccepted(lungo_obj 
 
 /* Lean: CapDAG.Bifaci.Flow.instDecidableEqAccepted._boxed */
 /* Compiled from: CapDAG.Bifaci.Flow.instDecidableEqAccepted */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:122:18 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:125:18 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstDecidableEqAccepted_d__boxed(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     lungo_obj x_4;
@@ -2034,7 +2133,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstDecidableEqAccepted_d__boxed
 }
 
 /* Lean: CapDAG.Bifaci.Flow.instDecidableEqAccepted.decEq */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:122:18 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:125:18 */
 uint8_t capdagFormal__l_CapDAG_dBifaci_dFlow_dinstDecidableEqAccepted_ddecEq(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     lungo_obj x_4;
@@ -2199,7 +2298,7 @@ uint8_t capdagFormal__l_CapDAG_dBifaci_dFlow_dinstDecidableEqAccepted_ddecEq(lun
 
 /* Lean: CapDAG.Bifaci.Flow.instDecidableEqAccepted.decEq._boxed */
 /* Compiled from: CapDAG.Bifaci.Flow.instDecidableEqAccepted.decEq */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:122:18 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:125:18 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstDecidableEqAccepted_ddecEq_d__boxed(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     lungo_obj x_4;
@@ -2209,7 +2308,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstDecidableEqAccepted_ddecEq_d
 }
 
 /* Lean: CapDAG.Bifaci.Flow.instDecidableEqFrameType */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:18 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:18 */
 uint8_t capdagFormal__l_CapDAG_dBifaci_dFlow_dinstDecidableEqFrameType(uint8_t x_1, uint8_t x_2) {
     lungo_obj x_3;
     lungo_obj x_4;
@@ -2224,7 +2323,7 @@ uint8_t capdagFormal__l_CapDAG_dBifaci_dFlow_dinstDecidableEqFrameType(uint8_t x
 
 /* Lean: CapDAG.Bifaci.Flow.instDecidableEqFrameType._boxed */
 /* Compiled from: CapDAG.Bifaci.Flow.instDecidableEqFrameType */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:18 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:18 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstDecidableEqFrameType_d__boxed(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     uint8_t x_4;
@@ -2238,7 +2337,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstDecidableEqFrameType_d__boxe
 }
 
 /* Lean: CapDAG.Bifaci.Flow.instDecidableEqReorder */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:90:18 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:93:18 */
 uint8_t capdagFormal__l_CapDAG_dBifaci_dFlow_dinstDecidableEqReorder(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     x_3 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstDecidableEqReorder_ddecEq(x_1, x_2);
@@ -2247,7 +2346,7 @@ uint8_t capdagFormal__l_CapDAG_dBifaci_dFlow_dinstDecidableEqReorder(lungo_obj x
 
 /* Lean: CapDAG.Bifaci.Flow.instDecidableEqReorder._boxed */
 /* Compiled from: CapDAG.Bifaci.Flow.instDecidableEqReorder */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:90:18 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:93:18 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstDecidableEqReorder_d__boxed(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     lungo_obj x_4;
@@ -2257,7 +2356,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstDecidableEqReorder_d__boxed(
 }
 
 /* Lean: CapDAG.Bifaci.Flow.instDecidableEqReorder.decEq */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:90:18 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:93:18 */
 uint8_t capdagFormal__l_CapDAG_dBifaci_dFlow_dinstDecidableEqReorder_ddecEq(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     lungo_obj x_4;
@@ -2295,7 +2394,7 @@ uint8_t capdagFormal__l_CapDAG_dBifaci_dFlow_dinstDecidableEqReorder_ddecEq(lung
 
 /* Lean: CapDAG.Bifaci.Flow.instDecidableEqReorder.decEq._boxed */
 /* Compiled from: CapDAG.Bifaci.Flow.instDecidableEqReorder.decEq */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:90:18 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:93:18 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstDecidableEqReorder_ddecEq_d__boxed(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     lungo_obj x_4;
@@ -2305,7 +2404,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstDecidableEqReorder_ddecEq_d_
 }
 
 /* Lean: CapDAG.Bifaci.Flow.instReprAccepted */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:122:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:125:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted__init(void) {
     lungo_obj x_1;
     x_1 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_d__closed__0();
@@ -2318,7 +2417,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted(void) {
 
 /* Lean: CapDAG.Bifaci.Flow.instReprAccepted._closed_0 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprAccepted */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:122:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:125:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_d__closed__0__init(void) {
     lungo_obj x_1;
     x_1 = lungo_alloc_closure((void *)capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr_d__boxed, 2, 0);
@@ -2330,7 +2429,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_d__closed__0(vo
 }
 
 /* Lean: CapDAG.Bifaci.Flow.instReprAccepted.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:122:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:125:12 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_4;
     lungo_obj x_5;
@@ -2422,12 +2521,12 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr(lungo_obj
             x_45 = capdagFormal__l_Nat_ddecLe(x_44, x_2);
             switch (x_45) {
                 case 0: {
-                    x_46 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__28();
+                    x_46 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__30();
                     x_30 = x_46;
                     goto block_29;
                 }
                 default: {
-                    x_47 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__29();
+                    x_47 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__31();
                     x_30 = x_47;
                     goto block_29;
                 }
@@ -2479,12 +2578,12 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr(lungo_obj
             x_60 = capdagFormal__l_Nat_ddecLe(x_59, x_2);
             switch (x_60) {
                 case 0: {
-                    x_61 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__28();
+                    x_61 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__30();
                     x_51 = x_61;
                     goto block_50;
                 }
                 default: {
-                    x_62 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__29();
+                    x_62 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__31();
                     x_51 = x_62;
                     goto block_50;
                 }
@@ -2511,12 +2610,12 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr(lungo_obj
             x_64 = capdagFormal__l_Nat_ddecLe(x_63, x_2);
             switch (x_64) {
                 case 0: {
-                    x_65 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__28();
+                    x_65 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__30();
                     x_4 = x_65;
                     goto block_3;
                 }
                 default: {
-                    x_66 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__29();
+                    x_66 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__31();
                     x_4 = x_66;
                     goto block_3;
                 }
@@ -2527,12 +2626,12 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr(lungo_obj
             x_68 = capdagFormal__l_Nat_ddecLe(x_67, x_2);
             switch (x_68) {
                 case 0: {
-                    x_69 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__28();
+                    x_69 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__30();
                     x_11 = x_69;
                     goto block_10;
                 }
                 default: {
-                    x_70 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__29();
+                    x_70 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__31();
                     x_11 = x_70;
                     goto block_10;
                 }
@@ -2543,12 +2642,12 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr(lungo_obj
             x_72 = capdagFormal__l_Nat_ddecLe(x_71, x_2);
             switch (x_72) {
                 case 0: {
-                    x_73 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__28();
+                    x_73 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__30();
                     x_18 = x_73;
                     goto block_17;
                 }
                 default: {
-                    x_74 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__29();
+                    x_74 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__31();
                     x_18 = x_74;
                     goto block_17;
                 }
@@ -2595,7 +2694,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr(lungo_obj
 
 /* Lean: CapDAG.Bifaci.Flow.instReprAccepted.repr._boxed */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprAccepted.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:122:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:125:12 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr_d__boxed(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     x_3 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr(x_1, x_2);
@@ -2605,7 +2704,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr_d__boxed(
 
 /* Lean: CapDAG.Bifaci.Flow.instReprAccepted.repr._closed_0 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprAccepted.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:122:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:125:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr_d__closed__0__init(void) {
     lungo_obj x_1;
     x_1 = lungo_mk_string_unchecked((const uint8_t *)"CapDAG.Bifaci.Flow.Accepted.stale", 33, 33);
@@ -2618,7 +2717,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr_d__closed
 
 /* Lean: CapDAG.Bifaci.Flow.instReprAccepted.repr._closed_1 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprAccepted.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:122:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:125:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr_d__closed__1__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -2634,7 +2733,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr_d__closed
 
 /* Lean: CapDAG.Bifaci.Flow.instReprAccepted.repr._closed_10 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprAccepted.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:122:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:125:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr_d__closed__10__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -2650,7 +2749,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr_d__closed
 
 /* Lean: CapDAG.Bifaci.Flow.instReprAccepted.repr._closed_11 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprAccepted.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:122:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:125:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr_d__closed__11__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -2669,7 +2768,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr_d__closed
 
 /* Lean: CapDAG.Bifaci.Flow.instReprAccepted.repr._closed_2 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprAccepted.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:122:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:125:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr_d__closed__2__init(void) {
     lungo_obj x_1;
     x_1 = lungo_mk_string_unchecked((const uint8_t *)"CapDAG.Bifaci.Flow.Accepted.duplicate", 37, 37);
@@ -2682,7 +2781,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr_d__closed
 
 /* Lean: CapDAG.Bifaci.Flow.instReprAccepted.repr._closed_3 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprAccepted.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:122:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:125:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr_d__closed__3__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -2698,7 +2797,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr_d__closed
 
 /* Lean: CapDAG.Bifaci.Flow.instReprAccepted.repr._closed_4 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprAccepted.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:122:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:125:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr_d__closed__4__init(void) {
     lungo_obj x_1;
     x_1 = lungo_mk_string_unchecked((const uint8_t *)"CapDAG.Bifaci.Flow.Accepted.overflow", 36, 36);
@@ -2711,7 +2810,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr_d__closed
 
 /* Lean: CapDAG.Bifaci.Flow.instReprAccepted.repr._closed_5 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprAccepted.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:122:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:125:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr_d__closed__5__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -2727,7 +2826,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr_d__closed
 
 /* Lean: CapDAG.Bifaci.Flow.instReprAccepted.repr._closed_6 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprAccepted.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:122:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:125:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr_d__closed__6__init(void) {
     lungo_obj x_1;
     x_1 = lungo_mk_string_unchecked((const uint8_t *)"CapDAG.Bifaci.Flow.Accepted.deliver", 35, 35);
@@ -2740,7 +2839,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr_d__closed
 
 /* Lean: CapDAG.Bifaci.Flow.instReprAccepted.repr._closed_7 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprAccepted.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:122:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:125:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr_d__closed__7__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -2756,7 +2855,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr_d__closed
 
 /* Lean: CapDAG.Bifaci.Flow.instReprAccepted.repr._closed_8 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprAccepted.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:122:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:125:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr_d__closed__8__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -2775,7 +2874,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr_d__closed
 
 /* Lean: CapDAG.Bifaci.Flow.instReprAccepted.repr._closed_9 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprAccepted.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:122:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:125:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr_d__closed__9__init(void) {
     lungo_obj x_1;
     x_1 = lungo_mk_string_unchecked((const uint8_t *)"CapDAG.Bifaci.Flow.Accepted.hold", 32, 32);
@@ -2787,7 +2886,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprAccepted_drepr_d__closed
 }
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType__init(void) {
     lungo_obj x_1;
     x_1 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_d__closed__0();
@@ -2800,7 +2899,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType(void) {
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType._closed_0 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_d__closed__0__init(void) {
     lungo_obj x_1;
     x_1 = lungo_alloc_closure((void *)capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__boxed, 2, 0);
@@ -2812,7 +2911,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_d__closed__0(v
 }
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr(uint8_t x_1, lungo_obj x_2) {
     lungo_obj x_4;
     lungo_obj x_5;
@@ -2898,288 +2997,326 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr(uint8_t 
     uint8_t x_98;
     lungo_obj x_99;
     lungo_obj x_100;
-    lungo_obj x_101;
-    uint8_t x_102;
+    lungo_obj x_102;
     lungo_obj x_103;
     lungo_obj x_104;
-    lungo_obj x_105;
-    uint8_t x_106;
+    uint8_t x_105;
+    lungo_obj x_106;
     lungo_obj x_107;
     lungo_obj x_108;
-    lungo_obj x_109;
-    uint8_t x_110;
+    uint8_t x_109;
+    lungo_obj x_110;
     lungo_obj x_111;
     lungo_obj x_112;
-    lungo_obj x_113;
-    uint8_t x_114;
+    uint8_t x_113;
+    lungo_obj x_114;
     lungo_obj x_115;
     lungo_obj x_116;
-    lungo_obj x_117;
-    uint8_t x_118;
+    uint8_t x_117;
+    lungo_obj x_118;
     lungo_obj x_119;
     lungo_obj x_120;
-    lungo_obj x_121;
-    uint8_t x_122;
+    uint8_t x_121;
+    lungo_obj x_122;
     lungo_obj x_123;
     lungo_obj x_124;
-    lungo_obj x_125;
-    uint8_t x_126;
+    uint8_t x_125;
+    lungo_obj x_126;
     lungo_obj x_127;
     lungo_obj x_128;
-    lungo_obj x_129;
-    uint8_t x_130;
+    uint8_t x_129;
+    lungo_obj x_130;
     lungo_obj x_131;
     lungo_obj x_132;
-    lungo_obj x_133;
-    uint8_t x_134;
+    uint8_t x_133;
+    lungo_obj x_134;
     lungo_obj x_135;
     lungo_obj x_136;
-    lungo_obj x_137;
-    uint8_t x_138;
+    uint8_t x_137;
+    lungo_obj x_138;
     lungo_obj x_139;
     lungo_obj x_140;
-    lungo_obj x_141;
-    uint8_t x_142;
+    uint8_t x_141;
+    lungo_obj x_142;
     lungo_obj x_143;
     lungo_obj x_144;
-    lungo_obj x_145;
-    uint8_t x_146;
+    uint8_t x_145;
+    lungo_obj x_146;
     lungo_obj x_147;
     lungo_obj x_148;
-    lungo_obj x_149;
-    uint8_t x_150;
+    uint8_t x_149;
+    lungo_obj x_150;
     lungo_obj x_151;
     lungo_obj x_152;
-    lungo_obj x_153;
-    uint8_t x_154;
+    uint8_t x_153;
+    lungo_obj x_154;
     lungo_obj x_155;
     lungo_obj x_156;
+    uint8_t x_157;
+    lungo_obj x_158;
+    lungo_obj x_159;
+    lungo_obj x_160;
+    uint8_t x_161;
+    lungo_obj x_162;
+    lungo_obj x_163;
+    lungo_obj x_164;
+    uint8_t x_165;
+    lungo_obj x_166;
+    lungo_obj x_167;
     switch (x_1) {
         case 0: {
-            x_101 = lungo_usize_to_nat(1024u);
-            x_102 = capdagFormal__l_Nat_ddecLe(x_101, x_2);
-            switch (x_102) {
+            x_108 = lungo_usize_to_nat(1024u);
+            x_109 = capdagFormal__l_Nat_ddecLe(x_108, x_2);
+            switch (x_109) {
                 case 0: {
-                    x_103 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__28();
-                    x_4 = x_103;
+                    x_110 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__30();
+                    x_4 = x_110;
                     goto block_3;
                 }
                 default: {
-                    x_104 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__29();
-                    x_4 = x_104;
+                    x_111 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__31();
+                    x_4 = x_111;
                     goto block_3;
                 }
             }
         }
         case 1: {
-            x_105 = lungo_usize_to_nat(1024u);
-            x_106 = capdagFormal__l_Nat_ddecLe(x_105, x_2);
-            switch (x_106) {
+            x_112 = lungo_usize_to_nat(1024u);
+            x_113 = capdagFormal__l_Nat_ddecLe(x_112, x_2);
+            switch (x_113) {
                 case 0: {
-                    x_107 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__28();
-                    x_11 = x_107;
+                    x_114 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__30();
+                    x_11 = x_114;
                     goto block_10;
                 }
                 default: {
-                    x_108 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__29();
-                    x_11 = x_108;
+                    x_115 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__31();
+                    x_11 = x_115;
                     goto block_10;
                 }
             }
         }
         case 2: {
-            x_109 = lungo_usize_to_nat(1024u);
-            x_110 = capdagFormal__l_Nat_ddecLe(x_109, x_2);
-            switch (x_110) {
+            x_116 = lungo_usize_to_nat(1024u);
+            x_117 = capdagFormal__l_Nat_ddecLe(x_116, x_2);
+            switch (x_117) {
                 case 0: {
-                    x_111 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__28();
-                    x_18 = x_111;
+                    x_118 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__30();
+                    x_18 = x_118;
                     goto block_17;
                 }
                 default: {
-                    x_112 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__29();
-                    x_18 = x_112;
+                    x_119 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__31();
+                    x_18 = x_119;
                     goto block_17;
                 }
             }
         }
         case 3: {
-            x_113 = lungo_usize_to_nat(1024u);
-            x_114 = capdagFormal__l_Nat_ddecLe(x_113, x_2);
-            switch (x_114) {
+            x_120 = lungo_usize_to_nat(1024u);
+            x_121 = capdagFormal__l_Nat_ddecLe(x_120, x_2);
+            switch (x_121) {
                 case 0: {
-                    x_115 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__28();
-                    x_25 = x_115;
+                    x_122 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__30();
+                    x_25 = x_122;
                     goto block_24;
                 }
                 default: {
-                    x_116 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__29();
-                    x_25 = x_116;
+                    x_123 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__31();
+                    x_25 = x_123;
                     goto block_24;
                 }
             }
         }
         case 4: {
-            x_117 = lungo_usize_to_nat(1024u);
-            x_118 = capdagFormal__l_Nat_ddecLe(x_117, x_2);
-            switch (x_118) {
+            x_124 = lungo_usize_to_nat(1024u);
+            x_125 = capdagFormal__l_Nat_ddecLe(x_124, x_2);
+            switch (x_125) {
                 case 0: {
-                    x_119 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__28();
-                    x_32 = x_119;
+                    x_126 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__30();
+                    x_32 = x_126;
                     goto block_31;
                 }
                 default: {
-                    x_120 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__29();
-                    x_32 = x_120;
+                    x_127 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__31();
+                    x_32 = x_127;
                     goto block_31;
                 }
             }
         }
         case 5: {
-            x_121 = lungo_usize_to_nat(1024u);
-            x_122 = capdagFormal__l_Nat_ddecLe(x_121, x_2);
-            switch (x_122) {
+            x_128 = lungo_usize_to_nat(1024u);
+            x_129 = capdagFormal__l_Nat_ddecLe(x_128, x_2);
+            switch (x_129) {
                 case 0: {
-                    x_123 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__28();
-                    x_39 = x_123;
+                    x_130 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__30();
+                    x_39 = x_130;
                     goto block_38;
                 }
                 default: {
-                    x_124 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__29();
-                    x_39 = x_124;
+                    x_131 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__31();
+                    x_39 = x_131;
                     goto block_38;
                 }
             }
         }
         case 6: {
-            x_125 = lungo_usize_to_nat(1024u);
-            x_126 = capdagFormal__l_Nat_ddecLe(x_125, x_2);
-            switch (x_126) {
+            x_132 = lungo_usize_to_nat(1024u);
+            x_133 = capdagFormal__l_Nat_ddecLe(x_132, x_2);
+            switch (x_133) {
                 case 0: {
-                    x_127 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__28();
-                    x_46 = x_127;
+                    x_134 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__30();
+                    x_46 = x_134;
                     goto block_45;
                 }
                 default: {
-                    x_128 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__29();
-                    x_46 = x_128;
+                    x_135 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__31();
+                    x_46 = x_135;
                     goto block_45;
                 }
             }
         }
         case 7: {
-            x_129 = lungo_usize_to_nat(1024u);
-            x_130 = capdagFormal__l_Nat_ddecLe(x_129, x_2);
-            switch (x_130) {
+            x_136 = lungo_usize_to_nat(1024u);
+            x_137 = capdagFormal__l_Nat_ddecLe(x_136, x_2);
+            switch (x_137) {
                 case 0: {
-                    x_131 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__28();
-                    x_53 = x_131;
+                    x_138 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__30();
+                    x_53 = x_138;
                     goto block_52;
                 }
                 default: {
-                    x_132 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__29();
-                    x_53 = x_132;
+                    x_139 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__31();
+                    x_53 = x_139;
                     goto block_52;
                 }
             }
         }
         case 8: {
-            x_133 = lungo_usize_to_nat(1024u);
-            x_134 = capdagFormal__l_Nat_ddecLe(x_133, x_2);
-            switch (x_134) {
+            x_140 = lungo_usize_to_nat(1024u);
+            x_141 = capdagFormal__l_Nat_ddecLe(x_140, x_2);
+            switch (x_141) {
                 case 0: {
-                    x_135 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__28();
-                    x_60 = x_135;
+                    x_142 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__30();
+                    x_60 = x_142;
                     goto block_59;
                 }
                 default: {
-                    x_136 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__29();
-                    x_60 = x_136;
+                    x_143 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__31();
+                    x_60 = x_143;
                     goto block_59;
                 }
             }
         }
         case 9: {
-            x_137 = lungo_usize_to_nat(1024u);
-            x_138 = capdagFormal__l_Nat_ddecLe(x_137, x_2);
-            switch (x_138) {
+            x_144 = lungo_usize_to_nat(1024u);
+            x_145 = capdagFormal__l_Nat_ddecLe(x_144, x_2);
+            switch (x_145) {
                 case 0: {
-                    x_139 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__28();
-                    x_67 = x_139;
+                    x_146 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__30();
+                    x_67 = x_146;
                     goto block_66;
                 }
                 default: {
-                    x_140 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__29();
-                    x_67 = x_140;
+                    x_147 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__31();
+                    x_67 = x_147;
                     goto block_66;
                 }
             }
         }
         case 10: {
-            x_141 = lungo_usize_to_nat(1024u);
-            x_142 = capdagFormal__l_Nat_ddecLe(x_141, x_2);
-            switch (x_142) {
+            x_148 = lungo_usize_to_nat(1024u);
+            x_149 = capdagFormal__l_Nat_ddecLe(x_148, x_2);
+            switch (x_149) {
                 case 0: {
-                    x_143 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__28();
-                    x_74 = x_143;
+                    x_150 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__30();
+                    x_74 = x_150;
                     goto block_73;
                 }
                 default: {
-                    x_144 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__29();
-                    x_74 = x_144;
+                    x_151 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__31();
+                    x_74 = x_151;
                     goto block_73;
                 }
             }
         }
         case 11: {
-            x_145 = lungo_usize_to_nat(1024u);
-            x_146 = capdagFormal__l_Nat_ddecLe(x_145, x_2);
-            switch (x_146) {
+            x_152 = lungo_usize_to_nat(1024u);
+            x_153 = capdagFormal__l_Nat_ddecLe(x_152, x_2);
+            switch (x_153) {
                 case 0: {
-                    x_147 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__28();
-                    x_81 = x_147;
+                    x_154 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__30();
+                    x_81 = x_154;
                     goto block_80;
                 }
                 default: {
-                    x_148 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__29();
-                    x_81 = x_148;
+                    x_155 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__31();
+                    x_81 = x_155;
                     goto block_80;
                 }
             }
         }
         case 12: {
-            x_149 = lungo_usize_to_nat(1024u);
-            x_150 = capdagFormal__l_Nat_ddecLe(x_149, x_2);
-            switch (x_150) {
+            x_156 = lungo_usize_to_nat(1024u);
+            x_157 = capdagFormal__l_Nat_ddecLe(x_156, x_2);
+            switch (x_157) {
                 case 0: {
-                    x_151 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__28();
-                    x_88 = x_151;
+                    x_158 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__30();
+                    x_88 = x_158;
                     goto block_87;
                 }
                 default: {
-                    x_152 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__29();
-                    x_88 = x_152;
+                    x_159 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__31();
+                    x_88 = x_159;
                     goto block_87;
+                }
+            }
+        }
+        case 13: {
+            x_160 = lungo_usize_to_nat(1024u);
+            x_161 = capdagFormal__l_Nat_ddecLe(x_160, x_2);
+            switch (x_161) {
+                case 0: {
+                    x_162 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__30();
+                    x_95 = x_162;
+                    goto block_94;
+                }
+                default: {
+                    x_163 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__31();
+                    x_95 = x_163;
+                    goto block_94;
                 }
             }
         }
         default: {
-            x_153 = lungo_usize_to_nat(1024u);
-            x_154 = capdagFormal__l_Nat_ddecLe(x_153, x_2);
-            switch (x_154) {
+            x_164 = lungo_usize_to_nat(1024u);
+            x_165 = capdagFormal__l_Nat_ddecLe(x_164, x_2);
+            switch (x_165) {
                 case 0: {
-                    x_155 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__28();
-                    x_95 = x_155;
-                    goto block_94;
+                    x_166 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__30();
+                    x_102 = x_166;
+                    goto block_101;
                 }
                 default: {
-                    x_156 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__29();
-                    x_95 = x_156;
-                    goto block_94;
+                    x_167 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__31();
+                    x_102 = x_167;
+                    goto block_101;
                 }
             }
         }
     }
+    block_101:;
+    x_103 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__29();
+    lungo_inc(x_102);
+    x_104 = lungo_alloc_ctor(4, 2, 0);
+    lungo_ctor_set(x_104, 0, x_102);
+    lungo_ctor_set(x_104, 1, x_103);
+    x_105 = (uint8_t)0u;
+    x_106 = lungo_alloc_ctor(6, 1, 1);
+    lungo_ctor_set(x_106, 0, x_104);
+    lungo_ctor_set_uint8(x_106, 1 * sizeof(size_t), x_105);
+    x_107 = capdagFormal__l_Repr_daddAppParen(x_106, x_2);
+    return x_107;
     block_94:;
     x_96 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__27();
     lungo_inc(x_95);
@@ -3352,7 +3489,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr(uint8_t 
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._boxed */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__boxed(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     lungo_obj x_4;
@@ -3364,7 +3501,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__boxed
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_0 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__0__init(void) {
     lungo_obj x_1;
     x_1 = lungo_mk_string_unchecked((const uint8_t *)"CapDAG.Bifaci.Flow.FrameType.hello", 34, 34);
@@ -3377,7 +3514,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__close
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_1 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__1__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -3393,7 +3530,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__close
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_10 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__10__init(void) {
     lungo_obj x_1;
     x_1 = lungo_mk_string_unchecked((const uint8_t *)"CapDAG.Bifaci.Flow.FrameType.err", 32, 32);
@@ -3406,7 +3543,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__close
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_11 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__11__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -3422,7 +3559,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__close
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_12 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__12__init(void) {
     lungo_obj x_1;
     x_1 = lungo_mk_string_unchecked((const uint8_t *)"CapDAG.Bifaci.Flow.FrameType.heartbeat", 38, 38);
@@ -3435,7 +3572,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__close
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_13 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__13__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -3451,7 +3588,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__close
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_14 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__14__init(void) {
     lungo_obj x_1;
     x_1 = lungo_mk_string_unchecked((const uint8_t *)"CapDAG.Bifaci.Flow.FrameType.streamStart", 40, 40);
@@ -3464,7 +3601,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__close
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_15 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__15__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -3480,7 +3617,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__close
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_16 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__16__init(void) {
     lungo_obj x_1;
     x_1 = lungo_mk_string_unchecked((const uint8_t *)"CapDAG.Bifaci.Flow.FrameType.streamEnd", 38, 38);
@@ -3493,7 +3630,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__close
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_17 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__17__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -3509,7 +3646,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__close
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_18 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__18__init(void) {
     lungo_obj x_1;
     x_1 = lungo_mk_string_unchecked((const uint8_t *)"CapDAG.Bifaci.Flow.FrameType.relayNotify", 40, 40);
@@ -3522,7 +3659,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__close
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_19 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__19__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -3538,7 +3675,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__close
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_2 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__2__init(void) {
     lungo_obj x_1;
     x_1 = lungo_mk_string_unchecked((const uint8_t *)"CapDAG.Bifaci.Flow.FrameType.req", 32, 32);
@@ -3551,7 +3688,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__close
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_20 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__20__init(void) {
     lungo_obj x_1;
     x_1 = lungo_mk_string_unchecked((const uint8_t *)"CapDAG.Bifaci.Flow.FrameType.relayState", 39, 39);
@@ -3564,7 +3701,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__close
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_21 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__21__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -3580,7 +3717,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__close
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_22 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__22__init(void) {
     lungo_obj x_1;
     x_1 = lungo_mk_string_unchecked((const uint8_t *)"CapDAG.Bifaci.Flow.FrameType.cancel", 35, 35);
@@ -3593,7 +3730,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__close
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_23 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__23__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -3609,7 +3746,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__close
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_24 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__24__init(void) {
     lungo_obj x_1;
     x_1 = lungo_mk_string_unchecked((const uint8_t *)"CapDAG.Bifaci.Flow.FrameType.credit", 35, 35);
@@ -3622,7 +3759,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__close
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_25 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__25__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -3638,7 +3775,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__close
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_26 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__26__init(void) {
     lungo_obj x_1;
     x_1 = lungo_mk_string_unchecked((const uint8_t *)"CapDAG.Bifaci.Flow.FrameType.closeStream", 40, 40);
@@ -3651,7 +3788,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__close
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_27 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__27__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -3667,13 +3804,11 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__close
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_28 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__28__init(void) {
     lungo_obj x_1;
-    lungo_obj x_2;
-    x_1 = lungo_usize_to_nat(2u);
-    x_2 = capdagFormal__l_Int_dofNat(x_1);
-    return x_2;
+    x_1 = lungo_mk_string_unchecked((const uint8_t *)"CapDAG.Bifaci.Flow.FrameType.policy", 35, 35);
+    return x_1;
 }
 static lungo_lazy_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__28__cell;
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__28(void) {
@@ -3682,12 +3817,13 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__close
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_29 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__29__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
-    x_1 = lungo_usize_to_nat(1u);
-    x_2 = capdagFormal__l_Int_dofNat(x_1);
+    x_1 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__28();
+    x_2 = lungo_alloc_ctor(3, 1, 0);
+    lungo_ctor_set(x_2, 0, x_1);
     return x_2;
 }
 static lungo_lazy_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__29__cell;
@@ -3697,7 +3833,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__close
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_3 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__3__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -3711,9 +3847,39 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__close
     return lungo_lazy_obj_get(&capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__3__cell, capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__3__init);
 }
 
+/* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_30 */
+/* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
+static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__30__init(void) {
+    lungo_obj x_1;
+    lungo_obj x_2;
+    x_1 = lungo_usize_to_nat(2u);
+    x_2 = capdagFormal__l_Int_dofNat(x_1);
+    return x_2;
+}
+static lungo_lazy_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__30__cell;
+lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__30(void) {
+    return lungo_lazy_obj_get(&capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__30__cell, capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__30__init);
+}
+
+/* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_31 */
+/* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
+static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__31__init(void) {
+    lungo_obj x_1;
+    lungo_obj x_2;
+    x_1 = lungo_usize_to_nat(1u);
+    x_2 = capdagFormal__l_Int_dofNat(x_1);
+    return x_2;
+}
+static lungo_lazy_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__31__cell;
+lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__31(void) {
+    return lungo_lazy_obj_get(&capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__31__cell, capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__31__init);
+}
+
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_4 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__4__init(void) {
     lungo_obj x_1;
     x_1 = lungo_mk_string_unchecked((const uint8_t *)"CapDAG.Bifaci.Flow.FrameType.chunk", 34, 34);
@@ -3726,7 +3892,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__close
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_5 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__5__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -3742,7 +3908,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__close
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_6 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__6__init(void) {
     lungo_obj x_1;
     x_1 = lungo_mk_string_unchecked((const uint8_t *)"CapDAG.Bifaci.Flow.FrameType.fin", 32, 32);
@@ -3755,7 +3921,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__close
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_7 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__7__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -3771,7 +3937,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__close
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_8 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__8__init(void) {
     lungo_obj x_1;
     x_1 = lungo_mk_string_unchecked((const uint8_t *)"CapDAG.Bifaci.Flow.FrameType.log", 32, 32);
@@ -3784,7 +3950,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__close
 
 /* Lean: CapDAG.Bifaci.Flow.instReprFrameType.repr._closed_9 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprFrameType.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:35:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:36:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__closed__9__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -3799,7 +3965,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprFrameType_drepr_d__close
 }
 
 /* Lean: CapDAG.Bifaci.Flow.instReprReorder */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:90:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:93:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder__init(void) {
     lungo_obj x_1;
     x_1 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_d__closed__0();
@@ -3812,7 +3978,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder(void) {
 
 /* Lean: CapDAG.Bifaci.Flow.instReprReorder._closed_0 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprReorder */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:90:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:93:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_d__closed__0__init(void) {
     lungo_obj x_1;
     x_1 = lungo_alloc_closure((void *)capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__boxed, 2, 0);
@@ -3824,7 +3990,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_d__closed__0(voi
 }
 
 /* Lean: CapDAG.Bifaci.Flow.instReprReorder.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:90:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:93:12 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr(lungo_obj x_1, lungo_obj x_2) {
     (void)x_2;
     lungo_obj x_3;
@@ -3834,7 +4000,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr(lungo_obj 
 
 /* Lean: CapDAG.Bifaci.Flow.instReprReorder.repr._boxed */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprReorder.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:90:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:93:12 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__boxed(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     x_3 = capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr(x_1, x_2);
@@ -3844,7 +4010,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__boxed(l
 
 /* Lean: CapDAG.Bifaci.Flow.instReprReorder.repr._redArg */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprReorder.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:90:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:93:12 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg(lungo_obj x_1) {
     lungo_obj x_2;
     lungo_obj x_3;
@@ -3975,7 +4141,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg(
 
 /* Lean: CapDAG.Bifaci.Flow.instReprReorder.repr._redArg._closed_0 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprReorder.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:90:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:93:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_d__closed__0__init(void) {
     lungo_obj x_1;
     x_1 = lungo_mk_string_unchecked((const uint8_t *)"{ ", 2, 2);
@@ -3988,7 +4154,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_
 
 /* Lean: CapDAG.Bifaci.Flow.instReprReorder.repr._redArg._closed_1 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprReorder.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:90:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:93:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_d__closed__1__init(void) {
     lungo_obj x_1;
     x_1 = lungo_mk_string_unchecked((const uint8_t *)"expected", 8, 8);
@@ -4001,7 +4167,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_
 
 /* Lean: CapDAG.Bifaci.Flow.instReprReorder.repr._redArg._closed_10 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprReorder.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:90:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:93:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_d__closed__10__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -4016,7 +4182,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_
 
 /* Lean: CapDAG.Bifaci.Flow.instReprReorder.repr._redArg._closed_11 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprReorder.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:90:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:93:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_d__closed__11__init(void) {
     lungo_obj x_1;
     x_1 = lungo_mk_string_unchecked((const uint8_t *)" }", 2, 2);
@@ -4029,7 +4195,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_
 
 /* Lean: CapDAG.Bifaci.Flow.instReprReorder.repr._redArg._closed_12 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprReorder.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:90:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:93:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_d__closed__12__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -4044,7 +4210,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_
 
 /* Lean: CapDAG.Bifaci.Flow.instReprReorder.repr._redArg._closed_13 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprReorder.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:90:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:93:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_d__closed__13__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -4059,7 +4225,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_
 
 /* Lean: CapDAG.Bifaci.Flow.instReprReorder.repr._redArg._closed_14 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprReorder.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:90:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:93:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_d__closed__14__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -4075,7 +4241,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_
 
 /* Lean: CapDAG.Bifaci.Flow.instReprReorder.repr._redArg._closed_15 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprReorder.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:90:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:93:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_d__closed__15__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -4091,7 +4257,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_
 
 /* Lean: CapDAG.Bifaci.Flow.instReprReorder.repr._redArg._closed_2 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprReorder.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:90:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:93:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_d__closed__2__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -4107,7 +4273,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_
 
 /* Lean: CapDAG.Bifaci.Flow.instReprReorder.repr._redArg._closed_3 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprReorder.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:90:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:93:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_d__closed__3__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -4126,7 +4292,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_
 
 /* Lean: CapDAG.Bifaci.Flow.instReprReorder.repr._redArg._closed_4 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprReorder.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:90:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:93:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_d__closed__4__init(void) {
     lungo_obj x_1;
     x_1 = lungo_mk_string_unchecked((const uint8_t *)" := ", 4, 4);
@@ -4139,7 +4305,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_
 
 /* Lean: CapDAG.Bifaci.Flow.instReprReorder.repr._redArg._closed_5 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprReorder.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:90:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:93:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_d__closed__5__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -4155,7 +4321,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_
 
 /* Lean: CapDAG.Bifaci.Flow.instReprReorder.repr._redArg._closed_6 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprReorder.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:90:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:93:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_d__closed__6__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -4174,7 +4340,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_
 
 /* Lean: CapDAG.Bifaci.Flow.instReprReorder.repr._redArg._closed_7 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprReorder.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:90:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:93:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_d__closed__7__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -4189,7 +4355,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_
 
 /* Lean: CapDAG.Bifaci.Flow.instReprReorder.repr._redArg._closed_8 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprReorder.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:90:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:93:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_d__closed__8__init(void) {
     lungo_obj x_1;
     x_1 = lungo_mk_string_unchecked((const uint8_t *)"held", 4, 4);
@@ -4202,7 +4368,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_
 
 /* Lean: CapDAG.Bifaci.Flow.instReprReorder.repr._redArg._closed_9 */
 /* Compiled from: CapDAG.Bifaci.Flow.instReprReorder.repr */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:90:12 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:93:12 */
 static lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_d__closed__9__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -4217,7 +4383,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dinstReprReorder_drepr_d__redArg_
 }
 
 /* Lean: CapDAG.Bifaci.Flow.takeRun */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:100:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:103:1 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dtakeRun(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     lungo_obj x_4;
@@ -4345,7 +4511,7 @@ lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dtakeRun(lungo_obj x_1, lungo_obj
 
 /* Lean: CapDAG.Bifaci.Flow.takeRun._boxed */
 /* Compiled from: CapDAG.Bifaci.Flow.takeRun */
-/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:100:1 */
+/* Source: ../../formal/CapDAG/Bifaci/Flow.lean:103:1 */
 lungo_obj capdagFormal__l_CapDAG_dBifaci_dFlow_dtakeRun_d__boxed(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     x_3 = capdagFormal__l_CapDAG_dBifaci_dFlow_dtakeRun(x_1, x_2);

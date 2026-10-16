@@ -2,6 +2,7 @@ package bifaci
 
 import (
 	"encoding/json"
+	"io"
 	"math"
 	"net"
 	"os"
@@ -76,6 +77,14 @@ func recvCartridgeFrame(reader *FrameReader) (*Frame, error) {
 // run_cartridge_identity_echo / drainIdentityRequest: read REQ + body
 // (STREAM_START → CHUNK(s) → STREAM_END → END), then echo the concatenated
 // payload back as STREAM_START → CHUNK → STREAM_END → END.
+// newTestHost is a host given its policy (`full`) before anything is
+// attached, as a host behind a switch is before the switch routes to it.
+func newTestHost() *CartridgeHost {
+	host := NewCartridgeHost()
+	host.SetPolicy(HostPolicy{Network: NetworkPolicyFull})
+	return host
+}
+
 func simulateCartridge(t *testing.T, cartridgeRead, cartridgeWrite net.Conn, manifest string, handler func(*FrameReader, *FrameWriter)) {
 	t.Helper()
 	reader := NewFrameReader(cartridgeRead)
@@ -88,6 +97,16 @@ func simulateCartridge(t *testing.T, cartridgeRead, cartridgeWrite net.Conn, man
 
 	// Answer the host's identity-verification REQ before the handler runs.
 	echoIdentityRequest(t, reader, writer)
+
+	// The host gives its policy right after the identity check, before it
+	// routes anything (12.2 §Policy).
+	// A test that ends the host without routing anything may close it before the
+	// policy is written; then the handler sees the end too.
+	policy, err := reader.ReadFrame()
+	if err != io.EOF {
+		require.NoError(t, err)
+		require.Equal(t, FrameTypePolicy, policy.FrameType, "the frame after the identity check must be the host's policy")
+	}
 
 	if handler != nil {
 		handler(reader, writer)
@@ -168,7 +187,7 @@ func Test6601_attached_cartridge_identity_derived_from_manifest(t *testing.T) {
 
 // TEST413: Register cartridge adds entries to cap_table
 func Test413_register_cartridge_adds_cap_table(t *testing.T) {
-	host := NewCartridgeHost()
+	host := newTestHost()
 	host.RegisterCartridge("/path/to/converter", "converter", "1.0", CartridgeChannelRelease, nil, capGroupsFromURNs(t, "cap:convert", "cap:analyze"))
 
 	host.mu.Lock()
@@ -187,7 +206,7 @@ func Test413_register_cartridge_adds_cap_table(t *testing.T) {
 // TEST6594: capabilities() returns empty JSON initially (no running cartridges)
 func Test6594_capabilities_empty_initially(t *testing.T) {
 	// Case 1: No cartridges at all
-	host := NewCartridgeHost()
+	host := newTestHost()
 	assert.Nil(t, host.Capabilities(), "no cartridges → nil capabilities")
 
 	// Case 2: Cartridge registered but not running
@@ -197,7 +216,7 @@ func Test6594_capabilities_empty_initially(t *testing.T) {
 
 // TEST415: REQ for known cap triggers spawn attempt (verified by expected spawn error for non-existent binary)
 func Test415_req_triggers_spawn(t *testing.T) {
-	host := NewCartridgeHost()
+	host := newTestHost()
 	host.RegisterCartridge("/nonexistent/cartridge/binary", "cartridge", "1.0", CartridgeChannelRelease, nil, capGroupsFromURNs(t, "cap:test"))
 
 	// Set up relay pipes
@@ -258,7 +277,7 @@ func Test416_attach_cartridge_handshake(t *testing.T) {
 		cartridgeWrite.Close()
 	}()
 
-	host := NewCartridgeHost()
+	host := newTestHost()
 	idx, err := host.AttachCartridge(hostRead, hostWrite)
 	require.NoError(t, err)
 
@@ -338,7 +357,7 @@ func Test417_route_req_by_cap_urn(t *testing.T) {
 		cartridgeWriteB.Close()
 	}()
 
-	host := NewCartridgeHost()
+	host := newTestHost()
 	_, err := host.AttachCartridge(hostReadA, hostWriteA)
 	require.NoError(t, err)
 	_, err = host.AttachCartridge(hostReadB, hostWriteB)
@@ -437,7 +456,7 @@ func Test418_route_continuation_by_req_id(t *testing.T) {
 		cartridgeWriteP.Close()
 	}()
 
-	host := NewCartridgeHost()
+	host := newTestHost()
 	_, err := host.AttachCartridge(hostReadP, hostWriteP)
 	require.NoError(t, err)
 
@@ -510,7 +529,7 @@ func Test419_heartbeat_local_handling(t *testing.T) {
 		cartridgeWriteP.Close()
 	}()
 
-	host := NewCartridgeHost()
+	host := newTestHost()
 	_, err := host.AttachCartridge(hostReadP, hostWriteP)
 	require.NoError(t, err)
 
@@ -596,7 +615,7 @@ func Test420_cartridge_frames_forwarded_to_relay(t *testing.T) {
 		cartridgeWriteP.Close()
 	}()
 
-	host := NewCartridgeHost()
+	host := newTestHost()
 	_, err := host.AttachCartridge(hostReadP, hostWriteP)
 	require.NoError(t, err)
 
@@ -674,7 +693,7 @@ func Test421_cartridge_death_updates_caps(t *testing.T) {
 		cartridgeWriteP.Close()
 	}()
 
-	host := NewCartridgeHost()
+	host := newTestHost()
 	_, err := host.AttachCartridge(hostReadP, hostWriteP)
 	require.NoError(t, err)
 
@@ -755,7 +774,7 @@ func Test422_cartridge_death_sends_err(t *testing.T) {
 		})
 	}()
 
-	host := NewCartridgeHost()
+	host := newTestHost()
 	_, err := host.AttachCartridge(hostReadP, hostWriteP)
 	require.NoError(t, err)
 
@@ -877,7 +896,7 @@ func Test423_multi_cartridge_distinct_caps(t *testing.T) {
 		cartridgeWriteB.Close()
 	}()
 
-	host := NewCartridgeHost()
+	host := newTestHost()
 	_, err := host.AttachCartridge(hostReadA, hostWriteA)
 	require.NoError(t, err)
 	_, err = host.AttachCartridge(hostReadB, hostWriteB)
@@ -996,7 +1015,7 @@ func Test424_concurrent_requests_same_cartridge(t *testing.T) {
 		cartridgeWriteP.Close()
 	}()
 
-	host := NewCartridgeHost()
+	host := newTestHost()
 	_, err := host.AttachCartridge(hostReadP, hostWriteP)
 	require.NoError(t, err)
 
@@ -1072,7 +1091,7 @@ func Test424_concurrent_requests_same_cartridge(t *testing.T) {
 
 // TEST425: find_cartridge_for_cap returns None for unregistered cap
 func Test425_find_cartridge_for_cap_unknown(t *testing.T) {
-	host := NewCartridgeHost()
+	host := newTestHost()
 	host.RegisterCartridge("/path/to/cartridge", "cartridge", "1.0", CartridgeChannelRelease, nil, capGroupsFromURNs(t, "cap:known"))
 
 	idx, found := host.FindCartridgeForCap("cap:known")
@@ -1131,7 +1150,7 @@ func anyRecordHasID(records []InstalledCartridgeRecord, id string) bool {
 // no cap groups — failure is named, never silently absent; a
 // roster-retired cartridge disappears entirely.
 func Test7089_hello_failed_stays_in_inventory_with_error(t *testing.T) {
-	host := NewCartridgeHost()
+	host := newTestHost()
 	registerTempCartridge(t, host, "stalecart", standard.CapIdentity)
 
 	// Healthy (never spawned): advertised without an attachment error.
@@ -1189,7 +1208,7 @@ func Test7089_hello_failed_stays_in_inventory_with_error(t *testing.T) {
 // cartridge's inventory runtime stats as ProtocolDropsTotal — absent until
 // the first reading, then tracking the running total as-is.
 func Test7090_heartbeat_drops_total_reaches_inventory_stats(t *testing.T) {
-	host := NewCartridgeHost()
+	host := newTestHost()
 	registerTempCartridge(t, host, "dropcart", standard.CapIdentity)
 
 	// No heartbeat round-trip yet: the reading must be ABSENT, never a
@@ -1294,7 +1313,7 @@ func Test485_attach_cartridge_identity_verification_succeeds(t *testing.T) {
 		cartridgeWrite.Close()
 	}()
 
-	host := NewCartridgeHost()
+	host := newTestHost()
 	idx, err := host.AttachCartridge(hostRead, hostWrite)
 	require.NoError(t, err)
 	assert.Equal(t, 0, idx)
@@ -1353,7 +1372,7 @@ func Test486_attach_cartridge_identity_verification_fails(t *testing.T) {
 		cartridgeWrite.Close()
 	}()
 
-	host := NewCartridgeHost()
+	host := newTestHost()
 	_, err := host.AttachCartridge(hostRead, hostWrite)
 	require.Error(t, err, "attach_cartridge must fail when identity verification fails")
 	assert.Contains(t, err.Error(), "Identity verification failed",
@@ -1371,7 +1390,7 @@ func Test486_attach_cartridge_identity_verification_fails(t *testing.T) {
 
 // TEST6623: Cartridge death keeps caps advertised for on-demand respawn. The cartridge's `cap_groups` survive process death, so the host can continue advertising the cartridge's caps and the relay can route a fresh REQ to it (which triggers an on-demand respawn).
 func Test6623_cartridge_death_keeps_caps_advertised(t *testing.T) {
-	host := NewCartridgeHost()
+	host := newTestHost()
 	registerTempCartridge(t, host, "thumbnailcartridge",
 		standard.CapIdentity,
 		`cap:in="media:document;ext=pdf";out="media:ext=png;image";thumbnail`,
@@ -1392,7 +1411,7 @@ func Test6623_cartridge_death_keeps_caps_advertised(t *testing.T) {
 
 // TEST662: rebuild_capabilities includes non-running cartridges' caps (each cartridge's `cap_groups` is the source of truth, regardless of whether its process has been spawned yet).
 func Test662_rebuild_capabilities_includes_non_running_cartridges(t *testing.T) {
-	host := NewCartridgeHost()
+	host := newTestHost()
 	registerTempCartridge(t, host, "extractcartridge",
 		standard.CapIdentity,
 		`cap:in="media:document;ext=pdf";extract;out="media:text"`,
@@ -1416,7 +1435,7 @@ func Test662_rebuild_capabilities_includes_non_running_cartridges(t *testing.T) 
 
 // TEST663: Cartridge with hello_failed is permanently removed from capabilities
 func Test663_hello_failed_cartridge_removed_from_capabilities(t *testing.T) {
-	host := NewCartridgeHost()
+	host := newTestHost()
 	registerTempCartridge(t, host, "brokencartridge",
 		standard.CapIdentity,
 		`cap:in="media:void";broken;out="media:void"`,
@@ -1464,7 +1483,7 @@ func Test664_running_cartridge_uses_manifest_caps(t *testing.T) {
 		cartridgeWrite.Close()
 	}()
 
-	host := NewCartridgeHost()
+	host := newTestHost()
 
 	// Register with stale (probe-time) caps BEFORE attaching.
 	registerTempCartridge(t, host, "extractcartridge",
@@ -1512,7 +1531,7 @@ func Test665_cap_table_mixed_running_and_non_running(t *testing.T) {
 		cartridgeWrite.Close()
 	}()
 
-	host := NewCartridgeHost()
+	host := newTestHost()
 
 	// Attach running cartridge.
 	_, err := host.AttachCartridge(hostRead, hostWrite)
@@ -1588,7 +1607,7 @@ func seedIncomingRxidsForTest(host *CartridgeHost, count int) []rxidKey {
 
 // TEST988: / Contract #1 — the GC keeps the table strictly below the / hard cap. Seed the table well above the soft watermark / (matching what a runaway producer would do mid-frame- / burst) and call the production GC entry point. The / post-state must be at most `SOFT_WATERMARK` entries / because the GC drops at least / `EVICTION_FRACTION × pre_state` entries in one pass and / the pre-state is below the hard cap (i.e. one pass is / enough; the secondary "hard cap" pass would only fire if / pre-state crossed the hard cap before insertion completed, / which production prevents by gc-ing on every insert).
 func Test988_gc_reduces_table_below_soft_watermark_in_one_pass(t *testing.T) {
-	host := NewCartridgeHost()
+	host := newTestHost()
 	preCount := RoutingTableSoftWatermark + 256
 	require.Less(t, preCount, RoutingTableHardCap,
 		"Test precondition: pre_count must stay under the hard cap so we verify the SOFT watermark path")
@@ -1615,7 +1634,7 @@ func Test988_gc_reduces_table_below_soft_watermark_in_one_pass(t *testing.T) {
 
 // TEST129: / Contract #2 — the GC drops the OLDEST entries by / touch-sequence, not arbitrary keys. Seed a known age / distribution and assert the post-GC keyset is exactly / what the test computes should survive (test recomputes / independently of production code). / / A regression where the GC e.g. iterates the HashMap and / drops the first N (HashMap iteration order is arbitrary / in Rust) would still pass contract #1 but fail this one — / the more dangerous bug because it silently drops / in-flight continuation frames.
 func Test129_gc_evicts_oldest_entries_by_touch_sequence(t *testing.T) {
-	host := NewCartridgeHost()
+	host := newTestHost()
 	preCount := RoutingTableSoftWatermark + 256
 	evictionCount := int(float64(preCount) * RoutingTableGcEvictionFraction)
 	if evictionCount < 1 {
@@ -1650,7 +1669,7 @@ func Test129_gc_evicts_oldest_entries_by_touch_sequence(t *testing.T) {
 
 // TEST987: / Contract #3 — the secondary hard-cap pass kicks in if the / table somehow exceeds `HARD_CAP` (extreme runaway). Without / it, a single GC at the soft watermark would not be enough / to recover headroom and the table could grow without bound / between bursts.
 func Test987_gc_secondary_pass_enforces_hard_cap(t *testing.T) {
-	host := NewCartridgeHost()
+	host := newTestHost()
 	// Size the seed so a SINGLE eviction-fraction pass is NOT enough to
 	// bring the table under the hard cap. We need
 	// pre * (1 - eviction_fraction) >= hard_cap.
@@ -1678,7 +1697,7 @@ func Test987_gc_secondary_pass_enforces_hard_cap(t *testing.T) {
 // tear down the replacement occupying the same cartridge slot. The current
 // generation still performs the real death transition.
 func Test8067_stale_reader_death_cannot_kill_replacement_generation(t *testing.T) {
-	host := NewCartridgeHost()
+	host := newTestHost()
 	host.cartridges = append(host.cartridges, &ManagedCartridge{
 		running:           true,
 		generation:        7,

@@ -154,6 +154,12 @@ func (rs *RelaySlave) Run(socketRead io.Reader, socketWrite io.Writer, initialNo
 			// inventory and the engine never learns the cartridge exists.
 			if frame.FrameType == FrameTypeRelayState {
 				// Drop RelayState frames (deprecated/unused).
+			} else if frame.FrameType == FrameTypePolicy {
+				// A policy travels only toward cartridges (12.2 §Policy);
+				// one coming from the host side is a defect, and the relay
+				// ends on it.
+				errCh <- fmt.Errorf("Policy frame sent toward the switch; a policy travels only toward cartridges")
+				return
 			} else {
 				// Pass through to socket (REQ/response/RelayNotify/...).
 				if err := socketWriter.WriteFrame(frame); err != nil {
@@ -272,6 +278,8 @@ func (rm *RelayMaster) ReadFrame(socketReader *FrameReader) (*Frame, error) {
 		} else if frame.FrameType == FrameTypeRelayState {
 			// RelayState from slave? Protocol error — drop
 			continue
+		} else if frame.FrameType == FrameTypePolicy {
+			return nil, fmt.Errorf("Policy frame from a relay slave; a policy travels only toward cartridges")
 		}
 
 		return frame, nil

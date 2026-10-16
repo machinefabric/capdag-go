@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -455,6 +456,12 @@ type RelaySwitch struct {
 	// reattach branch sees a stable view of `masters` for the
 	// duration; contention is bounded by the small slot count.
 	addMasterMu sync.Mutex
+	// policy is what the engine allows the cartridges behind this switch to
+	// do (12.2 §Policy). Given at construction, so no master is ever
+	// connected without one; sent to each master before anything else, and
+	// to every master on each change (SetPolicy). Guarded by addMasterMu, so
+	// a change cannot fall between a new master's send and its joining.
+	policy HostPolicy
 }
 
 type CapTableEntry struct {
@@ -537,7 +544,7 @@ type MasterFrame struct {
 // guard the first reconnect would reattach to whichever slot is
 // found first by the linear scan, leaving the other stuck unhealthy
 // forever — the exact bug class this contract closes).
-func NewRelaySwitch(sockets []SocketPair) (*RelaySwitch, error) {
+func NewRelaySwitch(sockets []SocketPair, policy HostPolicy) (*RelaySwitch, error) {
 	if len(sockets) == 0 {
 		return nil, &RelaySwitchError{
 			Type:    RelaySwitchErrorTypeProtocol,
@@ -617,6 +624,15 @@ func NewRelaySwitch(sockets []SocketPair) (*RelaySwitch, error) {
 
 		caps := payload.CapURNs()
 
+		// The policy goes first, before the identity probe or anything
+		// routed: the host gives it to each cartridge it connects.
+		if err := socketWriter.WriteFrame(NewPolicyFrame(policy)); err != nil {
+			return nil, &RelaySwitchError{
+				Type:    RelaySwitchErrorTypeProtocol,
+				Message: fmt.Sprintf("master %d: sending the policy failed: %v", masterIdx, err),
+			}
+		}
+
 		// End-to-end identity verification. The probe only makes sense
 		// when the host has at least one advertised cap — an empty cap
 		// list means "no cartridges attached successfully" and there is
@@ -662,6 +678,7 @@ func NewRelaySwitch(sockets []SocketPair) (*RelaySwitch, error) {
 		pendingProbes:                make(chan int, 256),
 		capWatch:                     newCapWatch(),
 		admission:                    NewAdmissionController(),
+		policy:                       policy,
 	}
 
 	// Phase 2: All masters verified — spawn reader goroutines. The same
@@ -689,6 +706,44 @@ func NewRelaySwitch(sockets []SocketPair) (*RelaySwitch, error) {
 	sw.rebuildLimits()
 
 	return sw, nil
+}
+
+// Policy is the policy in force (12.2 §Policy).
+func (sw *RelaySwitch) Policy() HostPolicy {
+	sw.addMasterMu.Lock()
+	defer sw.addMasterMu.Unlock()
+	return sw.policy
+}
+
+// SetPolicy replaces the policy and sends it to every attached master,
+// whose hosts pass it to their cartridges (12.2 §Policy). Setting the policy
+// in force sends nothing. A master that is not attached is given the current
+// policy when it attaches; the masters a send failed on are returned.
+func (sw *RelaySwitch) SetPolicy(policy HostPolicy) error {
+	sw.addMasterMu.Lock()
+	defer sw.addMasterMu.Unlock()
+	if sw.policy == policy {
+		return nil
+	}
+	sw.policy = policy
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	var failures []string
+	for idx, master := range sw.masters {
+		if master.detached {
+			continue
+		}
+		if err := master.socketWriter.WriteFrame(NewPolicyFrame(policy)); err != nil {
+			failures = append(failures, fmt.Sprintf("master %d: %v", idx, err))
+		}
+	}
+	if len(failures) > 0 {
+		return &RelaySwitchError{
+			Type:    RelaySwitchErrorTypeProtocol,
+			Message: fmt.Sprintf("the policy '%s' did not reach every master: %s", policy.Network, strings.Join(failures, "; ")),
+		}
+	}
+	return nil
 }
 
 // AddMaster attaches a (re)connecting host to a slot.
@@ -791,6 +846,15 @@ func (sw *RelaySwitch) AddMaster(sockPair SocketPair) (int, error) {
 	}
 
 	caps := payload.CapURNs()
+
+	// The current policy goes first, before the identity probe or anything
+	// routed. SetPolicy holds addMasterMu, which this call holds.
+	if err := socketWriter.WriteFrame(NewPolicyFrame(sw.policy)); err != nil {
+		return 0, &RelaySwitchError{
+			Type:    RelaySwitchErrorTypeProtocol,
+			Message: fmt.Sprintf("AddMaster master %d: sending the policy failed: %v", masterIdx, err),
+		}
+	}
 
 	// End-to-end identity verification — the runtime counterpart of the
 	// synchronous probe NewRelaySwitch runs. Mirrors Rust add_master:

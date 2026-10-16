@@ -62,7 +62,10 @@ type FrameHandler interface {
 	// The handler MUST send a complete response: either response frames
 	// (STREAM_START + CHUNK(s) + STREAM_END + END) or an error (via
 	// output.EmitError).
-	HandleRequest(capUrn string, input <-chan Frame, output *ResponseWriter, peer PeerInvoker)
+	//
+	// network is the host's live policy (12.2 §Policy): a handler that
+	// reaches the network asks it before every call.
+	HandleRequest(capUrn string, input <-chan Frame, output *ResponseWriter, peer PeerInvoker, network NetworkAccess)
 }
 
 // =============================================================================
@@ -264,7 +267,7 @@ var ErrInputEndedWithoutEnd = fmt.Errorf(
 // identity verification — it proves the transport works end-to-end.
 type identityHandler struct{}
 
-func (identityHandler) HandleRequest(_ string, input <-chan Frame, output *ResponseWriter, _ PeerInvoker) {
+func (identityHandler) HandleRequest(_ string, input <-chan Frame, output *ResponseWriter, _ PeerInvoker, _ NetworkAccess) {
 	// Accumulate raw payload bytes (no CBOR decode — identity is raw passthrough)
 	var data []byte
 	for frame := range input {
@@ -634,7 +637,12 @@ func (h *InProcessCartridgeHost) Run(localRead io.Reader, localWrite io.Writer) 
 	active := make(map[string]chan Frame)
 	identity := identityHandler{}
 	maxChunk := DefaultLimits().MaxChunk
+	// The switch's latest policy (12.2 §Policy), read live by every handler;
+	// empty until the switch sends the first.
+	policy := NewLivePolicy()
 
+	var runErr error
+readLoop:
 	for {
 		frame, err := reader.ReadFrame()
 		if err != nil {
@@ -656,6 +664,17 @@ func (h *InProcessCartridgeHost) Run(localRead io.Reader, localWrite io.Writer) 
 			// Identity cap is CAP_IDENTITY / `cap:effect=none` — exact string
 			// match, NOT conforms_to.
 			isIdentity := capUrn == standard.CapIdentity
+
+			// Nothing but the identity check is served before the switch's
+			// policy (12.2 §Policy): the switch sends one before anything it
+			// routes.
+			if _, ok := policy.Current(); !ok && !isIdentity {
+				errFrame := NewErr(rid, "PROTOCOL_VIOLATION", AttributionClassInternal,
+					fmt.Sprintf("request for '%s' arrived before the switch sent its policy", capUrn), nil)
+				errFrame.RoutingId = xid
+				writeTx <- *errFrame
+				continue
+			}
 
 			var handler FrameHandler
 			if isIdentity {
@@ -687,8 +706,17 @@ func (h *InProcessCartridgeHost) Run(localRead io.Reader, localWrite io.Writer) 
 			handlerWg.Add(1)
 			go func() {
 				defer handlerWg.Done()
-				handler.HandleRequest(capUrnOwned, inputTx, output, peer)
+				handler.HandleRequest(capUrnOwned, inputTx, output, peer, NewNetworkAccess(policy))
 			}()
+
+		case FrameTypePolicy:
+			// The switch's policy: every handler reads it live.
+			newPolicy, _, err := frame.HostPolicy()
+			if err != nil {
+				runErr = err
+				break readLoop
+			}
+			policy.Set(newPolicy)
 
 		case FrameTypeStreamStart, FrameTypeChunk, FrameTypeStreamEnd, FrameTypeLog:
 			// Continuation frames: forward to active request.
@@ -794,5 +822,5 @@ func (h *InProcessCartridgeHost) Run(localRead io.Reader, localWrite io.Writer) 
 
 	close(writeTx)
 	writerWg.Wait()
-	return nil
+	return runErr
 }

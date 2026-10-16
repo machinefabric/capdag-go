@@ -1931,14 +1931,14 @@ func Test7001_handshake_rejects_another_version(t *testing.T) {
 		reader := NewFrameReader(cartridgeRead)
 		writer := NewFrameWriter(cartridgeWrite)
 
-		// A cartridge of the previous protocol: replies to the host HELLO with a version=4 HELLO.
+		// A cartridge of the previous protocol: replies to the host HELLO with a version=5 HELLO.
 		if _, err := reader.ReadFrame(); err != nil {
 			t.Errorf("cartridge failed to read host HELLO: %v", err)
 			return
 		}
 		hello := NewHelloWithManifest(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit, []byte(v4TestManifest), make(PoolStates))
-		hello.Version = 4
-		hello.Meta["version"] = 4
+		hello.Version = 5
+		hello.Meta["version"] = 5
 		if err := writer.WriteFrame(hello); err != nil {
 			t.Errorf("cartridge failed to write the HELLO: %v", err)
 			return
@@ -1962,7 +1962,7 @@ func Test7001_handshake_rejects_another_version(t *testing.T) {
 	if !strings.Contains(msg, "version") {
 		t.Errorf("error must name the version mismatch: %s", msg)
 	}
-	if !strings.Contains(msg, "ours 5") || !strings.Contains(msg, "theirs 4") {
+	if !strings.Contains(msg, "ours 6") || !strings.Contains(msg, "theirs 5") {
 		t.Errorf("error must state both versions: %s", msg)
 	}
 }

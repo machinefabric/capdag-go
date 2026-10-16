@@ -327,7 +327,7 @@ func Test462_attached_cartridge_identity_from_manifest(t *testing.T) {
 // duplicates collapse, and eviction past the cap ages a rid back out.
 // (Mirrors Rust host_runtime TEST8116.)
 func Test8116_released_rid_ring_discriminates_dedupes_and_ages_out(t *testing.T) {
-	h := NewCartridgeHost()
+	h := newTestHost()
 	rid := "rid-7"
 
 	if h.recentlyReleasedRid(rid) {
@@ -363,7 +363,7 @@ func Test8116_released_rid_ring_discriminates_dedupes_and_ages_out(t *testing.T)
 // counted, never silent, never conflated. (Mirrors Rust host_runtime
 // TEST8117.)
 func Test8117_unroutable_continuation_classified_by_release_ring(t *testing.T) {
-	h := NewCartridgeHost()
+	h := newTestHost()
 	out := &relayOutbound{ch: make(chan *Frame, 16)}
 
 	// Unknown rid: no routing entry, nothing released → no_route.

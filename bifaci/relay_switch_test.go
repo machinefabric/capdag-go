@@ -123,12 +123,31 @@ func testManifestWithCaps(capURNs []string) map[string]interface{} {
 //
 // On any I/O error it reports via t.Errorf and returns false so the
 // caller's goroutine can bail out cleanly.
+// expectPolicy reads the frame a switch sends right after a master's first
+// RelayNotify: its policy (12.2 §Policy).
+func expectPolicy(t *testing.T, reader *FrameReader) bool {
+	t.Helper()
+	policy, err := reader.ReadFrame()
+	if err != nil || policy == nil || policy.FrameType != FrameTypePolicy {
+		t.Errorf("the frame after RelayNotify must be the switch's policy: %v %v", policy, err)
+		return false
+	}
+	return true
+}
+
 func serveRelayHandshake(t *testing.T, reader *FrameReader, writer *FrameWriter, capURNs []string) bool {
 	t.Helper()
 	manifest := testManifestWithCaps(capURNs)
 	manifestJSON, _ := json.Marshal(manifest)
 	if err := SendNotify(writer, manifestJSON, DefaultLimits()); err != nil {
 		t.Errorf("serveRelayHandshake: SendNotify: %v", err)
+		return false
+	}
+	// The switch's policy comes first, before the identity probe or anything
+	// routed (12.2 §Policy).
+	policy, err := reader.ReadFrame()
+	if err != nil || policy == nil || policy.FrameType != FrameTypePolicy {
+		t.Errorf("serveRelayHandshake: the frame after RelayNotify must be the switch's policy: %v %v", policy, err)
 		return false
 	}
 	if len(capURNs) == 0 {
@@ -222,7 +241,7 @@ func Test426_relay_switch_single_master_req_response(t *testing.T) {
 	}()
 
 	// Create RelaySwitch - this reads the RelayNotify from the goroutine
-	sw, err := NewRelaySwitch([]SocketPair{{ID: "test-master-0", Read: engineRead, Write: engineWrite}})
+	sw, err := NewRelaySwitch([]SocketPair{{ID: "test-master-0", Read: engineRead, Write: engineWrite}}, HostPolicy{Network: NetworkPolicyFull})
 	if err != nil {
 		t.Fatalf("Failed to create RelaySwitch: %v", err)
 	}
@@ -308,7 +327,7 @@ func Test427_relay_switch_multi_master_cap_routing(t *testing.T) {
 	sw, err := NewRelaySwitch([]SocketPair{
 		{ID: "test-master-1", Read: engineRead1, Write: engineWrite1},
 		{ID: "test-master-2", Read: engineRead2, Write: engineWrite2},
-	})
+	}, HostPolicy{Network: NetworkPolicyFull})
 	if err != nil {
 		t.Fatalf("Failed to create RelaySwitch: %v", err)
 	}
@@ -361,7 +380,7 @@ func Test428_relay_switch_unknown_cap_returns_error(t *testing.T) {
 		}
 	}()
 
-	sw, err := NewRelaySwitch([]SocketPair{{ID: "test-master-3", Read: engineRead, Write: engineWrite}})
+	sw, err := NewRelaySwitch([]SocketPair{{ID: "test-master-3", Read: engineRead, Write: engineWrite}}, HostPolicy{Network: NetworkPolicyFull})
 	if err != nil {
 		t.Fatalf("Failed to create RelaySwitch: %v", err)
 	}
@@ -419,7 +438,7 @@ func Test429_relay_switch_find_master_for_cap(t *testing.T) {
 	sw, err := NewRelaySwitch([]SocketPair{
 		{ID: "test-master-4", Read: engineRead1, Write: engineWrite1},
 		{ID: "test-master-5", Read: engineRead2, Write: engineWrite2},
-	})
+	}, HostPolicy{Network: NetworkPolicyFull})
 	if err != nil {
 		t.Fatalf("Failed to create RelaySwitch: %v", err)
 	}
@@ -523,7 +542,7 @@ func Test430_relay_switch_tie_breaking(t *testing.T) {
 	sw, _ := NewRelaySwitch([]SocketPair{
 		{ID: "test-master-6", Read: engineRead1, Write: engineWrite1},
 		{ID: "test-master-7", Read: engineRead2, Write: engineWrite2},
-	})
+	}, HostPolicy{Network: NetworkPolicyFull})
 
 	// First request
 	req1 := NewReq(NewMessageIdFromUint(1), sameCap, []byte{}, "text/plain")
@@ -590,7 +609,7 @@ func Test431_relay_switch_continuation_frame_routing(t *testing.T) {
 		writer.WriteFrame(response)
 	}()
 
-	sw, _ := NewRelaySwitch([]SocketPair{{ID: "test-master-8", Read: engineRead, Write: engineWrite}})
+	sw, _ := NewRelaySwitch([]SocketPair{{ID: "test-master-8", Read: engineRead, Write: engineWrite}}, HostPolicy{Network: NetworkPolicyFull})
 
 	reqID := NewMessageIdFromUint(1)
 
@@ -620,7 +639,7 @@ func Test431_relay_switch_continuation_frame_routing(t *testing.T) {
 
 // TEST432: Empty masters list creates empty switch, add_master works
 func Test432_relay_switch_empty_masters_list_error(t *testing.T) {
-	_, err := NewRelaySwitch([]SocketPair{})
+	_, err := NewRelaySwitch([]SocketPair{}, HostPolicy{Network: NetworkPolicyFull})
 	if err == nil {
 		t.Fatal("Expected error for empty masters list")
 	}
@@ -675,7 +694,7 @@ func Test433_relay_switch_capability_aggregation_deduplicates(t *testing.T) {
 	sw, _ := NewRelaySwitch([]SocketPair{
 		{ID: "test-master-9", Read: engineRead1, Write: engineWrite1},
 		{ID: "test-master-10", Read: engineRead2, Write: engineWrite2},
-	})
+	}, HostPolicy{Network: NetworkPolicyFull})
 
 	// The wire payload carries caps inside
 	// installed_cartridges[*].cap_groups[*].caps; deduplication is a
@@ -744,7 +763,7 @@ func Test434_relay_switch_limits_negotiation_minimum(t *testing.T) {
 	sw, err := NewRelaySwitch([]SocketPair{
 		{ID: "test-master-11", Read: engineRead1, Write: engineWrite1},
 		{ID: "test-master-12", Read: engineRead2, Write: engineWrite2},
-	})
+	}, HostPolicy{Network: NetworkPolicyFull})
 	if err != nil {
 		t.Fatalf("failed to construct relay switch: %v", err)
 	}
@@ -785,7 +804,7 @@ func Test435_relay_switch_urn_matching(t *testing.T) {
 		}
 	}()
 
-	sw, _ := NewRelaySwitch([]SocketPair{{ID: "test-master-13", Read: engineRead, Write: engineWrite}})
+	sw, _ := NewRelaySwitch([]SocketPair{{ID: "test-master-13", Read: engineRead, Write: engineWrite}}, HostPolicy{Network: NetworkPolicyFull})
 
 	// Exact match should work
 	req1 := NewReq(NewMessageIdFromUint(1), registeredCap, []byte{}, "text/plain")
@@ -853,7 +872,7 @@ func Test437_preferred_cap_routes_to_generic(t *testing.T) {
 	sw, err := NewRelaySwitch([]SocketPair{
 		{ID: "test-master-14", Read: engineRead0, Write: engineWrite0},
 		{ID: "test-master-15", Read: engineRead1, Write: engineWrite1},
-	})
+	}, HostPolicy{Network: NetworkPolicyFull})
 	if err != nil {
 		t.Fatalf("Failed to create RelaySwitch: %v", err)
 	}
@@ -902,7 +921,7 @@ func Test438_preferred_cap_falls_back_when_not_comparable(t *testing.T) {
 		}
 	}()
 
-	sw, err := NewRelaySwitch([]SocketPair{{ID: "test-master-16", Read: engineRead, Write: engineWrite}})
+	sw, err := NewRelaySwitch([]SocketPair{{ID: "test-master-16", Read: engineRead, Write: engineWrite}}, HostPolicy{Network: NetworkPolicyFull})
 	if err != nil {
 		t.Fatalf("Failed to create RelaySwitch: %v", err)
 	}
@@ -940,7 +959,7 @@ func Test439_generic_candidate_can_dispatch_specific_request(t *testing.T) {
 		}
 	}()
 
-	sw, err := NewRelaySwitch([]SocketPair{{ID: "test-master-17", Read: engineRead, Write: engineWrite}})
+	sw, err := NewRelaySwitch([]SocketPair{{ID: "test-master-17", Read: engineRead, Write: engineWrite}}, HostPolicy{Network: NetworkPolicyFull})
 	if err != nil {
 		t.Fatalf("Failed to create RelaySwitch: %v", err)
 	}
@@ -1113,7 +1132,7 @@ func Test133_ReattachByIDPreservesSlotIndex(t *testing.T) {
 
 	sw, err := NewRelaySwitch([]SocketPair{
 		{ID: "xpc-service", Read: engineRead, Write: engineWrite},
-	})
+	}, HostPolicy{Network: NetworkPolicyFull})
 	if err != nil {
 		t.Fatalf("NewRelaySwitch: %v", err)
 	}
@@ -1192,7 +1211,7 @@ func Test134_AddMasterWithDuplicateHealthyIDErrors(t *testing.T) {
 
 	sw, err := NewRelaySwitch([]SocketPair{
 		{ID: "xpc-service", Read: engineRead, Write: engineWrite},
-	})
+	}, HostPolicy{Network: NetworkPolicyFull})
 	if err != nil {
 		t.Fatalf("NewRelaySwitch: %v", err)
 	}
@@ -1245,7 +1264,7 @@ func Test1965_AttachDecidedBySocketLivenessNotHealth(t *testing.T) {
 
 	sw, err := NewRelaySwitch([]SocketPair{
 		{ID: "xpc-service", Read: engineRead, Write: engineWrite},
-	})
+	}, HostPolicy{Network: NetworkPolicyFull})
 	if err != nil {
 		t.Fatalf("NewRelaySwitch: %v", err)
 	}
@@ -1321,7 +1340,7 @@ func Test6745_RelaySwitchNewRejectsDuplicateIDs(t *testing.T) {
 	_, err := NewRelaySwitch([]SocketPair{
 		{ID: "dup-id", Read: a, Write: aOther},
 		{ID: "dup-id", Read: b, Write: bOther},
-	})
+	}, HostPolicy{Network: NetworkPolicyFull})
 	if err == nil {
 		t.Fatalf("duplicate ids must be rejected")
 	}
@@ -1356,7 +1375,7 @@ func Test487_relay_switch_identity_verification_succeeds(t *testing.T) {
 
 	sw, err := NewRelaySwitch([]SocketPair{
 		{ID: "test-master-0", Read: engineRead, Write: engineWrite},
-	})
+	}, HostPolicy{Network: NetworkPolicyFull})
 	if err != nil {
 		t.Fatalf("construction must succeed when identity verification passes: %v", err)
 	}
@@ -1393,6 +1412,9 @@ func Test488_relay_switch_identity_verification_fails(t *testing.T) {
 			t.Errorf("slave SendNotify: %v", err)
 			return
 		}
+		if !expectPolicy(t, reader) {
+			return
+		}
 
 		// Drain the COMPLETE identity request (REQ + STREAM_START + CHUNK(s) +
 		// STREAM_END + END) before replying, exactly as a real master's reader
@@ -1406,7 +1428,7 @@ func Test488_relay_switch_identity_verification_fails(t *testing.T) {
 
 	_, err := NewRelaySwitch([]SocketPair{
 		{ID: "test-master-0", Read: engineRead, Write: engineWrite},
-	})
+	}, HostPolicy{Network: NetworkPolicyFull})
 	if err == nil {
 		t.Fatal("construction must fail when identity verification fails")
 	}
@@ -1457,7 +1479,7 @@ func buildSwitchWithNMasters(t *testing.T, n int) *RelaySwitch {
 			Write: engineWrite,
 		})
 	}
-	sw, err := NewRelaySwitch(sockets)
+	sw, err := NewRelaySwitch(sockets, HostPolicy{Network: NetworkPolicyFull})
 	if err != nil {
 		t.Fatalf("buildSwitchWithNMasters(%d): %v", n, err)
 	}
@@ -1494,7 +1516,7 @@ func buildSwitchWithNCaplessMasters(t *testing.T, n int) *RelaySwitch {
 			Write: engineWrite,
 		})
 	}
-	sw, err := NewRelaySwitch(sockets)
+	sw, err := NewRelaySwitch(sockets, HostPolicy{Network: NetworkPolicyFull})
 	if err != nil {
 		t.Fatalf("buildSwitchWithNCaplessMasters(%d): %v", n, err)
 	}
@@ -1566,7 +1588,7 @@ type constHandler struct {
 	value string
 }
 
-func (h constHandler) HandleRequest(_ string, input <-chan Frame, output *ResponseWriter, _ PeerInvoker) {
+func (h constHandler) HandleRequest(_ string, input <-chan Frame, output *ResponseWriter, _ PeerInvoker, _ NetworkAccess) {
 	// Drain input until END.
 	for frame := range input {
 		if frame.FrameType == FrameTypeEnd {
@@ -1638,7 +1660,7 @@ func Test0132_add_master_dynamic(t *testing.T) {
 	)
 	spA := wireInProcessHost(t, "test-master-0", hostA)
 
-	sw, err := NewRelaySwitch([]SocketPair{spA})
+	sw, err := NewRelaySwitch([]SocketPair{spA}, HostPolicy{Network: NetworkPolicyFull})
 	if err != nil {
 		t.Fatalf("NewRelaySwitch: %v", err)
 	}
@@ -1736,7 +1758,7 @@ func Test666_preferred_cap_routing(t *testing.T) {
 	spExact := wireInProcessHost(t, "test-master-0", hostExact)
 	spExtra := wireInProcessHost(t, "test-master-1", hostExtra)
 
-	sw, err := NewRelaySwitch([]SocketPair{spExact, spExtra})
+	sw, err := NewRelaySwitch([]SocketPair{spExact, spExtra}, HostPolicy{Network: NetworkPolicyFull})
 	if err != nil {
 		t.Fatalf("NewRelaySwitch: %v", err)
 	}
@@ -1843,6 +1865,9 @@ func serveDeferredIdentity(t *testing.T, reader *FrameReader, writer *FrameWrite
 		t.Errorf("serveDeferredIdentity: empty SendNotify: %v", err)
 		return
 	}
+	if !expectPolicy(t, reader) {
+		return
+	}
 
 	// 2. Populated RelayNotify — the empty→non-empty transition.
 	if err := SendNotify(writer, deferredIdentityNotify(capURNs), DefaultLimits()); err != nil {
@@ -1930,7 +1955,7 @@ func Test0131_runtime_identity_probe_required_on_empty_to_nonempty_transition(t 
 
 	sw, err := NewRelaySwitch([]SocketPair{
 		{ID: "test-master-0", Read: engineRead, Write: engineWrite},
-	})
+	}, HostPolicy{Network: NetworkPolicyFull})
 	if err != nil {
 		t.Fatalf("construction must succeed for empty-cap initial notify: %v", err)
 	}
@@ -1980,7 +2005,7 @@ func Test0135_runtime_identity_probe_success_makes_caps_routable(t *testing.T) {
 
 	sw, err := NewRelaySwitch([]SocketPair{
 		{ID: "test-master-0", Read: engineRead, Write: engineWrite},
-	})
+	}, HostPolicy{Network: NetworkPolicyFull})
 	if err != nil {
 		t.Fatalf("construction must succeed for empty-cap initial notify: %v", err)
 	}
@@ -2028,7 +2053,7 @@ func Test1897_unhealthy_master_inventory_retained_but_not_routable(t *testing.T)
 
 	sw, err := NewRelaySwitch([]SocketPair{
 		{ID: "test-master-0", Read: engineRead, Write: engineWrite},
-	})
+	}, HostPolicy{Network: NetworkPolicyFull})
 	if err != nil {
 		t.Fatalf("construction must succeed for empty-cap initial notify: %v", err)
 	}
@@ -2102,7 +2127,7 @@ func Test1898_subscribe_capabilities_delivers_routable_set(t *testing.T) {
 	// Capabilities are rebuilt inside NewRelaySwitch — before we subscribe.
 	sw, err := NewRelaySwitch([]SocketPair{
 		{ID: "test-master-0", Read: engineRead, Write: engineWrite},
-	})
+	}, HostPolicy{Network: NetworkPolicyFull})
 	if err != nil {
 		t.Fatalf("NewRelaySwitch: %v", err)
 	}
@@ -2151,7 +2176,7 @@ func Test1901_add_master_reattach_verifies_identity(t *testing.T) {
 
 	sw, err := NewRelaySwitch([]SocketPair{
 		{ID: "xpc-service", Read: engineRead, Write: engineWrite},
-	})
+	}, HostPolicy{Network: NetworkPolicyFull})
 	if err != nil {
 		t.Fatalf("NewRelaySwitch: %v", err)
 	}
@@ -2172,6 +2197,9 @@ func Test1901_add_master_reattach_verifies_identity(t *testing.T) {
 		manifestJSON, _ := json.Marshal(manifest)
 		if err := SendNotify(writer, manifestJSON, DefaultLimits()); err != nil {
 			t.Errorf("slave2 SendNotify: %v", err)
+			return
+		}
+		if !expectPolicy(t, reader) {
 			return
 		}
 		// Answer the probe with ERR after draining the full request.
@@ -2342,7 +2370,7 @@ func Test7093_dead_consumer_cancels_upstream(t *testing.T) {
 		}
 	}()
 
-	sw, err := NewRelaySwitch([]SocketPair{{ID: "test-master-0", Read: engineRead, Write: engineWrite}})
+	sw, err := NewRelaySwitch([]SocketPair{{ID: "test-master-0", Read: engineRead, Write: engineWrite}}, HostPolicy{Network: NetworkPolicyFull})
 	if err != nil {
 		t.Fatalf("NewRelaySwitch: %v", err)
 	}
@@ -2462,7 +2490,7 @@ func Test7091_switch_retains_host_protocol_stats_from_relay_notify(t *testing.T)
 		}
 	}()
 
-	sw, err := NewRelaySwitch([]SocketPair{{ID: "test-master-0", Read: engineRead, Write: engineWrite}})
+	sw, err := NewRelaySwitch([]SocketPair{{ID: "test-master-0", Read: engineRead, Write: engineWrite}}, HostPolicy{Network: NetworkPolicyFull})
 	if err != nil {
 		t.Fatalf("NewRelaySwitch: %v", err)
 	}
@@ -2895,7 +2923,7 @@ func Test7037_cancel_cascades_to_children_and_cleans_all_state(t *testing.T) {
 		cancelsCh <- cancels
 	}()
 
-	sw, err := NewRelaySwitch([]SocketPair{{ID: "test-master-0", Read: engineRead, Write: engineWrite}})
+	sw, err := NewRelaySwitch([]SocketPair{{ID: "test-master-0", Read: engineRead, Write: engineWrite}}, HostPolicy{Network: NetworkPolicyFull})
 	if err != nil {
 		t.Fatalf("switch with one master must construct: %v", err)
 	}
@@ -3000,7 +3028,7 @@ func Test7038_master_death_terminates_pending_requests(t *testing.T) {
 		}
 	}()
 
-	sw, err := NewRelaySwitch([]SocketPair{{ID: "test-master-0", Read: engineRead, Write: engineWrite}})
+	sw, err := NewRelaySwitch([]SocketPair{{ID: "test-master-0", Read: engineRead, Write: engineWrite}}, HostPolicy{Network: NetworkPolicyFull})
 	if err != nil {
 		t.Fatalf("switch with one master must construct: %v", err)
 	}

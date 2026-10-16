@@ -1839,7 +1839,7 @@ func Test1122_FullPathEngineReqToCartridgeResponse(t *testing.T) {
 		cartridgeWriteP.Close()
 	}()
 
-	host := NewCartridgeHost()
+	host := newTestHost()
 	_, err := host.AttachCartridge(hostReadP, hostWriteP)
 	require.NoError(t, err)
 
@@ -1938,7 +1938,7 @@ func Test1123_CartridgeErrorFlowsToEngine(t *testing.T) {
 		cartridgeWriteP.Close()
 	}()
 
-	host := NewCartridgeHost()
+	host := newTestHost()
 	_, err := host.AttachCartridge(hostReadP, hostWriteP)
 	require.NoError(t, err)
 
@@ -2050,7 +2050,7 @@ func Test898_BinaryIntegrityThroughRelay(t *testing.T) {
 		cartridgeWriteP.Close()
 	}()
 
-	host := NewCartridgeHost()
+	host := newTestHost()
 	_, err := host.AttachCartridge(hostReadP, hostWriteP)
 	require.NoError(t, err)
 
@@ -2167,7 +2167,7 @@ func Test899_StreamingChunksThroughRelay(t *testing.T) {
 		cartridgeWriteP.Close()
 	}()
 
-	host := NewCartridgeHost()
+	host := newTestHost()
 	_, err := host.AttachCartridge(hostReadP, hostWriteP)
 	require.NoError(t, err)
 
@@ -2315,7 +2315,7 @@ func Test900_TwoCartridgesRoutedIndependently(t *testing.T) {
 		cartridgeWriteB.Close()
 	}()
 
-	host := NewCartridgeHost()
+	host := newTestHost()
 	_, err := host.AttachCartridge(hostReadA, hostWriteA)
 	require.NoError(t, err)
 	_, err = host.AttachCartridge(hostReadB, hostWriteB)
@@ -2417,7 +2417,7 @@ func Test901_ReqForUnknownCapReturnsErrFrame(t *testing.T) {
 		cartridgeWriteP.Close()
 	}()
 
-	host := NewCartridgeHost()
+	host := newTestHost()
 	_, err := host.AttachCartridge(hostReadP, hostWriteP)
 	require.NoError(t, err)
 
@@ -2517,7 +2517,7 @@ func Test489_FullPathIdentityVerification(t *testing.T) {
 		cartridgeWriteP.Close()
 	}()
 
-	host := NewCartridgeHost()
+	host := newTestHost()
 	_, err := host.AttachCartridge(hostReadP, hostWriteP)
 	require.NoError(t, err)
 
@@ -2674,7 +2674,7 @@ func Test490_IdentityVerificationMultipleCartridges(t *testing.T) {
 		cartridgeWriteB.Close()
 	}()
 
-	host := NewCartridgeHost()
+	host := newTestHost()
 	_, err := host.AttachCartridge(hostReadA, hostWriteA)
 	require.NoError(t, err)
 	_, err = host.AttachCartridge(hostReadB, hostWriteB)

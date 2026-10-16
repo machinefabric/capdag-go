@@ -71,7 +71,7 @@ func Test1871_sync_roster_adds_and_removes_registered_dir_live(t *testing.T) {
 	entry := filepath.Join(dir, "bin")
 	require.NoError(t, os.WriteFile(entry, []byte("#!/bin/sh\n"), 0o755))
 
-	host := NewCartridgeHost()
+	host := newTestHost()
 	handle := host.ProcessHandle()
 
 	// Relay pipe pair: the engine side reads RelayNotify frames the host emits.
@@ -144,7 +144,7 @@ func retireFixture(t *testing.T) (*CartridgeHost, string, string) {
 	entry := filepath.Join(dir, "bin")
 	require.NoError(t, os.WriteFile(entry, []byte("#!/bin/sh\n"), 0o755))
 
-	host := NewCartridgeHost()
+	host := newTestHost()
 	host.RegisterCartridgeDir(RegisteredDirSpec{
 		EntryPoint:  entry,
 		VersionDir:  dir,

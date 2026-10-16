@@ -55,9 +55,10 @@ func Test172_frame_type_valid_range(t *testing.T) {
 		12: true,  // CANCEL
 		13: true,  // CREDIT (protocol v4)
 		14: true,  // CLOSE_STREAM (the tap-off)
+		15: true,  // POLICY (protocol v6)
 	}
 
-	for i := uint8(0); i <= 14; i++ {
+	for i := uint8(0); i <= 15; i++ {
 		if expected, exists := validTypes[i]; exists && expected {
 			ft := FrameType(i)
 			if ft.String() == fmt.Sprintf("UNKNOWN(%d)", i) {
@@ -65,12 +66,12 @@ func Test172_frame_type_valid_range(t *testing.T) {
 			}
 		}
 	}
-	// 14 is CloseStream (the tap-off); 15 is one past it — must be invalid
-	if FrameType(14) != FrameTypeCloseStream {
-		t.Errorf("Expected 14 to be CloseStream, got %s", FrameType(14).String())
+	// 15 is Policy; 16 is one past it — must be invalid
+	if FrameType(15) != FrameTypePolicy {
+		t.Errorf("Expected 15 to be Policy, got %s", FrameType(15).String())
 	}
-	if FrameType(15).String() != "UNKNOWN(15)" {
-		t.Errorf("Expected 15 to be invalid, got %s", FrameType(15).String())
+	if FrameType(16).String() != "UNKNOWN(16)" {
+		t.Errorf("Expected 16 to be invalid, got %s", FrameType(16).String())
 	}
 	if FrameType(100).String() != "UNKNOWN(100)" {
 		t.Errorf("Expected 100 to be invalid")
@@ -566,8 +567,8 @@ func Test198_limits_default(t *testing.T) {
 
 // TEST199: Test PROTOCOL_VERSION is 5
 func Test199_protocol_version_constant(t *testing.T) {
-	if ProtocolVersion != 5 {
-		t.Errorf("PROTOCOL_VERSION must be 5, got %d", ProtocolVersion)
+	if ProtocolVersion != 6 {
+		t.Errorf("PROTOCOL_VERSION must be 6, got %d", ProtocolVersion)
 	}
 }
 
@@ -855,9 +856,12 @@ func Test403_frame_type_one_past_cancel(t *testing.T) {
 	if FrameType(14) != FrameTypeCloseStream {
 		t.Errorf("FrameType(14) must be CloseStream, got %s", FrameType(14).String())
 	}
-	ft := FrameType(15)
-	if ft.String() != fmt.Sprintf("UNKNOWN(%d)", 15) {
-		t.Errorf("FrameType(15) must be unknown (past the last valid frame type), got %s", ft.String())
+	if FrameType(15) != FrameTypePolicy {
+		t.Errorf("FrameType(15) must be Policy, got %s", FrameType(15).String())
+	}
+	ft := FrameType(16)
+	if ft.String() != fmt.Sprintf("UNKNOWN(%d)", 16) {
+		t.Errorf("FrameType(16) must be unknown (past the last valid frame type), got %s", ft.String())
 	}
 	ft2 := FrameType(2)
 	if ft2.String() != fmt.Sprintf("UNKNOWN(%d)", 2) {

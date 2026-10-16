@@ -195,8 +195,8 @@ func DecodeFrame(data []byte) (*Frame, error) {
 	}
 	if ft, ok := ftVal.(uint64); ok {
 		frameType := FrameType(ft)
-		// Validate frame type is in valid range (0-14, excluding removed value 2)
-		if frameType < FrameTypeHello || frameType > FrameTypeCloseStream {
+		// Validate frame type is in valid range (0-15, excluding removed value 2)
+		if frameType < FrameTypeHello || frameType > FrameTypePolicy {
 			return nil, fmt.Errorf("invalid frame_type %d", ft)
 		}
 		// Reject old RES frame type (2) - permanently retired
@@ -453,6 +453,13 @@ func DecodeFrame(data []byte) (*Frame, error) {
 	if frame.FrameType == FrameTypeCredit {
 		if frame.Credit == nil {
 			return nil, errors.New("CREDIT frame missing required field: credit")
+		}
+	}
+	// A Policy that does not say a policy is refused here, so every decoded
+	// Policy reads (12.2 §Policy).
+	if frame.FrameType == FrameTypePolicy {
+		if _, _, err := frame.HostPolicy(); err != nil {
+			return nil, err
 		}
 	}
 

@@ -17,7 +17,7 @@ import (
 // echoHandler accumulates input and echoes raw bytes back.
 type echoHandler struct{}
 
-func (echoHandler) HandleRequest(_ string, input <-chan Frame, output *ResponseWriter, _ PeerInvoker) {
+func (echoHandler) HandleRequest(_ string, input <-chan Frame, output *ResponseWriter, _ PeerInvoker, _ NetworkAccess) {
 	args, meta, err := AccumulateInput(input)
 	if err != nil {
 		output.EmitError("ACCUMULATE_ERROR", err.Error())
@@ -74,6 +74,8 @@ func Test6748_RoutesReqToHandler(t *testing.T) {
 
 	reader := NewFrameReader(testConn)
 	writer := NewFrameWriter(testConn)
+	// The switch gives its policy before it routes anything (12.2 §Policy).
+	require.NoError(t, writer.WriteFrame(NewPolicyFrame(HostPolicy{Network: NetworkPolicyFull})))
 
 	// First frame should be RelayNotify with manifest
 	notify, err := reader.ReadFrame()
@@ -162,6 +164,8 @@ func Test1961_cancel_terminal_carries_its_attribution(t *testing.T) {
 		go func() { hostDone <- host.Run(hostConn, hostConn) }()
 		reader := NewFrameReader(testConn)
 		writer := NewFrameWriter(testConn)
+		// The switch gives its policy before it routes anything (12.2 §Policy).
+		require.NoError(t, writer.WriteFrame(NewPolicyFrame(HostPolicy{Network: NetworkPolicyFull})))
 		notify, err := reader.ReadFrame()
 		require.NoError(t, err)
 		require.Equal(t, FrameTypeRelayNotify, notify.FrameType)
@@ -258,6 +262,8 @@ func Test6749_IdentityVerification(t *testing.T) {
 
 	reader := NewFrameReader(testConn)
 	writer := NewFrameWriter(testConn)
+	// The switch gives its policy before it routes anything (12.2 §Policy).
+	require.NoError(t, writer.WriteFrame(NewPolicyFrame(HostPolicy{Network: NetworkPolicyFull})))
 
 	// Skip RelayNotify
 	_, err := reader.ReadFrame()
@@ -320,6 +326,8 @@ func Test6750_NoHandlerReturnsErr(t *testing.T) {
 
 	reader := NewFrameReader(testConn)
 	writer := NewFrameWriter(testConn)
+	// The switch gives its policy before it routes anything (12.2 §Policy).
+	require.NoError(t, writer.WriteFrame(NewPolicyFrame(HostPolicy{Network: NetworkPolicyFull})))
 
 	// Skip RelayNotify
 	_, err := reader.ReadFrame()
@@ -395,6 +403,8 @@ func Test658_HeartbeatResponse(t *testing.T) {
 
 	reader := NewFrameReader(testConn)
 	writer := NewFrameWriter(testConn)
+	// The switch gives its policy before it routes anything (12.2 §Policy).
+	require.NoError(t, writer.WriteFrame(NewPolicyFrame(HostPolicy{Network: NetworkPolicyFull})))
 
 	// Skip RelayNotify
 	_, err := reader.ReadFrame()
@@ -426,7 +436,7 @@ func Test658_HeartbeatResponse(t *testing.T) {
 // failHandler always fails.
 type failHandler struct{}
 
-func (failHandler) HandleRequest(_ string, input <-chan Frame, output *ResponseWriter, _ PeerInvoker) {
+func (failHandler) HandleRequest(_ string, input <-chan Frame, output *ResponseWriter, _ PeerInvoker, _ NetworkAccess) {
 	// Drain input
 	for frame := range input {
 		if frame.FrameType == FrameTypeEnd {
@@ -455,6 +465,8 @@ func Test659_HandlerErrorReturnsErrFrame(t *testing.T) {
 
 	reader := NewFrameReader(testConn)
 	writer := NewFrameWriter(testConn)
+	// The switch gives its policy before it routes anything (12.2 §Policy).
+	require.NoError(t, writer.WriteFrame(NewPolicyFrame(HostPolicy{Network: NetworkPolicyFull})))
 
 	// Skip RelayNotify
 	_, err := reader.ReadFrame()
@@ -517,7 +529,7 @@ type taggedHandler struct {
 	tag string
 }
 
-func (h taggedHandler) HandleRequest(_ string, input <-chan Frame, output *ResponseWriter, _ PeerInvoker) {
+func (h taggedHandler) HandleRequest(_ string, input <-chan Frame, output *ResponseWriter, _ PeerInvoker, _ NetworkAccess) {
 	// Drain input
 	for frame := range input {
 		if frame.FrameType == FrameTypeEnd {
@@ -533,7 +545,7 @@ func (h taggedHandler) HandleRequest(_ string, input <-chan Frame, output *Respo
 // answered once it has sent its answer.
 type answersAnywayHandler struct{ answered chan struct{} }
 
-func (h answersAnywayHandler) HandleRequest(_ string, input <-chan Frame, output *ResponseWriter, _ PeerInvoker) {
+func (h answersAnywayHandler) HandleRequest(_ string, input <-chan Frame, output *ResponseWriter, _ PeerInvoker, _ NetworkAccess) {
 	for frame := range input {
 		if frame.FrameType == FrameTypeEnd {
 			break
@@ -609,6 +621,8 @@ func Test345_a_request_ends_once(t *testing.T) {
 		}()
 		reader := NewFrameReader(testConn)
 		writer := NewFrameWriter(testConn)
+		// The switch gives its policy before it routes anything (12.2 §Policy).
+		require.NoError(t, writer.WriteFrame(NewPolicyFrame(HostPolicy{Network: NetworkPolicyFull})))
 		notify, err := reader.ReadFrame()
 		require.NoError(t, err)
 		require.Equal(t, FrameTypeRelayNotify, notify.FrameType)

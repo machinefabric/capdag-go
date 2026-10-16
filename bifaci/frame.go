@@ -10,12 +10,12 @@ import (
 	model "github.com/machinefabric/capdag-go/formal"
 )
 
-// Protocol version 5: a cap may answer with one stream per declared output.
-// The stream of its main output names none; the stream of another output
-// names the output it is (key 21). It keeps explicit handler capacity, strict
-// diagnostic attribution, credit-based flow control and terminal metadata.
-// Every other version is rejected during handshake.
-const ProtocolVersion uint8 = 5
+// Protocol version 6: the host tells its cartridges what they may do with a
+// Policy frame (15), sent after the handshake and on every change. It keeps
+// version 5's streams per declared output (key 21), explicit handler
+// capacity, strict diagnostic attribution, credit-based flow control and
+// terminal metadata. Every other version is rejected during handshake.
+const ProtocolVersion uint8 = 6
 
 // Default maximum frame size (3.5 MB) - safe margin below 3.75MB limit
 // Larger payloads automatically use CHUNK frames
@@ -58,6 +58,10 @@ const (
 	// complete outputs. Not a cancel: host-side request state is untouched.
 	// StreamId names one stream; absent means every live feed the request holds.
 	FrameTypeCloseStream FrameType = 14
+	// FrameTypePolicy says what the host allows its cartridges to do, as it
+	// stands now (12.2 §Policy): host → cartridge only, after the handshake
+	// and on every change. Non-flow, id 0; meta.network is required.
+	FrameTypePolicy FrameType = 15
 )
 
 // FrameTypeAll is all variants, for counter arrays and snapshot
@@ -77,6 +81,7 @@ var FrameTypeAll = []FrameType{
 	FrameTypeCancel,
 	FrameTypeCredit,
 	FrameTypeCloseStream,
+	FrameTypePolicy,
 }
 
 // AsStr returns the stable snake_case name (the snapshot contract for
@@ -111,6 +116,8 @@ func (ft FrameType) AsStr() string {
 		return "close_stream"
 	case FrameTypeCredit:
 		return "credit"
+	case FrameTypePolicy:
+		return "policy"
 	default:
 		panic(fmt.Sprintf("BUG: FrameType %d not covered by AsStr", uint8(ft)))
 	}
@@ -148,6 +155,8 @@ func (ft FrameType) String() string {
 		return "CLOSE_STREAM"
 	case FrameTypeCredit:
 		return "CREDIT"
+	case FrameTypePolicy:
+		return "POLICY"
 	default:
 		return fmt.Sprintf("UNKNOWN(%d)", ft)
 	}

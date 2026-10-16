@@ -78,6 +78,8 @@ func (ft FrameType) model() model.FrameType {
 		return model.FrameTypeCredit{}
 	case FrameTypeCloseStream:
 		return model.FrameTypeCloseStream{}
+	case FrameTypePolicy:
+		return model.FrameTypePolicy{}
 	default:
 		panic(fmt.Sprintf("BUG: FrameType %d has no model type", uint8(ft)))
 	}

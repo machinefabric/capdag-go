@@ -389,7 +389,7 @@ func (t grantedDescriptor) Decode(r *lungo.Reader) (Granted, error) {
 	return v, nil
 }
 
-// FrameType is Lean's CapDAG.Bifaci.Flow.FrameType: one of FrameTypeHello, FrameTypeReq, FrameTypeChunk, FrameTypeFin, FrameTypeLog, FrameTypeErr, FrameTypeHeartbeat, FrameTypeStreamStart, FrameTypeStreamEnd, FrameTypeRelayNotify, FrameTypeRelayState, FrameTypeCancel, FrameTypeCredit, FrameTypeCloseStream.
+// FrameType is Lean's CapDAG.Bifaci.Flow.FrameType: one of FrameTypeHello, FrameTypeReq, FrameTypeChunk, FrameTypeFin, FrameTypeLog, FrameTypeErr, FrameTypeHeartbeat, FrameTypeStreamStart, FrameTypeStreamEnd, FrameTypeRelayNotify, FrameTypeRelayState, FrameTypeCancel, FrameTypeCredit, FrameTypeCloseStream, FrameTypePolicy.
 type FrameType interface{ isFrameType() }
 
 // FrameTypeHello is Lean's CapDAG.Bifaci.Flow.FrameType.hello.
@@ -462,8 +462,13 @@ type FrameTypeCloseStream struct{}
 
 func (FrameTypeCloseStream) isFrameType() {}
 
+// FrameTypePolicy is Lean's CapDAG.Bifaci.Flow.FrameType.policy.
+type FrameTypePolicy struct{}
+
+func (FrameTypePolicy) isFrameType() {}
+
 // FrameTypeFingerprint is the layout fingerprint of Lean's CapDAG.Bifaci.Flow.FrameType: a package using FrameType from this one checks it.
-const FrameTypeFingerprint = "3d6742b864aeb68cf6add586acfcd1a9663a3816d718f8d8aadc3c5e3dab3e2f"
+const FrameTypeFingerprint = "ef92a191779a89ce9c1e60a09202ebd3d2de8fdf006f505bb4d1a8522287248e"
 
 type frameTypeDescriptor struct{}
 
@@ -588,6 +593,14 @@ func (t frameTypeDescriptor) Encode(w *lungo.Writer, v FrameType) error {
 			return lungo.Malformed("a nil *FrameTypeCloseStream")
 		}
 		return t.Encode(w, *x)
+	case FrameTypePolicy:
+		w.U32(14)
+		return nil
+	case *FrameTypePolicy:
+		if x == nil {
+			return lungo.Malformed("a nil *FrameTypePolicy")
+		}
+		return t.Encode(w, *x)
 	}
 	return lungo.Malformed("a nil FrameType")
 }
@@ -639,6 +652,9 @@ func (t frameTypeDescriptor) Decode(r *lungo.Reader) (FrameType, error) {
 		return v, nil
 	case 13:
 		var v FrameTypeCloseStream
+		return v, nil
+	case 14:
+		var v FrameTypePolicy
 		return v, nil
 	}
 	return nil, lungo.Malformed("constructor index %d of CapDAG.Bifaci.Flow.FrameType", c)

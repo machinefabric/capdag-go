@@ -803,6 +803,27 @@ type CartridgeRuntime struct {
 	// flow's END/ERR — the expected teardown race, indicated as benign,
 	// never as drops.
 	stragglerCounters *StragglerCounters
+
+	// policy is the host's latest policy (12.2 §Policy): empty until the
+	// first Policy frame, replaced by every later one, read live by every
+	// handler through Network(). A cartridge run from a command line is
+	// under `full` — the person running it decides for themselves.
+	policy *LivePolicy
+}
+
+// isIdentityRequest says whether a request is the host's identity check
+// (CAP_IDENTITY), the one request a cartridge serves before it has a policy
+// (12.3).
+func isIdentityRequest(capUrn string) bool {
+	identity, err := urn.NewCapUrnFromString(standard.CapIdentity)
+	if err != nil {
+		panic(fmt.Sprintf("BUG: CAP_IDENTITY is not a cap URN: %v", err))
+	}
+	requested, err := urn.NewCapUrnFromString(capUrn)
+	if err != nil {
+		return false
+	}
+	return identity.IsEquivalent(requested)
 }
 
 // NewCartridgeRuntime creates a new cartridge runtime with the required manifest JSON
@@ -818,6 +839,7 @@ func NewCartridgeRuntime(manifestJSON []byte) (*CartridgeRuntime, error) {
 		pools:             &poolsCell{},
 		dropCounters:      NewDropCounters(),
 		stragglerCounters: NewStragglerCounters(),
+		policy:            NewLivePolicy(),
 	}
 
 	if parseErr == nil {
@@ -872,6 +894,7 @@ func NewCartridgeRuntimeWithManifest(manifest *CapManifest) (*CartridgeRuntime, 
 		pools:             &poolsCell{},
 		dropCounters:      NewDropCounters(),
 		stragglerCounters: NewStragglerCounters(),
+		policy:            NewLivePolicy(),
 	}
 
 	// Auto-register identity handler if not already registered
@@ -1028,6 +1051,7 @@ type Request struct {
 	frames  <-chan Frame
 	emitter StreamEmitter
 	peer    PeerInvoker
+	network NetworkAccess
 }
 
 // Frames returns the input frame channel. The handler owns the channel and must consume
@@ -1040,6 +1064,15 @@ func (r *Request) Output() StreamEmitter { return r.emitter }
 // Peer returns the PeerInvoker for calling capabilities on the host.
 func (r *Request) Peer() PeerInvoker { return r.peer }
 
+// Network is the host's live network policy (12.2 §Policy). Code that reaches
+// the network asks it before every call; it reads the runtime's current
+// policy, never one taken when the request was dispatched.
+func (r *Request) Network() NetworkAccess { return r.network }
+
+// Network is the host's live network policy, for handlers registered as
+// functions; it is the same one every Request's Network() reads.
+func (pr *CartridgeRuntime) Network() NetworkAccess { return NewNetworkAccess(pr.policy) }
+
 // CapOp is the interface for struct-based cartridge cap handlers. Implement Perform to handle
 // a capability invocation. Mirrors the Rust Op<()> pattern: input/output/peer are accessed
 // through *Request rather than as separate parameters.
@@ -1051,7 +1084,7 @@ type CapOp interface {
 // Bridges the struct-based CapOp interface to the function-based HandlerFunc.
 func (pr *CartridgeRuntime) RegisterOp(capUrn string, op CapOp) {
 	pr.Register(capUrn, func(frames <-chan Frame, emitter StreamEmitter, peer PeerInvoker) error {
-		return op.Perform(&Request{frames: frames, emitter: emitter, peer: peer})
+		return op.Perform(&Request{frames: frames, emitter: emitter, peer: peer, network: NewNetworkAccess(pr.policy)})
 	})
 }
 
@@ -1615,6 +1648,20 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 
 			capUrn := *frame.Cap
 			rawPayload := frame.Payload
+
+			// No routed request before the host's first policy: a cartridge
+			// never serves work without knowing what it may do. The host's
+			// identity check belongs to the handshake and comes before any
+			// policy (12.3).
+			if _, ok := pr.policy.Current(); !ok && !isIdentityRequest(capUrn) {
+				errFrame := NewErr(frame.Id, "PROTOCOL_VIOLATION", AttributionClassInternal,
+					fmt.Sprintf("request for '%s' arrived before the host sent its policy; a host sends Policy before it routes anything to a cartridge", capUrn), nil)
+				errFrame.RoutingId = routingId
+				if err := writer.WriteFrame(errFrame); err != nil {
+					fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write PROTOCOL_VIOLATION: %v\n", err)
+				}
+				continue
+			}
 
 			// Protocol v2: REQ must have empty payload - arguments come as streams
 			if len(rawPayload) > 0 {
@@ -2226,6 +2273,15 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 			// Relay-level frames must never reach a cartridge runtime.
 			// If they do, it's a bug in the relay layer — fail hard.
 			return fmt.Errorf("relay frame %v must not reach cartridge runtime", frame.FrameType)
+
+		case FrameTypePolicy:
+			// The host's new policy (12.2 §Policy): every handler's Network()
+			// reads it at its next check, running ones too.
+			policy, _, err := frame.HostPolicy()
+			if err != nil {
+				return fmt.Errorf("policy frame: %w", err)
+			}
+			pr.policy.Set(policy)
 		}
 	}
 
@@ -2240,6 +2296,9 @@ func (pr *CartridgeRuntime) runCLIMode(args []string) error {
 	if pr.manifest == nil {
 		return errors.New("failed to parse manifest for CLI mode")
 	}
+	// No host: the person running the command decides for themselves
+	// (12.2 §Policy), so a cartridge run from a command line is under `full`.
+	pr.policy.Set(HostPolicy{Network: NetworkPolicyFull})
 
 	// Handle --help at top level
 	if len(args) == 2 && (args[1] == "--help" || args[1] == "-h") {

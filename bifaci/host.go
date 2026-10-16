@@ -329,6 +329,13 @@ type CartridgeHost struct {
 	cartridges []*ManagedCartridge
 	capTable   []capTableEntry
 
+	// policy is what this host allows its cartridges to do (12.2 §Policy):
+	// given by the relay's Policy frames, or by SetPolicy for a host its
+	// builder tells directly. Sent to each cartridge before anything is
+	// routed to it; nil until the first one, and no routed request is
+	// served then. (matches Rust CartridgeHostRuntime.policy)
+	policy *HostPolicy
+
 	// Routing tables — mirror of the Rust `CartridgeHostRuntime`
 	// design (capdag/src/bifaci/host_runtime.rs). Two independent
 	// maps so self-loop peer requests (where the requesting and
@@ -969,6 +976,9 @@ func (h *CartridgeHost) AttachCartridge(cartridgeRead io.Reader, cartridgeWrite 
 		pendingDesired:    make(DesiredCapacities),
 	}
 	h.cartridges = append(h.cartridges, cartridge)
+	// The identity check above is the only request a cartridge serves
+	// before its policy; it is given the policy before anything is routed.
+	h.givePolicyLocked(cartridgeIdx)
 
 	for _, cap := range caps {
 		h.capTable = append(h.capTable, capTableEntry{capUrn: cap, cartridgeIdx: cartridgeIdx})
@@ -980,6 +990,37 @@ func (h *CartridgeHost) AttachCartridge(cartridgeRead io.Reader, cartridgeWrite 
 	go h.readerLoop(cartridgeIdx, cartridge.generation, reader)
 
 	return cartridgeIdx, nil
+}
+
+// SetPolicy gives this host its policy (12.2 §Policy) and passes it to every
+// cartridge it has connected. A host behind a relay is given it by the
+// switch's Policy frames instead; this is for the builder of a host that is
+// told directly, before or instead of a relay.
+func (h *CartridgeHost) SetPolicy(policy HostPolicy) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.setPolicyLocked(policy)
+}
+
+func (h *CartridgeHost) setPolicyLocked(policy HostPolicy) {
+	h.policy = &policy
+	for idx := range h.cartridges {
+		h.givePolicyLocked(idx)
+	}
+}
+
+// givePolicyLocked sends the current policy to one connected cartridge.
+// Nothing to send before the host has one; a cartridge not connected has no
+// writer and is given it when it connects.
+func (h *CartridgeHost) givePolicyLocked(cartridgeIdx int) {
+	if h.policy == nil {
+		return
+	}
+	cartridge := h.cartridges[cartridgeIdx]
+	if cartridge.writerCh == nil {
+		return
+	}
+	cartridge.writerCh <- NewPolicyFrame(*h.policy)
 }
 
 // Capabilities returns the aggregate capabilities of all running cartridges as JSON.
@@ -1414,6 +1455,17 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 			capUrn = *frame.Cap
 		}
 
+		// Nothing is routed before the host has a policy to give the
+		// cartridge first (12.2 §Policy). The switch sends one before
+		// anything else, so this is a peer that skipped it.
+		if h.policy == nil {
+			errFrame := NewErr(frame.Id, "PROTOCOL_VIOLATION", AttributionClassInternal,
+				fmt.Sprintf("request for '%s' reached a host that has not been given a policy; the switch sends Policy before it routes anything", capUrn), nil)
+			errFrame.RoutingId = frame.RoutingId
+			relayWriter.WriteFrame(errFrame)
+			return nil
+		}
+
 		cartridgeIdx, found := h.findCartridgeForCapLocked(capUrn)
 		if !found {
 			// No dispatchable cartridge for a planned cap is a
@@ -1632,6 +1684,16 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 	case FrameTypeRelayNotify, FrameTypeRelayState:
 		return fmt.Errorf("relay frame %v reached cartridge host", frame.FrameType)
 
+	case FrameTypePolicy:
+		// The switch's policy: keep it and pass it to every connected
+		// cartridge; one connected later is given it then.
+		policy, _, err := frame.HostPolicy()
+		if err != nil {
+			return fmt.Errorf("policy frame: %w", err)
+		}
+		h.setPolicyLocked(policy)
+		return nil
+
 	case FrameTypeLog:
 		// LOG frames from peer responses — route to the cartridge
 		// that made the peer request, identified by
@@ -1726,8 +1788,8 @@ func (h *CartridgeHost) handleCartridgeFrame(cartridgeIdx int, frame *Frame, rel
 		// HELLO post-handshake — protocol violation, ignore.
 		return
 
-	case FrameTypeRelayNotify, FrameTypeRelayState:
-		// Cartridges must never send relay frames.
+	case FrameTypeRelayNotify, FrameTypeRelayState, FrameTypePolicy:
+		// Cartridges must never send relay frames or a policy.
 		return
 
 	case FrameTypeReq:
@@ -2047,6 +2109,9 @@ func (h *CartridgeHost) spawnCartridgeLocked(cartridgeIdx int) error {
 
 	writerCh := make(chan *Frame, 64)
 	cartridge.writerCh = writerCh
+	// Given before the request it was spawned for is forwarded: the writer
+	// channel is ordered, so the policy precedes it.
+	h.givePolicyLocked(cartridgeIdx)
 
 	h.updateCapTable()
 	h.rebuildCapabilities()
