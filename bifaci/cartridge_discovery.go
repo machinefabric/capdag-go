@@ -104,16 +104,16 @@ func ProbeCartridgeCapGroups(path string) ([]CapGroup, error) {
 	cmd := Command(path)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return nil, fmt.Errorf("cartridge %q stdin pipe: %w", path, err)
+		return nil, fmt.Errorf("cartridge '%s' stdin pipe: %w", path, err)
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, fmt.Errorf("cartridge %q stdout pipe: %w", path, err)
+		return nil, fmt.Errorf("cartridge '%s' stdout pipe: %w", path, err)
 	}
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Start(); err != nil {
-		return nil, fmt.Errorf("failed to spawn cartridge %q: %w", path, err)
+		return nil, fmt.Errorf("failed to spawn cartridge '%s': %w", path, err)
 	}
 	// SIGKILL immediately once we are done — we have (or failed to get) the
 	// manifest and don't wait for a clean exit.
@@ -129,14 +129,14 @@ func ProbeCartridgeCapGroups(path string) ([]CapGroup, error) {
 
 	manifest, limits, _, err := HandshakeInitiate(reader, writer)
 	if err != nil {
-		return nil, fmt.Errorf("cartridge %q HELLO failed: %w", path, err)
+		return nil, fmt.Errorf("cartridge '%s' HELLO failed: %w", path, err)
 	}
 	reader.SetLimits(limits)
 	writer.SetLimits(limits)
 
 	capGroups, err := parseCapGroupsFromManifest(manifest)
 	if err != nil {
-		return nil, fmt.Errorf("cartridge %q invalid manifest: %w", path, err)
+		return nil, fmt.Errorf("cartridge '%s' invalid manifest: %w", path, err)
 	}
 	return capGroups, nil
 }

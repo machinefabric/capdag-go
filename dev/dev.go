@@ -57,7 +57,7 @@ func (e *InvalidNameError) Error() string {
 type AlreadyExistsError struct{ Path string }
 
 func (e *AlreadyExistsError) Error() string {
-	return fmt.Sprintf("%q already exists — pick a new name or remove it first", e.Path)
+	return fmt.Sprintf("'%s' already exists — pick a new name or remove it first", e.Path)
 }
 
 // NoEntryError is a project with no cartridge entry for any known language.
@@ -65,7 +65,7 @@ type NoEntryError struct{ Project string }
 
 func (e *NoEntryError) Error() string {
 	return fmt.Sprintf(
-		"no cartridge entry found in %q. Looked for %s. A compiled cartridge must be "+
+		"no cartridge entry found in '%s'. Looked for %s. A compiled cartridge must be "+
 			"BUILT before it is installed — the host launches the binary, not the sources. "+
 			"Create the project with `capdag new`.",
 		e.Project, entryCandidatesDescription(e.Project))
@@ -79,7 +79,7 @@ type AmbiguousEntryError struct {
 
 func (e *AmbiguousEntryError) Error() string {
 	return fmt.Sprintf(
-		"%q contains more than one cartridge entry (%s) — capdag cannot tell which one to "+
+		"'%s' contains more than one cartridge entry (%s) — capdag cannot tell which one to "+
 			"install. A project is ONE cartridge; remove the build outputs of the language "+
 			"you are not developing.",
 		e.Project, strings.Join(e.Found, ", "))
@@ -199,23 +199,23 @@ func ScaffoldCartridge(name string, language *StubLanguage, parentDir string) (s
 	if _, err := os.Stat(projectDir); err == nil {
 		return "", &AlreadyExistsError{Path: projectDir}
 	} else if !os.IsNotExist(err) {
-		return "", fmt.Errorf("checking %q: %w", projectDir, err)
+		return "", fmt.Errorf("checking '%s': %w", projectDir, err)
 	}
 	if err := os.MkdirAll(projectDir, 0o755); err != nil {
-		return "", fmt.Errorf("creating project dir %q: %w", projectDir, err)
+		return "", fmt.Errorf("creating project dir '%s': %w", projectDir, err)
 	}
 
 	for _, file := range language.Files {
 		dest := filepath.Join(projectDir, render(file.Dest, name))
 		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-			return "", fmt.Errorf("creating %q: %w", filepath.Dir(dest), err)
+			return "", fmt.Errorf("creating '%s': %w", filepath.Dir(dest), err)
 		}
 		mode := os.FileMode(0o644)
 		if file.Executable {
 			mode = 0o755
 		}
 		if err := os.WriteFile(dest, []byte(render(file.Contents, name)), mode); err != nil {
-			return "", fmt.Errorf("writing %q: %w", dest, err)
+			return "", fmt.Errorf("writing '%s': %w", dest, err)
 		}
 	}
 	return projectDir, nil
@@ -285,20 +285,20 @@ func ReadEntryManifest(entry string) (*bifaci.CapManifest, error) {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			return nil, fmt.Errorf(
-				"the cartridge entry %q exited %d when asked for its manifest: %s",
+				"the cartridge entry '%s' exited %d when asked for its manifest: %s",
 				entry, exitErr.ExitCode(), strings.TrimSpace(string(exitErr.Stderr)))
 		}
 		return nil, fmt.Errorf(
-			"could not run the cartridge entry %q to read its manifest: %w. Make sure it is "+
+			"could not run the cartridge entry '%s' to read its manifest: %w. Make sure it is "+
 				"executable and its dependencies are importable.", entry, err)
 	}
 	manifest, err := bifaci.CapManifestFromAdvertised(out)
 	if err != nil {
 		var load *bifaci.ManifestLoadError
 		if errors.As(err, &load) && !load.Unparseable {
-			return nil, fmt.Errorf("the cartridge entry %q printed a manifest with an invalid cap definition: %s", entry, load.Reason)
+			return nil, fmt.Errorf("the cartridge entry '%s' printed a manifest with an invalid cap definition: %s", entry, load.Reason)
 		}
-		return nil, fmt.Errorf("the cartridge entry %q printed a manifest capdag cannot parse: %w", entry, err)
+		return nil, fmt.Errorf("the cartridge entry '%s' printed a manifest capdag cannot parse: %w", entry, err)
 	}
 	return manifest, nil
 }
@@ -341,7 +341,7 @@ func ignoredProjectEntry(name string) bool {
 func copyProjectTree(src, dst string) error {
 	entries, err := os.ReadDir(src)
 	if err != nil {
-		return fmt.Errorf("reading project dir %q: %w", src, err)
+		return fmt.Errorf("reading project dir '%s': %w", src, err)
 	}
 	for _, entry := range entries {
 		if ignoredProjectEntry(entry.Name()) {
@@ -351,7 +351,7 @@ func copyProjectTree(src, dst string) error {
 		dstPath := filepath.Join(dst, entry.Name())
 		if entry.IsDir() {
 			if err := os.MkdirAll(dstPath, 0o755); err != nil {
-				return fmt.Errorf("creating %q: %w", dstPath, err)
+				return fmt.Errorf("creating '%s': %w", dstPath, err)
 			}
 			if err := copyProjectTree(srcPath, dstPath); err != nil {
 				return err
@@ -368,14 +368,14 @@ func copyProjectTree(src, dst string) error {
 func copyFilePreservingMode(src, dst string) error {
 	info, err := os.Stat(src)
 	if err != nil {
-		return fmt.Errorf("stat %q: %w", src, err)
+		return fmt.Errorf("stat '%s': %w", src, err)
 	}
 	data, err := os.ReadFile(src)
 	if err != nil {
-		return fmt.Errorf("reading %q: %w", src, err)
+		return fmt.Errorf("reading '%s': %w", src, err)
 	}
 	if err := os.WriteFile(dst, data, info.Mode().Perm()); err != nil {
-		return fmt.Errorf("writing %q: %w", dst, err)
+		return fmt.Errorf("writing '%s': %w", dst, err)
 	}
 	return nil
 }
@@ -415,10 +415,10 @@ func StageDevCartridge(
 	// Update semantics: replace the version directory wholesale so a removed
 	// file in the project does not linger in a stale install.
 	if err := os.RemoveAll(versionDir); err != nil {
-		return "", fmt.Errorf("clearing old install %q: %w", versionDir, err)
+		return "", fmt.Errorf("clearing old install '%s': %w", versionDir, err)
 	}
 	if err := os.MkdirAll(versionDir, 0o755); err != nil {
-		return "", fmt.Errorf("creating %q: %w", versionDir, err)
+		return "", fmt.Errorf("creating '%s': %w", versionDir, err)
 	}
 
 	if err := copyProjectTree(projectDir, versionDir); err != nil {
@@ -432,14 +432,14 @@ func StageDevCartridge(
 	installedEntry := filepath.Join(versionDir, relativeEntry)
 	if info, err := os.Stat(installedEntry); err != nil || !info.Mode().IsRegular() {
 		if err := os.MkdirAll(filepath.Dir(installedEntry), 0o755); err != nil {
-			return "", fmt.Errorf("creating %q: %w", filepath.Dir(installedEntry), err)
+			return "", fmt.Errorf("creating '%s': %w", filepath.Dir(installedEntry), err)
 		}
 		if err := copyFilePreservingMode(entryPath, installedEntry); err != nil {
 			return "", fmt.Errorf("copying the cartridge entry into the install: %w", err)
 		}
 	}
 	if err := os.Chmod(installedEntry, 0o755); err != nil {
-		return "", fmt.Errorf("making %q executable: %w", installedEntry, err)
+		return "", fmt.Errorf("making '%s' executable: %w", installedEntry, err)
 	}
 
 	source := bifaci.CartridgeInstallSourceDev
@@ -484,7 +484,7 @@ func FindDevCapByAlias(userCartridgeDir string, registryVersion uint32, alias st
 		}
 		cj, err := bifaci.ReadCartridgeJsonFromDir(dir, bifaci.DevSlug)
 		if err != nil {
-			return nil, "", fmt.Errorf("the dev install at %q has an unreadable cartridge.json: %w", dir, err)
+			return nil, "", fmt.Errorf("the dev install at '%s' has an unreadable cartridge.json: %w", dir, err)
 		}
 		manifest, err := ReadEntryManifest(cj.ResolveEntryPoint(dir))
 		if err != nil {
@@ -535,7 +535,7 @@ func readSubdirs(dir string) ([]string, error) {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("reading %q: %w", dir, err)
+		return nil, fmt.Errorf("reading '%s': %w", dir, err)
 	}
 	var out []string
 	for _, entry := range entries {

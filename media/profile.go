@@ -167,7 +167,7 @@ func loadAllCachedSchemas(cacheDir string) (map[string]*compiledSchema, error) {
 
 		content, err := os.ReadFile(path)
 		if err != nil {
-			return nil, cacheError("Failed to read cache file %q: %v", path, err)
+			return nil, cacheError("Failed to read cache file '%s': %v", path, err)
 		}
 
 		var entry cacheEntry
