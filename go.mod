@@ -1,6 +1,6 @@
 module github.com/machinefabric/capdag-go
 
-// version: 1.563.167
+// version: 1.564.170
 
 go 1.22
 
@@ -10,7 +10,7 @@ go 1.22
 require github.com/machinefabric/lungo-go v1.112.74
 
 require (
-	github.com/machinefabric/tagged-urn-go v1.127.5
+	github.com/machinefabric/tagged-urn-go v1.133.121
 	github.com/jowharshamshiri/ops-go v1.21.109
 	github.com/fxamacker/cbor/v2 v2.9.0
 	github.com/google/uuid v1.6.0
