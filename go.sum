@@ -49,6 +49,8 @@ github.com/machinefabric/tagged-urn-go v1.133.121 h1:uy9D7NbStUOnXpqkVXiRi+l731K
 github.com/machinefabric/tagged-urn-go v1.133.121/go.mod h1:zz/w4OH+4F5Ud/dT6ZvYqTD+p8cn/6ZuSca7h74yyd4=
 github.com/machinefabric/tagged-urn-go v1.136.74 h1:1c27CqtkIEWM+Kq20o+CuXNagX7enMP4Q2XgZ5digQA=
 github.com/machinefabric/tagged-urn-go v1.136.74/go.mod h1:Mt6djWAVcmO9+s5jVgEv58aSC+JAToaGdCy4kL6hmUE=
+github.com/machinefabric/tagged-urn-go v1.138.5 h1:h/q053tFEKVJWGF8T94Mw5XaJ0aldi5MK7A2Vymmf+Y=
+github.com/machinefabric/tagged-urn-go v1.138.5/go.mod h1:hMijvvnfDit0puyxUNPrdQAWTAaPTGDWYUR/Upn4pHI=
 github.com/machinefabric/tagged-urn-go v1.35.108 h1:vbO7EJO6hHAwEo1lFVM2S1F7Jnj5tIR9pxeWJVSvVuU=
 github.com/machinefabric/tagged-urn-go v1.35.108/go.mod h1:XavDOVT6ljMmEd4AVRTy+rhf+TsLnBGn3N8cE+O/3X0=
 github.com/machinefabric/tagged-urn-go v1.55.486 h1:UNR4kW+IVO6UwzCA8CKNuu0KcisogBqlhJOObuNIges=
