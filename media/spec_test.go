@@ -2,6 +2,7 @@ package media
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/machinefabric/capdag-go/standard"
@@ -605,6 +606,45 @@ func Test1133_media_def_def_documentation_lifecycle(t *testing.T) {
 	assert.Nil(t, spec.GetDocumentation())
 	// clearer must not touch description
 	assert.Equal(t, "short", spec.Description)
+}
+
+// TEST1970: a media def's `dims` survive from the registry body through
+// StoredMediaDef to MediaDef and back, in order; a media def built from no dim
+// carries no `dims` key; an entry with a key this capdag does not know is
+// refused.
+func Test1970_media_def_dims_survive_and_refuse_unknown_keys(t *testing.T) {
+	body := `{"urn":"media:document;ext=pdf","version":2,"media_type":"application/pdf","title":"PDF Document","documentation":"Only about PDFs.","dims":[{"dim":"file-type","value":"pdf"},{"dim":"medium","value":"document"}],"extensions":["pdf"]}`
+	expected := []DimRef{NewDimRef("file-type", "pdf"), NewDimRef("medium", "document")}
+	var stored StoredMediaDef
+	require.NoError(t, json.Unmarshal([]byte(body), &stored), "a media def with dims parses")
+	assert.Equal(t, expected, stored.Dims)
+	def := stored.ToMediaDef()
+	assert.Equal(t, expected, def.Dims)
+	data, err := json.Marshal(def)
+	require.NoError(t, err)
+	var asMap map[string]any
+	require.NoError(t, json.Unmarshal(data, &asMap))
+	assert.Equal(t, []any{
+		map[string]any{"dim": "file-type", "value": "pdf"},
+		map[string]any{"dim": "medium", "value": "document"},
+	}, asMap["dims"])
+	var back MediaDef
+	require.NoError(t, json.Unmarshal(data, &back))
+	assert.Equal(t, expected, back.Dims)
+	assert.Equal(t, expected, back.ToStored().Dims)
+
+	bare := NewMediaDefWithTitle("media:void", "application/x-void", "", "Void")
+	bareData, err := json.Marshal(bare)
+	require.NoError(t, err)
+	var bareMap map[string]any
+	require.NoError(t, json.Unmarshal(bareData, &bareMap))
+	_, present := bareMap["dims"]
+	assert.False(t, present, "a media def built from no dim carries no dims key: %s", string(bareData))
+
+	extra := strings.Replace(body, `"value":"pdf"}`, `"value":"pdf","title":"PDF"}`, 1)
+	err = json.Unmarshal([]byte(extra), &StoredMediaDef{})
+	require.Error(t, err, "an unknown dims key is refused")
+	assert.Contains(t, err.Error(), "title")
 }
 
 // TEST629: Verify profile URL constants all start with capdag.com schema prefix

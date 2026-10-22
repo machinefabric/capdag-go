@@ -1,6 +1,7 @@
 package media
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -181,16 +182,18 @@ type StoredMediaDef struct {
 	// Version is the per-definition version. 0 ⇒ v0 (frozen flat-path);
 	// >= 1 ⇒ pinned at media/<sha256-of-urn>/<version>.json and referenced
 	// by a manifest at that defver.
-	Version       uint32           `json:"version,omitempty"`
-	MediaType     string           `json:"media_type"`
-	Title         string           `json:"title"`
-	ProfileURI    string           `json:"profile_uri,omitempty"`
-	Schema        any              `json:"schema,omitempty"`
-	Description   string           `json:"description,omitempty"`
-	Documentation *string          `json:"documentation,omitempty"`
-	Validation    *MediaValidation `json:"validation,omitempty"`
-	Metadata      map[string]any   `json:"metadata,omitempty"`
-	Extensions    []string         `json:"extensions,omitempty"`
+	Version       uint32  `json:"version,omitempty"`
+	MediaType     string  `json:"media_type"`
+	Title         string  `json:"title"`
+	ProfileURI    string  `json:"profile_uri,omitempty"`
+	Schema        any     `json:"schema,omitempty"`
+	Description   string  `json:"description,omitempty"`
+	Documentation *string `json:"documentation,omitempty"`
+	// Dims are the dims this media def was built from (see MediaDef.Dims).
+	Dims       []DimRef         `json:"dims,omitempty"`
+	Validation *MediaValidation `json:"validation,omitempty"`
+	Metadata   map[string]any   `json:"metadata,omitempty"`
+	Extensions []string         `json:"extensions,omitempty"`
 }
 
 // ToMediaDef converts StoredMediaDef to MediaDef
@@ -203,6 +206,7 @@ func (s *StoredMediaDef) ToMediaDef() MediaDef {
 		Schema:        s.Schema,
 		Description:   s.Description,
 		Documentation: s.Documentation,
+		Dims:          s.Dims,
 		Validation:    s.Validation,
 		Metadata:      s.Metadata,
 		Extensions:    s.Extensions,
@@ -304,18 +308,356 @@ type StoredAlias struct {
 }
 
 // =============================================================================
+// Dims (the axes definitions are built along)
+// =============================================================================
+//
+// A dim (a language, a file type, a quantisation, …) is a fabric definition
+// like a cap, a media def or an alias: published on its own at
+// dims/<sha256-of-name>/<defver>.json and pinned by a manifest's `dims` map.
+// Its body says what the dim is and which values it may take, each with its
+// own documentation.
+//
+// A cap or media definition names the dims it was built from, and the value
+// chosen from each, in its `dims` (DimRef). Its own `documentation` is only
+// what is specific to it; what a dim and a value mean is read from the dim. A
+// reader shows both.
+//
+// Every dim type refuses fields it does not know, and fields it requires that
+// are missing (matches Rust `deny_unknown_fields` and serde's required
+// fields): a key this library does not know would be dropped when the body is
+// written back out, and the copy would no longer say what the registry said.
+
+// decodeStrict decodes data into v, refusing any field v does not declare.
+func decodeStrict(data []byte, v any) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	return decoder.Decode(v)
+}
+
+// missingField is the error for a required field a body lacks.
+func missingField(name string) error {
+	return fmt.Errorf("missing field `%s`", name)
+}
+
+// DimRef is one dim a definition was built from, and the value chosen from
+// it. The entries of a definition's `dims`, in the order its source references
+// them.
+// Matches Rust: fabric::dim::DimRef
+type DimRef struct {
+	// Dim is the dim's name.
+	Dim string `json:"dim"`
+	// Value is the name of the value chosen from that dim.
+	Value string `json:"value"`
+}
+
+// NewDimRef builds a DimRef. Matches Rust: DimRef::new(dim, value)
+func NewDimRef(dim, value string) DimRef {
+	return DimRef{Dim: dim, Value: value}
+}
+
+// UnmarshalJSON parses a DimRef, refusing unknown and missing fields.
+func (d *DimRef) UnmarshalJSON(data []byte) error {
+	var wire struct {
+		Dim   *string `json:"dim"`
+		Value *string `json:"value"`
+	}
+	if err := decodeStrict(data, &wire); err != nil {
+		return err
+	}
+	if wire.Dim == nil {
+		return missingField("dim")
+	}
+	if wire.Value == nil {
+		return missingField("value")
+	}
+	d.Dim, d.Value = *wire.Dim, *wire.Value
+	return nil
+}
+
+// DimTag is a tag a dim value contributes to the URN of every definition built
+// with it. Value is "*" for a marker tag.
+// Matches Rust: fabric::dim::DimTag
+type DimTag struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+// UnmarshalJSON parses a DimTag, refusing unknown and missing fields.
+func (t *DimTag) UnmarshalJSON(data []byte) error {
+	var wire struct {
+		Key   *string `json:"key"`
+		Value *string `json:"value"`
+	}
+	if err := decodeStrict(data, &wire); err != nil {
+		return err
+	}
+	if wire.Key == nil {
+		return missingField("key")
+	}
+	if wire.Value == nil {
+		return missingField("value")
+	}
+	t.Key, t.Value = *wire.Key, *wire.Value
+	return nil
+}
+
+// StoredDimValue is one value a dim may take.
+// Matches Rust: fabric::dim::StoredDimValue
+type StoredDimValue struct {
+	// Name is the value's name, unique within the dim.
+	Name string `json:"name"`
+	// Title is the display-friendly title of the value.
+	Title string `json:"title"`
+	// Tags are the tags the value contributes. At least one.
+	Tags []DimTag `json:"tags"`
+	// Documentation is markdown documentation of what choosing this value
+	// means.
+	Documentation *string `json:"documentation,omitempty"`
+	// MediaType is the MIME media type the value gives the media defs built
+	// with it.
+	MediaType *string `json:"media_type,omitempty"`
+	// Extensions are the file extensions the value gives the media defs built
+	// with it.
+	Extensions []string `json:"extensions,omitempty"`
+}
+
+// UnmarshalJSON parses a dim value, refusing unknown and missing fields.
+func (v *StoredDimValue) UnmarshalJSON(data []byte) error {
+	var wire struct {
+		Name          *string   `json:"name"`
+		Title         *string   `json:"title"`
+		Tags          *[]DimTag `json:"tags"`
+		Documentation *string   `json:"documentation"`
+		MediaType     *string   `json:"media_type"`
+		Extensions    []string  `json:"extensions"`
+	}
+	if err := decodeStrict(data, &wire); err != nil {
+		return err
+	}
+	if wire.Name == nil {
+		return missingField("name")
+	}
+	if wire.Title == nil {
+		return missingField("title")
+	}
+	if wire.Tags == nil {
+		return missingField("tags")
+	}
+	*v = StoredDimValue{
+		Name:          *wire.Name,
+		Title:         *wire.Title,
+		Tags:          *wire.Tags,
+		Documentation: wire.Documentation,
+		MediaType:     wire.MediaType,
+		Extensions:    wire.Extensions,
+	}
+	return nil
+}
+
+// StoredDim is the stored dim definition. Mirrors fabric/dim.schema.json on
+// the wire and is the body cached at dims/<sha256-of-name>/<defver>.json.
+// Matches Rust: fabric::dim::StoredDim
+type StoredDim struct {
+	// Name is the dim's name, unique across the snapshot.
+	Name string `json:"name"`
+	// Version is the per-definition version. Always >= 1 — dims exist only in
+	// the versioned regime.
+	Version uint32 `json:"version"`
+	// Title is the display-friendly title of the dim.
+	Title string `json:"title"`
+	// Documentation is markdown documentation of what the dim is.
+	Documentation string `json:"documentation"`
+	// Values are the values the dim may take, in the order the dim declares
+	// them.
+	Values []StoredDimValue `json:"values"`
+}
+
+// UnmarshalJSON parses a dim body, refusing unknown and missing fields.
+func (d *StoredDim) UnmarshalJSON(data []byte) error {
+	var wire struct {
+		Name          *string           `json:"name"`
+		Version       *uint32           `json:"version"`
+		Title         *string           `json:"title"`
+		Documentation *string           `json:"documentation"`
+		Values        *[]StoredDimValue `json:"values"`
+	}
+	if err := decodeStrict(data, &wire); err != nil {
+		return err
+	}
+	switch {
+	case wire.Name == nil:
+		return missingField("name")
+	case wire.Version == nil:
+		return missingField("version")
+	case wire.Title == nil:
+		return missingField("title")
+	case wire.Documentation == nil:
+		return missingField("documentation")
+	case wire.Values == nil:
+		return missingField("values")
+	}
+	*d = StoredDim{
+		Name:          *wire.Name,
+		Version:       *wire.Version,
+		Title:         *wire.Title,
+		Documentation: *wire.Documentation,
+		Values:        *wire.Values,
+	}
+	return nil
+}
+
+// DimErrorKind says why a dim body is not one this library can hold.
+type DimErrorKind string
+
+const (
+	DimErrInvalidName      DimErrorKind = "invalid_name"
+	DimErrNoValues         DimErrorKind = "no_values"
+	DimErrDuplicateValue   DimErrorKind = "duplicate_value"
+	DimErrValueWithoutTags DimErrorKind = "value_without_tags"
+)
+
+// DimError is why a dim body is not one this library can hold.
+// Matches Rust: fabric::dim::DimError
+type DimError struct {
+	Kind DimErrorKind
+	// Dim is the dim's name.
+	Dim string
+	// Value is the offending value's name, for DuplicateValue and
+	// ValueWithoutTags.
+	Value string
+}
+
+func (e *DimError) Error() string {
+	switch e.Kind {
+	case DimErrInvalidName:
+		return fmt.Sprintf("dim name '%s' is not a dim name (lowercase letters, digits and '-', starting with a letter)", e.Dim)
+	case DimErrNoValues:
+		return fmt.Sprintf("dim '%s' declares no values", e.Dim)
+	case DimErrDuplicateValue:
+		return fmt.Sprintf("dim '%s' declares value '%s' more than once", e.Dim, e.Value)
+	case DimErrValueWithoutTags:
+		return fmt.Sprintf("dim '%s' value '%s' contributes no tag", e.Dim, e.Value)
+	}
+	return fmt.Sprintf("dim '%s': %s", e.Dim, e.Kind)
+}
+
+// IsDimName reports whether name is a dim name: ^[a-z][a-z0-9-]*$.
+// Matches Rust: fabric::dim::is_dim_name
+func IsDimName(name string) bool {
+	if name == "" || name[0] < 'a' || name[0] > 'z' {
+		return false
+	}
+	for i := 1; i < len(name); i++ {
+		c := name[i]
+		if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') {
+			return false
+		}
+	}
+	return true
+}
+
+// Value returns the value named name, or nil if the dim does not declare it.
+// Matches Rust: StoredDim::value
+func (d *StoredDim) Value(name string) *StoredDimValue {
+	for i := range d.Values {
+		if d.Values[i].Name == name {
+			return &d.Values[i]
+		}
+	}
+	return nil
+}
+
+// Validate holds the body to what dim.schema.json says beyond its field
+// types: a dim name, at least one value, value names unique, every value with
+// a tag. Matches Rust: StoredDim::validate
+func (d *StoredDim) Validate() error {
+	if !IsDimName(d.Name) {
+		return &DimError{Kind: DimErrInvalidName, Dim: d.Name}
+	}
+	if len(d.Values) == 0 {
+		return &DimError{Kind: DimErrNoValues, Dim: d.Name}
+	}
+	seen := make(map[string]struct{}, len(d.Values))
+	for _, v := range d.Values {
+		if _, dup := seen[v.Name]; dup {
+			return &DimError{Kind: DimErrDuplicateValue, Dim: d.Name, Value: v.Name}
+		}
+		seen[v.Name] = struct{}{}
+		if len(v.Tags) == 0 {
+			return &DimError{Kind: DimErrValueWithoutTags, Dim: d.Name, Value: v.Name}
+		}
+	}
+	return nil
+}
+
+// CheckDimRefs reports why a definition's `dims` do not name each dim at most
+// once, by dim and value names, naming the offending entry; nil when they do.
+// Matches Rust: fabric::dim::check_dim_refs
+func CheckDimRefs(dims []DimRef) error {
+	seen := make(map[string]struct{}, len(dims))
+	for _, r := range dims {
+		if !IsDimName(r.Dim) {
+			return fmt.Errorf("'%s' is not a dim name", r.Dim)
+		}
+		if r.Value == "" {
+			return fmt.Errorf("dim '%s' is named without a value", r.Dim)
+		}
+		if _, dup := seen[r.Dim]; dup {
+			return fmt.Errorf("dim '%s' is named more than once", r.Dim)
+		}
+		seen[r.Dim] = struct{}{}
+	}
+	return nil
+}
+
+// =============================================================================
 // Manifest (registry snapshot)
 // =============================================================================
 
 // Manifest is a versioned registry snapshot. Mirrors fabric/manifest.schema.json
 // on the wire. v0 has no manifest object; manifests at version >= 1 name every
-// cap URN, media URN, and alias name in the snapshot paired with its defver.
+// cap URN, media URN, alias name and dim name in the snapshot paired with its
+// defver.
 type Manifest struct {
 	Version  uint32            `json:"version"`
 	Previous uint32            `json:"previous"`
 	Caps     map[string]uint32 `json:"caps"`
 	Media    map[string]uint32 `json:"media"`
 	Aliases  map[string]uint32 `json:"aliases"`
+	// Dims maps a dim name to its per-definition version. The body (the dim's
+	// title, documentation and values) lives at
+	// dims/<sha256-of-name>/<defver>.json. Every dim a cap or media def of the
+	// snapshot names is here. Required: a manifest without it is not one this
+	// library reads.
+	Dims map[string]uint32 `json:"dims"`
+}
+
+// UnmarshalJSON parses a manifest, refusing one without a `dims` map (matches
+// Rust: `dims` has no serde default).
+func (m *Manifest) UnmarshalJSON(data []byte) error {
+	var wire struct {
+		Version  uint32             `json:"version"`
+		Previous uint32             `json:"previous"`
+		Caps     map[string]uint32  `json:"caps"`
+		Media    map[string]uint32  `json:"media"`
+		Aliases  map[string]uint32  `json:"aliases"`
+		Dims     *map[string]uint32 `json:"dims"`
+	}
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return err
+	}
+	if wire.Dims == nil {
+		return missingField("dims")
+	}
+	*m = Manifest{
+		Version:  wire.Version,
+		Previous: wire.Previous,
+		Caps:     wire.Caps,
+		Media:    wire.Media,
+		Aliases:  wire.Aliases,
+		Dims:     *wire.Dims,
+	}
+	return nil
 }
 
 // EmptyManifest builds an empty manifest pinned at version. previous is set to
@@ -331,6 +673,7 @@ func EmptyManifest(version uint32) *Manifest {
 		Caps:     make(map[string]uint32),
 		Media:    make(map[string]uint32),
 		Aliases:  make(map[string]uint32),
+		Dims:     make(map[string]uint32),
 	}
 }
 

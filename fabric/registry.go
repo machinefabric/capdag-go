@@ -1,15 +1,21 @@
-// Package fabric provides the unified fabric registry — cap definitions and
-// media definitions behind one type.
+// Package fabric provides the unified fabric registry — cap definitions, media
+// definitions, aliases and dims behind one type.
 //
-// Both live in the same online registry
-// (`https://fabric.capdag.com/{caps,media,aliases}/<sha256>`), share the same
-// caching policy, the same manifest pin, and the same offline / clear-cache
-// surface. They differ only in wire payload shape (`cap.Cap` vs
-// `media.StoredMediaDef`) and in disk-cache subdirectory (`caps/` vs `media/`).
+// All live in the same online registry
+// (`https://fabric.capdag.com/{caps,media,aliases,dims}/<sha256>`), share the
+// same caching policy, the same manifest pin, and the same offline /
+// clear-cache surface. They differ only in wire payload shape (`cap.Cap`,
+// `media.StoredMediaDef`, `media.StoredAlias`, `media.StoredDim`) and in
+// disk-cache subdirectory (`caps/`, `media/`, `aliases/`, `dims/`).
 //
 // On miss, `GetCap` atomically fetches the cap AND every media URN it
 // references; if any of those media defs cannot be fetched the cap is NOT
 // cached. This keeps the cap cache consistent with its media-def footprint.
+//
+// A cap or media def is likewise cached only once every dim it names (`dims`)
+// is cached, at the version the manifest pins, with the value it names. So a
+// reader holding a cached definition can always read the documentation of the
+// dims it was built from (`GetCachedDim`).
 //
 // Mirrors the reference implementation in capdag/src/fabric/registry.rs.
 //
@@ -174,6 +180,16 @@ type aliasCacheEntry struct {
 	TTLHours int               `json:"ttl_hours"`
 }
 
+type dimCacheEntry struct {
+	Dim      media.StoredDim `json:"dim"`
+	CachedAt int64           `json:"cached_at"`
+	TTLHours int             `json:"ttl_hours"`
+}
+
+// cacheSubdirs are the directories of a cache root, the root itself first.
+// Construction, the test constructors and ClearCache all create exactly these.
+var cacheSubdirs = []string{"", "caps", "media", "aliases", "dims", "manifests"}
+
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
@@ -231,6 +247,15 @@ func mediaURLAndCachePath(cacheDir string, config Config, normalizedURN string, 
 		filepath.Join(cacheDir, "media", digest, fmt.Sprintf("%d.json", defver))
 }
 
+// dimURLAndCachePath builds the registry URL and on-disk cache path for a dim
+// object at a given defver. Dims are keyed by sha256(name) and are
+// versioned-only (defver >= 1). Matches Rust: fn dim_url_and_cache_path
+func dimURLAndCachePath(cacheDir string, config Config, name string, defver uint32) (string, string) {
+	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(name)))
+	return fmt.Sprintf("%s/dims/%s/%d.json", config.RegistryBaseURL, digest, defver),
+		filepath.Join(cacheDir, "dims", digest, fmt.Sprintf("%d.json", defver))
+}
+
 // BakedManifestVersion is the workspace-pinned fabric manifest version.
 //
 // Rust bakes this into the binary at compile time; Go has no build-time
@@ -277,13 +302,17 @@ type FabricRegistry struct {
 	capsCacheDir    string
 	mediaCacheDir   string
 	aliasesCacheDir string
+	dimsCacheDir    string
 
 	config Config
 
 	cachedCaps    map[string]*cap.Cap
 	cachedSpecs   map[string]media.StoredMediaDef
 	cachedAliases map[string]media.StoredAlias
-	extIndex      map[string][]string
+	// cachedDims maps a dim name to its body, filtered to the pinned
+	// manifest's defvers.
+	cachedDims map[string]media.StoredDim
+	extIndex   map[string][]string
 
 	// manifestVersion 0 is the legacy v0 / flat-path regime (no manifest
 	// consulted). >= 1 is manifest-driven: every URN lookup resolves to a
@@ -325,7 +354,7 @@ func WithConfigAndManifestVersion(config Config, manifestVersion uint32) (*Fabri
 	if err != nil {
 		return nil, err
 	}
-	for _, sub := range []string{"", "caps", "media", "aliases", "manifests"} {
+	for _, sub := range cacheSubdirs {
 		if err := os.MkdirAll(filepath.Join(cacheDir, sub), 0o755); err != nil {
 			return nil, errf(ErrCache, "creating cache dir %s: %v", filepath.Join(cacheDir, sub), err)
 		}
@@ -347,10 +376,12 @@ func WithConfigAndManifestVersion(config Config, manifestVersion uint32) (*Fabri
 		capsCacheDir:    filepath.Join(cacheDir, "caps"),
 		mediaCacheDir:   filepath.Join(cacheDir, "media"),
 		aliasesCacheDir: filepath.Join(cacheDir, "aliases"),
+		dimsCacheDir:    filepath.Join(cacheDir, "dims"),
 		config:          config,
 		cachedCaps:      make(map[string]*cap.Cap),
 		cachedSpecs:     make(map[string]media.StoredMediaDef),
 		cachedAliases:   make(map[string]media.StoredAlias),
+		cachedDims:      make(map[string]media.StoredDim),
 		extIndex:        make(map[string][]string),
 		manifestVersion: manifestVersion,
 		manifest:        manifest,
@@ -359,34 +390,16 @@ func WithConfigAndManifestVersion(config Config, manifestVersion uint32) (*Fabri
 	r.loadAllCachedCaps()
 	r.loadAllCachedSpecs()
 	r.loadAllCachedAliases()
+	r.loadAllCachedDims()
 
 	// Filter the hydrated caches to the pinned manifest's defvers. A cache
 	// populated under an older manifest holds definitions this build must not
 	// serve — same URN, different bytes.
 	r.mu.Lock()
-	if manifestVersion >= 1 {
-		for urnKey, c := range r.cachedCaps {
-			if manifest.Caps[urnKey] != c.Version {
-				delete(r.cachedCaps, urnKey)
-			}
-		}
-		for urnKey, spec := range r.cachedSpecs {
-			if manifest.Media[urnKey] != spec.Version {
-				delete(r.cachedSpecs, urnKey)
-			}
-		}
-		for name, alias := range r.cachedAliases {
-			if manifest.Aliases[name] != alias.Version {
-				delete(r.cachedAliases, name)
-			}
-		}
-		r.extIndex = make(map[string][]string)
-		for _, spec := range r.cachedSpecs {
-			r.updateExtensionIndexLocked(spec)
-		}
-	} else {
-		// Aliases exist only in the versioned regime.
-		r.cachedAliases = make(map[string]media.StoredAlias)
+	retainPinned(manifest, manifestVersion, r.cachedCaps, r.cachedSpecs, r.cachedAliases, r.cachedDims)
+	r.extIndex = make(map[string][]string)
+	for _, spec := range r.cachedSpecs {
+		r.updateExtensionIndexLocked(spec)
 	}
 	r.mu.Unlock()
 
@@ -567,6 +580,96 @@ func (r *FabricRegistry) loadAllCachedAliases() {
 	})
 }
 
+// loadAllCachedDims walks the dim cache directory (dims/<sha>/<defver>.json)
+// and loads every cached StoredDim keyed by its name. Dims are versioned-only —
+// there is no v0 flat path and no TTL expiry (a published defver is
+// immutable). A cached body this library cannot hold is dropped like an
+// unparseable one, and fetched anew. Matches Rust: load_all_cached_dims
+func (r *FabricRegistry) loadAllCachedDims() {
+	walkJSONFiles(r.dimsCacheDir, func(path string, raw []byte) {
+		var entry dimCacheEntry
+		if err := json.Unmarshal(raw, &entry); err != nil {
+			fmt.Fprintf(os.Stderr, "[WARN] failed to load dim cache file %s: %v\n", path, err)
+			_ = os.Remove(path)
+			return
+		}
+		if err := entry.Dim.Validate(); err != nil {
+			fmt.Fprintf(os.Stderr, "[WARN] dropping dim cache file %s: %v\n", path, err)
+			_ = os.Remove(path)
+			return
+		}
+		r.mu.Lock()
+		r.cachedDims[entry.Dim.Name] = entry.Dim
+		r.mu.Unlock()
+	})
+}
+
+// retainPinned keeps, of what was loaded from the disk cache, only what the
+// pinned manifest names at the version it names, and only definitions whose
+// dims all survive with them. At v0 the manifest is empty and caps and media
+// are all retained (the loaders only find flat paths then); aliases and dims
+// are versioned-regime concepts and are all dropped.
+//
+// A definition whose dims did not survive is dropped here and fetched again,
+// with its dims, when it is next asked for — so a cached definition always has
+// its dims cached. Matches Rust: fn retain_pinned
+func retainPinned(
+	manifest *media.Manifest,
+	manifestVersion uint32,
+	caps map[string]*cap.Cap,
+	specs map[string]media.StoredMediaDef,
+	aliases map[string]media.StoredAlias,
+	dims map[string]media.StoredDim,
+) {
+	if manifestVersion >= 1 {
+		for key, c := range caps {
+			if manifest.Caps[key] != c.Version {
+				delete(caps, key)
+			}
+		}
+		for key, spec := range specs {
+			if manifest.Media[key] != spec.Version {
+				delete(specs, key)
+			}
+		}
+		for name, alias := range aliases {
+			if manifest.Aliases[name] != alias.Version {
+				delete(aliases, name)
+			}
+		}
+		for name, dim := range dims {
+			if manifest.Dims[name] != dim.Version {
+				delete(dims, name)
+			}
+		}
+	} else {
+		clear(aliases)
+		clear(dims)
+	}
+	for key, c := range caps {
+		if !dimsResolveIn(c.Dims, dims) {
+			delete(caps, key)
+		}
+	}
+	for key, spec := range specs {
+		if !dimsResolveIn(spec.Dims, dims) {
+			delete(specs, key)
+		}
+	}
+}
+
+// dimsResolveIn reports whether every dim refs names is in cached with the
+// value it names. Matches Rust: fn dims_resolve_in
+func dimsResolveIn(refs []media.DimRef, cached map[string]media.StoredDim) bool {
+	for _, ref := range refs {
+		dim, ok := cached[ref.Dim]
+		if !ok || dim.Value(ref.Value) == nil {
+			return false
+		}
+	}
+	return true
+}
+
 // ---------------------------------------------------------------------------
 // Disk-cache writers
 // ---------------------------------------------------------------------------
@@ -642,6 +745,15 @@ func (r *FabricRegistry) saveMediaDefToCache(spec media.StoredMediaDef) error {
 func (r *FabricRegistry) saveAliasToCache(alias media.StoredAlias) error {
 	return writeCacheFile(r.aliasCacheFilePath(alias.Name, alias.Version), aliasCacheEntry{
 		Alias:    alias,
+		CachedAt: time.Now().Unix(),
+		TTLHours: CacheDurationHours,
+	})
+}
+
+func (r *FabricRegistry) saveDimToCache(dim media.StoredDim) error {
+	_, path := dimURLAndCachePath(r.cacheDir, r.config, dim.Name, dim.Version)
+	return writeCacheFile(path, dimCacheEntry{
+		Dim:      dim,
 		CachedAt: time.Now().Unix(),
 		TTLHours: CacheDurationHours,
 	})
@@ -781,6 +893,96 @@ func (r *FabricRegistry) fetchAliasFromRegistry(normalizedName string, defver ui
 	return &alias, nil
 }
 
+// fetchDim fetches a single dim body at its pinned defver, checks it, and
+// caches it in memory and on disk. Matches Rust: fn fetch_one_dim
+func (r *FabricRegistry) fetchDim(name string, defver uint32) (*media.StoredDim, error) {
+	if defver < 1 {
+		return nil, errf(ErrNotFound,
+			"dim '%s' has non-positive defver %d; dims are versioned-only", name, defver)
+	}
+	url, _ := dimURLAndCachePath(r.cacheDir, r.config, name, defver)
+	body, err := r.get(url, fmt.Sprintf("dim '%s'", name))
+	if err != nil {
+		return nil, err
+	}
+	dim, err := checkedDim(body, name, defver)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.saveDimToCache(*dim); err != nil {
+		return nil, err
+	}
+	r.mu.Lock()
+	r.cachedDims[dim.Name] = *dim
+	r.mu.Unlock()
+	return dim, nil
+}
+
+// checkedDim reads a dim body as a registry served it, for the dim name at
+// defver: parsed (unknown fields refused), named and versioned as requested —
+// a registry that serves another object is a hard error, never silently
+// accepted — and holding (StoredDim.Validate).
+// Matches Rust: fn checked_dim(body, name, defver)
+func checkedDim(body []byte, name string, defver uint32) (*media.StoredDim, error) {
+	var dim media.StoredDim
+	if err := json.Unmarshal(body, &dim); err != nil {
+		return nil, &Error{Kind: ErrParse, Message: fmt.Sprintf("failed to parse dim '%s'", name), Err: err}
+	}
+	if dim.Name != name {
+		return nil, errf(ErrParse, "dim object name '%s' does not match requested name '%s'", dim.Name, name)
+	}
+	if dim.Version != defver {
+		return nil, errf(ErrParse, "dim '%s' object reports version %d but manifest pins defver %d",
+			dim.Name, dim.Version, defver)
+	}
+	if err := dim.Validate(); err != nil {
+		return nil, &Error{Kind: ErrValidation, Message: err.Error()}
+	}
+	return &dim, nil
+}
+
+// ensureDimsCached makes sure every dim a definition names is cached,
+// fetching the ones that are not at the defver the manifest pins, and that
+// each names a value the dim declares. owner names the definition in errors.
+// Nothing about the definition itself is cached here: its fetcher caches it
+// only once this succeeds. Matches Rust: fn ensure_dims_cached
+func (r *FabricRegistry) ensureDimsCached(owner string, refs []media.DimRef) error {
+	if err := media.CheckDimRefs(refs); err != nil {
+		return errf(ErrValidation, "%s dims: %v", owner, err)
+	}
+	for _, ref := range refs {
+		r.mu.RLock()
+		cached, ok := r.cachedDims[ref.Dim]
+		manifestVersion := r.manifestVersion
+		defver, listed := r.manifest.Dims[ref.Dim]
+		r.mu.RUnlock()
+		dim := &cached
+		if !ok {
+			if manifestVersion == 0 {
+				return errf(ErrNotFound,
+					"%s names dim '%s', but the registry is pinned at v0 (dims are a versioned-regime concept)",
+					owner, ref.Dim)
+			}
+			if !listed {
+				return errf(ErrNotFound, "%s names dim '%s', which is not in manifest v%d",
+					owner, ref.Dim, manifestVersion)
+			}
+			fetched, err := r.fetchDim(ref.Dim, defver)
+			if err != nil {
+				return &Error{Kind: ErrNotFound,
+					Message: fmt.Sprintf("%s names dim '%s', which could not be fetched", owner, ref.Dim),
+					Err:     err}
+			}
+			dim = fetched
+		}
+		if dim.Value(ref.Value) == nil {
+			return errf(ErrValidation, "%s names value '%s' of dim '%s', which the dim does not declare",
+				owner, ref.Value, ref.Dim)
+		}
+	}
+	return nil
+}
+
 // ---------------------------------------------------------------------------
 // Defver resolution (the manifest pin)
 // ---------------------------------------------------------------------------
@@ -855,6 +1057,30 @@ func (r *FabricRegistry) AliasDefverFor(name string) (uint32, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.aliasDefver(normalized)
+}
+
+// dimDefver resolves a dim name to its defver under the pinned manifest. Dims
+// exist only in the versioned regime: at v0 any dim lookup is a hard NotFound.
+// At v >= 1 the name must be in the manifest's `dims` map. The caller holds
+// r.mu.
+func (r *FabricRegistry) dimDefver(name string) (uint32, error) {
+	if r.manifestVersion == 0 {
+		return 0, errf(ErrNotFound,
+			"dim '%s' cannot resolve: registry is pinned at v0 (dims are a versioned-regime concept)", name)
+	}
+	defver, ok := r.manifest.Dims[name]
+	if !ok {
+		return 0, errf(ErrNotFound, "dim '%s' is not part of manifest v%d", name, r.manifestVersion)
+	}
+	return defver, nil
+}
+
+// DimDefverFor looks up a dim name's pinned defver under this registry's
+// manifest without fetching the body.
+func (r *FabricRegistry) DimDefverFor(name string) (uint32, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.dimDefver(name)
 }
 
 // ManifestVersion is the fabric manifest version this registry is pinned to.
@@ -971,24 +1197,17 @@ func (r *FabricRegistry) fetchCapAtomic(capURN string) (*cap.Cap, error) {
 		if defverErr != nil {
 			return nil, defverErr
 		}
-		spec, err := r.fetchMediaDefFromRegistry(mediaURN, mediaDefver)
-		if err != nil {
+		if _, err := r.fetchAndCacheMediaDef(mediaURN, mediaDefver); err != nil {
 			return nil, err
 		}
-		if err := r.saveMediaDefToCache(*spec); err != nil {
-			return nil, err
-		}
-		specNormalized, err := NormalizeMediaURN(spec.Urn)
-		if err != nil {
-			return nil, err
-		}
-		r.mu.Lock()
-		r.cachedSpecs[specNormalized] = *spec
-		r.updateExtensionIndexLocked(*spec)
-		r.mu.Unlock()
 	}
 
-	// Every referenced media def landed — now the cap may be cached.
+	// Every dim the cap names, at its pinned version, with the value named.
+	if err := r.ensureDimsCached(fmt.Sprintf("cap '%s'", normalized), c.Dims); err != nil {
+		return nil, err
+	}
+
+	// Every referenced media def and dim landed — now the cap may be cached.
 	if err := r.saveCapToCache(c); err != nil {
 		return nil, err
 	}
@@ -1170,15 +1389,29 @@ func (r *FabricRegistry) GetMediaDef(urnOrAlias string) (*media.StoredMediaDef, 
 	if defverErr != nil {
 		return nil, defverErr
 	}
-	spec, err := r.fetchMediaDefFromRegistry(urnOrAlias, defver)
+	return r.fetchAndCacheMediaDef(urnOrAlias, defver)
+}
+
+// fetchAndCacheMediaDef fetches a media def at defver and caches it — only once
+// every dim it names is cached (see ensureDimsCached).
+// Matches Rust: fn fetch_one_media_def
+func (r *FabricRegistry) fetchAndCacheMediaDef(mediaURN string, defver uint32) (*media.StoredMediaDef, error) {
+	normalized, err := NormalizeMediaURN(mediaURN)
 	if err != nil {
 		return nil, err
 	}
-	if err := r.saveMediaDefToCache(*spec); err != nil {
+	spec, err := r.fetchMediaDefFromRegistry(mediaURN, defver)
+	if err != nil {
 		return nil, err
 	}
 	specNormalized, err := NormalizeMediaURN(spec.Urn)
 	if err != nil {
+		return nil, err
+	}
+	if err := r.ensureDimsCached(fmt.Sprintf("media def '%s'", normalized), spec.Dims); err != nil {
+		return nil, err
+	}
+	if err := r.saveMediaDefToCache(*spec); err != nil {
 		return nil, err
 	}
 	r.mu.Lock()
@@ -1427,6 +1660,43 @@ func (r *FabricRegistry) CachedCapAliases() []CachedCapAlias {
 }
 
 // ---------------------------------------------------------------------------
+// Public dim API
+// ---------------------------------------------------------------------------
+
+// GetDim returns a dim's definition — its title, documentation and values,
+// each value with its own — by name (cache first, then network), at the
+// version the pinned manifest names. A name the manifest does not list is
+// NotFound, decided before any fetch.
+func (r *FabricRegistry) GetDim(name string) (*media.StoredDim, error) {
+	if !media.IsDimName(name) {
+		return nil, errf(ErrValidation, "'%s' is not a dim name", name)
+	}
+	if dim, ok := r.GetCachedDim(name); ok {
+		return dim, nil
+	}
+	r.mu.RLock()
+	defver, err := r.dimDefver(name)
+	r.mu.RUnlock()
+	if err != nil {
+		return nil, err
+	}
+	return r.fetchDim(name, defver)
+}
+
+// GetCachedDim is the synchronous, in-memory-only dim lookup. Every dim a
+// cached cap or media def names is cached with it, so a reader holding a
+// definition from this registry finds its dims here.
+func (r *FabricRegistry) GetCachedDim(name string) (*media.StoredDim, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	dim, ok := r.cachedDims[name]
+	if !ok {
+		return nil, false
+	}
+	return &dim, true
+}
+
+// ---------------------------------------------------------------------------
 // Offline / cache control
 // ---------------------------------------------------------------------------
 
@@ -1444,13 +1714,14 @@ func (r *FabricRegistry) ClearCache() error {
 	r.cachedCaps = make(map[string]*cap.Cap)
 	r.cachedSpecs = make(map[string]media.StoredMediaDef)
 	r.cachedAliases = make(map[string]media.StoredAlias)
+	r.cachedDims = make(map[string]media.StoredDim)
 	r.extIndex = make(map[string][]string)
 	r.mu.Unlock()
 
 	if err := os.RemoveAll(r.cacheDir); err != nil {
 		return errf(ErrCache, "clearing the cache directory %s: %v", r.cacheDir, err)
 	}
-	for _, sub := range []string{"", "caps", "media", "aliases", "manifests"} {
+	for _, sub := range cacheSubdirs {
 		if err := os.MkdirAll(filepath.Join(r.cacheDir, sub), 0o755); err != nil {
 			return errf(ErrCache, "recreating %s: %v", filepath.Join(r.cacheDir, sub), err)
 		}
@@ -1529,7 +1800,7 @@ func NewForTestWithConfig(config Config) *FabricRegistry {
 // NewForTestInDir is NewForTestWithConfig over a caller-chosen cache root, for
 // tests that assert on the on-disk layout.
 func NewForTestInDir(config Config, cacheDir string) *FabricRegistry {
-	for _, sub := range []string{"", "caps", "media", "aliases", "manifests"} {
+	for _, sub := range cacheSubdirs {
 		if err := os.MkdirAll(filepath.Join(cacheDir, sub), 0o755); err != nil {
 			panic(fmt.Sprintf("cannot create the test cache dir %s: %v", filepath.Join(cacheDir, sub), err))
 		}
@@ -1540,10 +1811,12 @@ func NewForTestInDir(config Config, cacheDir string) *FabricRegistry {
 		capsCacheDir:    filepath.Join(cacheDir, "caps"),
 		mediaCacheDir:   filepath.Join(cacheDir, "media"),
 		aliasesCacheDir: filepath.Join(cacheDir, "aliases"),
+		dimsCacheDir:    filepath.Join(cacheDir, "dims"),
 		config:          config,
 		cachedCaps:      make(map[string]*cap.Cap),
 		cachedSpecs:     make(map[string]media.StoredMediaDef),
 		cachedAliases:   make(map[string]media.StoredAlias),
+		cachedDims:      make(map[string]media.StoredDim),
 		extIndex:        make(map[string][]string),
 		manifestVersion: 1,
 		manifest:        media.EmptyManifest(1),
@@ -1610,5 +1883,17 @@ func (r *FabricRegistry) AddAliasesToCache(aliases []media.StoredAlias) {
 		if r.manifestVersion >= 1 {
 			r.manifest.Aliases[alias.Name] = alias.Version
 		}
+	}
+}
+
+// InsertCachedDimForTest inserts a dim directly into the in-memory cache and
+// registers its defver in the manifest, bypassing the network. Mirrors
+// InsertCachedAliasForTest.
+func (r *FabricRegistry) InsertCachedDimForTest(dim media.StoredDim) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.cachedDims[dim.Name] = dim
+	if r.manifestVersion >= 1 {
+		r.manifest.Dims[dim.Name] = dim.Version
 	}
 }

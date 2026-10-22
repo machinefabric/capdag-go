@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/machinefabric/capdag-go/media"
 	"github.com/machinefabric/capdag-go/standard"
 	"github.com/machinefabric/capdag-go/urn"
 )
@@ -70,15 +71,18 @@ func WithSchemaURL(url string) RegistryOption {
 // documentation) are silently ignored by Go's JSON unmarshaller — the
 // Go Cap type only carries the subset below.
 type RegistryCapResponse struct {
-	Urn            string            `json:"urn"` // URN in canonical string format
-	Title          string            `json:"title"`
-	Version        string            `json:"version"`
-	CapDescription *string           `json:"cap_description,omitempty"`
-	Metadata       map[string]string `json:"metadata"`
-	Aliases        []string          `json:"aliases"`
-	IsAbstract     bool              `json:"abstract,omitempty"`
-	Args           []CapArg          `json:"args,omitempty"`
-	Outputs        []CapOutput       `json:"outputs,omitempty"`
+	Urn            string  `json:"urn"` // URN in canonical string format
+	Title          string  `json:"title"`
+	Version        string  `json:"version"`
+	CapDescription *string `json:"cap_description,omitempty"`
+	// Dims are the dims the cap was built from (see Cap.Dims). Each entry
+	// refuses keys it does not know.
+	Dims       []media.DimRef    `json:"dims,omitempty"`
+	Metadata   map[string]string `json:"metadata"`
+	Aliases    []string          `json:"aliases"`
+	IsAbstract bool              `json:"abstract,omitempty"`
+	Args       []CapArg          `json:"args,omitempty"`
+	Outputs    []CapOutput       `json:"outputs,omitempty"`
 }
 
 // ToCap converts a registry response to a standard Cap
@@ -95,9 +99,16 @@ func (r *RegistryCapResponse) ToCap() (*Cap, error) {
 		title = "Registry Capability"
 	}
 
+	// A dim is named at most once: a definition cannot have been built with
+	// two values of one dim.
+	if err := media.CheckDimRefs(r.Dims); err != nil {
+		return nil, fmt.Errorf("cap '%s' dims: %w", capUrn.String(), err)
+	}
+
 	cap := NewCap(capUrn, title, r.Aliases)
 	cap.IsAbstract = r.IsAbstract
 	cap.CapDescription = r.CapDescription
+	cap.Dims = r.Dims
 	if r.Metadata != nil {
 		cap.Metadata = r.Metadata
 	}

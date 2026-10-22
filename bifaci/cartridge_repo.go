@@ -49,10 +49,10 @@ func NewNetworkBlockedError(msg string) *CartridgeRepoError {
 }
 
 // CartridgeRegistrySchemaVersion is the schema revision of the cartridge
-// registry this build reads (schemas/cartridge-registry/v6.json): its cap
+// registry this build reads (schemas/cartridge-registry/v7.json): its cap
 // groups carry each cartridge's cap definitions exactly as its manifest
-// declares them.
-const CartridgeRegistrySchemaVersion = "6.0"
+// declares them, including the dims each was built from.
+const CartridgeRegistrySchemaVersion = "7.0"
 
 // CartridgeDistributionInfo represents package distribution data.
 // `Url` is the absolute URL of the package — every consumer downloads
@@ -231,7 +231,7 @@ type CartridgeRegistry struct {
 // implementation speaks. v0 was the pre-versioning legacy at the bare
 // /manifest path; this speaks only v>=1 at the versioned /v<version>/manifest
 // path, and rejects any manifest whose registryVersion differs.
-const CartridgeRegistryVersion uint32 = 2
+const CartridgeRegistryVersion uint32 = 3
 
 // CartridgeInfo represents a cartridge in the flat API response format.
 //

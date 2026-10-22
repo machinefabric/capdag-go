@@ -2,6 +2,7 @@ package cap
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/machinefabric/capdag-go/media"
@@ -588,6 +589,70 @@ func Test1128_cap_documentation_omitted_when_none(t *testing.T) {
 	var restored Cap
 	require.NoError(t, json.Unmarshal(data, &restored))
 	assert.Nil(t, restored.GetDocumentation())
+}
+
+// TEST1969: a cap's `dims` — the dims it was built from and the value chosen
+// from each — survive a round-trip in order, under the wire key the registry
+// publishes; a cap built from no dim carries no `dims` key; an entry with a key
+// this capdag does not know is refused like an argument's, and so is one dim
+// named twice. A cartridge re-serializes the caps it declares, so a dropped
+// `dims` would leave its copy without them. The registry's wire shape
+// (RegistryCapResponse, what a fetch parses) holds them the same way.
+func Test1969_cap_dims_round_trip_in_order_and_refuse_what_they_cannot_hold(t *testing.T) {
+	body := `{"urn":"cap:ask;constrained;in=\"media:enc=utf-8\";language=en;out=\"media:enc=utf-8\"","version":3,"title":"Ask","aliases":["ask-en"],"documentation":"Only about asking.","dims":[{"dim":"constrained","value":"constrained"},{"dim":"language","value":"en"}]}`
+	expected := []media.DimRef{
+		media.NewDimRef("constrained", "constrained"),
+		media.NewDimRef("language", "en"),
+	}
+	var c Cap
+	require.NoError(t, json.Unmarshal([]byte(body), &c), "a cap with dims parses")
+	assert.Equal(t, expected, c.Dims)
+
+	data, err := json.Marshal(&c)
+	require.NoError(t, err)
+	var back map[string]any
+	require.NoError(t, json.Unmarshal(data, &back))
+	assert.Equal(t, []any{
+		map[string]any{"dim": "constrained", "value": "constrained"},
+		map[string]any{"dim": "language", "value": "en"},
+	}, back["dims"])
+	var again Cap
+	require.NoError(t, json.Unmarshal(data, &again), "parses again")
+	assert.Equal(t, c.Dims, again.Dims)
+
+	u, err := urn.NewCapUrnFromString("cap:effect=none")
+	require.NoError(t, err)
+	bare := NewCap(u, "Identity", []string{"identity"})
+	bareData, err := json.Marshal(bare)
+	require.NoError(t, err)
+	var bareBack map[string]any
+	require.NoError(t, json.Unmarshal(bareData, &bareBack))
+	_, present := bareBack["dims"]
+	assert.False(t, present, "a cap built from no dim carries no dims key: %s", string(bareData))
+
+	extra := strings.Replace(body, `{"dim":"language","value":"en"}`, `{"dim":"language","value":"en","version":1}`, 1)
+	var refused Cap
+	err = json.Unmarshal([]byte(extra), &refused)
+	require.Error(t, err, "an unknown dims key is refused")
+	assert.Contains(t, err.Error(), "version")
+
+	twice := strings.Replace(body, `{"dim":"constrained","value":"constrained"}`, `{"dim":"language","value":"es"}`, 1)
+	err = json.Unmarshal([]byte(twice), &refused)
+	require.Error(t, err, "one dim named twice is refused")
+	assert.Contains(t, err.Error(), "dim 'language' is named more than once")
+
+	var wire RegistryCapResponse
+	require.NoError(t, json.Unmarshal([]byte(strings.Replace(body, `"version":3,`, ``, 1)), &wire))
+	fetched, err := wire.ToCap()
+	require.NoError(t, err)
+	assert.Equal(t, expected, fetched.Dims)
+	require.Error(t, json.Unmarshal([]byte(strings.Replace(extra, `"version":3,`, ``, 1)), &RegistryCapResponse{}),
+		"an unknown dims key is refused on the registry's wire shape too")
+	var twiceWire RegistryCapResponse
+	require.NoError(t, json.Unmarshal([]byte(strings.Replace(twice, `"version":3,`, ``, 1)), &twiceWire))
+	_, err = twiceWire.ToCap()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "dim 'language' is named more than once")
 }
 
 // TEST1129: A capfab-shaped JSON document with a documentation field

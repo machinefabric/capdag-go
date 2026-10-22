@@ -133,16 +133,23 @@ func GetProfileURL(profileName string) string {
 // MediaDef represents a media definition - always a structured object
 // The Urn field identifies the media def within a cap's media_defs array
 type MediaDef struct {
-	Urn           string                 `json:"urn"`
-	MediaType     string                 `json:"media_type"`
-	ProfileURI    string                 `json:"profile_uri,omitempty"`
-	Schema        interface{}            `json:"schema,omitempty"`
-	Title         string                 `json:"title,omitempty"`
-	Description   string                 `json:"description,omitempty"`
-	Documentation *string                `json:"documentation,omitempty"`
-	Validation    *MediaValidation       `json:"validation,omitempty"`
-	Metadata      map[string]interface{} `json:"metadata,omitempty"`
-	Extensions    []string               `json:"extensions,omitempty"`
+	Urn         string      `json:"urn"`
+	MediaType   string      `json:"media_type"`
+	ProfileURI  string      `json:"profile_uri,omitempty"`
+	Schema      interface{} `json:"schema,omitempty"`
+	Title       string      `json:"title,omitempty"`
+	Description string      `json:"description,omitempty"`
+	// Documentation is only what is specific to this media def: what the dims
+	// it was built from mean is documented with each dim (see Dims).
+	Documentation *string `json:"documentation,omitempty"`
+	// Dims are the dims this media def was built from, and the value chosen
+	// from each, in the order its source references them. Each dim is
+	// published on its own (FabricRegistry.GetDim); a reader shows its
+	// documentation beside Documentation. Empty when built from no dim.
+	Dims       []DimRef               `json:"dims,omitempty"`
+	Validation *MediaValidation       `json:"validation,omitempty"`
+	Metadata   map[string]interface{} `json:"metadata,omitempty"`
+	Extensions []string               `json:"extensions,omitempty"`
 }
 
 // ToStored converts a MediaDef to a StoredMediaDef for use in the
@@ -156,6 +163,7 @@ func (m MediaDef) ToStored() StoredMediaDef {
 		Schema:        m.Schema,
 		Description:   m.Description,
 		Documentation: m.Documentation,
+		Dims:          m.Dims,
 		Validation:    m.Validation,
 		Metadata:      m.Metadata,
 		Extensions:    m.Extensions,
@@ -202,14 +210,18 @@ func NewMediaDefWithSchema(urn, mediaType, profileURI string, schema interface{}
 
 // ResolvedMediaDef represents a fully resolved media def with all fields populated
 type ResolvedMediaDef struct {
-	SpecID        string
-	MediaType     string
-	ProfileURI    string
-	Schema        interface{}
-	Title         string
-	Description   string
+	SpecID      string
+	MediaType   string
+	ProfileURI  string
+	Schema      interface{}
+	Title       string
+	Description string
+	// Documentation is only what is specific to the media def.
 	Documentation *string
-	Validation    *MediaValidation
+	// Dims are the dims the media def was built from, and the value chosen
+	// from each.
+	Dims       []DimRef
+	Validation *MediaValidation
 	// Metadata contains arbitrary key-value pairs for display/categorization
 	Metadata map[string]interface{}
 	// Extensions are the file extensions for storing this media type (e.g., ["pdf"], ["jpg", "jpeg"])
@@ -428,6 +440,7 @@ func ResolveMediaUrn(mediaUrn string, registry MediaDefSource) (*ResolvedMediaDe
 		Title:         storedSpec.Title,
 		Description:   storedSpec.Description,
 		Documentation: storedSpec.Documentation,
+		Dims:          storedSpec.Dims,
 		Validation:    storedSpec.Validation,
 		Metadata:      storedSpec.Metadata,
 		Extensions:    storedSpec.Extensions,

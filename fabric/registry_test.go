@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -235,7 +236,7 @@ func Test908_cached_caps_accessible_when_offline(t *testing.T) {
 
 // Test1887: the Manifest type round-trips an `aliases` map.
 func Test1887_ManifestSerdeRoundTripsAliases(t *testing.T) {
-	body := `{"version":1,"previous":0,"caps":{},"media":{},"aliases":{"pdf2text":3,"jsondoc":1}}`
+	body := `{"version":1,"previous":0,"caps":{},"media":{},"aliases":{"pdf2text":3,"jsondoc":1},"dims":{}}`
 	var m media.Manifest
 	require.NoError(t, json.Unmarshal([]byte(body), &m))
 	assert.Equal(t, uint32(3), m.Aliases["pdf2text"])
@@ -1075,4 +1076,235 @@ func Test12816_a_caps_media_footprint_covers_every_output_and_accepted_type(t *t
 	_, err = collectReferencedMediaURNs(c)
 	require.Error(t, err, "a URN that does not parse fails the footprint")
 	assert.Equal(t, ErrParse, kindOf(err))
+}
+
+// =============================================================================
+// Dims
+// =============================================================================
+
+func testDim(name string, version uint32, values ...string) media.StoredDim {
+	dim := media.StoredDim{
+		Name:          name,
+		Version:       version,
+		Title:         "Title of " + name,
+		Documentation: "## " + name + "\nWhat " + name + " is.",
+		Values:        []media.StoredDimValue{},
+	}
+	for _, v := range values {
+		doc := "The " + v + " value."
+		dim.Values = append(dim.Values, media.StoredDimValue{
+			Name:          v,
+			Title:         strings.ToUpper(v),
+			Tags:          []media.DimTag{{Key: name, Value: v}},
+			Documentation: &doc,
+		})
+	}
+	return dim
+}
+
+// TEST1966: the Manifest type round-trips a `dims` map (name -> defver)
+// through JSON, and a manifest without one is refused: every manifest this
+// library reads names the dims of its snapshot.
+func Test1966_ManifestCarriesADimsMapAndRequiresIt(t *testing.T) {
+	body := `{"version":11,"previous":10,"caps":{},"media":{},"aliases":{},"dims":{"language":1,"file-type":2}}`
+	var m media.Manifest
+	require.NoError(t, json.Unmarshal([]byte(body), &m))
+	assert.Equal(t, uint32(1), m.Dims["language"])
+	assert.Equal(t, uint32(2), m.Dims["file-type"])
+	out, err := json.Marshal(&m)
+	require.NoError(t, err)
+	var back map[string]any
+	require.NoError(t, json.Unmarshal(out, &back))
+	assert.Equal(t, float64(2), back["dims"].(map[string]any)["file-type"])
+
+	without := `{"version":11,"previous":10,"caps":{},"media":{},"aliases":{}}`
+	var refused media.Manifest
+	err = json.Unmarshal([]byte(without), &refused)
+	require.Error(t, err, "a manifest without dims is refused")
+	assert.Contains(t, err.Error(), "dims")
+}
+
+// TEST1967: GetDim returns a dim the registry holds; a name the pinned
+// manifest does not list is NotFound naming the manifest version, decided
+// before any fetch (the registry is offline, and the error is not the offline
+// one); a string that is no dim name is refused as such.
+func Test1967_GetDimResolvesThroughTheManifest(t *testing.T) {
+	reg := NewForTest()
+	reg.InsertCachedDimForTest(testDim("language", 1, "en", "es"))
+	got, err := reg.GetDim("language")
+	require.NoError(t, err, "a held dim resolves")
+	require.NotNil(t, got.Value("es"))
+	assert.Equal(t, "ES", got.Value("es").Title)
+	defver, err := reg.DimDefverFor("language")
+	require.NoError(t, err)
+	assert.Equal(t, uint32(1), defver)
+
+	reg.SetOffline(true)
+	_, err = reg.GetDim("tone")
+	require.Error(t, err, "an unlisted dim is not found")
+	assert.Equal(t, ErrNotFound, kindOf(err), "%v", err)
+	assert.Contains(t, err.Error(), "dim 'tone' is not part of manifest v1")
+
+	_, err = reg.GetDim("Tone")
+	require.Error(t, err)
+	assert.Equal(t, ErrValidation, kindOf(err), "%v", err)
+}
+
+// TEST1968: a dim is addressed at dims/<sha256-of-name>/<defver>.json, on the
+// registry and in the cache; a body served for it must be that dim at that
+// version, with no field this library does not know, and must hold (values
+// present, names unique).
+func Test1968_ADimObjectIsTheDimAndVersionAskedFor(t *testing.T) {
+	config := DefaultConfig().WithRegistryURL("https://fabric.example.test")
+	cache := filepath.Join(os.TempDir(), "capdag-test-cache-1968")
+	hash := fmt.Sprintf("%x", sha256.Sum256([]byte("language")))
+	url, path := dimURLAndCachePath(cache, config, "language", 3)
+	assert.Equal(t, "https://fabric.example.test/dims/"+hash+"/3.json", url)
+	assert.Equal(t, filepath.Join(cache, "dims", hash, "3.json"), path)
+
+	good, err := json.Marshal(testDim("language", 3, "en"))
+	require.NoError(t, err)
+	dim, err := checkedDim(good, "language", 3)
+	require.NoError(t, err)
+	assert.Equal(t, "language", dim.Name)
+
+	_, err = checkedDim(good, "file-type", 3)
+	require.Error(t, err)
+	assert.Equal(t, ErrParse, kindOf(err))
+	assert.Contains(t, err.Error(), "does not match requested name")
+
+	_, err = checkedDim(good, "language", 2)
+	require.Error(t, err)
+	assert.Equal(t, ErrParse, kindOf(err))
+	assert.Contains(t, err.Error(), "manifest pins defver 2")
+
+	var extra map[string]any
+	require.NoError(t, json.Unmarshal(good, &extra))
+	extra["predicates"] = []any{}
+	extraBody, err := json.Marshal(extra)
+	require.NoError(t, err)
+	_, err = checkedDim(extraBody, "language", 3)
+	require.Error(t, err)
+	assert.Equal(t, ErrParse, kindOf(err))
+	assert.Contains(t, err.Error(), "predicates")
+
+	twice, err := json.Marshal(testDim("language", 3, "en", "en"))
+	require.NoError(t, err)
+	_, err = checkedDim(twice, "language", 3)
+	require.Error(t, err)
+	assert.Equal(t, ErrValidation, kindOf(err))
+	assert.Contains(t, err.Error(), "declares value 'en' more than once")
+
+	none, err := json.Marshal(testDim("language", 3))
+	require.NoError(t, err)
+	_, err = checkedDim(none, "language", 3)
+	require.Error(t, err)
+	assert.Equal(t, ErrValidation, kindOf(err))
+}
+
+func dimRefs(pairs ...[2]string) []media.DimRef {
+	refs := make([]media.DimRef, 0, len(pairs))
+	for _, p := range pairs {
+		refs = append(refs, media.NewDimRef(p[0], p[1]))
+	}
+	return refs
+}
+
+func capWithDims(t *testing.T, urnStr string, refs []media.DimRef) *cap.Cap {
+	t.Helper()
+	parsed, err := urn.NewCapUrnFromString(urnStr)
+	require.NoError(t, err)
+	c := cap.NewCap(parsed, "t", []string{"t"})
+	c.Version = 1
+	c.Dims = refs
+	return c
+}
+
+// TEST1971: what is loaded from the disk cache is kept only as the pinned
+// manifest names it — a dim at another version is dropped — and a definition
+// is kept only when every dim it names survives with the value it names. At v0
+// there are no dims.
+func Test1971_TheDiskCacheKeepsDefinitionsOnlyWithTheirPinnedDims(t *testing.T) {
+	manifest := media.EmptyManifest(11)
+	manifest.Dims["language"] = 2
+	manifest.Dims["medium"] = 1
+	capURNs := []string{"cap:a;in=media:;out=media:", "cap:b;in=media:;out=media:", "cap:c;in=media:;out=media:"}
+	normalized := make([]string, len(capURNs))
+	for i, u := range capURNs {
+		n, err := NormalizeCapURN(u)
+		require.NoError(t, err)
+		normalized[i] = n
+		manifest.Caps[n] = 1
+	}
+	manifest.Media["media:x"] = 1
+	manifest.Media["media:y"] = 1
+
+	caps := map[string]*cap.Cap{
+		normalized[0]: capWithDims(t, capURNs[0], dimRefs([2]string{"medium", "text"})),
+		normalized[1]: capWithDims(t, capURNs[1], dimRefs([2]string{"language", "en"})),
+		normalized[2]: capWithDims(t, capURNs[2], nil),
+	}
+	specs := map[string]media.StoredMediaDef{
+		"media:x": {Urn: "media:x", Version: 1, MediaType: "text/plain", Title: "t", Dims: dimRefs([2]string{"medium", "text"})},
+		"media:y": {Urn: "media:y", Version: 1, MediaType: "text/plain", Title: "t", Dims: dimRefs([2]string{"medium", "audio"})},
+	}
+	aliases := map[string]media.StoredAlias{}
+	dims := map[string]media.StoredDim{
+		"language": testDim("language", 1, "en"), // the manifest pins 2
+		"medium":   testDim("medium", 1, "text"),
+	}
+
+	retainPinned(manifest, 11, caps, specs, aliases, dims)
+	assert.Equal(t, []string{"medium"}, sortedKeys(dims), "a dim at another version is dropped")
+	assert.Equal(t, sortedStrings([]string{normalized[0], normalized[2]}), sortedKeys(caps),
+		"the cap naming the dropped dim is dropped with it")
+	assert.Equal(t, []string{"media:x"}, sortedKeys(specs), "a value the dim lacks drops the definition")
+
+	v0Dims := map[string]media.StoredDim{"medium": testDim("medium", 1, "text")}
+	retainPinned(media.EmptyManifest(0), 0, map[string]*cap.Cap{}, map[string]media.StoredMediaDef{},
+		map[string]media.StoredAlias{}, v0Dims)
+	assert.Empty(t, v0Dims, "v0 has no dims")
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return sortedStrings(keys)
+}
+
+func sortedStrings(s []string) []string {
+	out := append([]string(nil), s...)
+	sort.Strings(out)
+	return out
+}
+
+// TEST1972: a definition is cached only once every dim it names is held, with
+// the value it names. A dim the manifest does not list is refused naming the
+// definition, the dim and the manifest version, before any fetch; a value the
+// dim does not declare is refused naming all three; one dim named twice is
+// refused.
+func Test1972_ADefinitionNeedsEveryDimItNames(t *testing.T) {
+	reg := NewForTest()
+	reg.InsertCachedDimForTest(testDim("language", 1, "en"))
+	reg.SetOffline(true)
+
+	require.NoError(t, reg.ensureDimsCached("cap 'cap:probe'", dimRefs([2]string{"language", "en"})),
+		"a held dim and value pass")
+
+	err := reg.ensureDimsCached("cap 'cap:probe'", dimRefs([2]string{"language", "fr"}))
+	require.Error(t, err)
+	assert.Equal(t, ErrValidation, kindOf(err), "%v", err)
+	assert.Equal(t, "cap 'cap:probe' names value 'fr' of dim 'language', which the dim does not declare", err.Error())
+
+	err = reg.ensureDimsCached("cap 'cap:probe'", dimRefs([2]string{"tone", "formal"}))
+	require.Error(t, err)
+	assert.Equal(t, ErrNotFound, kindOf(err), "%v", err)
+	assert.Equal(t, "cap 'cap:probe' names dim 'tone', which is not in manifest v1", err.Error())
+
+	err = reg.ensureDimsCached("cap 'cap:probe'", dimRefs([2]string{"language", "en"}, [2]string{"language", "en"}))
+	require.Error(t, err)
+	assert.Equal(t, ErrValidation, kindOf(err), "%v", err)
+	assert.Contains(t, err.Error(), "named more than once")
 }

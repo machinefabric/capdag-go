@@ -227,19 +227,19 @@ func Test12849_reading_a_registry_holds_its_definitions_to_the_rules(t *testing.
 	}
 }
 
-// TEST323: CartridgeRepoServer requires the schema this build reads (6.0) and rejects older.
+// TEST323: CartridgeRepoServer requires the schema this build reads (7.0) and rejects older.
 func Test323_cartridge_repo_server_validate_registry(t *testing.T) {
 	registry := makeTestRegistryChannels(nil, nil)
 	server, err := NewCartridgeRepoServer(registry)
 	if err != nil {
-		t.Errorf("Expected no error for v6.0, got %v", err)
+		t.Errorf("Expected no error for v7.0, got %v", err)
 	}
 	if server == nil {
 		t.Error("Expected server to be created")
 	}
 
 	oldRegistry := CartridgeRegistry{
-		SchemaVersion: "5.0",
+		SchemaVersion: "6.0",
 		LastUpdated:   "2026-02-07",
 		Channels: CartridgeRegistryChannels{
 			Release: CartridgeChannelEntries{Cartridges: map[string]CartridgeRegistryEntry{}},
@@ -248,12 +248,12 @@ func Test323_cartridge_repo_server_validate_registry(t *testing.T) {
 	}
 	server, err = NewCartridgeRepoServer(oldRegistry)
 	if err == nil {
-		t.Error("Expected error for v5.0 schema")
-	} else if !strings.Contains(err.Error(), "6.0") {
+		t.Error("Expected error for v6.0 schema")
+	} else if !strings.Contains(err.Error(), "7.0") {
 		t.Errorf("the refusal names the schema it reads: %v", err)
 	}
 	if server != nil {
-		t.Error("Expected no server to be created for v5.0")
+		t.Error("Expected no server to be created for v6.0")
 	}
 
 	// A manifest from a different registry regime version is rejected too.

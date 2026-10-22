@@ -602,12 +602,20 @@ func NewMediaValidationAllowedValues(values []string) *media.MediaValidation {
 // Caps do not carry inline media defs; every media URN is resolved
 // through the unified FabricRegistry.
 type Cap struct {
-	Urn            *urn.CapUrn       `json:"urn"`
-	Version        uint32            `json:"version,omitempty"`
-	Title          string            `json:"title"`
-	CapDescription *string           `json:"cap_description,omitempty"`
-	Documentation  *string           `json:"documentation,omitempty"`
-	Metadata       map[string]string `json:"metadata,omitempty"`
+	Urn            *urn.CapUrn `json:"urn"`
+	Version        uint32      `json:"version,omitempty"`
+	Title          string      `json:"title"`
+	CapDescription *string     `json:"cap_description,omitempty"`
+	// Documentation is only what is specific to this cap: what the dims it
+	// was built from mean is documented with each dim (see Dims).
+	Documentation *string `json:"documentation,omitempty"`
+	// Dims are the dims this cap was built from, and the value chosen from
+	// each, in the order its source references them. Each dim is published on
+	// its own (FabricRegistry.GetDim) with its documentation and each value's;
+	// a reader shows that beside Documentation. Empty when the cap was built
+	// from no dim. Descriptive only: matching and dispatch never read it.
+	Dims     []media.DimRef    `json:"dims,omitempty"`
+	Metadata map[string]string `json:"metadata,omitempty"`
 	// Aliases are the globally-unique human-facing names that select this cap
 	// in both the capdag CLI and the direct cartridge CLI. Replaces the former
 	// non-unique `command`. At least one; uniqueness is enforced at publish.
@@ -1172,6 +1180,15 @@ func (c *Cap) Equals(other *Cap) bool {
 		return false
 	}
 
+	if len(c.Dims) != len(other.Dims) {
+		return false
+	}
+	for i := range c.Dims {
+		if c.Dims[i] != other.Dims[i] {
+			return false
+		}
+	}
+
 	if len(c.Metadata) != len(other.Metadata) {
 		return false
 	}
@@ -1223,6 +1240,12 @@ func (c *Cap) MarshalJSON() ([]byte, error) {
 
 	if c.Documentation != nil {
 		capData["documentation"] = *c.Documentation
+	}
+
+	// Emit `dims` only when the cap was built from some; absent ⇒ none,
+	// exactly as the registry publishes it.
+	if len(c.Dims) > 0 {
+		capData["dims"] = c.Dims
 	}
 
 	if len(c.Metadata) > 0 {
@@ -1327,6 +1350,22 @@ func (c *Cap) UnmarshalJSON(data []byte) error {
 
 	if doc, ok := raw["documentation"].(string); ok {
 		c.Documentation = &doc
+	}
+
+	// Dims: each entry refuses keys it does not know, like an argument's; a
+	// dim is named at most once, since a definition cannot have been built
+	// with two values of one dim.
+	c.Dims = nil
+	if dimsRaw, ok := raw["dims"]; ok {
+		dimsBytes, _ := json.Marshal(dimsRaw)
+		var dims []media.DimRef
+		if err := json.Unmarshal(dimsBytes, &dims); err != nil {
+			return fmt.Errorf("failed to unmarshal dims: %w", err)
+		}
+		if err := media.CheckDimRefs(dims); err != nil {
+			return fmt.Errorf("cap '%s' dims: %v", c.Urn.String(), err)
+		}
+		c.Dims = dims
 	}
 
 	if metadata, ok := raw["metadata"].(map[string]any); ok {
