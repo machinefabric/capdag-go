@@ -170,14 +170,13 @@ func Test11765_the_executable_bit_is_a_unix_question(t *testing.T) {
 	}
 	jsonPath := filepath.Join(dir, "cartridge.json")
 	body := `{"schema_version":1,"name":"greeter","version":"0.1.0",` +
-		`"entry":"cartridge.py","registry_url":"https://example.invalid/r",` +
+		`"entry":"cartridge.py","registry_url":null,` +
 		`"installed_from":"build","fabric_manifest_version":1}`
 	if err := os.WriteFile(jsonPath, []byte(body), 0o644); err != nil {
 		t.Fatalf("writing cartridge.json: %v", err)
 	}
 
-	registry := "https://example.invalid/r"
-	_, err := ReadCartridgeJsonFromDir(dir, SlugFor(&registry))
+	_, err := ReadCartridgeJsonFromDir(dir, RegistryFolder{})
 	if runtime.GOOS == "windows" {
 		if err != nil {
 			t.Fatalf("a non-executable mode must not refuse a cartridge on Windows, "+

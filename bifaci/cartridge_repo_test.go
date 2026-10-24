@@ -73,6 +73,7 @@ func makeTestRegistryChannels(
 		SchemaVersion:     CartridgeRegistrySchemaVersion,
 		RegistryVersion:   CartridgeRegistryVersion,
 		LastUpdated:       "2026-02-07",
+		RegistryURL:       "https://registry.test/cartridges",
 		FabricRegistryURL: "https://fabric.test",
 		Channels: CartridgeRegistryChannels{
 			Release: CartridgeChannelEntries{Cartridges: release},
@@ -249,7 +250,7 @@ func Test323_cartridge_repo_server_validate_registry(t *testing.T) {
 	server, err = NewCartridgeRepoServer(oldRegistry)
 	if err == nil {
 		t.Error("Expected error for v6.0 schema")
-	} else if !strings.Contains(err.Error(), "7.0") {
+	} else if !strings.Contains(err.Error(), CartridgeRegistrySchemaVersion) {
 		t.Errorf("the refusal names the schema it reads: %v", err)
 	}
 	if server != nil {

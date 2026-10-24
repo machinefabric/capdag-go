@@ -1,10 +1,9 @@
 // Package fabric provides the unified fabric registry — cap definitions, media
 // definitions, aliases and dims behind one type.
 //
-// All live in the same online registry
-// (`https://fabric.capdag.com/{caps,media,aliases,dims}/<sha256>`), share the
-// same caching policy, the same manifest pin, and the same offline /
-// clear-cache surface. They differ only in wire payload shape (`cap.Cap`,
+// All live in the same online registry — named by its anchor, and found where
+// its charter's `definition` location says — share the same caching policy,
+// the same manifest pin, and the same offline / clear-cache surface. They differ only in wire payload shape (`cap.Cap`,
 // `media.StoredMediaDef`, `media.StoredAlias`, `media.StoredDim`) and in
 // disk-cache subdirectory (`caps/`, `media/`, `aliases/`, `dims/`).
 //
@@ -50,11 +49,12 @@ import (
 	"github.com/machinefabric/capdag-go/urn"
 )
 
-// DefaultRegistryBaseURL is the fabric origin used when nothing else says
-// otherwise.
-const DefaultRegistryBaseURL = "https://fabric.capdag.com"
+// DefaultFabricAnchor is the anchor of MachineFabric's production fabric, used
+// when nothing names another. Only the anchor: where its objects are is read
+// from its charter.
+const DefaultFabricAnchor = "https://fabric.capdag.com"
 
-// CacheDurationHours is the TTL applied to v0 (flat-path) cache entries.
+// CacheDurationHours is the TTL applied to cache entries of version 0.
 // Versioned entries (defver >= 1) are immutable and never expire.
 const CacheDurationHours = 24
 
@@ -79,6 +79,9 @@ const (
 	ErrCache          ErrorKind = "cache"
 	ErrValidation     ErrorKind = "validation"
 	ErrExtension      ErrorKind = "extension_not_found"
+	// ErrCharter: the registry's charter could not be had, or was refused.
+	// Nothing the registry serves is used without it.
+	ErrCharter ErrorKind = "charter"
 )
 
 // Error is a registry failure carrying the kind callers branch on.
@@ -194,66 +197,103 @@ var cacheSubdirs = []string{"", "caps", "media", "aliases", "dims", "manifests"}
 // Configuration
 // ---------------------------------------------------------------------------
 
-// Config is the registry's origin pair. Resolution order is explicit argument,
-// then environment (CDG_FABRIC_REGISTRY_URL / CDG_SCHEMA_BASE_URL), then
-// default.
+// Config is what a fabric registry client is asked to use.
+//
+// The ANCHOR names the registry and is all a client is told; where its
+// manifest and definitions are, and the folder its cache lives in, come from
+// the registry's charter (Locations). Sources, in priority order: WithAnchor,
+// then CDG_FABRIC_REGISTRY_URL, then MachineFabric's production fabric.
 type Config struct {
-	RegistryBaseURL string
-	SchemaBaseURL   string
+	Anchor string
 }
 
-// DefaultConfig reads the environment, falling back to the built-in origin.
+// DefaultConfig reads the environment, falling back to the production fabric.
 func DefaultConfig() Config {
-	base := os.Getenv("CDG_FABRIC_REGISTRY_URL")
-	if base == "" {
-		base = DefaultRegistryBaseURL
+	anchor := os.Getenv("CDG_FABRIC_REGISTRY_URL")
+	if anchor == "" {
+		anchor = DefaultFabricAnchor
 	}
-	schema := os.Getenv("CDG_SCHEMA_BASE_URL")
-	if schema == "" {
-		schema = base + "/schema"
-	}
-	return Config{RegistryBaseURL: base, SchemaBaseURL: schema}
+	return Config{Anchor: anchor}
 }
 
-// WithRegistryURL points the config at a different fabric origin, re-deriving
-// the schema base when it was derived from the old one — pairing a caller-chosen
-// fabric with a stale schema origin would validate one origin's definitions
-// against another's schemas.
-func (c Config) WithRegistryURL(url string) Config {
-	if c.SchemaBaseURL == c.RegistryBaseURL+"/schema" {
-		c.SchemaBaseURL = url + "/schema"
-	}
-	c.RegistryBaseURL = url
+// WithAnchor points the config at another fabric registry.
+func (c Config) WithAnchor(anchor string) Config {
+	c.Anchor = anchor
 	return c
 }
 
-// WithSchemaURL overrides only the schema origin.
-func (c Config) WithSchemaURL(url string) Config {
-	c.SchemaBaseURL = url
-	return c
+// Locations is where a fabric registry's objects are, as its charter states
+// them. Built once from a charter whose shape check guarantees each template
+// uses exactly the placeholders filled here — so filling one cannot fail, and
+// nothing in the client composes a fabric URL any other way.
+type Locations struct {
+	manifest   string
+	definition string
 }
 
-// mediaURLAndCachePath builds the registry URL and on-disk cache path for a
-// media object at a given defver. defver 0 addresses the frozen v0 flat path;
-// >= 1 addresses the versioned subpath. Both the fetch path and the cache-path
-// resolver go through here so the two can never drift apart.
-func mediaURLAndCachePath(cacheDir string, config Config, normalizedURN string, defver uint32) (string, string) {
-	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(normalizedURN)))
-	if defver == 0 {
-		return config.RegistryBaseURL + "/media/" + digest,
-			filepath.Join(cacheDir, "media", digest+".json")
+// LocationsFromCharter reads a fabric charter's locations.
+func LocationsFromCharter(charter *bifaci.Charter) (Locations, error) {
+	if charter.Kind != bifaci.RegistryKindFabric {
+		return Locations{}, errf(ErrCharter, "%s is chartered as a %s registry, not a fabric",
+			charter.Anchor, charter.Kind)
 	}
-	return fmt.Sprintf("%s/media/%s/%d.json", config.RegistryBaseURL, digest, defver),
-		filepath.Join(cacheDir, "media", digest, fmt.Sprintf("%d.json", defver))
+	take := func(name string) (string, error) {
+		template, ok := charter.Locations[name]
+		if !ok {
+			return "", errf(ErrCharter, "the fabric charter of %s declares no '%s' location", charter.Anchor, name)
+		}
+		return template, nil
+	}
+	manifest, err := take("manifest")
+	if err != nil {
+		return Locations{}, err
+	}
+	definition, err := take("definition")
+	if err != nil {
+		return Locations{}, err
+	}
+	return Locations{manifest: manifest, definition: definition}, nil
 }
 
-// dimURLAndCachePath builds the registry URL and on-disk cache path for a dim
-// object at a given defver. Dims are keyed by sha256(name) and are
-// versioned-only (defver >= 1). Matches Rust: fn dim_url_and_cache_path
-func dimURLAndCachePath(cacheDir string, config Config, name string, defver uint32) (string, string) {
-	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(name)))
-	return fmt.Sprintf("%s/dims/%s/%d.json", config.RegistryBaseURL, digest, defver),
-		filepath.Join(cacheDir, "dims", digest, fmt.Sprintf("%d.json", defver))
+// Manifest is the URL of manifest version.
+func (l Locations) Manifest(version uint32) string {
+	return strings.ReplaceAll(l.manifest, "{manifest_version}", strconv.FormatUint(uint64(version), 10))
+}
+
+// Definition is the URL of one definition: kind is caps, media, aliases or dims.
+func (l Locations) Definition(kind, urnHash string, version uint32) string {
+	out := strings.ReplaceAll(l.definition, "{kind}", kind)
+	out = strings.ReplaceAll(out, "{urn_hash}", urnHash)
+	return strings.ReplaceAll(out, "{version}", strconv.FormatUint(uint64(version), 10))
+}
+
+// PublisherLayoutCharter is the charter of a fabric published at anchor the
+// way the publisher lays a fabric out (fabric/src/fabric.js). For a registry
+// that is never fetched: the test constructors, and tests of where things are.
+func PublisherLayoutCharter(anchor string) *bifaci.Charter {
+	return &bifaci.Charter{
+		Format:      bifaci.CharterFormat,
+		Anchor:      anchor,
+		Kind:        bifaci.RegistryKindFabric,
+		Slug:        "test-fabric",
+		Environment: "prod",
+		Locations: map[string]string{
+			"manifest":   anchor + "/manifest/{manifest_version}.json",
+			"latest":     anchor + "/manifest/latest.json",
+			"definition": anchor + "/{kind}/{urn_hash}/{version}.json",
+		},
+	}
+}
+
+// definitionURLAndCachePath is the URL of one definition at defver, from the
+// charter's `definition` location, and the cache file it is kept in. The fetch
+// path and the cache-path resolver both go through here so the two can never
+// drift apart. `key` is what the kind hashes: the normalized URN for caps and
+// media, the name for aliases and dims.
+func definitionURLAndCachePath(cacheDir string, locations Locations, kind, key string, defver uint32) (string, string) {
+	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(key)))
+	return locations.Definition(kind, digest, defver),
+		filepath.Join(cacheDir, kind, digest, fmt.Sprintf("%d.json", defver))
 }
 
 // BakedManifestVersion is the workspace-pinned fabric manifest version.
@@ -264,8 +304,8 @@ func dimURLAndCachePath(cacheDir string, config Config, name string, defver uint
 // workspace build reads MFR_FABRIC_MANIFEST_VERSION, the same variable the workspace build tool
 // exports for every other language. Neither is a fallback for the other: both
 // are explicit declarations, and their absence is a hard failure rather than a
-// silent drop to v0, which would resolve every URN against the frozen flat-path
-// regime and report "not found" for the whole fabric.
+// silent drop to v0, which names no manifest and would report "not found" for
+// the whole fabric.
 var BakedManifestVersion string
 
 // ManifestVersion resolves the pinned fabric manifest version, or reports why
@@ -305,6 +345,10 @@ type FabricRegistry struct {
 	dimsCacheDir    string
 
 	config Config
+	// charter is the registry's charter: its slug names cacheDir, and its
+	// locations are where every object is fetched from.
+	charter   *bifaci.Charter
+	locations Locations
 
 	cachedCaps    map[string]*cap.Cap
 	cachedSpecs   map[string]media.StoredMediaDef
@@ -314,9 +358,8 @@ type FabricRegistry struct {
 	cachedDims map[string]media.StoredDim
 	extIndex   map[string][]string
 
-	// manifestVersion 0 is the legacy v0 / flat-path regime (no manifest
-	// consulted). >= 1 is manifest-driven: every URN lookup resolves to a
-	// (urn, defver) pair via the manifest before fetching.
+	// manifestVersion is >= 1: every URN lookup resolves to a (urn, defver)
+	// pair via the manifest before fetching.
 	manifestVersion uint32
 	manifest        *media.Manifest
 
@@ -345,29 +388,40 @@ func WithConfig(config Config) (*FabricRegistry, error) {
 
 // WithConfigAndManifestVersion is the full constructor.
 //
-// manifestVersion 0 is the legacy v0 / flat-path mode (no manifest fetch).
-// >= 1 loads manifest/<N>.json from the local cache, else blocks on a network
-// fetch. If neither can provide it the construction fails — there is no
-// fallback to v0, which would silently resolve against a different regime.
+// The registry's charter is resolved first — the one stored in the cache when
+// one is stored for this anchor, else fetched from the anchor — and everything
+// after it is read from the charter: the cache folder is its slug, and the
+// manifest is fetched from its location. The constructor blocks on the
+// network when either is not cached. A version below 1 names no manifest and
+// is refused.
 func WithConfigAndManifestVersion(config Config, manifestVersion uint32) (*FabricRegistry, error) {
-	cacheDir, err := CacheDirFor(config.RegistryBaseURL)
+	if manifestVersion == 0 {
+		return nil, errf(ErrValidation,
+			"fabric manifest version 0 names no manifest; a registry is pinned at 1 or later")
+	}
+	client := &http.Client{Timeout: httpTimeout}
+	capdagCache, err := CapdagCacheRoot()
 	if err != nil {
 		return nil, err
 	}
+	charter, err := resolveCharter(client, capdagCache, config.Anchor)
+	if err != nil {
+		return nil, err
+	}
+	locations, err := LocationsFromCharter(charter)
+	if err != nil {
+		return nil, err
+	}
+	cacheDir := filepath.Join(capdagCache, charter.Slug)
 	for _, sub := range cacheSubdirs {
 		if err := os.MkdirAll(filepath.Join(cacheDir, sub), 0o755); err != nil {
 			return nil, errf(ErrCache, "creating cache dir %s: %v", filepath.Join(cacheDir, sub), err)
 		}
 	}
 
-	client := &http.Client{Timeout: httpTimeout}
-
-	manifest := media.EmptyManifest(0)
-	if manifestVersion >= 1 {
-		manifest, err = loadOrFetchManifest(filepath.Join(cacheDir, "manifests"), client, config, manifestVersion)
-		if err != nil {
-			return nil, err
-		}
+	manifest, err := loadOrFetchManifest(filepath.Join(cacheDir, "manifests"), client, locations, manifestVersion)
+	if err != nil {
+		return nil, err
 	}
 
 	r := &FabricRegistry{
@@ -378,6 +432,8 @@ func WithConfigAndManifestVersion(config Config, manifestVersion uint32) (*Fabri
 		aliasesCacheDir: filepath.Join(cacheDir, "aliases"),
 		dimsCacheDir:    filepath.Join(cacheDir, "dims"),
 		config:          config,
+		charter:         charter,
+		locations:       locations,
 		cachedCaps:      make(map[string]*cap.Cap),
 		cachedSpecs:     make(map[string]media.StoredMediaDef),
 		cachedAliases:   make(map[string]media.StoredAlias),
@@ -407,7 +463,33 @@ func WithConfigAndManifestVersion(config Config, manifestVersion uint32) (*Fabri
 	return r, nil
 }
 
-func loadOrFetchManifest(manifestsDir string, client *http.Client, config Config, version uint32) (*media.Manifest, error) {
+// resolveCharter is the charter of the fabric registry at anchor.
+//
+// A fabric's contents carry no signature, so no content environment is
+// expected of its charter: any chartered fabric can be resolved against, and
+// what keeps one client's registries on one fabric is each cartridge
+// registry's charter naming it.
+//
+// The stored one, when a folder under capdagCache holds a charter for this
+// anchor — so an offline client keeps its fabric. Else the charter is fetched
+// from the anchor and stored in the folder its slug names. Matches Rust: fn
+// resolve_charter (which also verifies the signature; see bifaci/charter.go).
+func resolveCharter(client *http.Client, capdagCache, anchor string) (*bifaci.Charter, error) {
+	if _, charter, ok := bifaci.StoredCharterFor(capdagCache, anchor, bifaci.RegistryKindFabric); ok {
+		return charter, nil
+	}
+	fetched, err := bifaci.FetchCharter(client, anchor, bifaci.RegistryKindFabric)
+	if err != nil {
+		return nil, &Error{Kind: ErrCharter, Message: fmt.Sprintf("the fabric registry %s has no charter this client can use", anchor), Err: err}
+	}
+	folder := filepath.Join(capdagCache, fetched.Charter.Slug)
+	if err := bifaci.StoreCharter(fetched, folder); err != nil {
+		return nil, errf(ErrCache, "storing the charter of %s in %s: %v", anchor, folder, err)
+	}
+	return fetched.Charter, nil
+}
+
+func loadOrFetchManifest(manifestsDir string, client *http.Client, locations Locations, version uint32) (*media.Manifest, error) {
 	cacheFile := filepath.Join(manifestsDir, fmt.Sprintf("%d.json", version))
 	if raw, err := os.ReadFile(cacheFile); err == nil {
 		var m media.Manifest
@@ -424,7 +506,7 @@ func loadOrFetchManifest(manifestsDir string, client *http.Client, config Config
 		_ = os.Remove(cacheFile)
 	}
 
-	url := fmt.Sprintf("%s/manifest/%d.json", config.RegistryBaseURL, version)
+	url := locations.Manifest(version)
 	resp, err := client.Get(url)
 	if err != nil {
 		return nil, &Error{Kind: ErrHTTP, Message: fmt.Sprintf("fetching manifest v%d at %s", version, url), Err: err}
@@ -451,13 +533,12 @@ func loadOrFetchManifest(manifestsDir string, client *http.Client, config Config
 	return &m, nil
 }
 
-// CacheDirFor is the on-disk cache root, namespaced per registry origin.
-//
-// The namespace matters: a cache populated from one fabric would otherwise
-// satisfy lookups against another, and the two serve DIFFERENT bytes for the
-// same URN and version. Same origin means a stable root (so caching hits);
-// distinct origins mean distinct roots.
-func CacheDirFor(registryBaseURL string) (string, error) {
+// CapdagCacheRoot is the directory every registry's cache folder lives under:
+// `<os cache>/capdag`. A registry's own folder is its charter's slug, so two
+// registries never share one, whatever their URLs look like — a cache
+// populated from one fabric can never satisfy lookups against another, which
+// serves DIFFERENT bytes for the same URN and version.
+func CapdagCacheRoot() (string, error) {
 	var base string
 	if runtime.GOOS == "windows" {
 		base = os.Getenv("LOCALAPPDATA")
@@ -471,7 +552,7 @@ func CacheDirFor(registryBaseURL string) (string, error) {
 		}
 		base = filepath.Join(home, ".cache")
 	}
-	return filepath.Join(base, "capdag", bifaci.SlugFor(&registryBaseURL)), nil
+	return filepath.Join(base, "capdag"), nil
 }
 
 // ---------------------------------------------------------------------------
@@ -607,8 +688,8 @@ func (r *FabricRegistry) loadAllCachedDims() {
 // retainPinned keeps, of what was loaded from the disk cache, only what the
 // pinned manifest names at the version it names, and only definitions whose
 // dims all survive with them. At v0 the manifest is empty and caps and media
-// are all retained (the loaders only find flat paths then); aliases and dims
-// are versioned-regime concepts and are all dropped.
+// are all retained; aliases and dims are versioned-regime concepts and are all
+// dropped.
 //
 // A definition whose dims did not survive is dropped here and fetched again,
 // with its dims, when it is next asked for — so a cached definition always has
@@ -679,11 +760,8 @@ func (r *FabricRegistry) capCacheFilePath(capURN string, defver uint32) (string,
 	if err != nil {
 		return "", err
 	}
-	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(normalized)))
-	if defver == 0 {
-		return filepath.Join(r.capsCacheDir, digest+".json"), nil
-	}
-	return filepath.Join(r.capsCacheDir, digest, fmt.Sprintf("%d.json", defver)), nil
+	_, path := definitionURLAndCachePath(r.cacheDir, r.locations, "caps", normalized, defver)
+	return path, nil
 }
 
 func (r *FabricRegistry) mediaCacheFilePath(mediaURN string, defver uint32) (string, error) {
@@ -691,13 +769,13 @@ func (r *FabricRegistry) mediaCacheFilePath(mediaURN string, defver uint32) (str
 	if err != nil {
 		return "", err
 	}
-	_, path := mediaURLAndCachePath(r.cacheDir, r.config, normalized, defver)
+	_, path := definitionURLAndCachePath(r.cacheDir, r.locations, "media", normalized, defver)
 	return path, nil
 }
 
 func (r *FabricRegistry) aliasCacheFilePath(normalizedName string, defver uint32) string {
-	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(normalizedName)))
-	return filepath.Join(r.aliasesCacheDir, digest, fmt.Sprintf("%d.json", defver))
+	_, path := definitionURLAndCachePath(r.cacheDir, r.locations, "aliases", normalizedName, defver)
+	return path
 }
 
 func writeCacheFile(path string, payload any) error {
@@ -751,7 +829,7 @@ func (r *FabricRegistry) saveAliasToCache(alias media.StoredAlias) error {
 }
 
 func (r *FabricRegistry) saveDimToCache(dim media.StoredDim) error {
-	_, path := dimURLAndCachePath(r.cacheDir, r.config, dim.Name, dim.Version)
+	_, path := definitionURLAndCachePath(r.cacheDir, r.locations, "dims", dim.Name, dim.Version)
 	return writeCacheFile(path, dimCacheEntry{
 		Dim:      dim,
 		CachedAt: time.Now().Unix(),
@@ -811,11 +889,7 @@ func (r *FabricRegistry) fetchCapFromRegistry(capURN string, defver uint32) (*ca
 	if err != nil {
 		return nil, err
 	}
-	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(normalized)))
-	url := r.config.RegistryBaseURL + "/caps/" + digest
-	if defver != 0 {
-		url = fmt.Sprintf("%s/caps/%s/%d.json", r.config.RegistryBaseURL, digest, defver)
-	}
+	url, _ := definitionURLAndCachePath(r.cacheDir, r.locations, "caps", normalized, defver)
 	body, err := r.get(url, fmt.Sprintf("cap '%s'", capURN))
 	if err != nil {
 		return nil, err
@@ -849,7 +923,7 @@ func (r *FabricRegistry) fetchMediaDefFromRegistry(mediaURN string, defver uint3
 	if err != nil {
 		return nil, err
 	}
-	url, _ := mediaURLAndCachePath(r.cacheDir, r.config, normalized, defver)
+	url, _ := definitionURLAndCachePath(r.cacheDir, r.locations, "media", normalized, defver)
 	body, err := r.get(url, fmt.Sprintf("media def '%s'", mediaURN))
 	if err != nil {
 		return nil, err
@@ -866,8 +940,7 @@ func (r *FabricRegistry) fetchAliasFromRegistry(normalizedName string, defver ui
 		return nil, errf(ErrNotFound,
 			"alias '%s' has non-positive defver %d; aliases are versioned-only", normalizedName, defver)
 	}
-	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(normalizedName)))
-	url := fmt.Sprintf("%s/aliases/%s/%d.json", r.config.RegistryBaseURL, digest, defver)
+	url, _ := definitionURLAndCachePath(r.cacheDir, r.locations, "aliases", normalizedName, defver)
 	body, err := r.get(url, fmt.Sprintf("alias '%s'", normalizedName))
 	if err != nil {
 		return nil, err
@@ -900,7 +973,7 @@ func (r *FabricRegistry) fetchDim(name string, defver uint32) (*media.StoredDim,
 		return nil, errf(ErrNotFound,
 			"dim '%s' has non-positive defver %d; dims are versioned-only", name, defver)
 	}
-	url, _ := dimURLAndCachePath(r.cacheDir, r.config, name, defver)
+	url, _ := definitionURLAndCachePath(r.cacheDir, r.locations, "dims", name, defver)
 	body, err := r.get(url, fmt.Sprintf("dim '%s'", name))
 	if err != nil {
 		return nil, err
@@ -1090,11 +1163,16 @@ func (r *FabricRegistry) ManifestVersion() uint32 {
 	return r.manifestVersion
 }
 
-// Config returns the origin pair this registry resolves against.
+// Config returns what this registry was asked to use.
 func (r *FabricRegistry) Config() Config {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.config
+}
+
+// Charter is the charter of the registry this client reads.
+func (r *FabricRegistry) Charter() *bifaci.Charter {
+	return r.charter
 }
 
 // ---------------------------------------------------------------------------
@@ -1788,7 +1866,8 @@ func NewForTest() *FabricRegistry {
 	return NewForTestWithConfig(DefaultConfig())
 }
 
-// NewForTestWithConfig is NewForTest against a chosen origin.
+// NewForTestWithConfig is NewForTest against a chosen anchor, laid out the way
+// the publisher lays a fabric out.
 func NewForTestWithConfig(config Config) *FabricRegistry {
 	cacheDir, err := os.MkdirTemp("", "capdag-fabric-test-")
 	if err != nil {
@@ -1800,6 +1879,11 @@ func NewForTestWithConfig(config Config) *FabricRegistry {
 // NewForTestInDir is NewForTestWithConfig over a caller-chosen cache root, for
 // tests that assert on the on-disk layout.
 func NewForTestInDir(config Config, cacheDir string) *FabricRegistry {
+	charter := PublisherLayoutCharter(config.Anchor)
+	locations, err := LocationsFromCharter(charter)
+	if err != nil {
+		panic(fmt.Sprintf("the publisher-layout charter is a fabric charter: %v", err))
+	}
 	for _, sub := range cacheSubdirs {
 		if err := os.MkdirAll(filepath.Join(cacheDir, sub), 0o755); err != nil {
 			panic(fmt.Sprintf("cannot create the test cache dir %s: %v", filepath.Join(cacheDir, sub), err))
@@ -1813,6 +1897,8 @@ func NewForTestInDir(config Config, cacheDir string) *FabricRegistry {
 		aliasesCacheDir: filepath.Join(cacheDir, "aliases"),
 		dimsCacheDir:    filepath.Join(cacheDir, "dims"),
 		config:          config,
+		charter:         charter,
+		locations:       locations,
 		cachedCaps:      make(map[string]*cap.Cap),
 		cachedSpecs:     make(map[string]media.StoredMediaDef),
 		cachedAliases:   make(map[string]media.StoredAlias),

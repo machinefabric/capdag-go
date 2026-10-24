@@ -47,15 +47,6 @@ type DiscoveryIdentity struct {
 	Bundle BundleProof
 }
 
-// Slug returns the on-disk top-level slug for THIS host's own baked registry
-// (DevSlug when RegistryURL is nil). Discovery does not restrict scanning to
-// this slug — it enumerates every slug folder on disk and validates each
-// cartridge against the folder it sits under. Retained as a helper for callers
-// that need the host's own slug.
-func (d *DiscoveryIdentity) Slug() string {
-	return SlugFor(d.RegistryURL)
-}
-
 // DiscoveredCartridgeKind discriminates the two classifications of a discovered
 // cartridge version directory.
 type DiscoveredCartridgeKind int
@@ -142,11 +133,12 @@ func ProbeCartridgeCapGroups(path string) ([]CapGroup, error) {
 }
 
 // DiscoverCartridges discovers every cartridge under {cartridgesRoot}/{slug}/
-// {channel}/, scanning EVERY slug folder present on disk (full parity). The
-// host's baked RegistryURL does NOT restrict which slugs are scanned; each
-// cartridge is validated in place against the slug folder it sits under (the
-// three-place rule in ReadCartridgeJsonFromDir). The channel folder IS pinned
-// to the host's channel — release and nightly artefacts never mix.
+// {channel}/, scanning EVERY registry folder present on disk (full parity). The
+// host's baked RegistryURL does NOT restrict which folders are scanned; each
+// cartridge is validated in place against the registry folder it sits under,
+// as the charter stored in that folder names it (the charter rule in
+// ReadCartridgeJsonFromDir). The channel folder IS pinned to the host's
+// channel — release and nightly artefacts never mix.
 //
 // An empty/absent scan root is not an error — it yields an empty roster. A real
 // IO failure reading an existing scan root IS an error (it would otherwise
@@ -172,7 +164,11 @@ func DiscoverCartridges(cartridgesRoot string, identity *DiscoveryIdentity) ([]D
 			}
 			continue
 		}
-		expectedSlug := slugEntry.Name()
+		// The folder is what its stored charter names, never what its own
+		// name says. A folder whose charter is missing or refused still has
+		// its cartridges surfaced — each as misplaced, with the reason — so
+		// the operator sees what is there and why none of it runs.
+		folder, folderErr := OpenRegistryFolder(slugDir)
 		// {slug}/v{CartridgeRegistryVersion}/{channel}/… — the registry regime
 		// version is a path level pinned to the host's version (like channel).
 		scanRoot := filepath.Join(slugDir, fmt.Sprintf("v%d", identity.CartridgeRegistryVersion), string(identity.Channel))
@@ -180,7 +176,7 @@ func DiscoverCartridges(cartridgesRoot string, identity *DiscoveryIdentity) ([]D
 			// This slug has no subtree for the host's (version, channel) — skip.
 			continue
 		}
-		if err := scanChannelRoot(scanRoot, expectedSlug, identity, &discovered); err != nil {
+		if err := scanChannelRoot(scanRoot, slugDir, folder, folderErr, identity, &discovered); err != nil {
 			return nil, err
 		}
 	}
@@ -189,10 +185,11 @@ func DiscoverCartridges(cartridgesRoot string, identity *DiscoveryIdentity) ([]D
 }
 
 // scanChannelRoot scans one {slug}/{channel}/ root: classify each cartridge name
-// directory's newest version against the host identity and the slug folder it
-// sits under. expectedSlug is the on-disk slug folder name — passed through so
-// the three-place rule is enforced per cartridge. Appends results to discovered.
-func scanChannelRoot(scanRoot, expectedSlug string, identity *DiscoveryIdentity, discovered *[]DiscoveredCartridge) error {
+// directory's newest version against the host identity and the registry folder
+// it sits under. folder is that folder, opened through the charter stored in
+// it, or folderErr why it could not be — passed through so the charter rule is
+// enforced per cartridge. Appends results to discovered.
+func scanChannelRoot(scanRoot, slugDir string, folder RegistryFolder, folderErr error, identity *DiscoveryIdentity, discovered *[]DiscoveredCartridge) error {
 	nameEntries, err := os.ReadDir(scanRoot)
 	if err != nil {
 		return fmt.Errorf("read_dir(%s): %w", scanRoot, err)
@@ -238,22 +235,39 @@ func scanChannelRoot(scanRoot, expectedSlug string, identity *DiscoveryIdentity,
 		pathDerivedVersion := filepath.Base(versionDir)
 		detectedAt := unixSecondsNow()
 
-		// ReadCartridgeJsonFromDir enforces the three-place rule against the
-		// ACTUAL slug folder (expectedSlug): the cartridge's declared
-		// registry_url must hash to it. A non-null registry_url under dev/ (or
-		// any slug != SlugFor(registry_url)) fails here as a slug mismatch.
-		cj, err := ReadCartridgeJsonFromDir(versionDir, expectedSlug)
+		// A folder with no charter that reads makes every cartridge in it
+		// misplaced, for the charter's reason.
+		if folderErr != nil {
+			fmt.Fprintf(os.Stderr, "registry folder %s has no charter that reads (%s) — surfacing as incompatible: %v\n", slugDir, versionDir, folderErr)
+			*discovered = append(*discovered, DiscoveredCartridge{
+				Kind:       DiscoveredCartridgeIncompatible,
+				VersionDir: versionDir,
+				Id:         pathDerivedName,
+				Channel:    identity.Channel,
+				Version:    pathDerivedVersion,
+				Error: &CartridgeAttachmentError{
+					Kind:                  CartridgeAttachmentErrorKindMisplaced,
+					Message:               fmt.Sprintf("the registry folder %s has no charter that reads: %v", slugDir, folderErr),
+					DetectedAtUnixSeconds: detectedAt,
+				},
+			})
+			continue
+		}
+		// ReadCartridgeJsonFromDir enforces the charter rule against the
+		// folder the cartridge ACTUALLY sits in: its declared registry_url
+		// must be the folder's anchor. A non-null registry_url under dev/, or
+		// another registry's anchor, fails here as misplaced.
+		cj, err := ReadCartridgeJsonFromDir(versionDir, folder)
 		if err != nil {
-			// A slug mismatch (declared registry_url doesn't hash to this folder)
-			// is a bad INSTALL CONTEXT (BadInstallation), distinct from an
+			// A folder mismatch is a bad INSTALL CONTEXT, distinct from an
 			// unreadable/garbage cartridge.json (ManifestInvalid). Both are
 			// surfaced + logged, never hosted.
 			kind := CartridgeAttachmentErrorKindManifestInvalid
 			var cje *CartridgeJsonError
-			if errors.As(err, &cje) && cje.Kind == CartridgeJsonErrorRegistrySlugMismatch {
+			if errors.As(err, &cje) && cje.Kind == CartridgeJsonErrorRegistryFolderMismatch {
 				kind = CartridgeAttachmentErrorKindMisplaced
 			}
-			fmt.Fprintf(os.Stderr, "cartridge.json invalid or mis-placed under slug %q (%s) — surfacing as incompatible: %v\n", expectedSlug, versionDir, err)
+			fmt.Fprintf(os.Stderr, "cartridge.json invalid or mis-placed in the registry folder %q (%s) — surfacing as incompatible: %v\n", folder.Slug(), versionDir, err)
 			*discovered = append(*discovered, DiscoveredCartridge{
 				Kind:        DiscoveredCartridgeIncompatible,
 				VersionDir:  versionDir,
@@ -263,7 +277,7 @@ func scanChannelRoot(scanRoot, expectedSlug string, identity *DiscoveryIdentity,
 				Version:     pathDerivedVersion,
 				Error: &CartridgeAttachmentError{
 					Kind:                  kind,
-					Message:               fmt.Sprintf("cartridge.json failed to load under slug '%s': %v", expectedSlug, err),
+					Message:               fmt.Sprintf("cartridge.json failed to load in the registry folder '%s': %v", folder.Slug(), err),
 					DetectedAtUnixSeconds: detectedAt,
 				},
 			})
@@ -293,51 +307,6 @@ func scanChannelRoot(scanRoot, expectedSlug string, identity *DiscoveryIdentity,
 		// NO registry pin: the host's baked registry does NOT restrict which
 		// registries' cartridges are discovered. Whether a version is actually
 		// LISTED upstream is the verdict layer's call, applied after discovery.
-
-		// Scheme check is per-cartridge: a dev cartridge (null registry_url)
-		// never reaches here; a registry cartridge must use https (devMode=false
-		// for the scheme relaxation, which only ever applied to null-registry
-		// dev cartridges).
-		if cj.RegistryURL != nil {
-			res := ValidateRegistryURLScheme(*cj.RegistryURL, false)
-			switch res.Kind {
-			case RegistryURLSchemeOk:
-				// allowed
-			case RegistryURLSchemeNonHTTPS:
-				*discovered = append(*discovered, DiscoveredCartridge{
-					Kind:        DiscoveredCartridgeIncompatible,
-					VersionDir:  versionDir,
-					Id:          cj.Name,
-					Channel:     CartridgeChannel(cj.Channel),
-					RegistryURL: cj.RegistryURL,
-					Version:     cj.Version,
-					Error: &CartridgeAttachmentError{
-						Kind: CartridgeAttachmentErrorKindIncompatible,
-						Message: fmt.Sprintf(
-							"registry_url uses '%s' scheme, must be https in non-dev builds. Rebuild the cartridge with an https registry URL.",
-							res.Scheme,
-						),
-						DetectedAtUnixSeconds: detectedAt,
-					},
-				})
-				continue
-			case RegistryURLSchemeNotAURL:
-				*discovered = append(*discovered, DiscoveredCartridge{
-					Kind:        DiscoveredCartridgeIncompatible,
-					VersionDir:  versionDir,
-					Id:          cj.Name,
-					Channel:     CartridgeChannel(cj.Channel),
-					RegistryURL: cj.RegistryURL,
-					Version:     cj.Version,
-					Error: &CartridgeAttachmentError{
-						Kind:                  CartridgeAttachmentErrorKindIncompatible,
-						Message:               fmt.Sprintf("registry_url '%s' is not a well-formed URL.", res.Bad),
-						DetectedAtUnixSeconds: detectedAt,
-					},
-				})
-				continue
-			}
-		}
 
 		if cj.FabricManifestVersion != identity.FabricManifestVersion {
 			*discovered = append(*discovered, DiscoveredCartridge{
@@ -427,4 +396,3 @@ func scanChannelRoot(scanRoot, expectedSlug string, identity *DiscoveryIdentity,
 
 	return nil
 }
-

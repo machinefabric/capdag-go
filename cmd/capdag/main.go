@@ -37,8 +37,8 @@ import (
 func main() {
 	args := os.Args
 
-	// `--fabric <url>` — point this invocation at a different fabric origin,
-	// the CLI's equivalent of the registry base URL the desktop apps hand their
+	// `--fabric <anchor>` — point this invocation at a different fabric
+	// registry, the CLI's equivalent of the anchor the desktop apps hand their
 	// engine. It is stripped from argv before dispatch so it works in front of
 	// ANY subcommand, and it sets the environment so the registry constructed
 	// later reads one value from one place.
@@ -113,12 +113,8 @@ Use the reference capdag CLI for those.
 `, p, dev.LanguageFlagList())
 }
 
-// takeFabricFlag strips `--fabric <url>` from argv and applies it to the
-// environment.
-//
-// A caller-chosen origin invalidates any baked schema base: pairing a runtime
-// fabric with a build-time schema URL would validate one origin's definitions
-// against another's schemas.
+// takeFabricFlag strips `--fabric <anchor>` from argv and applies it to the
+// environment: the registry reads everything else from that anchor's charter.
 func takeFabricFlag(args []string) ([]string, error) {
 	out := make([]string, 0, len(args))
 	for i := 0; i < len(args); i++ {
@@ -127,13 +123,12 @@ func takeFabricFlag(args []string) ([]string, error) {
 			continue
 		}
 		if i+1 >= len(args) {
-			return nil, fmt.Errorf("--fabric requires a registry URL")
+			return nil, fmt.Errorf("--fabric requires a registry anchor")
 		}
 		url := args[i+1]
 		if url == "" || strings.HasPrefix(url, "-") {
-			return nil, fmt.Errorf("--fabric requires a registry URL, got %q", url)
+			return nil, fmt.Errorf("--fabric requires a registry anchor, got %q", url)
 		}
-		os.Unsetenv("CDG_SCHEMA_BASE_URL")
 		os.Setenv("CDG_FABRIC_REGISTRY_URL", url)
 		i++
 	}
@@ -383,7 +378,8 @@ func cmdCache(args []string) {
 
 	switch sub {
 	case "status":
-		fmt.Printf("origin   %s\n", registry.Config().RegistryBaseURL)
+		fmt.Printf("anchor   %s\n", registry.Charter().Anchor)
+		fmt.Printf("slug     %s\n", registry.Charter().Slug)
 		fmt.Printf("manifest v%d\n", registry.ManifestVersion())
 		fmt.Printf("root     %s\n", registry.CacheDir())
 		fmt.Printf("caps     %d\n", len(registry.GetCachedCaps()))

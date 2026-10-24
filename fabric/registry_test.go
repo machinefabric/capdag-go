@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/machinefabric/capdag-go/bifaci"
 	"github.com/machinefabric/capdag-go/cap"
 	"github.com/machinefabric/capdag-go/media"
 	"github.com/machinefabric/capdag-go/urn"
@@ -80,10 +81,11 @@ func Test141_per_cap_url_shape(t *testing.T) {
 
 	parsed, err := url.Parse(registryURL)
 	require.NoError(t, err, "Generated URL must be valid")
-	assert.Equal(t, "fabric.capdag.com", parsed.Host, "Default host is fabric.capdag.com")
 	assert.True(t, strings.HasPrefix(parsed.Path, "/caps/"))
-	hashPart := strings.TrimPrefix(parsed.Path, "/caps/")
+	hashPart, defver, found := strings.Cut(strings.TrimPrefix(parsed.Path, "/caps/"), "/")
+	require.True(t, found, "the URL is /caps/<hash>/<defver>.json: %s", registryURL)
 	assert.Len(t, hashPart, 64, "SHA-256 hex digest is 64 characters")
+	assert.Equal(t, "1.json", defver, "the defver is the last segment")
 }
 
 // TEST142: Different tag orders normalise to the same URL — the canonicaliser strips the variation before hashing.
@@ -108,65 +110,24 @@ func Test142_normalize_handles_different_tag_orders(t *testing.T) {
 // TEST143: Default config points at https://fabric.capdag.com/ unless overridden by CDG_FABRIC_REGISTRY_URL.
 func Test143_default_config(t *testing.T) {
 	config := DefaultConfig()
-	registryURL := os.Getenv("CDG_FABRIC_REGISTRY_URL")
-	if registryURL == "" {
-		assert.Equal(t, "https://fabric.capdag.com", config.RegistryBaseURL,
-			"Default registry URL is fabric.capdag.com")
+	if anchor := os.Getenv("CDG_FABRIC_REGISTRY_URL"); anchor != "" {
+		assert.Equal(t, anchor, config.Anchor, "the anchor is the environment's")
 	} else {
-		assert.Equal(t, registryURL, config.RegistryBaseURL, "Registry URL should be from env var")
+		assert.Equal(t, "https://fabric.capdag.com", config.Anchor, "the default anchor is the production fabric")
 	}
-	assert.Contains(t, config.SchemaBaseURL, "/schema", "Schema URL should contain /schema")
 }
 
-// TEST144: Test custom registry URL updates both registry and schema base URLs
-
-// TEST144: Test custom registry URL updates both registry and schema base URLs
-
-// TEST144: Test custom registry URL updates both registry and schema base URLs
+// TEST144: Test custom registry URL updates the anchor, which is all a client is told
 func Test144_custom_registry_url(t *testing.T) {
-	config := DefaultConfig()
-	config = config.WithRegistryURL("https://localhost:8888")
-	assert.Equal(t, "https://localhost:8888", config.RegistryBaseURL)
-	assert.Equal(t, "https://localhost:8888/schema", config.SchemaBaseURL)
+	config := DefaultConfig().WithAnchor("https://localhost:8888")
+	assert.Equal(t, "https://localhost:8888", config.Anchor)
 }
-
-// TEST145: Test custom registry and schema URLs set independently
-
-// TEST145: Test custom registry and schema URLs set independently
-
-// TEST145: Test custom registry and schema URLs set independently
-func Test145_custom_registry_and_schema_url(t *testing.T) {
-	config := DefaultConfig()
-	config = config.WithRegistryURL("https://localhost:8888")
-	config = config.WithSchemaURL("https://schemas.example.com")
-	assert.Equal(t, "https://localhost:8888", config.RegistryBaseURL)
-	assert.Equal(t, "https://schemas.example.com", config.SchemaBaseURL)
-}
-
-// TEST146: Test schema URL not overwritten when set explicitly before registry URL
-
-// TEST146: Test schema URL not overwritten when set explicitly before registry URL
-
-// TEST146: Test schema URL not overwritten when set explicitly before registry URL
-func Test146_schema_url_not_overwritten_when_explicit(t *testing.T) {
-	// If schema URL is set explicitly first, changing registry URL shouldn't change it
-	config := DefaultConfig()
-	config = config.WithSchemaURL("https://schemas.example.com")
-	config = config.WithRegistryURL("https://localhost:8888")
-	assert.Equal(t, "https://localhost:8888", config.RegistryBaseURL)
-	assert.Equal(t, "https://schemas.example.com", config.SchemaBaseURL)
-}
-
-// TEST147: Test registry for test with custom config creates registry with specified URLs
-
-// TEST147: Test registry for test with custom config creates registry with specified URLs
 
 // TEST147: Test registry for test with custom config creates registry with specified URLs
 func Test147_registry_for_test_with_config(t *testing.T) {
-	config := DefaultConfig()
-	config = config.WithRegistryURL("https://test-registry.local")
-	registry := NewForTestWithConfig(config)
-	assert.Equal(t, "https://test-registry.local", registry.Config().RegistryBaseURL)
+	registry := NewForTestWithConfig(DefaultConfig().WithAnchor("https://example.test/registry"))
+	assert.Equal(t, "https://example.test/registry", registry.Config().Anchor)
+	assert.Equal(t, "https://example.test/registry", registry.Charter().Anchor)
 }
 
 // TEST908: cached caps remain accessible while offline; an UNCACHED one is a
@@ -222,15 +183,6 @@ func Test908_cached_caps_accessible_when_offline(t *testing.T) {
 	assert.True(t, IsNotFound(err) || kindOf(err) == ErrNetworkBlocked,
 		"an uncached cap while offline must fail explicitly, got %v", err)
 }
-
-// TEST1893: The fabric registry's on-disk cache root is namespaced per
-// registry origin. A cache populated from one origin must never be reused to
-// satisfy a lookup against another — prod and staging serve different bytes for
-// the same URN/version, so an origin-blind cache silently resolves against the
-// wrong snapshot. This pins three properties: distinct origins → distinct
-// roots; same origin → identical root (deterministic, so caching actually
-// hits); and the slug is the same slug_for scheme the cartridge registry layout
-// uses, living under the shared "capdag" cache directory.
 
 // Test1887: the Manifest type round-trips an `aliases` map.
 
@@ -350,45 +302,46 @@ func Test1892_UnknownAliasIsNotFound(t *testing.T) {
 
 // TEST0123: Cap exists
 
-// TEST1893: The fabric registry's on-disk cache root is namespaced per
-// registry origin. A cache populated from one origin must never be reused to
-// satisfy a lookup against another — prod and staging serve different bytes for
-// the same URN/version, so an origin-blind cache silently resolves against the
-// wrong snapshot. This pins three properties: distinct origins → distinct
-// roots; same origin → identical root (deterministic, so caching actually
-// hits); and the slug is the same slug_for scheme the cartridge registry layout
-// uses, living under the shared "capdag" cache directory.
+// TEST1893: a fabric's cache folder is its CHARTER's slug, and a charter
+// stored there is what an offline client finds its fabric by — matched by
+// anchor, never by folder name. A prod-populated cache can therefore never
+// satisfy a staging lookup: two registries have two charters and two slugs,
+// whatever their URLs look like.
+func Test1893_CacheFolderIsTheChartersSlugAndFoundByAnchor(t *testing.T) {
+	anchor := "https://registry.example/fabric"
+	charter := PublisherLayoutCharter(anchor)
+	charter.Slug = "example-fabric"
+	charter.Locations["manifest"] = anchor + "/m/{manifest_version}"
+	body, err := json.Marshal(charter)
+	require.NoError(t, err)
+	parsed, err := bifaci.ParseCharter(body)
+	require.NoError(t, err, "the test charter has a charter's shape")
 
-// TEST1893: The fabric registry's on-disk cache root is namespaced per
-// registry origin. A cache populated from one origin must never be reused to
-// satisfy a lookup against another — prod and staging serve different bytes for
-// the same URN/version, so an origin-blind cache silently resolves against the
-// wrong snapshot. This pins three properties: distinct origins → distinct
-// roots; same origin → identical root (deterministic, so caching actually
-// hits); and the slug is the same slug_for scheme the cartridge registry layout
-// uses, living under the shared "capdag" cache directory.
-func Test1893_CacheRootIsNamespacedPerRegistryOrigin(t *testing.T) {
-	prod, err := CacheDirFor("https://fabric.capdag.com")
-	require.NoError(t, err, "prod cache root")
-	staging, err := CacheDirFor("https://fabric-staging.capdag.com")
-	require.NoError(t, err, "staging cache root")
-	stagingAgain, err := CacheDirFor("https://fabric-staging.capdag.com")
-	require.NoError(t, err, "staging cache root again")
+	cache := t.TempDir()
+	// Another fabric's folder is beside it, with its own charter, and is not
+	// taken for it; nor is a folder named like this anchor's host.
+	other := PublisherLayoutCharter("https://fabric.capdag.com")
+	other.Slug = "fabric.capdag.com"
+	otherBody, err := json.Marshal(other)
+	require.NoError(t, err)
+	require.NoError(t, bifaci.StoreCharter(&bifaci.FetchedCharter{Charter: other, Body: otherBody, Signature: []byte("sig")},
+		filepath.Join(cache, "fabric.capdag.com")))
+	require.NoError(t, os.MkdirAll(filepath.Join(cache, "registry.example"), 0o755))
+	require.NoError(t, bifaci.StoreCharter(&bifaci.FetchedCharter{Charter: parsed, Body: body, Signature: []byte("sig")},
+		filepath.Join(cache, "example-fabric")))
 
-	assert.NotEqual(t, prod, staging,
-		"prod and staging must not share a cache root — they serve different bytes for the same URN/version")
-	assert.Equal(t, staging, stagingAgain,
-		"the same registry origin must map to a stable cache root, or caching never hits")
+	// No client is given: a stored charter is found without the network.
+	found, err := resolveCharter(nil, cache, anchor)
+	require.NoError(t, err, "the stored charter is found offline, by its anchor")
+	assert.Equal(t, "example-fabric", found.Slug)
+	locations, err := LocationsFromCharter(found)
+	require.NoError(t, err)
+	assert.Equal(t, "https://registry.example/fabric/m/11", locations.Manifest(11),
+		"the manifest is where the charter says, not where a URL convention would put it")
 
-	// The final path component is exactly the cartridge-registry slug of the
-	// origin URL — one slug scheme across the codebase: a path-safe transform of
-	// the URL's authority (host[:port]), byte-for-byte identical to
-	// bifaci.SlugFor. For a bare host URL that is just the lowercased host.
-	assert.Equal(t, "fabric-staging.capdag.com", filepath.Base(staging),
-		"cache root must end in the registry authority slug")
-	// And the parent of that slug is the shared "capdag" cache directory.
-	assert.Equal(t, "capdag", filepath.Base(filepath.Dir(staging)),
-		"the per-origin slug must live under the capdag cache directory")
+	stored, err := resolveCharter(nil, cache, "https://fabric.capdag.com")
+	require.NoError(t, err)
+	assert.Equal(t, "fabric.capdag.com", stored.Slug, "each anchor finds its own charter")
 }
 
 // TEST6396: A malformed cap URN must FAIL HARD, not be passed through raw (the
@@ -546,21 +499,16 @@ func Test1896_CachedCapAliasesFiltersToCapTargets(t *testing.T) {
 // the manifest-driven defver resolution. Mirrors the Rust reference's
 // test0144_media_def_resolves_to_versioned_object_path_under_manifest.
 func Test1899_MediaDefResolvesToVersionedObjectPathUnderManifest(t *testing.T) {
-	// 1. Object-path rule: defver >= 1 -> versioned; defver 0 -> flat.
-	config := DefaultConfig()
-	config = config.WithRegistryURL("https://fabric.example.test")
+	// 1. Object-path rule: the charter's definition location, at the defver.
+	locations := layoutLocations("https://fabric.example.test")
 	cacheDir := "/tmp/capdag-test-cache-0144"
 	mediaUrn := "media:enc=utf-8;ext=md"
 	hash := sha256.Sum256([]byte(mediaUrn))
 	hexHash := fmt.Sprintf("%x", hash)
 
-	versioned, _ := mediaURLAndCachePath(cacheDir, config, mediaUrn, 1)
+	versioned, _ := definitionURLAndCachePath(cacheDir, locations, "media", mediaUrn, 1)
 	assert.Equal(t, fmt.Sprintf("https://fabric.example.test/media/%s/1.json", hexHash), versioned,
 		"a def at manifest defver 1 must resolve to the versioned object path")
-
-	flat, _ := mediaURLAndCachePath(cacheDir, config, mediaUrn, 0)
-	assert.Equal(t, fmt.Sprintf("https://fabric.example.test/media/%s", hexHash), flat,
-		"defver 0 is the legacy flat path — the wrong target for a versioned registry")
 
 	// 2. Manifest-driven defver: a registry pinned at v >= 1 resolves a
 	// published media def to its pinned defver (versioned), never 0.
@@ -807,12 +755,22 @@ func buildCap(capUrnStr, title string, argMediaUrns []string, outputMediaUrn str
 }
 
 func buildRegistryURL(capUrn string) string {
-	normalizedUrn := capUrn
-	if parsed, err := urn.NewCapUrnFromString(capUrn); err == nil {
-		normalizedUrn = parsed.String()
+	normalized, err := NormalizeCapURN(capUrn)
+	if err != nil {
+		panic(fmt.Sprintf("the test passes a valid cap URN: %v", err))
 	}
-	digest := sha256.Sum256([]byte(normalizedUrn))
-	return fmt.Sprintf("%s/caps/%x", DefaultRegistryBaseURL, digest)
+	url, _ := definitionURLAndCachePath("/tmp/capdag-test-cache-caps", layoutLocations(DefaultFabricAnchor), "caps", normalized, 1)
+	return url
+}
+
+// layoutLocations is the locations of a fabric published at anchor in the
+// publisher's layout.
+func layoutLocations(anchor string) Locations {
+	locations, err := LocationsFromCharter(PublisherLayoutCharter(anchor))
+	if err != nil {
+		panic(fmt.Sprintf("the publisher-layout charter is a fabric charter: %v", err))
+	}
+	return locations
 }
 
 // TEST6388: Per-cap URL is /caps/<sha256-hex> — no URN-grammar characters in the path, no percent-encoding gymnastics.
@@ -1155,10 +1113,9 @@ func Test1967_GetDimResolvesThroughTheManifest(t *testing.T) {
 // version, with no field this library does not know, and must hold (values
 // present, names unique).
 func Test1968_ADimObjectIsTheDimAndVersionAskedFor(t *testing.T) {
-	config := DefaultConfig().WithRegistryURL("https://fabric.example.test")
 	cache := filepath.Join(os.TempDir(), "capdag-test-cache-1968")
 	hash := fmt.Sprintf("%x", sha256.Sum256([]byte("language")))
-	url, path := dimURLAndCachePath(cache, config, "language", 3)
+	url, path := definitionURLAndCachePath(cache, layoutLocations("https://fabric.example.test"), "dims", "language", 3)
 	assert.Equal(t, "https://fabric.example.test/dims/"+hash+"/3.json", url)
 	assert.Equal(t, filepath.Join(cache, "dims", hash, "3.json"), path)
 

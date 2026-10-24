@@ -2,6 +2,7 @@ package bifaci
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -48,11 +49,41 @@ func NewNetworkBlockedError(msg string) *CartridgeRepoError {
 	return &CartridgeRepoError{Kind: "NetworkBlocked", Message: msg}
 }
 
+// NewUncharteredError: nothing is at <anchor>/charter.json — the URL is not a
+// registry MachineFabric chartered, and nothing it serves is used.
+func NewUncharteredError(msg string) *CartridgeRepoError {
+	return &CartridgeRepoError{Kind: "Unchartered", Message: msg}
+}
+
+// NewCharterRefusedError: the registry's charter is there and is not this
+// registry's.
+func NewCharterRefusedError(msg string) *CartridgeRepoError {
+	return &CartridgeRepoError{Kind: "CharterRefused", Message: msg}
+}
+
+// charterFetchError is the repo error a failed charter fetch is.
+func charterFetchError(err error) *CartridgeRepoError {
+	var fetchErr *CharterFetchError
+	if !errors.As(err, &fetchErr) {
+		return NewHttpError(err.Error())
+	}
+	switch fetchErr.Kind {
+	case CharterFetchUnchartered:
+		return NewUncharteredError(err.Error())
+	case CharterFetchRefused:
+		return NewCharterRefusedError(err.Error())
+	case CharterFetchHTTP:
+		return NewStatusError(fetchErr.Status)
+	default:
+		return NewHttpError(err.Error())
+	}
+}
+
 // CartridgeRegistrySchemaVersion is the schema revision of the cartridge
-// registry this build reads (schemas/cartridge-registry/v7.json): its cap
+// registry this build reads (schemas/cartridge-registry/v8.json): its cap
 // groups carry each cartridge's cap definitions exactly as its manifest
 // declares them, including the dims each was built from.
-const CartridgeRegistrySchemaVersion = "7.0"
+const CartridgeRegistrySchemaVersion = "8.0"
 
 // CartridgeDistributionInfo represents package distribution data.
 // `Url` is the absolute URL of the package — every consumer downloads
@@ -216,22 +247,25 @@ type CartridgeRegistryChannels struct {
 	Nightly CartridgeChannelEntries `json:"nightly"`
 }
 
-// CartridgeRegistry represents the v5.0 channel-partitioned cartridge
-// registry. Both `release` and `nightly` are always present (possibly
-// empty) so consumers never need conditional fallbacks.
+// CartridgeRegistry represents the channel-partitioned cartridge registry.
+// Both `release` and `nightly` are always present (possibly empty) so
+// consumers never need conditional fallbacks.
 type CartridgeRegistry struct {
-	SchemaVersion     string                    `json:"schemaVersion"`
-	RegistryVersion   uint32                    `json:"registryVersion"`
-	LastUpdated       string                    `json:"lastUpdated"`
+	SchemaVersion   string `json:"schemaVersion"`
+	RegistryVersion uint32 `json:"registryVersion"`
+	LastUpdated     string `json:"lastUpdated"`
+	// RegistryURL is the registry's anchor — the URL its charter is served
+	// under, and the registry_url every cartridge from it records.
+	RegistryURL       string                    `json:"registryUrl"`
 	FabricRegistryURL string                    `json:"fabricRegistryUrl"`
 	Channels          CartridgeRegistryChannels `json:"channels"`
 }
 
 // CartridgeRegistryVersion is the cartridge registry regime version this
-// implementation speaks. v0 was the pre-versioning legacy at the bare
-// /manifest path; this speaks only v>=1 at the versioned /v<version>/manifest
-// path, and rejects any manifest whose registryVersion differs.
-const CartridgeRegistryVersion uint32 = 3
+// implementation speaks: the {registry_version} its charter's manifest
+// location is filled with. It rejects any manifest whose registryVersion
+// differs.
+const CartridgeRegistryVersion uint32 = 4
 
 // CartridgeInfo represents a cartridge in the flat API response format.
 //
@@ -552,6 +586,9 @@ func NewCartridgeRepoServer(registry CartridgeRegistry) (*CartridgeRepoServer, e
 	// A cartridge registry must declare the fabric its caps resolve against. The
 	// consuming client cross-checks this equals its own fabric (so all registries
 	// share one fabric); here we require it is at least present.
+	if registry.RegistryURL == "" {
+		return nil, NewParseError("Cartridge registry manifest is missing registryUrl (the registry's anchor)")
+	}
 	if registry.FabricRegistryURL == "" {
 		return nil, NewParseError("Cartridge registry manifest is missing fabricRegistryUrl (the fabric its caps resolve against)")
 	}
@@ -914,8 +951,10 @@ type CartridgeRepoCache struct {
 
 // CartridgeRepo is a service for fetching and caching cartridge repository data
 type CartridgeRepo struct {
-	httpClient  *http.Client
-	caches      map[string]*CartridgeRepoCache
+	httpClient *http.Client
+	caches     map[string]*CartridgeRepoCache
+	// charters is the charter of every registry synced, by anchor.
+	charters    map[string]*Charter
 	cacheTTL    time.Duration
 	offlineFlag atomic.Bool
 	mu          sync.RWMutex
@@ -928,8 +967,38 @@ func NewCartridgeRepo(cacheTTLSeconds uint64) *CartridgeRepo {
 			Timeout: 30 * time.Second,
 		},
 		caches:   make(map[string]*CartridgeRepoCache),
+		charters: make(map[string]*Charter),
 		cacheTTL: time.Duration(cacheTTLSeconds) * time.Second,
 	}
+}
+
+// Charter is the charter of a registry this repo has synced, by anchor.
+func (r *CartridgeRepo) Charter(anchor string) (*Charter, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	charter, ok := r.charters[anchor]
+	return charter, ok
+}
+
+// admitCharter holds a charter as anchor's. A SLUG IS ONE REGISTRY'S: charters
+// are unique by slug where they are issued, so a second anchor whose charter
+// names a slug another registry's charter already holds is an invalid state,
+// and is refused rather than given that registry's folder. The check and the
+// insert are one step under one lock. Matches Rust:
+// CartridgeRepo::admit_charter.
+func (r *CartridgeRepo) admitCharter(anchor string, charter *Charter) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for heldAnchor, held := range r.charters {
+		if heldAnchor != anchor && held.Slug == charter.Slug {
+			return NewCharterRefusedError(fmt.Sprintf(
+				"the charter of %s names the slug '%s', which the charter of %s already holds",
+				anchor, charter.Slug, heldAnchor,
+			))
+		}
+	}
+	r.charters[anchor] = charter
+	return nil
 }
 
 // SetOffline sets the offline flag. When true, all registry fetches are blocked.
@@ -937,14 +1006,22 @@ func (r *CartridgeRepo) SetOffline(offline bool) {
 	r.offlineFlag.Store(offline)
 }
 
-// fetchRegistry fetches the v5.0 channel-partitioned cartridge
-// manifest from a URL and flattens it through CartridgeRepoServer into
-// the CartridgeRegistryResponse shape the cache expects (one
-// CartridgeInfo per (channel, id) pair). 404 is "no cartridges
-// published yet" → empty response. Any other non-200, network failure,
-// or schema validation error surfaces as an error. There is no
-// fallback to a stale cache shape — the manifest is the source of
-// truth.
+// fetchRegistry fetches a registry's charter from its anchor, then the
+// channel-partitioned cartridge manifest from where the charter says it is,
+// and flattens it through CartridgeRepoServer into the
+// CartridgeRegistryResponse shape the cache expects (one CartridgeInfo per
+// (channel, id) pair).
+//
+// The charter comes first and decides everything after it: a URL with no
+// charter, or one whose charter is not this registry's, is never asked for a
+// manifest. The manifest must name the anchor as its registry and the fabric
+// the charter names as its fabric.
+//
+// 404 on the manifest is "no cartridges published yet" → empty response. Any
+// other non-200, network failure, or schema validation error surfaces as an
+// error. There is no fallback to a stale cache shape — the manifest is the
+// source of truth. Matches Rust: CartridgeRepo::fetch_registry (which also
+// verifies the charter's and the manifest's signatures; see charter.go).
 func (r *CartridgeRepo) fetchRegistry(repoUrl string) (*CartridgeRegistryResponse, error) {
 	if r.offlineFlag.Load() {
 		return nil, NewNetworkBlockedError(fmt.Sprintf(
@@ -952,9 +1029,26 @@ func (r *CartridgeRepo) fetchRegistry(repoUrl string) (*CartridgeRegistryRespons
 		))
 	}
 
-	resp, err := r.httpClient.Get(repoUrl)
+	fetched, err := FetchCharter(r.httpClient, repoUrl, RegistryKindCartridges)
 	if err != nil {
-		return nil, NewHttpError(fmt.Sprintf("Failed to fetch from %s: %v", repoUrl, err))
+		return nil, charterFetchError(err)
+	}
+	charter := fetched.Charter
+	manifestURL, err := charter.Location("manifest", map[string]string{
+		"registry_version": strconv.FormatUint(uint64(CartridgeRegistryVersion), 10),
+	})
+	if err != nil {
+		return nil, NewCharterRefusedError(fmt.Sprintf("the charter of %s: %v", repoUrl, err))
+	}
+	if err := r.admitCharter(repoUrl, charter); err != nil {
+		return nil, err
+	}
+
+	// The manifest is mutable; a CDN may hold an older publish. A fresh
+	// cache-bust token forces one origin read per sync.
+	resp, err := r.httpClient.Get(fmt.Sprintf("%s?cb=%d", manifestURL, time.Now().UnixMilli()))
+	if err != nil {
+		return nil, NewHttpError(fmt.Sprintf("Failed to fetch the manifest of %s from %s: %v", repoUrl, manifestURL, err))
 	}
 	defer resp.Body.Close()
 
@@ -967,12 +1061,27 @@ func (r *CartridgeRepo) fetchRegistry(repoUrl string) (*CartridgeRegistryRespons
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, NewHttpError(fmt.Sprintf("Failed to read response from %s: %v", repoUrl, err))
+		return nil, NewHttpError(fmt.Sprintf("Failed to read response from %s: %v", manifestURL, err))
 	}
 
 	var manifest CartridgeRegistry
 	if err := json.Unmarshal(body, &manifest); err != nil {
-		return nil, NewParseError(fmt.Sprintf("Failed to parse from %s: %v", repoUrl, err))
+		return nil, NewParseError(fmt.Sprintf("Failed to parse from %s: %v", manifestURL, err))
+	}
+
+	// The manifest names its registry by anchor, and its fabric as the
+	// charter does — byte-for-byte. A mismatch is a manifest published for
+	// another registry, or served under the wrong one; identity downstream
+	// depends on these strings, so nothing of it is ingested.
+	if manifest.RegistryURL != repoUrl {
+		return nil, NewParseError(fmt.Sprintf(
+			"The manifest of %s declares registryUrl='%s' — it must be the registry's anchor, byte-for-byte",
+			repoUrl, manifest.RegistryURL))
+	}
+	if charter.Fabric == nil || manifest.FabricRegistryURL != *charter.Fabric {
+		return nil, NewParseError(fmt.Sprintf(
+			"The manifest of %s declares fabricRegistryUrl='%s', and its charter names the fabric %v",
+			repoUrl, manifest.FabricRegistryURL, charter.Fabric))
 	}
 
 	server, err := NewCartridgeRepoServer(manifest)

@@ -14,7 +14,8 @@ package bifaci
 //   - It could not get an answer — Offline, Unreachable, HTTPError, Malformed.
 //     We do not know what the registry says. Retrying, or changing a setting,
 //     may change the answer.
-//   - It got an answer and refused it — Unsigned, Untrusted, Unverifiable. We
+//   - It got an answer and refused it — Unchartered, Unsigned, Untrusted,
+//     Unverifiable. We
 //     know what the registry says and we will not act on it. Retrying changes
 //     nothing.
 //
@@ -67,6 +68,11 @@ const (
 	// RegistryVerdictStateMalformed: the registry answered with a body this
 	// build cannot read as a manifest.
 	RegistryVerdictStateMalformed RegistryVerdictState = "malformed"
+	// RegistryVerdictStateUnchartered: nothing is at <anchor>/charter.json —
+	// the URL is not a registry MachineFabric chartered, and nothing it serves
+	// is used. A charter that IS there and is refused is Untrusted or
+	// Unverifiable, with a charter_ reason.
+	RegistryVerdictStateUnchartered RegistryVerdictState = "unchartered"
 	// RegistryVerdictStateUnsigned: no signature sidecar where one is
 	// required. An unsigned registry is refused rather than trusted.
 	RegistryVerdictStateUnsigned RegistryVerdictState = "unsigned"
@@ -96,6 +102,7 @@ var RegistryVerdictStates = []RegistryVerdictState{
 	RegistryVerdictStateUnreachable,
 	RegistryVerdictStateHTTPError,
 	RegistryVerdictStateMalformed,
+	RegistryVerdictStateUnchartered,
 	RegistryVerdictStateUnsigned,
 	RegistryVerdictStateUntrusted,
 	RegistryVerdictStateUnverifiable,
@@ -119,7 +126,8 @@ func (s RegistryVerdictState) PermitsAttachment() bool {
 // get, as opposed to not having got one. A refusal will not change on retry.
 func (s RegistryVerdictState) IsTrustFailure() bool {
 	switch s {
-	case RegistryVerdictStateUnsigned, RegistryVerdictStateUntrusted, RegistryVerdictStateUnverifiable:
+	case RegistryVerdictStateUnchartered, RegistryVerdictStateUnsigned, RegistryVerdictStateUntrusted,
+		RegistryVerdictStateUnverifiable:
 		return true
 	default:
 		return false
@@ -186,7 +194,7 @@ func (s RegistryVerdictState) Remedy() (RegistryRemedy, error) {
 		return RegistryRemedyRetryLater, nil
 	case RegistryVerdictStateUnverifiable:
 		return RegistryRemedyUpdateClient, nil
-	case RegistryVerdictStateUnsigned, RegistryVerdictStateUntrusted:
+	case RegistryVerdictStateUnchartered, RegistryVerdictStateUnsigned, RegistryVerdictStateUntrusted:
 		return RegistryRemedyDoNotProceed, nil
 	default:
 		return "", fmt.Errorf("unknown registry verdict state %q", string(s))
@@ -210,6 +218,32 @@ const (
 	ChainFailureReasonKeyIDMismatch                ChainFailureReason = "key_id_mismatch"
 	ChainFailureReasonNoAuthorizingCertificate     ChainFailureReason = "no_authorizing_certificate"
 	ChainFailureReasonManifestSignatureInvalid     ChainFailureReason = "manifest_signature_invalid"
+	// The registry's charter is not a charter document, or breaks its shape.
+	ChainFailureReasonCharterMalformed ChainFailureReason = "charter_malformed"
+	// The charter declares a format this build does not read.
+	ChainFailureReasonCharterUnsupportedFormat ChainFailureReason = "charter_unsupported_format"
+	// The charter's signature does not verify over its bytes.
+	ChainFailureReasonCharterSignatureInvalid ChainFailureReason = "charter_signature_invalid"
+	// The charter is for another anchor than the one asked.
+	ChainFailureReasonCharterAnchorMismatch ChainFailureReason = "charter_anchor_mismatch"
+	// The charter is for another kind of registry.
+	ChainFailureReasonCharterKindMismatch ChainFailureReason = "charter_kind_mismatch"
+	// The charter's registry is signed under another environment than this
+	// build verifies.
+	ChainFailureReasonCharterEnvironmentMismatch ChainFailureReason = "charter_environment_mismatch"
+	// The cartridge registry's charter names another fabric than the one this
+	// client resolves caps against.
+	ChainFailureReasonCharterFabricMismatch ChainFailureReason = "charter_fabric_mismatch"
+	// The charter is issued in the future.
+	ChainFailureReasonCharterNotYetValid ChainFailureReason = "charter_not_yet_valid"
+	// The charter's own validity has ended.
+	ChainFailureReasonCharterExpired ChainFailureReason = "charter_expired"
+	// A stored charter is in a folder not named for its slug.
+	ChainFailureReasonCharterFolderMismatch ChainFailureReason = "charter_folder_mismatch"
+	// The charter names a slug another registry's charter already holds.
+	// Charters are unique by slug where they are issued; two with one slug is
+	// an invalid state, and neither is given the other's folder.
+	ChainFailureReasonCharterSlugTaken ChainFailureReason = "charter_slug_taken"
 )
 
 // ChainFailureReasons is every reason, in declaration order.
@@ -226,6 +260,17 @@ var ChainFailureReasons = []ChainFailureReason{
 	ChainFailureReasonKeyIDMismatch,
 	ChainFailureReasonNoAuthorizingCertificate,
 	ChainFailureReasonManifestSignatureInvalid,
+	ChainFailureReasonCharterMalformed,
+	ChainFailureReasonCharterUnsupportedFormat,
+	ChainFailureReasonCharterSignatureInvalid,
+	ChainFailureReasonCharterAnchorMismatch,
+	ChainFailureReasonCharterKindMismatch,
+	ChainFailureReasonCharterEnvironmentMismatch,
+	ChainFailureReasonCharterFabricMismatch,
+	ChainFailureReasonCharterNotYetValid,
+	ChainFailureReasonCharterExpired,
+	ChainFailureReasonCharterFolderMismatch,
+	ChainFailureReasonCharterSlugTaken,
 }
 
 // Valid reports whether r is a reason this build implements.
@@ -245,12 +290,17 @@ func RegistryVerdictStateForChainFailure(reason ChainFailureReason) (RegistryVer
 	switch reason {
 	case ChainFailureReasonMalformedEnvelope, ChainFailureReasonUnsupportedEnvelopeFormat,
 		ChainFailureReasonMalformedCertificate, ChainFailureReasonUnsupportedCertificateFormat,
-		ChainFailureReasonEmptyCertificateList:
+		ChainFailureReasonEmptyCertificateList, ChainFailureReasonCharterMalformed,
+		ChainFailureReasonCharterUnsupportedFormat:
 		return RegistryVerdictStateUnverifiable, nil
 	case ChainFailureReasonInsufficientRootSignatures, ChainFailureReasonExpiredCertificate,
 		ChainFailureReasonNotYetValidCertificate, ChainFailureReasonEnvironmentMismatch,
 		ChainFailureReasonKeyIDMismatch, ChainFailureReasonNoAuthorizingCertificate,
-		ChainFailureReasonManifestSignatureInvalid:
+		ChainFailureReasonManifestSignatureInvalid, ChainFailureReasonCharterSignatureInvalid,
+		ChainFailureReasonCharterAnchorMismatch, ChainFailureReasonCharterKindMismatch,
+		ChainFailureReasonCharterEnvironmentMismatch, ChainFailureReasonCharterFabricMismatch,
+		ChainFailureReasonCharterNotYetValid, ChainFailureReasonCharterExpired,
+		ChainFailureReasonCharterFolderMismatch, ChainFailureReasonCharterSlugTaken:
 		return RegistryVerdictStateUntrusted, nil
 	default:
 		return "", fmt.Errorf("unknown chain failure reason %q", string(reason))
@@ -305,13 +355,13 @@ func NewPendingRegistryVerdict(registryURL string) (RegistryVerdict, error) {
 }
 
 // NewStatedRegistryVerdict builds a state that carries only a detail line:
-// Offline, Unreachable, Malformed, Unsigned. The other states have their own
+// Offline, Unreachable, Malformed, Unchartered, Unsigned. The other states have their own
 // constructors because they require more, and this refuses them rather than
 // letting a caller build a verdict missing what it needs.
 func NewStatedRegistryVerdict(registryURL string, state RegistryVerdictState, detail string, checkedAtUnixSeconds int64) (RegistryVerdict, error) {
 	switch state {
 	case RegistryVerdictStateOffline, RegistryVerdictStateUnreachable,
-		RegistryVerdictStateMalformed, RegistryVerdictStateUnsigned:
+		RegistryVerdictStateMalformed, RegistryVerdictStateUnchartered, RegistryVerdictStateUnsigned:
 	case RegistryVerdictStateVerified, RegistryVerdictStatePending, RegistryVerdictStateUnenforced:
 		return RegistryVerdict{}, fmt.Errorf("a %q verdict states no failure, so it carries no detail (got %q)", string(state), detail)
 	case RegistryVerdictStateHTTPError:

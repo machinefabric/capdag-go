@@ -302,12 +302,6 @@ func (i *InstalledCartridgeRecord) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// RegistrySlug returns the on-disk slug derived from RegistryURL.
-// nil → DevSlug; non-nil → SlugFor(*RegistryURL).
-func (i *InstalledCartridgeRecord) RegistrySlug() string {
-	return SlugFor(i.RegistryURL)
-}
-
 // RelayNotifyCapabilitiesPayload is the parsed payload from RelayNotify frames.
 // The flat cap-urn list is no longer carried on the wire — consumers derive
 // it from `InstalledCartridges[*].CapGroups` via `CapURNs()`.

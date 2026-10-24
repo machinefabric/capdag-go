@@ -181,61 +181,6 @@ func (c CartridgeJson) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// RegistryURLSchemeResultKind is the verdict from ValidateRegistryURLScheme.
-// Distinguishes "OK" from each rejection reason so callers can render an
-// actionable message.
-type RegistryURLSchemeResultKind int
-
-const (
-	// RegistryURLSchemeOk: URL is acceptable (dev-mode allows it, or scheme is https).
-	RegistryURLSchemeOk RegistryURLSchemeResultKind = iota
-	// RegistryURLSchemeNotAURL: URL string didn't parse as a valid URL.
-	RegistryURLSchemeNotAURL
-	// RegistryURLSchemeNonHTTPS: URL parsed but scheme is not https and dev-mode is off.
-	RegistryURLSchemeNonHTTPS
-)
-
-// RegistryURLSchemeResult is the structured outcome of ValidateRegistryURLScheme.
-// Scheme is set for the NonHTTPS case (the offending scheme); Bad is set for
-// the NotAURL case (the offending input string).
-type RegistryURLSchemeResult struct {
-	Kind   RegistryURLSchemeResultKind
-	Scheme string
-	Bad    string
-}
-
-// ValidateRegistryURLScheme validates that a non-null registry_url uses the
-// https scheme — UNLESS devMode is set, in which case any well-formed URL is
-// accepted (so developers can point at http://localhost:port during
-// integration testing).
-//
-// The rule lives at the deepest layer (used by every consumer that loads a
-// cartridge.json or a HELLO manifest) so a caller can never bypass it by
-// parsing the URL out of band. Dev cartridges (registry_url == nil) never go
-// through this validator — they have no URL to check.
-//
-// Cheap parse: split once on "://". The rule is "scheme must be the literal
-// bytes https"; full URL validation is the caller's job.
-func ValidateRegistryURLScheme(url string, devMode bool) RegistryURLSchemeResult {
-	scheme, rest, found := strings.Cut(url, "://")
-	if !found {
-		return RegistryURLSchemeResult{Kind: RegistryURLSchemeNotAURL, Bad: url}
-	}
-	if rest == "" {
-		return RegistryURLSchemeResult{Kind: RegistryURLSchemeNotAURL, Bad: url}
-	}
-	if devMode {
-		// Dev mode: accept any well-formed scheme. We still require SOME scheme
-		// to be present (caught above) — an empty scheme is malformed regardless
-		// of mode.
-		return RegistryURLSchemeResult{Kind: RegistryURLSchemeOk}
-	}
-	if strings.EqualFold(scheme, "https") {
-		return RegistryURLSchemeResult{Kind: RegistryURLSchemeOk}
-	}
-	return RegistryURLSchemeResult{Kind: RegistryURLSchemeNonHTTPS, Scheme: scheme}
-}
-
 // CartridgeJsonError is returned when reading or validating a cartridge.json fails.
 type CartridgeJsonError struct {
 	Kind    CartridgeJsonErrorKind
@@ -256,10 +201,11 @@ const (
 	CartridgeJsonErrorEntryPointNotExecutable
 	CartridgeJsonErrorEntryPathEscape
 	CartridgeJsonErrorWriteFailed
-	// CartridgeJsonErrorRegistrySlugMismatch surfaces a violation
-	// of the three-place rule: the on-disk slug folder doesn't
-	// match the slug derived from cartridge.json:registry_url.
-	CartridgeJsonErrorRegistrySlugMismatch
+	// CartridgeJsonErrorRegistryFolderMismatch surfaces a violation of
+	// the charter rule: the cartridge records another registry than the
+	// one its folder's charter names (or a registry in dev, or none in a
+	// registry's folder).
+	CartridgeJsonErrorRegistryFolderMismatch
 )
 
 func (e *CartridgeJsonError) Error() string {
@@ -278,8 +224,8 @@ func (e *CartridgeJsonError) Error() string {
 		return fmt.Sprintf("cartridge.json at %s: entry path '%s' escapes version directory", e.Path, e.Entry)
 	case CartridgeJsonErrorWriteFailed:
 		return fmt.Sprintf("failed to write cartridge.json at %s: %v", e.Path, e.Err)
-	case CartridgeJsonErrorRegistrySlugMismatch:
-		return fmt.Sprintf("cartridge.json at %s: registry slug mismatch — %s", e.Path, e.Message)
+	case CartridgeJsonErrorRegistryFolderMismatch:
+		return fmt.Sprintf("cartridge.json at %s: %s", e.Path, e.Message)
 	default:
 		return fmt.Sprintf("cartridge.json error at %s: %s", e.Path, e.Message)
 	}
@@ -290,19 +236,19 @@ func (e *CartridgeJsonError) Unwrap() error {
 }
 
 // ReadCartridgeJsonFromDir reads and validates a cartridge.json
-// from a version directory. `expectedSlug` is the on-disk registry
-// slug folder the host reached the version directory through;
-// passing it in lets the parser enforce the three-place rule
-// (folder slug ⇔ provenance registry_url) without leaving it to
-// every caller to remember.
+// from a version directory. `folder` is the top-level folder the host
+// reached the version directory through, already opened — dev, or a
+// registry named by the charter stored in it; passing it in lets the
+// parser enforce the charter rule (folder ⇔ provenance registry_url)
+// without leaving it to every caller to remember.
 //
 // Validates:
 //   - File exists and is valid JSON
 //   - cartridge.json includes required `registry_url` field
-//   - SlugFor(RegistryURL) == expectedSlug
+//   - registry_url is the folder's anchor, or null in dev
 //   - Entry point path does not escape the version directory
 //   - Entry point binary exists and is executable
-func ReadCartridgeJsonFromDir(versionDir, expectedSlug string) (*CartridgeJson, error) {
+func ReadCartridgeJsonFromDir(versionDir string, folder RegistryFolder) (*CartridgeJson, error) {
 	jsonPath := filepath.Join(versionDir, "cartridge.json")
 
 	if _, err := os.Stat(jsonPath); errors.Is(err, os.ErrNotExist) {
@@ -327,24 +273,27 @@ func ReadCartridgeJsonFromDir(versionDir, expectedSlug string) (*CartridgeJson, 
 		}
 	}
 
-	// Three-place rule (places 1+2): folder slug must match the
-	// slug derived from cartridge.json's registry_url. None+`dev`
-	// and Some(url)+SlugFor(url) are the only valid pairings; any
-	// other combination — including a null registry_url under a
-	// non-dev folder, or a non-null registry_url under the dev
-	// folder — is an installer bug or a tampered tree.
-	derivedSlug := SlugFor(cj.RegistryURL)
-	if derivedSlug != expectedSlug {
+	// The charter rule (places 1+2): the cartridge records exactly
+	// the anchor its folder's charter states, or no registry in dev.
+	// Any other pairing — a null registry_url in a registry's folder,
+	// a URL in dev, or another registry's anchor — is an installer bug
+	// or a tampered tree.
+	anchor := folder.Anchor()
+	if (cj.RegistryURL == nil) != (anchor == nil) || (anchor != nil && *cj.RegistryURL != *anchor) {
 		regStr := "null"
 		if cj.RegistryURL != nil {
 			regStr = *cj.RegistryURL
 		}
+		holds := "the cartridges built with no registry"
+		if anchor != nil {
+			holds = "the registry chartered for " + *anchor
+		}
 		return nil, &CartridgeJsonError{
-			Kind: CartridgeJsonErrorRegistrySlugMismatch,
+			Kind: CartridgeJsonErrorRegistryFolderMismatch,
 			Path: jsonPath,
 			Message: fmt.Sprintf(
-				"registry_url=%s hashes to slug='%s' but the directory tree placed it under '%s'",
-				regStr, derivedSlug, expectedSlug,
+				"registry_url=%s, but it sits in the folder '%s', which holds %s",
+				regStr, folder.Slug(), holds,
 			),
 		}
 	}

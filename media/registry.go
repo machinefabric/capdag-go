@@ -2,21 +2,14 @@ package media
 
 import (
 	"bytes"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/machinefabric/capdag-go/urn"
 )
-
-// defaultMediaRegistryBaseURL mirrors cap.DefaultRegistryBaseURL — the same
-// origin the unified Rust fabric::registry defaults to.
-const defaultMediaRegistryBaseURL = "https://fabric.capdag.com"
 
 // MediaValidation represents validation rules for media data
 type MediaValidation struct {
@@ -126,54 +119,6 @@ func numericValue(value any) (float64, bool) {
 		}
 	}
 	return 0, false
-}
-
-// RegistryConfig holds configuration for the media registry — the base URL
-// object paths (media_url_and_cache_path) are built against. Mirrors Rust's
-// fabric::registry::RegistryConfig (registry_base_url / schema_base_url) and
-// cap.RegistryConfig, which carries the same two fields for the cap side.
-type RegistryConfig struct {
-	RegistryBaseURL string
-	SchemaBaseURL   string
-}
-
-// DefaultRegistryConfig returns registry configuration from environment
-// variables or defaults (CDG_FABRIC_REGISTRY_URL / CDG_SCHEMA_BASE_URL),
-// mirroring Rust's RegistryConfig::default and cap.DefaultRegistryConfig.
-func DefaultRegistryConfig() RegistryConfig {
-	registryBase := os.Getenv("CDG_FABRIC_REGISTRY_URL")
-	if registryBase == "" {
-		registryBase = defaultMediaRegistryBaseURL
-	}
-	schemaBase := os.Getenv("CDG_SCHEMA_BASE_URL")
-	if schemaBase == "" {
-		schemaBase = registryBase + "/schema"
-	}
-	return RegistryConfig{RegistryBaseURL: registryBase, SchemaBaseURL: schemaBase}
-}
-
-// RegistryOption is a functional option for configuring the media registry.
-// Mirrors cap.RegistryOption.
-type RegistryOption func(*RegistryConfig)
-
-// WithRegistryURL sets a custom registry URL. If the schema URL was derived
-// from the old registry URL it is re-derived from the new one. Mirrors Rust's
-// RegistryConfig::with_registry_url and cap.WithRegistryURL.
-func WithRegistryURL(url string) RegistryOption {
-	return func(c *RegistryConfig) {
-		if c.SchemaBaseURL == c.RegistryBaseURL+"/schema" {
-			c.SchemaBaseURL = url + "/schema"
-		}
-		c.RegistryBaseURL = url
-	}
-}
-
-// WithSchemaURL sets a custom schema base URL. Mirrors Rust's
-// RegistryConfig::with_schema_url and cap.WithSchemaURL.
-func WithSchemaURL(url string) RegistryOption {
-	return func(c *RegistryConfig) {
-		c.SchemaBaseURL = url
-	}
 }
 
 // StoredMediaDef represents a media def from the registry (matches Rust StoredMediaDef)
@@ -675,30 +620,6 @@ func EmptyManifest(version uint32) *Manifest {
 		Aliases:  make(map[string]uint32),
 		Dims:     make(map[string]uint32),
 	}
-}
-
-// =============================================================================
-// Media defver resolution (manifest pin)
-// =============================================================================
-
-// MediaURLAndCachePath builds the registry URL and on-disk cache path for a
-// per-media object at the given defver. defver == 0 addresses the frozen v0
-// flat path (`<base>/media/<sha>`, cached at `<cacheDir>/media/<sha>.json`);
-// defver >= 1 addresses the versioned subpath
-// (`<base>/media/<sha>/<defver>.json`, cached at
-// `<cacheDir>/media/<sha>/<defver>.json`). Mirrors Rust's
-// media_url_and_cache_path.
-func MediaURLAndCachePath(cacheDir string, config RegistryConfig, normalizedUrn string, defver uint32) (string, string) {
-	hash := sha256.Sum256([]byte(normalizedUrn))
-	hexHash := fmt.Sprintf("%x", hash)
-	if defver == 0 {
-		url := fmt.Sprintf("%s/media/%s", config.RegistryBaseURL, hexHash)
-		cachePath := filepath.Join(cacheDir, "media", hexHash+".json")
-		return url, cachePath
-	}
-	url := fmt.Sprintf("%s/media/%s/%d.json", config.RegistryBaseURL, hexHash, defver)
-	cachePath := filepath.Join(cacheDir, "media", hexHash, fmt.Sprintf("%d.json", defver))
-	return url, cachePath
 }
 
 // =============================================================================

@@ -13,7 +13,6 @@ package media
 import (
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/machinefabric/capdag-go/urn"
@@ -72,7 +71,7 @@ const (
 	MediaPathOutput         = "media:enc=utf-8;model-path;record"
 )
 
-// Profile URL constants (defaults, use GetSchemaBase() for configurable version)
+// Profile URL constants
 const (
 	SchemaBase       = "https://capdag.com/schema"
 	ProfileStr       = "https://capdag.com/schema/str"
@@ -105,29 +104,13 @@ const (
 	ProfileYaml = "https://capdag.com/schema/yaml"
 )
 
-// GetSchemaBase returns the schema base URL from environment variables or default
-//
-// Checks in order:
-//  1. CDG_SCHEMA_BASE_URL environment variable
-//  2. CDG_FABRIC_REGISTRY_URL environment variable + "/schema"
-//  3. Default: "https://capdag.com/schema"
-func GetSchemaBase() string {
-	if schemaURL := os.Getenv("CDG_SCHEMA_BASE_URL"); schemaURL != "" {
-		return schemaURL
-	}
-	if registryURL := os.Getenv("CDG_FABRIC_REGISTRY_URL"); registryURL != "" {
-		return registryURL + "/schema"
-	}
-	return SchemaBase
-}
-
 // GetProfileURL returns a profile URL for the given profile name
 //
 // Example:
 //
-//	url := GetProfileURL("str") // Returns "{schema_base}/str"
+//	url := GetProfileURL("str") // Returns "https://capdag.com/schema/str"
 func GetProfileURL(profileName string) string {
-	return GetSchemaBase() + "/" + profileName
+	return SchemaBase + "/" + profileName
 }
 
 // MediaDef represents a media definition - always a structured object

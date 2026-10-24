@@ -69,13 +69,6 @@ func expectIncompatible(t *testing.T, out []DiscoveredCartridge, kind CartridgeA
 	assert.Equal(t, kind, out[0].Error.Kind, "wrong attachment-error kind: %s", out[0].Error.Message)
 }
 
-// registrySlugFor is the registry slug for a fixed URL, so tests can place a
-// registry cartridge under the folder that matches its declared registry_url
-// (three-place rule).
-func registrySlugFor(url string) string {
-	return SlugFor(&url)
-}
-
 func registryCartridgeJSON(url, channel string, fmv uint32) string {
 	return `{"name":"cart","version":"1.0.0","channel":"` + channel +
 		`","registry_url":"` + url + `","entry":"cart","installed_at":"2024-01-01T00:00:00Z","fabric_manifest_version":` +
@@ -123,22 +116,30 @@ func Test0094_fabric_manifest_mismatch_is_flagged(t *testing.T) {
 // TEST120: Registry url under dev slug is rejected
 func Test0120_registry_url_under_dev_slug_is_rejected(t *testing.T) {
 	root := t.TempDir()
-	// A non-null registry_url placed under the reserved dev slug violates the
-	// three-place rule — ReadCartridgeJsonFromDir rejects it as a bad install
-	// context (BadInstallation), surfaced + logged, never hosted.
-	json := `{"name":"cart","version":"1.0.0","channel":"nightly","registry_url":"https://cartridges.example.com/manifest","entry":"cart","installed_at":"2024-01-01T00:00:00Z","fabric_manifest_version":1}`
+	// A non-null registry_url placed under the reserved dev folder violates the
+	// charter rule — ReadCartridgeJsonFromDir rejects it as a bad install
+	// context (Misplaced), surfaced + logged, never hosted.
+	json := `{"name":"cart","version":"1.0.0","channel":"nightly","registry_url":"https://registry.example/cartridges","entry":"cart","installed_at":"2024-01-01T00:00:00Z","fabric_manifest_version":1}`
 	installFixture(t, root, "dev", "nightly", "cart", "1.0.0", &json, "cart")
 	out, err := DiscoverCartridges(root, nightlyDevIdentity())
 	require.NoError(t, err)
 	expectIncompatible(t, out, CartridgeAttachmentErrorKindMisplaced)
 }
 
-// TEST1875: scan-all — a registry slug folder AND the dev slot present on disk are BOTH scanned, regardless of the host's own baked registry. The dev cartridge (null registry under dev/) and the registry cartridge (its url hashing to its slug folder) each reach their probe. Both fixtures lack a real bifaci binary, so both end at HandshakeFailed — proving discovery REACHED them (was not filtered out by a registry pin), which is the behavior under test. A registry-pin rejection would instead surface BadInstallation and never probe.
+// TEST1875: scan-all — a chartered registry folder AND the dev slot present
+// on disk are BOTH scanned, regardless of the host's own baked registry. The
+// dev cartridge (null registry under dev/) and the registry cartridge (its url
+// the anchor of its folder's charter) each reach their probe. Both fixtures
+// lack a real bifaci binary, so both end at HandshakeFailed — proving
+// discovery REACHED them (was not filtered out by a registry pin), which is
+// the behavior under test. A registry-pin rejection would instead surface
+// BadInstallation and never probe.
 func Test1875_scan_all_reaches_both_dev_and_registry_slugs(t *testing.T) {
 	root := t.TempDir()
-	url := "https://cartridges.example.com/manifest"
-	rslug := registrySlugFor(url)
-	other := "https://other.example.com/manifest"
+	storeTestCharter(t, root, testCartridgesSlug, cartridgesCharter(testCartridgesAnchor, testCartridgesSlug))
+	url := testCartridgesAnchor
+	rslug := testCartridgesSlug
+	other := "https://other.example.com/cartridges"
 	// Host baked for a DIFFERENT registry than the on-disk registry cartridge.
 	host := nightlyDevIdentity()
 	host.RegistryURL = &other
@@ -161,8 +162,9 @@ func Test1875_scan_all_reaches_both_dev_and_registry_slugs(t *testing.T) {
 // TEST1876: only the host's channel subtree is scanned. A cartridge under a slug's `release/` folder is invisible to a nightly host even though the slug folder is present (its `nightly/` subtree is absent).
 func Test1876_other_channel_subtree_is_skipped(t *testing.T) {
 	root := t.TempDir()
-	url := "https://cartridges.example.com/manifest"
-	rslug := registrySlugFor(url)
+	storeTestCharter(t, root, testCartridgesSlug, cartridgesCharter(testCartridgesAnchor, testCartridgesSlug))
+	url := testCartridgesAnchor
+	rslug := testCartridgesSlug
 	regJSON := registryCartridgeJSON(url, "release", 1)
 	installFixture(t, root, rslug, "release", "regcart", "1.0.0", &regJSON, "cart")
 
@@ -171,17 +173,51 @@ func Test1876_other_channel_subtree_is_skipped(t *testing.T) {
 	assert.Empty(t, out, "a release-only slug must be invisible to a nightly host, got: %+v", out)
 }
 
-// TEST1877: a registry cartridge hand-copied under the WRONG registry slug folder fails the three-place rule (BadInstallation) — scan-all does not mean "accept anywhere", placement must still be self-consistent.
+// TEST1877: a registry cartridge hand-copied into the folder of ANOTHER
+// registry fails the charter rule (Misplaced) — scan-all does not mean
+// "accept anywhere", placement must still be self-consistent.
 func Test1877_registry_cartridge_under_wrong_slug_is_bad_install(t *testing.T) {
 	root := t.TempDir()
-	url := "https://cartridges.example.com/manifest"
-	wrongSlug := registrySlugFor("https://somewhere-else.example.com/manifest")
-	json := registryCartridgeJSON(url, "nightly", 1)
-	installFixture(t, root, wrongSlug, "nightly", "cart", "1.0.0", &json, "cart")
+	storeTestCharter(t, root, testCartridgesSlug, cartridgesCharter(testCartridgesAnchor, testCartridgesSlug))
+	json := registryCartridgeJSON("https://somewhere-else.example/cartridges", "nightly", 1)
+	installFixture(t, root, testCartridgesSlug, "nightly", "cart", "1.0.0", &json, "cart")
 
 	out, err := DiscoverCartridges(root, nightlyDevIdentity())
 	require.NoError(t, err)
 	expectIncompatible(t, out, CartridgeAttachmentErrorKindMisplaced)
+}
+
+// TEST12923: a registry folder is what its stored charter proves, never what
+// its name says. The same cartridge, recording the same anchor, is misplaced
+// in a folder with no charter and in a folder whose charter is stored under
+// another name; it reaches its probe only in the folder its charter names.
+func Test12923_a_registry_folder_is_proven_by_its_charter_not_its_name(t *testing.T) {
+	json := registryCartridgeJSON(testCartridgesAnchor, "nightly", 1)
+
+	// A folder named for the registry, holding no charter.
+	unchartered := t.TempDir()
+	installFixture(t, unchartered, testCartridgesSlug, "nightly", "cart", "1.0.0", &json, "cart")
+	out, err := DiscoverCartridges(unchartered, nightlyDevIdentity())
+	require.NoError(t, err)
+	expectIncompatible(t, out, CartridgeAttachmentErrorKindMisplaced)
+	assert.Contains(t, out[0].Error.Message, "no charter that reads")
+
+	// The registry's charter, stored in a folder of another name.
+	renamed := t.TempDir()
+	storeTestCharter(t, renamed, "cartridges.example.com", cartridgesCharter(testCartridgesAnchor, testCartridgesSlug))
+	installFixture(t, renamed, "cartridges.example.com", "nightly", "cart", "1.0.0", &json, "cart")
+	out, err = DiscoverCartridges(renamed, nightlyDevIdentity())
+	require.NoError(t, err)
+	expectIncompatible(t, out, CartridgeAttachmentErrorKindMisplaced)
+
+	// Its charter, in the folder the charter names: placement holds, and
+	// discovery goes on to probe the (fake) binary.
+	placed := t.TempDir()
+	storeTestCharter(t, placed, testCartridgesSlug, cartridgesCharter(testCartridgesAnchor, testCartridgesSlug))
+	installFixture(t, placed, testCartridgesSlug, "nightly", "cart", "1.0.0", &json, "cart")
+	out, err = DiscoverCartridges(placed, nightlyDevIdentity())
+	require.NoError(t, err)
+	expectIncompatible(t, out, CartridgeAttachmentErrorKindHandshakeFailed)
 }
 
 // bundledCartridgeJSON is the cartridge.json of a bundled cartridge in the dev

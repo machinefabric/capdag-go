@@ -2,67 +2,11 @@ package cap
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/machinefabric/capdag-go/media"
 	"github.com/machinefabric/capdag-go/standard"
 	"github.com/machinefabric/capdag-go/urn"
 )
-
-const (
-	DefaultRegistryBaseURL = "https://fabric.capdag.com"
-	CacheDurationHours     = 24
-	HTTPTimeoutSeconds     = 10
-)
-
-// RegistryConfig holds configuration for the registry client
-type RegistryConfig struct {
-	RegistryBaseURL string
-	SchemaBaseURL   string
-}
-
-// DefaultRegistryConfig returns config from environment variables or defaults
-//
-// Environment variables:
-//   - CDG_FABRIC_REGISTRY_URL: Base URL for the registry (default: https://fabric.capdag.com)
-//   - CDG_SCHEMA_BASE_URL: Base URL for schemas (default: {registry_url}/schema)
-func DefaultRegistryConfig() RegistryConfig {
-	registryBase := os.Getenv("CDG_FABRIC_REGISTRY_URL")
-	if registryBase == "" {
-		registryBase = DefaultRegistryBaseURL
-	}
-
-	schemaBase := os.Getenv("CDG_SCHEMA_BASE_URL")
-	if schemaBase == "" {
-		schemaBase = registryBase + "/schema"
-	}
-
-	return RegistryConfig{
-		RegistryBaseURL: registryBase,
-		SchemaBaseURL:   schemaBase,
-	}
-}
-
-// RegistryOption is a functional option for configuring the registry
-type RegistryOption func(*RegistryConfig)
-
-// WithRegistryURL sets a custom registry URL
-func WithRegistryURL(url string) RegistryOption {
-	return func(c *RegistryConfig) {
-		// If schema URL was derived from the old registry URL, update it
-		if c.SchemaBaseURL == c.RegistryBaseURL+"/schema" {
-			c.SchemaBaseURL = url + "/schema"
-		}
-		c.RegistryBaseURL = url
-	}
-}
-
-// WithSchemaURL sets a custom schema base URL
-func WithSchemaURL(url string) RegistryOption {
-	return func(c *RegistryConfig) {
-		c.SchemaBaseURL = url
-	}
-}
 
 // RegistryCapResponse represents the per-cap JSON body served at
 // /caps/<sha256>. The wire shape is the flattened cap entry; fields

@@ -17,7 +17,7 @@ const verdictTestNow int64 = 1_700_000_000
 func TestTest8150RegistryVerdictWireVocabularyIsClosed(t *testing.T) {
 	expected := []string{
 		"verified", "pending", "offline", "unreachable",
-		"http_error", "malformed", "unsigned", "untrusted", "unverifiable", "unenforced",
+		"http_error", "malformed", "unchartered", "unsigned", "untrusted", "unverifiable", "unenforced",
 	}
 	if len(RegistryVerdictStates) != len(expected) {
 		t.Fatalf("state count %d, want %d — the mirrors must carry the same vocabulary",
@@ -34,6 +34,10 @@ func TestTest8150RegistryVerdictWireVocabularyIsClosed(t *testing.T) {
 		"insufficient_root_signatures", "expired_certificate", "not_yet_valid_certificate",
 		"environment_mismatch", "key_id_mismatch", "no_authorizing_certificate",
 		"manifest_signature_invalid",
+		"charter_malformed", "charter_unsupported_format", "charter_signature_invalid",
+		"charter_anchor_mismatch", "charter_kind_mismatch", "charter_environment_mismatch",
+		"charter_fabric_mismatch", "charter_not_yet_valid", "charter_expired",
+		"charter_folder_mismatch", "charter_slug_taken",
 	}
 	if len(ChainFailureReasons) != len(reasons) {
 		t.Fatalf("reason count %d, want %d", len(ChainFailureReasons), len(reasons))
@@ -57,6 +61,8 @@ func TestTest8151UnreadableFormatIsUnverifiable(t *testing.T) {
 		ChainFailureReasonMalformedCertificate,
 		ChainFailureReasonUnsupportedCertificateFormat,
 		ChainFailureReasonEmptyCertificateList,
+		ChainFailureReasonCharterMalformed,
+		ChainFailureReasonCharterUnsupportedFormat,
 	}
 	for _, reason := range unevaluable {
 		state, err := RegistryVerdictStateForChainFailure(reason)
@@ -75,6 +81,15 @@ func TestTest8151UnreadableFormatIsUnverifiable(t *testing.T) {
 		ChainFailureReasonKeyIDMismatch,
 		ChainFailureReasonNoAuthorizingCertificate,
 		ChainFailureReasonManifestSignatureInvalid,
+		ChainFailureReasonCharterSignatureInvalid,
+		ChainFailureReasonCharterAnchorMismatch,
+		ChainFailureReasonCharterKindMismatch,
+		ChainFailureReasonCharterEnvironmentMismatch,
+		ChainFailureReasonCharterFabricMismatch,
+		ChainFailureReasonCharterNotYetValid,
+		ChainFailureReasonCharterExpired,
+		ChainFailureReasonCharterFolderMismatch,
+		ChainFailureReasonCharterSlugTaken,
 	}
 	for _, reason := range judged {
 		state, err := RegistryVerdictStateForChainFailure(reason)

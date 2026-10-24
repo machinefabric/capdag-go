@@ -482,7 +482,7 @@ func FindDevCapByAlias(userCartridgeDir string, registryVersion uint32, alias st
 		if _, err := os.Stat(filepath.Join(dir, "cartridge.json")); os.IsNotExist(err) {
 			continue
 		}
-		cj, err := bifaci.ReadCartridgeJsonFromDir(dir, bifaci.DevSlug)
+		cj, err := bifaci.ReadCartridgeJsonFromDir(dir, bifaci.RegistryFolder{})
 		if err != nil {
 			return nil, "", fmt.Errorf("the dev install at '%s' has an unreadable cartridge.json: %w", dir, err)
 		}
