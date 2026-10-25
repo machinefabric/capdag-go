@@ -228,12 +228,12 @@ func Test12849_reading_a_registry_holds_its_definitions_to_the_rules(t *testing.
 	}
 }
 
-// TEST323: CartridgeRepoServer requires the schema this build reads (7.0) and rejects older.
+// TEST323: CartridgeRepoServer requires the schema revision this build reads and rejects older.
 func Test323_cartridge_repo_server_validate_registry(t *testing.T) {
 	registry := makeTestRegistryChannels(nil, nil)
 	server, err := NewCartridgeRepoServer(registry)
 	if err != nil {
-		t.Errorf("Expected no error for v7.0, got %v", err)
+		t.Errorf("Expected no error for schema %s, got %v", CartridgeRegistrySchemaVersion, err)
 	}
 	if server == nil {
 		t.Error("Expected server to be created")
