@@ -17,6 +17,8 @@ github.com/machinefabric/lungo-go v1.115.34 h1:PtBBWEgD3argJDSX5L2ot5P/B9OFIMgBJ
 github.com/machinefabric/lungo-go v1.115.34/go.mod h1:2JJtKNB+P2dYX7l+wELpHkJ1nScYokw8WyAweV2UOKg=
 github.com/machinefabric/lungo-go v1.116.0 h1:tMoyOYWJh0vEFoITL0D+6v8BTTiCjUzigWY6ZkAH5Lk=
 github.com/machinefabric/lungo-go v1.116.0/go.mod h1:2JJtKNB+P2dYX7l+wELpHkJ1nScYokw8WyAweV2UOKg=
+github.com/machinefabric/lungo-go v1.117.0 h1:lt+bEMzOluMWrEP2iobllh9T41Oaip9t6co0Gzpekzs=
+github.com/machinefabric/lungo-go v1.117.0/go.mod h1:EZTrYKKV/3wnLyP7O6jemA3923OcazLAZlVUGFUw5Uk=
 github.com/machinefabric/lungo-go v1.77.3244 h1:/tzLktiPtsFAKsL5MG+j3w2EtN2a/qO4XwVAKL4cGUY=
 github.com/machinefabric/lungo-go v1.77.3244/go.mod h1:arO3X8HvgzGSjh0Re35PsKpCjy58jc7g14i48vQvYEI=
 github.com/machinefabric/lungo-go v1.78.3254 h1:xWNXyACQfTjshQgd5R7/FLzNEnmLGMF3tzAP9Ejc6LQ=
@@ -59,6 +61,8 @@ github.com/machinefabric/tagged-urn-go v1.141.37 h1:a4QJjSPhPl8pQcPiWJH6aB6r4fnp
 github.com/machinefabric/tagged-urn-go v1.141.37/go.mod h1:SbNFbeK5ERc9ZTvFh7Bs+3yr4TZ3b5TX8T6wpIiKGvo=
 github.com/machinefabric/tagged-urn-go v1.143.5 h1:MVoIiKwyJpBGwoQhHv/eqasPU9FbSrW+FbGsbYWWn+U=
 github.com/machinefabric/tagged-urn-go v1.143.5/go.mod h1:kHZmqVkh6zFznZQB13sH49+TzhT0AEbET9cJ0HvyfF4=
+github.com/machinefabric/tagged-urn-go v1.146.40 h1:QbDranWuK9RZGR3Nx3TEOQLh9pphaGMNeSPd48Un3zQ=
+github.com/machinefabric/tagged-urn-go v1.146.40/go.mod h1:H2Kl7c6lcCmwNPEXV/sjJdzSBXLpDhU+4t2Y5bnbDYU=
 github.com/machinefabric/tagged-urn-go v1.35.108 h1:vbO7EJO6hHAwEo1lFVM2S1F7Jnj5tIR9pxeWJVSvVuU=
 github.com/machinefabric/tagged-urn-go v1.35.108/go.mod h1:XavDOVT6ljMmEd4AVRTy+rhf+TsLnBGn3N8cE+O/3X0=
 github.com/machinefabric/tagged-urn-go v1.55.486 h1:UNR4kW+IVO6UwzCA8CKNuu0KcisogBqlhJOObuNIges=
