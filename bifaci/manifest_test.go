@@ -98,7 +98,7 @@ func Test150_cap_manifest_json_serialization(t *testing.T) {
 	chunkFlag := "--chunk-size"
 	timestampFlag := "--timestamps"
 	capDef.AddArg(cap.CapArg{
-		MediaUrn:       "media:chunk-size;numeric",
+		MediaUrn:       "media:chunk-size;integer;numeric",
 		Required:       false,
 		Sources:        []cap.ArgSource{{CliFlag: &chunkFlag}},
 		ArgDescription: &chunkDesc,
@@ -106,7 +106,7 @@ func Test150_cap_manifest_json_serialization(t *testing.T) {
 		Metadata:       map[string]any{"unit": "words"},
 	})
 	capDef.AddArg(cap.CapArg{
-		MediaUrn:       "media:timestamps;bool;enc=utf-8",
+		MediaUrn:       "media:timestamps;bool",
 		Required:       false,
 		Sources:        []cap.ArgSource{{CliFlag: &timestampFlag}},
 		ArgDescription: &timestampDesc,

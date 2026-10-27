@@ -30,7 +30,7 @@ const MediaInteger = "media:integer;numeric"
 const MediaNumber = "media:numeric"
 
 // MediaBoolean is the media URN for boolean type - uses "bool" not "boolean" per base.toml
-const MediaBoolean = "media:bool;enc=utf-8"
+const MediaBoolean = "media:bool"
 
 // MediaObject is the media URN for a generic record/object type - has internal key-value structure,
 // no content-format claim. Use MediaJSON for JSON-serialized objects.
@@ -54,7 +54,7 @@ const MediaIntegerList = "media:integer;list;numeric"
 const MediaNumberList = "media:list;numeric"
 
 // MediaBooleanList is the media URN for boolean list type - uses "bool" with list marker
-const MediaBooleanList = "media:bool;enc=utf-8;list"
+const MediaBooleanList = "media:bool;list"
 
 // MediaObjectList is the media URN for object list type - list of records (no content-format claim)
 // Use a specific format like JSON array for serialized object lists.
@@ -130,9 +130,6 @@ const MediaWEBM = "media:ext=webm;video"
 const MediaMKV = "media:ext=mkv;video"
 
 // Semantic AI input types - distinguished by their purpose/context
-
-// MediaAudioSpeech is the media URN for audio input containing speech for transcription (Whisper)
-const MediaAudioSpeech = "media:audio;ext=wav;speech"
 
 // Document types (PRIMARY naming - type IS the format)
 
@@ -264,7 +261,7 @@ const MediaModelSpecCandleTranscription = "media:candle;enc=utf-8;model-spec;rep
 const MediaMLXModelPath = "media:enc=utf-8;mlx-model-path"
 
 // MediaModelRepo is the media URN for model repository (input for list-models) - has record marker
-const MediaModelRepo = "media:enc=utf-8;model-repo;record"
+const MediaModelRepo = "media:fmt=json;model-repo;record"
 
 // CAPDAG output types - record marker for structured JSON objects, list marker for arrays
 
@@ -272,25 +269,25 @@ const MediaModelRepo = "media:enc=utf-8;model-repo;record"
 const MediaModelDim = "media:integer;model-dim;numeric"
 
 // MediaDownloadOutput is the media URN for model download output - has record marker
-const MediaDownloadOutput = "media:download-result;enc=utf-8;record"
+const MediaDownloadOutput = "media:download-result;fmt=json;record"
 
 // MediaListOutput is the media URN for model list output - has record marker
-const MediaListOutput = "media:enc=utf-8;model-list;record"
+const MediaListOutput = "media:fmt=json;model-list;record"
 
 // MediaStatusOutput is the media URN for model status output - has record marker
-const MediaStatusOutput = "media:enc=utf-8;model-status;record"
+const MediaStatusOutput = "media:fmt=json;model-status;record"
 
 // MediaContentsOutput is the media URN for model contents output - has record marker
-const MediaContentsOutput = "media:enc=utf-8;model-contents;record"
+const MediaContentsOutput = "media:fmt=json;model-contents;record"
 
 // MediaAvailabilityOutput is the media URN for model availability output - has record marker
-const MediaAvailabilityOutput = "media:enc=utf-8;model-availability;record"
+const MediaAvailabilityOutput = "media:fmt=json;model-availability;record"
 
 // MediaPathOutput is the media URN for model path output - has record marker
-const MediaPathOutput = "media:enc=utf-8;model-path;record"
+const MediaPathOutput = "media:fmt=json;model-path;record"
 
 // MediaEmbeddingVector is the media URN for embedding vector output - has record marker
-const MediaEmbeddingVector = "media:embedding-vector;enc=utf-8;record"
+const MediaEmbeddingVector = "media:embedding-vector;fmt=json;record"
 
 // MediaImageDescription is the media URN for vision inference output — a
 // concrete plain-text terminal. Carries `image-description` (the vision-specific
@@ -306,8 +303,8 @@ const MediaImageDescription = "media:enc=utf-8;ext=txt;image-description;plain-t
 // to those caps. See fabric/media/plain-text.toml.
 const MediaPlainText = "media:enc=utf-8;ext=txt;plain-text"
 
-// MediaTranscriptionOutput is the media URN for transcription output - has record marker
-const MediaTranscriptionOutput = "media:enc=utf-8;record;transcription"
+// MediaTranscriptOutput is the media URN for a transcript, the JSON record a transcription produces
+const MediaTranscriptOutput = "media:fmt=json;record;transcript"
 
 // MediaDecision is the media URN for decision output (Make Decision) - scalar by default
 const MediaDecision = "media:decision;fmt=json;record"

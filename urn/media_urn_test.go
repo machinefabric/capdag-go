@@ -170,11 +170,11 @@ func Test067_is_text(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, stringUrn.HasTag("enc"))
 
-	boolUrn, err := NewMediaUrnFromString(standard.MediaBoolean) // media:bool;enc=utf-8
-	require.NoError(t, err)
-	assert.True(t, boolUrn.HasTag("enc"))
-
 	// No enc= → not text-representable
+	boolUrn, err := NewMediaUrnFromString(standard.MediaBoolean) // media:bool — its own kind
+	require.NoError(t, err)
+	assert.False(t, boolUrn.HasTag("enc"))
+
 	intUrn, err := NewMediaUrnFromString(standard.MediaInteger) // media:integer;numeric
 	require.NoError(t, err)
 	assert.False(t, intUrn.HasTag("enc"))
@@ -254,7 +254,6 @@ func Test072_constants_parse(t *testing.T) {
 		standard.MediaPNG,
 		standard.MediaAudio,
 		standard.MediaVideo,
-		standard.MediaAudioSpeech,
 		standard.MediaTextablePage,
 		standard.MediaPDF,
 		standard.MediaEPUB,
@@ -354,25 +353,27 @@ func Test078_object_does_not_conform_to_string(t *testing.T) {
 
 // TEST304: Test MEDIA_AVAILABILITY_OUTPUT constant parses as valid media URN with correct tags
 func Test304_media_availability_output_constant(t *testing.T) {
-	urn, err := NewMediaUrnFromString("media:enc=utf-8;model-availability;record")
+	urn, err := NewMediaUrnFromString("media:fmt=json;model-availability;record")
 	require.NoError(t, err)
-	assert.True(t, urn.HasTag("enc"))
+	assert.True(t, urn.IsJson(), "model-availability is a JSON record")
+	assert.False(t, urn.HasTag("enc"), "a JSON record is not also text (no enc=)")
 	assert.True(t, urn.IsRecord())
 }
 
 // TEST305: Test MEDIA_PATH_OUTPUT constant parses as valid media URN with correct tags
 func Test305_media_path_output_constant(t *testing.T) {
-	urn, err := NewMediaUrnFromString("media:enc=utf-8;model-path;record")
+	urn, err := NewMediaUrnFromString("media:fmt=json;model-path;record")
 	require.NoError(t, err)
-	assert.True(t, urn.HasTag("enc"))
+	assert.True(t, urn.IsJson(), "model-path is a JSON record")
+	assert.False(t, urn.HasTag("enc"), "a JSON record is not also text (no enc=)")
 	assert.True(t, urn.IsRecord())
 }
 
 // TEST306: Test MEDIA_AVAILABILITY_OUTPUT and MEDIA_PATH_OUTPUT are distinct URNs
 func Test306_availability_and_path_output_distinct(t *testing.T) {
-	availUrn, err := NewMediaUrnFromString("media:enc=utf-8;model-availability;record")
+	availUrn, err := NewMediaUrnFromString("media:fmt=json;model-availability;record")
 	require.NoError(t, err)
-	pathUrn, err := NewMediaUrnFromString("media:enc=utf-8;model-path;record")
+	pathUrn, err := NewMediaUrnFromString("media:fmt=json;model-path;record")
 	require.NoError(t, err)
 	assert.False(t, availUrn.Equals(pathUrn))
 	// They must NOT conform to each other (different marker tags)
@@ -429,9 +430,9 @@ func Test547_is_audio(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, audioUrn.IsAudio())
 
-	speechUrn, err := NewMediaUrnFromString(standard.MediaAudioSpeech)
+	wavUrn, err := NewMediaUrnFromString(standard.MediaWAV)
 	require.NoError(t, err)
-	assert.True(t, speechUrn.IsAudio())
+	assert.True(t, wavUrn.IsAudio())
 
 	customAudio, err := NewMediaUrnFromString("media:audio;ext=mp3")
 	require.NoError(t, err)
@@ -579,11 +580,11 @@ func Test558_predicate_constant_consistency(t *testing.T) {
 	assert.False(t, intUrn.IsJson())
 	assert.False(t, intUrn.IsList())
 
-	// MEDIA_BOOLEAN must be bool, text (enc), scalar, NOT numeric
+	// MEDIA_BOOLEAN must be bool, its own kind (no enc), scalar, NOT numeric
 	boolUrn, err := NewMediaUrnFromString(standard.MediaBoolean)
 	require.NoError(t, err)
 	assert.True(t, boolUrn.IsBool())
-	assert.True(t, boolUrn.HasTag("enc"))
+	assert.False(t, boolUrn.HasTag("enc"))
 	assert.True(t, boolUrn.IsScalar())
 	assert.False(t, boolUrn.IsNumeric())
 

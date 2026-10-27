@@ -94,7 +94,7 @@ func Test671_ResolveOptionalSlotNoValueReturnsNone(t *testing.T) {
 
 // TEST1105: Two steps with the same cap_urn get distinct slot values via different node_ids. This is the core disambiguation scenario that step-index keying was designed to solve.
 func Test1105_TwoStepsSameCapUrnDifferentSlotValues(t *testing.T) {
-	capUrn := `cap:in="media:document;ext=pdf";make-decision;out="media:bool;enc=utf-8"`
+	capUrn := `cap:in="media:document;ext=pdf";make-decision;out="media:bool"`
 	slotName := "media:list;question;enc=utf-8"
 	ctx := emptyContext(func(c *ArgumentResolutionContext) {
 		c.SlotValues = map[string][]byte{
@@ -136,7 +136,7 @@ func Test1105_TwoStepsSameCapUrnDifferentSlotValues(t *testing.T) {
 
 // TEST1106: Slot resolution falls through to cap_settings when no slot_value exists. cap_settings are keyed by cap_urn (shared across steps), so both steps get the same value.
 func Test1106_SlotFallsThroughToCapSettingsShared(t *testing.T) {
-	capUrn := `cap:in="media:document;ext=pdf";make-decision;out="media:bool;enc=utf-8"`
+	capUrn := `cap:in="media:document;ext=pdf";make-decision;out="media:bool"`
 	slotName := "media:language;enc=utf-8"
 	ctx := emptyContext(func(c *ArgumentResolutionContext) {
 		c.CapSettings = map[string]map[string]json.RawMessage{
@@ -172,7 +172,7 @@ func Test1106_SlotFallsThroughToCapSettingsShared(t *testing.T) {
 
 // TEST1107: step_0 has a slot_value override, step_1 falls through to cap_settings. Proves per-step override works while shared settings remain as fallback.
 func Test1107_SlotValueOverridesCapSettingsPerStep(t *testing.T) {
-	capUrn := `cap:in="media:document;ext=pdf";make-decision;out="media:bool;enc=utf-8"`
+	capUrn := `cap:in="media:document;ext=pdf";make-decision;out="media:bool"`
 	slotName := "media:language;enc=utf-8"
 	ctx := emptyContext(func(c *ArgumentResolutionContext) {
 		c.SlotValues = map[string][]byte{
