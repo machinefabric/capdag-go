@@ -25,7 +25,7 @@ const (
 	MediaString   = "media:enc=utf-8"
 	MediaInteger  = "media:integer;numeric"
 	MediaNumber   = "media:numeric"
-	MediaBoolean  = "media:bool;enc=utf-8"
+	MediaBoolean  = "media:bool"
 	MediaObject   = "media:record"
 	MediaIdentity = "media:"
 	// List types
@@ -33,15 +33,13 @@ const (
 	MediaStringList  = "media:enc=utf-8;list"
 	MediaIntegerList = "media:integer;list;numeric"
 	MediaNumberList  = "media:list;numeric"
-	MediaBooleanList = "media:bool;enc=utf-8;list"
+	MediaBooleanList = "media:bool;list"
 	MediaObjectList  = "media:list;record"
 	// Semantic content types
 	MediaImage    = "media:image"
 	MediaAudio    = "media:audio"
 	MediaVideo    = "media:video"
 	MediaDocument = "media:document"
-	// Semantic AI input types
-	MediaAudioSpeech = "media:audio;ext=wav;speech"
 	// Document types (PRIMARY naming - type IS the format)
 	MediaPdf  = "media:document;ext=pdf"
 	MediaEpub = "media:document;ext=epub"
@@ -57,7 +55,7 @@ const (
 	MediaYaml       = "media:fmt=yaml;record"
 	// Semantic input types
 	MediaModelSpec = "media:enc=utf-8;model-spec"
-	MediaModelRepo = "media:enc=utf-8;model-repo;record"
+	MediaModelRepo = "media:fmt=json;model-repo;record"
 	// File path type — single URN; cardinality lives on is_sequence.
 	MediaFilePath = "media:enc=utf-8;file-path"
 	// Semantic output types
@@ -67,8 +65,8 @@ const (
 	// MediaPlainText is the canonical input/output of cap:save-as-txt.
 	MediaPlainText = "media:enc=utf-8;ext=txt;plain-text"
 	// Semantic output types for model operations
-	MediaAvailabilityOutput = "media:enc=utf-8;model-availability;record"
-	MediaPathOutput         = "media:enc=utf-8;model-path;record"
+	MediaAvailabilityOutput = "media:fmt=json;model-availability;record"
+	MediaPathOutput         = "media:fmt=json;model-path;record"
 )
 
 // Profile URL constants
