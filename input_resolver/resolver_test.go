@@ -292,7 +292,7 @@ func Test1286_ConfirmedAdapterReturnsUrns(t *testing.T) {
 	registry := createTestFabricRegistry(t)
 	adapterRegistry := NewMediaAdapterRegistry(registry)
 
-	// Register an adapter for media:fmt=json.
+	// Register an adapter for media:enc=utf8;fmt=json.
 	if err := adapterRegistry.RegisterCapGroup("test-group", []string{"media:enc=utf8;fmt=json"}, "test-cartridge"); err != nil {
 		t.Fatalf("registration failed: %v", err)
 	}

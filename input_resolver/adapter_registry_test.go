@@ -78,7 +78,7 @@ func Test1478_ExactReregistrationIsIdempotent(t *testing.T) {
 func Test1277_RejectConformingOverlap(t *testing.T) {
 	registry := NewMediaAdapterRegistry(createTestRegistry(t))
 
-	// Register group A with media:fmt=json.
+	// Register group A with media:enc=utf8;fmt=json.
 	if err := registry.RegisterCapGroup("group-a", []string{"media:enc=utf8;fmt=json"}, "cartridge-a"); err != nil {
 		t.Fatalf("group-a registration failed: %v", err)
 	}
@@ -100,7 +100,7 @@ func Test1277_RejectConformingOverlap(t *testing.T) {
 func Test1278_RejectEntireGroup(t *testing.T) {
 	registry := NewMediaAdapterRegistry(createTestRegistry(t))
 
-	// Register an adapter for media:fmt=json.
+	// Register an adapter for media:enc=utf8;fmt=json.
 	if err := registry.RegisterCapGroup("group-a", []string{"media:enc=utf8;fmt=json"}, "cartridge-a"); err != nil {
 		t.Fatalf("group-a registration failed: %v", err)
 	}
