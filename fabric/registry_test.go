@@ -39,7 +39,7 @@ func Test0123_CapExists(t *testing.T) {
 	// Present in the cache ⇒ exists, with no network involved.
 	seeded := regTestUrn("seeded;target=real")
 	registry.AddCapsToCache([]*cap.Cap{
-		buildCap(seeded, "Seeded", []string{"media:enc=utf-8"}, "media:enc=utf-8")})
+		buildCap(seeded, "Seeded", []string{"media:enc=utf8"}, "media:enc=utf8")})
 	exists, err = registry.CapExists(seeded)
 	require.NoError(t, err)
 	assert.True(t, exists)
@@ -56,7 +56,7 @@ func Test0123_CapExists(t *testing.T) {
 // TEST138: Test parsing registry JSON with stdin args verifies stdin media URN extraction
 func Test138_parse_registry_json_with_stdin(t *testing.T) {
 	// JSON with stdin args - means cap accepts stdin of specified media type
-	jsonData := `{"urn":"cap:in=\"media:document;ext=pdf\";disbind;out=\"media:enc=utf-8;page\"","aliases":["disbind"],"title":"Disbind PDF","args":[{"media_urn":"media:document;ext=pdf","required":true,"sources":[{"stdin":"media:document;ext=pdf"}],"name":"input"}],"outputs":[{"media_urn":"media:enc=utf-8;page","name":"output","output_description":"output"}]}`
+	jsonData := `{"urn":"cap:in=\"media:document;ext=pdf\";disbind;out=\"media:enc=utf8;page\"","aliases":["disbind"],"title":"Disbind PDF","args":[{"media_urn":"media:document;ext=pdf","required":true,"sources":[{"stdin":"media:document;ext=pdf"}],"name":"input"}],"outputs":[{"media_urn":"media:enc=utf8;page","name":"output","output_description":"output"}]}`
 
 	var registryResp cap.RegistryCapResponse
 	err := json.Unmarshal([]byte(jsonData), &registryResp)
@@ -166,7 +166,7 @@ func Test908_cached_caps_accessible_when_offline(t *testing.T) {
 	registry := NewForTest()
 	seeded := regTestUrn("offline-seeded;target=real")
 	registry.AddCapsToCache([]*cap.Cap{
-		buildCap(seeded, "Seeded", []string{"media:enc=utf-8"}, "media:enc=utf-8")})
+		buildCap(seeded, "Seeded", []string{"media:enc=utf8"}, "media:enc=utf8")})
 
 	registry.SetOffline(true)
 
@@ -208,15 +208,15 @@ func Test1887_ManifestSerdeRoundTripsAliases(t *testing.T) {
 // TEST1888: resolve_alias returns the alias target untyped. Seeding a media alias and resolving it yields the media URN; a malformed alias name is rejected before any lookup.
 func Test1888_ResolveAliasReturnsTarget(t *testing.T) {
 	reg := NewForTest()
-	reg.InsertCachedAliasForTest(media.StoredAlias{Name: "jsondoc", Target: "media:fmt=json;record", Version: 1})
+	reg.InsertCachedAliasForTest(media.StoredAlias{Name: "jsondoc", Target: "media:enc=utf8;fmt=json;record", Version: 1})
 
 	target, err := reg.ResolveAlias("jsondoc")
 	require.NoError(t, err)
-	assert.Equal(t, "media:fmt=json;record", target)
+	assert.Equal(t, "media:enc=utf8;fmt=json;record", target)
 
 	target, err = reg.ResolveAlias("JSONDoc")
 	require.NoError(t, err)
-	assert.Equal(t, "media:fmt=json;record", target)
+	assert.Equal(t, "media:enc=utf8;fmt=json;record", target)
 
 	_, err = reg.ResolveAlias("bad:name")
 	assert.Error(t, err)
@@ -229,7 +229,7 @@ func Test1888_ResolveAliasReturnsTarget(t *testing.T) {
 // Test1889: resolve alias typed enforces the expected kind.
 func Test1889_ResolveAliasTypedEnforcesKind(t *testing.T) {
 	reg := NewForTest()
-	reg.InsertCachedAliasForTest(media.StoredAlias{Name: "jsondoc", Target: "media:fmt=json;record", Version: 1})
+	reg.InsertCachedAliasForTest(media.StoredAlias{Name: "jsondoc", Target: "media:enc=utf8;fmt=json;record", Version: 1})
 
 	_, err := reg.ResolveAliasTyped("jsondoc", media.AliasTargetMedia)
 	assert.NoError(t, err)
@@ -246,7 +246,7 @@ func Test1889_ResolveAliasTypedEnforcesKind(t *testing.T) {
 // TEST1890: get_cap accepts a cap alias and returns the aliased cap; a media alias passed to get_cap fails hard (typed boundary). This proves alias substitution AND type enforcement at the registry's cap surface.
 func Test1890_GetCapViaAliasAndTypeMismatch(t *testing.T) {
 	reg := NewForTest()
-	c := buildCap(`cap:extract;in="media:document;ext=pdf";out="media:enc=utf-8"`, "extract", []string{"media:document;ext=pdf"}, "media:enc=utf-8")
+	c := buildCap(`cap:extract;in="media:document;ext=pdf";out="media:enc=utf8"`, "extract", []string{"media:document;ext=pdf"}, "media:enc=utf8")
 	canonical := c.UrnString()
 	reg.AddCapsToCache([]*cap.Cap{c})
 	reg.InsertCachedAliasForTest(media.StoredAlias{Name: "pdf2text", Target: canonical, Version: 1})
@@ -255,7 +255,7 @@ func Test1890_GetCapViaAliasAndTypeMismatch(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, canonical, got.UrnString())
 
-	reg.InsertCachedAliasForTest(media.StoredAlias{Name: "jsondoc", Target: "media:fmt=json;record", Version: 1})
+	reg.InsertCachedAliasForTest(media.StoredAlias{Name: "jsondoc", Target: "media:enc=utf8;fmt=json;record", Version: 1})
 	_, err = reg.GetCap("jsondoc")
 	assert.Error(t, err, "a media alias at GetCap must fail hard")
 }
@@ -267,16 +267,16 @@ func Test1890_GetCapViaAliasAndTypeMismatch(t *testing.T) {
 // TEST1891: get_media_def accepts a media alias and returns the aliased spec; a cap alias passed to get_media_def fails hard.
 func Test1891_GetMediaDefViaAliasAndTypeMismatch(t *testing.T) {
 	reg := NewForTest()
-	reg.AddSpec(media.StoredMediaDef{Urn: "media:fmt=json;record", MediaType: "application/json", Title: "JSON"})
-	reg.InsertCachedAliasForTest(media.StoredAlias{Name: "jsondoc", Target: "media:fmt=json;record", Version: 1})
+	reg.AddSpec(media.StoredMediaDef{Urn: "media:enc=utf8;fmt=json;record", MediaType: "application/json", Title: "JSON"})
+	reg.InsertCachedAliasForTest(media.StoredAlias{Name: "jsondoc", Target: "media:enc=utf8;fmt=json;record", Version: 1})
 
 	spec, err := reg.GetMediaDef("jsondoc")
 	require.NoError(t, err)
-	assert.Equal(t, "media:fmt=json;record", spec.Urn)
+	assert.Equal(t, "media:enc=utf8;fmt=json;record", spec.Urn)
 
 	reg.InsertCachedAliasForTest(media.StoredAlias{
 		Name:    "pdf2text",
-		Target:  `cap:extract;in="media:document;ext=pdf";out="media:enc=utf-8"`,
+		Target:  `cap:extract;in="media:document;ext=pdf";out="media:enc=utf8"`,
 		Version: 1,
 	})
 	_, err = reg.GetMediaDef("pdf2text")
@@ -412,35 +412,35 @@ func Test1895_DisplayAliasForURN(t *testing.T) {
 	// Two aliases on the same cap target; "i2s" is shorter than "int2str".
 	registry.InsertCachedAliasForTest(media.StoredAlias{
 		Name:    "int2str",
-		Target:  `cap:coerce;in="media:integer;numeric";out="media:enc=utf-8"`,
+		Target:  `cap:coerce;in="media:integer;numeric";out="media:enc=utf8"`,
 		Version: 1,
 	})
 	registry.InsertCachedAliasForTest(media.StoredAlias{
 		Name:    "i2s",
-		Target:  `cap:coerce;in="media:integer;numeric";out="media:enc=utf-8"`,
+		Target:  `cap:coerce;in="media:integer;numeric";out="media:enc=utf8"`,
 		Version: 1,
 	})
 	// A media alias too.
 	registry.InsertCachedAliasForTest(media.StoredAlias{
 		Name:    "json",
-		Target:  "media:fmt=json;record",
+		Target:  "media:enc=utf8;fmt=json;record",
 		Version: 1,
 	})
 
 	// Canonical query → shortest alias wins.
-	got, ok := registry.DisplayAliasForURN(`cap:coerce;in="media:integer;numeric";out="media:enc=utf-8"`)
+	got, ok := registry.DisplayAliasForURN(`cap:coerce;in="media:integer;numeric";out="media:enc=utf8"`)
 	require.True(t, ok)
 	assert.Equal(t, "i2s", got)
 
 	// NON-canonical query (media tags reordered): must still resolve via
-	// canonicalisation. media:record;fmt=json canonicalises to
-	// media:fmt=json;record.
-	got, ok = registry.DisplayAliasForURN("media:record;fmt=json")
+	// canonicalisation. media:record;fmt=json;enc=utf8 canonicalises to
+	// media:enc=utf8;fmt=json;record.
+	got, ok = registry.DisplayAliasForURN("media:record;fmt=json;enc=utf8")
 	require.True(t, ok)
 	assert.Equal(t, "json", got)
 
 	// A real URN with no alias → not found.
-	_, ok = registry.DisplayAliasForURN("media:document;enc=utf-8;ext=pdf")
+	_, ok = registry.DisplayAliasForURN("media:document;enc=utf8;ext=pdf")
 	assert.False(t, ok)
 
 	// A non-URN (no cap:/media: prefix) → not found, never a panic.
@@ -461,7 +461,7 @@ func Test1895_DisplayAliasForURN(t *testing.T) {
 // alias completions. Mirrors Rust registry::test1896.
 func Test1896_CachedCapAliasesFiltersToCapTargets(t *testing.T) {
 	registry := NewForTest()
-	capTarget := `cap:coerce;in="media:integer;numeric";out="media:enc=utf-8"`
+	capTarget := `cap:coerce;in="media:integer;numeric";out="media:enc=utf8"`
 	registry.InsertCachedAliasForTest(media.StoredAlias{
 		Name:    "int2str",
 		Target:  capTarget,
@@ -469,7 +469,7 @@ func Test1896_CachedCapAliasesFiltersToCapTargets(t *testing.T) {
 	})
 	registry.InsertCachedAliasForTest(media.StoredAlias{
 		Name:    "json",
-		Target:  "media:fmt=json;record",
+		Target:  "media:enc=utf8;fmt=json;record",
 		Version: 1,
 	})
 	capAliases := registry.CachedCapAliases()
@@ -502,7 +502,7 @@ func Test1899_MediaDefResolvesToVersionedObjectPathUnderManifest(t *testing.T) {
 	// 1. Object-path rule: the charter's definition location, at the defver.
 	locations := layoutLocations("https://fabric.example.test")
 	cacheDir := "/tmp/capdag-test-cache-0144"
-	mediaUrn := "media:enc=utf-8;ext=md"
+	mediaUrn := "media:enc=utf8;ext=md;plain-text"
 	hash := sha256.Sum256([]byte(mediaUrn))
 	hexHash := fmt.Sprintf("%x", hash)
 
@@ -531,7 +531,7 @@ func Test1899_MediaDefResolvesToVersionedObjectPathUnderManifest(t *testing.T) {
 	// registry does NOT silently fall back to defver 0 (the flat path that
 	// 404s). This is the fail-hard contract that replaced the silent v0
 	// fallback.
-	_, err = registry.MediaDefverFor("media:enc=utf-8;ext=zzz-not-in-snapshot")
+	_, err = registry.MediaDefverFor("media:enc=utf8;ext=zzz-not-in-snapshot")
 	require.Error(t, err, "a URN outside the manifest must NOT resolve to a defver")
 	assert.Contains(t, err.Error(), "not part of manifest",
 		"the error must name the missing-from-manifest cause, not a misleading 404")
@@ -590,14 +590,14 @@ func Test6325_RegistryValidation(t *testing.T) {
 func Test6329_CacheOperations(t *testing.T) {
 	registry := NewForTest()
 	registry.AddSpec(media.StoredMediaDef{
-		Urn: "media:fmt=json;record", MediaType: "application/json", Title: "JSON"})
-	require.NotNil(t, registry.GetCachedMediaDef("media:fmt=json;record"))
+		Urn: "media:enc=utf8;fmt=json;record", MediaType: "application/json", Title: "JSON"})
+	require.NotNil(t, registry.GetCachedMediaDef("media:enc=utf8;fmt=json;record"))
 
 	require.NoError(t, registry.ClearCache())
 
 	// Clearing drops what was cached and leaves the cache root usable — and the
 	// mandatory identity cap survives, because it is not cached content.
-	assert.Nil(t, registry.GetCachedMediaDef("media:fmt=json;record"))
+	assert.Nil(t, registry.GetCachedMediaDef("media:enc=utf8;fmt=json;record"))
 	assert.DirExists(t, registry.CacheDir())
 	_, ok := registry.GetCachedCap("cap:effect=none")
 	assert.True(t, ok, "identity must survive a cache clear")
@@ -686,7 +686,7 @@ func Test6391_same_cap_different_spellings_same_url(t *testing.T) {
 // not-found/manifest error; this test asserts the truthful parse error and that
 // no path panics on a bad URN.
 func Test6396_MalformedCapUrnFailsHard(t *testing.T) {
-	malformed := `cap:coerce;in="media:integer;numeric";out=media:enc=utf-8`
+	malformed := `cap:coerce;in="media:integer;numeric";out=media:enc=utf8`
 
 	// Direct normalization helper must return an error, NOT the raw string.
 	normalized, err := NormalizeCapURN(malformed)
@@ -843,12 +843,12 @@ func Test610_get_cached_spec(t *testing.T) {
 
 	// Add a spec and verify retrieval
 	registry.AddSpec(media.StoredMediaDef{
-		Urn:       "media:enc=utf-8;test;spec",
+		Urn:       "media:enc=utf8;test;spec",
 		MediaType: "text/plain",
 		Title:     "Test Spec",
 	})
 
-	retrieved := registry.GetCachedMediaDef("media:enc=utf-8;test;spec")
+	retrieved := registry.GetCachedMediaDef("media:enc=utf8;test;spec")
 	require.NotNil(t, retrieved, "Should find spec by URN")
 	assert.Equal(t, "Test Spec", retrieved.Title)
 }
@@ -910,7 +910,7 @@ func Test617_normalize_media_urn(t *testing.T) {
 // one that parses and breaks a rule is a validation error naming the cap and
 // the rule.
 func Test12714_a_served_definition_is_held_to_the_definition_rules(t *testing.T) {
-	const capURN = `cap:in="media:document;ext=pdf";disbind;out="media:enc=utf-8;page"`
+	const capURN = `cap:in="media:document;ext=pdf";disbind;out="media:enc=utf8;page"`
 	definition := func(args []any, outputs []any) []byte {
 		body, err := json.Marshal(map[string]any{
 			"urn": capURN, "aliases": []string{"disbind"}, "title": "Disbind PDF",
@@ -921,11 +921,11 @@ func Test12714_a_served_definition_is_held_to_the_definition_rules(t *testing.T)
 	}
 	main := func(stdin string) map[string]any {
 		return map[string]any{
-			"media_urn": "media:enc=utf-8;file-path", "name": "document", "required": true,
+			"media_urn": "media:enc=utf8;file-path", "name": "document", "required": true,
 			"sources": []any{map[string]any{"stdin": stdin}},
 		}
 	}
-	page := map[string]any{"media_urn": "media:enc=utf-8;page", "name": "pages", "output_description": "Pages"}
+	page := map[string]any{"media_urn": "media:enc=utf8;page", "name": "pages", "output_description": "Pages"}
 
 	c, err := checkedCapDefinition(definition([]any{main("media:document;ext=pdf")}, []any{page}), capURN)
 	require.NoError(t, err, "a valid definition")
@@ -999,28 +999,28 @@ func Test12715_a_cached_definition_that_breaks_a_rule_is_dropped(t *testing.T) {
 // alone. Each once; the wildcard names no definition; a URN that does not
 // parse fails the footprint rather than being left out of it.
 func Test12816_a_caps_media_footprint_covers_every_output_and_accepted_type(t *testing.T) {
-	u, err := urn.NewCapUrnFromString(`cap:in="media:document;ext=pdf";footprint;out="media:enc=utf-8"`)
+	u, err := urn.NewCapUrnFromString(`cap:in="media:document;ext=pdf";footprint;out="media:enc=utf8"`)
 	require.NoError(t, err)
 	c := cap.NewCap(u, "Footprint", []string{"footprint"})
 	stdin := "media:document;ext=pdf"
 	second, anything := "--second", "--anything"
 	c.Args = append(c.Args,
-		cap.NewCapArg("media:enc=utf-8;file-path", "document", true, []cap.ArgSource{{Stdin: &stdin}}),
-		cap.NewCapArg("media:enc=utf-8;second", "second", false, []cap.ArgSource{{CliFlag: &second}}).
-			Accepting("media:enc=utf-8;accepted"),
+		cap.NewCapArg("media:enc=utf8;file-path", "document", true, []cap.ArgSource{{Stdin: &stdin}}),
+		cap.NewCapArg("media:enc=utf8;second", "second", false, []cap.ArgSource{{CliFlag: &second}}).
+			Accepting("media:enc=utf8;accepted"),
 		cap.NewCapArg("media:", "anything", false, []cap.ArgSource{{CliFlag: &anything}}),
 	)
-	c.AddOutput(*cap.NewCapOutput("media:enc=utf-8", "text", "text"))
-	c.AddOutput(*cap.NewCapOutput("media:enc=utf-8;rest", "rest", "rest"))
+	c.AddOutput(*cap.NewCapOutput("media:enc=utf8", "text", "text"))
+	c.AddOutput(*cap.NewCapOutput("media:enc=utf8;rest", "rest", "rest"))
 
 	var expected []string
 	for _, each := range []string{
 		"media:document;ext=pdf",
-		"media:enc=utf-8",
-		"media:enc=utf-8;file-path",
-		"media:enc=utf-8;second",
-		"media:enc=utf-8;accepted",
-		"media:enc=utf-8;rest",
+		"media:enc=utf8",
+		"media:enc=utf8;file-path",
+		"media:enc=utf8;second",
+		"media:enc=utf8;accepted",
+		"media:enc=utf8;rest",
 	} {
 		normalized, err := NormalizeMediaURN(each)
 		require.NoError(t, err)

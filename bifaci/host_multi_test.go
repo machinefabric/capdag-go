@@ -1733,12 +1733,12 @@ func Test12712_parse_cap_groups_rejects_an_invalid_definition(t *testing.T) {
 		require.NoError(t, err)
 		return body
 	}
-	const capURN = `cap:in="media:enc=utf-8";compare;out="media:record"`
+	const capURN = `cap:in="media:enc=utf8";compare;out="media:record"`
 	arg := func(mediaUrn, name string, source map[string]any) map[string]any {
 		return map[string]any{"media_urn": mediaUrn, "name": name, "required": true, "sources": []any{source}}
 	}
 	output := map[string]any{"media_urn": "media:record", "name": "result", "output_description": "The result"}
-	left := arg("media:enc=utf-8", "left", map[string]any{"stdin": "media:enc=utf-8"})
+	left := arg("media:enc=utf8", "left", map[string]any{"stdin": "media:enc=utf8"})
 
 	groups, err := parseCapGroupsFromManifest(manifestWith(map[string]any{
 		"urn": capURN, "title": "Compare", "aliases": []string{"compare"},
@@ -1760,7 +1760,7 @@ func Test12712_parse_cap_groups_rejects_an_invalid_definition(t *testing.T) {
 	// Two arguments claim the main input.
 	text := refused(map[string]any{
 		"urn": capURN, "title": "Compare", "aliases": []string{"compare"},
-		"args":    []any{left, arg("media:enc=utf-8;other", "right", map[string]any{"stdin": "media:enc=utf-8"})},
+		"args":    []any{left, arg("media:enc=utf8;other", "right", map[string]any{"stdin": "media:enc=utf8"})},
 		"outputs": []any{output},
 	})
 	assert.Contains(t, text, "RULE3")

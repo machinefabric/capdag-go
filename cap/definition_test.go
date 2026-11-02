@@ -15,9 +15,9 @@ import (
 // Test helper to create URNs with required in/out specs
 func capTestUrn(tags string) string {
 	if tags == "" {
-		return `cap:in="media:void";out="media:fmt=json;record"`
+		return `cap:in="media:void";out="media:enc=utf8;fmt=json;record"`
 	}
-	return `cap:in="media:void";out="media:fmt=json;record";` + tags
+	return `cap:in="media:void";out="media:enc=utf8;fmt=json;record";` + tags
 }
 
 // TEST108: Test creating new cap with URN, title, and command verifies correct initialization
@@ -122,10 +122,10 @@ func Test113_cap_stdin(t *testing.T) {
 	assert.Nil(t, cap.GetStdinMediaUrn())
 
 	// Enable stdin support by adding an arg with a stdin source
-	stdinUrn := "media:enc=utf-8"
+	stdinUrn := "media:enc=utf8"
 	inputTextDesc := "Input text"
 	stdinArg := CapArg{
-		MediaUrn:       "media:enc=utf-8",
+		MediaUrn:       "media:enc=utf8",
 		Required:       true,
 		Sources:        []ArgSource{{Stdin: &stdinUrn}},
 		ArgDescription: &inputTextDesc,
@@ -133,7 +133,7 @@ func Test113_cap_stdin(t *testing.T) {
 	cap.AddArg(stdinArg)
 
 	assert.True(t, cap.AcceptsStdin())
-	assert.Equal(t, "media:enc=utf-8", *cap.GetStdinMediaUrn())
+	assert.Equal(t, "media:enc=utf8", *cap.GetStdinMediaUrn())
 
 	// Test serialization/deserialization preserves the args
 	serialized, err := json.Marshal(cap)
@@ -145,7 +145,7 @@ func Test113_cap_stdin(t *testing.T) {
 	err = json.Unmarshal(serialized, &deserialized)
 	require.NoError(t, err)
 	assert.True(t, deserialized.AcceptsStdin())
-	assert.Equal(t, "media:enc=utf-8", *deserialized.GetStdinMediaUrn())
+	assert.Equal(t, "media:enc=utf8", *deserialized.GetStdinMediaUrn())
 }
 
 // TEST114: Test ArgSource type variants stdin, position, and cli_flag with their accessors
@@ -422,7 +422,7 @@ func Test597_cap_arg_with_full_definition(t *testing.T) {
 
 // TEST598: CapOutput lifecycle — set_output, set/clear metadata
 func Test598_cap_output_lifecycle(t *testing.T) {
-	u, err := urn.NewCapUrnFromString(`cap:in="media:enc=utf-8";regress;out="media:fmt=json;record;regression"`)
+	u, err := urn.NewCapUrnFromString(`cap:in="media:enc=utf8";regress;out="media:enc=utf8;fmt=json;record;regression"`)
 	require.NoError(t, err)
 	c := NewCap(u, "Test", []string{"cmd"})
 
@@ -431,7 +431,7 @@ func Test598_cap_output_lifecycle(t *testing.T) {
 	assert.Nil(t, c.MainOutput())
 
 	// An output that is not the cap's `out=` is an output, and not the main one.
-	residuals := NewCapOutput("media:fmt=json;list;record;residual", "residuals", "Residuals")
+	residuals := NewCapOutput("media:enc=utf8;fmt=json;list;record;residual", "residuals", "Residuals")
 	residuals.SetMetadata(map[string]any{"format": "plain"})
 	c.AddOutput(*residuals)
 	assert.Len(t, c.GetOutputs(), 1)
@@ -439,26 +439,26 @@ func Test598_cap_output_lifecycle(t *testing.T) {
 
 	// The main output is found by URN equivalence with `out=`, wherever it
 	// stands in the list and whatever order its tags are written in.
-	c.AddOutput(*NewCapOutput("media:regression;record;fmt=json", "fit", "The fit"))
+	c.AddOutput(*NewCapOutput("media:regression;record;fmt=json;enc=utf8", "fit", "The fit"))
 	main := c.MainOutput()
 	require.NotNil(t, main, "the output whose URN is out=")
 	assert.Equal(t, "fit", main.GetName())
 
 	// By the URN that identifies it, and by the name a machine uses.
-	got := c.OutputByUrn("media:record;residual;list;fmt=json")
+	got := c.OutputByUrn("media:record;residual;list;fmt=json;enc=utf8")
 	require.NotNil(t, got, "an output is identified by its media URN")
 	assert.Equal(t, "residuals", got.GetName())
 	assert.Equal(t, "Residuals", got.OutputDescription)
 	assert.NotNil(t, got.GetMetadata())
 	named := c.OutputNamed("residuals")
 	require.NotNil(t, named)
-	assert.Equal(t, "media:fmt=json;list;record;residual", named.MediaUrn)
+	assert.Equal(t, "media:enc=utf8;fmt=json;list;record;residual", named.MediaUrn)
 	assert.Nil(t, c.OutputNamed("fmt"), "a name is not read out of a URN")
-	assert.Nil(t, c.OutputByUrn("media:enc=utf-8"))
+	assert.Nil(t, c.OutputByUrn("media:enc=utf8"))
 
 	// CapOutput with_full_definition
-	output2 := NewCapOutputWithFullDefinition("media:fmt=json", "output", "JSON output", map[string]any{"v": 2})
-	assert.Equal(t, "media:fmt=json", output2.MediaUrn)
+	output2 := NewCapOutputWithFullDefinition("media:enc=utf8;fmt=json", "output", "JSON output", map[string]any{"v": 2})
+	assert.Equal(t, "media:enc=utf8;fmt=json", output2.MediaUrn)
 	assert.NotNil(t, output2.GetMetadata())
 
 	// Clear metadata on output
@@ -599,7 +599,7 @@ func Test1128_cap_documentation_omitted_when_none(t *testing.T) {
 // `dims` would leave its copy without them. The registry's wire shape
 // (RegistryCapResponse, what a fetch parses) holds them the same way.
 func Test1969_cap_dims_round_trip_in_order_and_refuse_what_they_cannot_hold(t *testing.T) {
-	body := `{"urn":"cap:ask;constrained;in=\"media:enc=utf-8\";language=en;out=\"media:enc=utf-8\"","version":3,"title":"Ask","aliases":["ask-en"],"documentation":"Only about asking.","dims":[{"dim":"constrained","value":"constrained"},{"dim":"language","value":"en"}]}`
+	body := `{"urn":"cap:ask;constrained;in=\"media:enc=utf8\";language=en;out=\"media:enc=utf8\"","version":3,"title":"Ask","aliases":["ask-en"],"documentation":"Only about asking.","dims":[{"dim":"constrained","value":"constrained"},{"dim":"language","value":"en"}]}`
 	expected := []media.DimRef{
 		media.NewDimRef("constrained", "constrained"),
 		media.NewDimRef("language", "en"),
@@ -658,7 +658,7 @@ func Test1969_cap_dims_round_trip_in_order_and_refuse_what_they_cannot_hold(t *t
 // TEST1129: A capfab-shaped JSON document with a documentation field
 // must deserialize into a Cap with the body intact.
 func Test1129_cap_documentation_parses_from_capfab_json(t *testing.T) {
-	raw := `{"urn":"cap:in=\"media:enc=utf-8\";docparse;out=\"media:enc=utf-8\"","title":"Doc Parse","aliases":["docparse"],"cap_description":"short","documentation":"## Heading\n\nbody text","metadata":{},"args":[{"media_urn":"media:enc=utf-8","name":"input","required":true,"sources":[{"stdin":"media:enc=utf-8"}]}],"outputs":[{"media_urn":"media:enc=utf-8","name":"output","output_description":"output"}]}`
+	raw := `{"urn":"cap:in=\"media:enc=utf8\";docparse;out=\"media:enc=utf8\"","title":"Doc Parse","aliases":["docparse"],"cap_description":"short","documentation":"## Heading\n\nbody text","metadata":{},"args":[{"media_urn":"media:enc=utf8","name":"input","required":true,"sources":[{"stdin":"media:enc=utf8"}]}],"outputs":[{"media_urn":"media:enc=utf8","name":"output","output_description":"output"}]}`
 	var c Cap
 	require.NoError(t, json.Unmarshal([]byte(raw), &c), "must parse capfab-shaped JSON")
 	require.NotNil(t, c.GetDocumentation())
@@ -803,12 +803,12 @@ func TestStreamUrn_NoSources(t *testing.T) {
 // is_main_input(): the arg's Stdin source URN is compared to in_spec by
 // tagged-URN EQUIVALENCE, not string equality — reordered tags still match.
 func TestIsMainInput_TrueWhenStdinUrnIsEquivalentToInSpec(t *testing.T) {
-	inSpec, err := urn.NewMediaUrnFromString("media:fmt=json;record")
+	inSpec, err := urn.NewMediaUrnFromString("media:enc=utf8;fmt=json;record")
 	require.NoError(t, err)
 
-	stdinUrn := "media:record;fmt=json" // same tags, different order
+	stdinUrn := "media:record;fmt=json;enc=utf8" // same tags, different order
 	arg := CapArg{
-		MediaUrn: "media:record;fmt=json",
+		MediaUrn: "media:record;fmt=json;enc=utf8",
 		Required: true,
 		Sources:  []ArgSource{{Stdin: &stdinUrn}},
 	}
@@ -859,7 +859,7 @@ func TestIsMainInput_FalseWithoutStdinSource(t *testing.T) {
 // does not make the arg the main input (e.g. a secondary stdin-fed arg in
 // a distinct-URN convergence).
 func TestIsMainInput_FalseWhenStdinUrnDiffersFromInSpec(t *testing.T) {
-	inSpec, err := urn.NewMediaUrnFromString("media:fmt=json;record")
+	inSpec, err := urn.NewMediaUrnFromString("media:enc=utf8;fmt=json;record")
 	require.NoError(t, err)
 
 	stdinUrn := "media:string"
@@ -912,7 +912,7 @@ func TestIsMainInput_InvalidStdinUrnIsIgnoredNotFatal(t *testing.T) {
 func Test7100_StreamUrnReturnsStdinSourceUrnWhenItDiffersFromSlotUrn(t *testing.T) {
 	stdinUrn := "media:document;ext=pdf;pdf-stream"
 	arg := CapArg{
-		MediaUrn: "media:enc=utf-8;file-path",
+		MediaUrn: "media:enc=utf8;file-path",
 		Required: true,
 		Sources:  []ArgSource{{Stdin: &stdinUrn}},
 	}
@@ -926,11 +926,11 @@ func Test7100_StreamUrnReturnsStdinSourceUrnWhenItDiffersFromSlotUrn(t *testing.
 func Test7101_StreamUrnFallsBackToDeclaredMediaUrnWithoutStdinSource(t *testing.T) {
 	flag := "--system-prompt"
 	arg := CapArg{
-		MediaUrn: "media:enc=utf-8;system-prompt",
+		MediaUrn: "media:enc=utf8;system-prompt",
 		Required: true,
 		Sources:  []ArgSource{{CliFlag: &flag}},
 	}
-	assert.Equal(t, "media:enc=utf-8;system-prompt", arg.StreamUrn())
+	assert.Equal(t, "media:enc=utf8;system-prompt", arg.StreamUrn())
 }
 
 // TEST7102: IsMainInput is true when the Stdin URN is order-theoretically
@@ -943,7 +943,7 @@ func Test7102_IsMainInputTrueOnTagOrderInsensitiveEquivalenceToInSpec(t *testing
 
 	stdinUrn := "media:pdf-stream;document;ext=pdf" // same tags, different order
 	arg := CapArg{
-		MediaUrn: "media:enc=utf-8;file-path",
+		MediaUrn: "media:enc=utf8;file-path",
 		Required: true,
 		Sources:  []ArgSource{{Stdin: &stdinUrn}},
 	}
@@ -976,9 +976,9 @@ func Test7103_IsMainInputFalseWithoutEquivalentStdinSource(t *testing.T) {
 	}
 	assert.False(t, positionOnly.IsMainInput(inSpec))
 
-	mismatchedStdin := "media:enc=utf-8;system-prompt"
+	mismatchedStdin := "media:enc=utf8;system-prompt"
 	nonEquivalentStdin := CapArg{
-		MediaUrn: "media:enc=utf-8;system-prompt",
+		MediaUrn: "media:enc=utf8;system-prompt",
 		Required: false,
 		Sources:  []ArgSource{{Stdin: &mismatchedStdin}},
 	}
@@ -1002,14 +1002,14 @@ func Test7104_MultiArgCapExactlyOneMainInputAndPartitionOfRest(t *testing.T) {
 
 	args := []CapArg{
 		{
-			MediaUrn: "media:enc=utf-8;file-path",
+			MediaUrn: "media:enc=utf8;file-path",
 			Required: true,
 			// Main input may ALSO be delivered by cli-flag; stdin is the
 			// defining route.
 			Sources: []ArgSource{{Stdin: &mainStdin}, {CliFlag: &mainFlag}},
 		},
 		{
-			MediaUrn: "media:enc=utf-8;question",
+			MediaUrn: "media:enc=utf8;question",
 			Required: true,
 			Sources:  []ArgSource{{CliFlag: &questionFlag}},
 		},
@@ -1026,7 +1026,7 @@ func Test7104_MultiArgCapExactlyOneMainInputAndPartitionOfRest(t *testing.T) {
 			DefaultValue: 0.7,
 		},
 		{
-			MediaUrn:     "media:enc=utf-8;system-prompt",
+			MediaUrn:     "media:enc=utf8;system-prompt",
 			Required:     false,
 			Sources:      []ArgSource{{CliFlag: &systemPromptFlag}},
 			DefaultValue: "You are a helpful assistant.",
@@ -1049,13 +1049,13 @@ func Test7104_MultiArgCapExactlyOneMainInputAndPartitionOfRest(t *testing.T) {
 		}
 	}
 
-	assert.Equal(t, []string{"media:enc=utf-8;file-path"}, mainInputs,
+	assert.Equal(t, []string{"media:enc=utf8;file-path"}, mainInputs,
 		"exactly one arg must be the main input")
-	assert.Equal(t, []string{"media:enc=utf-8;question"}, requiredWithoutDefault)
+	assert.Equal(t, []string{"media:enc=utf8;question"}, requiredWithoutDefault)
 	assert.Equal(t, []string{
 		"media:max-tokens;numeric",
 		"media:numeric;temperature",
-		"media:enc=utf-8;system-prompt",
+		"media:enc=utf8;system-prompt",
 	}, withDefault)
 }
 
@@ -1063,20 +1063,20 @@ func Test7104_MultiArgCapExactlyOneMainInputAndPartitionOfRest(t *testing.T) {
 // stdin-capable argument appears first.
 func Test8065_SequenceShapeUsesMainInputIdentityNotArgumentOrder(t *testing.T) {
 	capUrn := urn.NewCapUrn(
-		"media:enc=utf-8",
-		"media:enc=utf-8;result",
+		"media:enc=utf8",
+		"media:enc=utf8;result",
 		map[string]string{"op": "ordered"},
 	)
-	secondaryStdin := "media:enc=utf-8;context"
-	mainStdin := "media:enc=utf-8"
+	secondaryStdin := "media:enc=utf8;context"
+	mainStdin := "media:enc=utf8"
 	capDef := NewCapWithArgs(capUrn, "Ordered args", []string{"ordered"}, []CapArg{
 		{
-			MediaUrn: "media:enc=utf-8;context",
+			MediaUrn: "media:enc=utf8;context",
 			Required: false,
 			Sources:  []ArgSource{{Stdin: &secondaryStdin}},
 		},
 		{
-			MediaUrn:   "media:enc=utf-8",
+			MediaUrn:   "media:enc=utf8",
 			Required:   true,
 			IsSequence: true,
 			Sources:    []ArgSource{{Stdin: &mainStdin}},
@@ -1105,10 +1105,10 @@ func Test8066_VoidInputSequenceShapeIsScalarWithoutArguments(t *testing.T) {
 // TEST7150: a cap's OUTPUT survives a manifest round-trip, under the wire
 // key names the other implementations read.
 func Test7150_CapOutputSurvivesSerializationRoundtrip(t *testing.T) {
-	capUrn, err := urn.NewCapUrnFromString(`cap:in="media:enc=utf-8;in";out="media:enc=utf-8;tag";tag`)
+	capUrn, err := urn.NewCapUrnFromString(`cap:in="media:enc=utf8;in";out="media:enc=utf8;tag";tag`)
 	require.NoError(t, err)
 	c := NewCap(capUrn, "tag", []string{"tag"})
-	c.AddOutput(*NewCapOutput("media:enc=utf-8;tag", "output", "One of 'positive', 'neutral', or 'negative'."))
+	c.AddOutput(*NewCapOutput("media:enc=utf8;tag", "output", "One of 'positive', 'neutral', or 'negative'."))
 
 	raw, err := json.Marshal(c)
 	require.NoError(t, err)
@@ -1126,13 +1126,13 @@ func Test7150_CapOutputSurvivesSerializationRoundtrip(t *testing.T) {
 	assert.Equal(t, false, output["optional"])
 	_, carries := output["carries"]
 	assert.False(t, carries, "an output that carries its own URN says nothing about it")
-	assert.Equal(t, "media:enc=utf-8;tag", output["media_urn"])
+	assert.Equal(t, "media:enc=utf8;tag", output["media_urn"])
 	assert.Equal(t, "One of 'positive', 'neutral', or 'negative'.", output["output_description"])
 
 	var back Cap
 	require.NoError(t, json.Unmarshal(raw, &back))
 	require.NotNil(t, back.MainOutput(), "output survives the round-trip")
-	assert.Equal(t, "media:enc=utf-8;tag", back.MainOutput().MediaUrn)
+	assert.Equal(t, "media:enc=utf8;tag", back.MainOutput().MediaUrn)
 	assert.False(t, back.MainOutput().IsSequence)
 
 	// A cap with no output must not carry the key at all.
@@ -1155,8 +1155,8 @@ func Test7150_CapOutputSurvivesSerializationRoundtrip(t *testing.T) {
 // how a cross-language manifest comparison finds drift that every per-mirror
 // test passes through.
 func Test7151_IsSequenceIsSerializedEvenWhenFalse(t *testing.T) {
-	stdin := "media:enc=utf-8;in"
-	arg := NewCapArg("media:enc=utf-8;in", "input", true, []ArgSource{{Stdin: &stdin}})
+	stdin := "media:enc=utf8;in"
+	arg := NewCapArg("media:enc=utf8;in", "input", true, []ArgSource{{Stdin: &stdin}})
 	argRaw, err := json.Marshal(arg)
 	require.NoError(t, err)
 	var argDecoded map[string]any
@@ -1165,7 +1165,7 @@ func Test7151_IsSequenceIsSerializedEvenWhenFalse(t *testing.T) {
 	require.True(t, present, "CapArg must write is_sequence even when false")
 	assert.Equal(t, false, value)
 
-	output := NewCapOutput("media:enc=utf-8;tag", "output", "a tag")
+	output := NewCapOutput("media:enc=utf8;tag", "output", "a tag")
 	outputRaw, err := json.Marshal(output)
 	require.NoError(t, err)
 	var outputDecoded map[string]any

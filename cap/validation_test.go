@@ -152,9 +152,9 @@ func Test579_rule2_empty_sources(t *testing.T) {
 // TEST580: RULE3 - multiple stdin sources with different URNs rejected
 func Test580_rule3_different_stdin_urns(t *testing.T) {
 	cap := makeTestCapWithUrnAndArgs(t,
-		`cap:in="media:enc=utf-8;ext=txt";test-cap;out="media:void";type=test`,
+		`cap:in="media:enc=utf8;ext=txt;plain-text";test-cap;out="media:void";type=test`,
 		[]CapArg{
-			NewCapArg(standard.MediaString, "arg", true, []ArgSource{stdinSource("media:enc=utf-8;ext=txt")}),
+			NewCapArg(standard.MediaString, "arg", true, []ArgSource{stdinSource("media:enc=utf8;ext=txt;plain-text")}),
 			NewCapArg(standard.MediaInteger, "arg2", true, []ArgSource{stdinSource("media:")}),
 		},
 	)
@@ -170,10 +170,10 @@ func Test580_rule3_different_stdin_urns(t *testing.T) {
 // that both claim it leave nothing to say which of them a piped value is.
 func Test581_rule3_identical_stdin_urns_are_still_two_main_inputs(t *testing.T) {
 	cap := makeTestCapWithUrnAndArgs(t,
-		`cap:in="media:enc=utf-8;ext=txt";test-cap;out="media:void";type=test`,
+		`cap:in="media:enc=utf8;ext=txt;plain-text";test-cap;out="media:void";type=test`,
 		[]CapArg{
-			NewCapArg(standard.MediaString, "input", true, []ArgSource{stdinSource("media:enc=utf-8;ext=txt")}),
-			NewCapArg(standard.MediaInteger, "other", true, []ArgSource{stdinSource("media:enc=utf-8;ext=txt")}),
+			NewCapArg(standard.MediaString, "input", true, []ArgSource{stdinSource("media:enc=utf8;ext=txt;plain-text")}),
+			NewCapArg(standard.MediaInteger, "other", true, []ArgSource{stdinSource("media:enc=utf8;ext=txt;plain-text")}),
 		},
 	)
 	err := ValidateCapArgs(cap)
@@ -267,11 +267,11 @@ func Test588_rule10_reserved_cli_flags(t *testing.T) {
 // TEST589: valid cap args with mixed sources pass all rules
 func Test589_all_rules_pass(t *testing.T) {
 	cap := makeTestCapWithUrnAndArgs(t,
-		`cap:in="media:enc=utf-8;ext=txt";test-cap;out="media:void";type=test`,
+		`cap:in="media:enc=utf8;ext=txt;plain-text";test-cap;out="media:void";type=test`,
 		[]CapArg{
 			NewCapArg(standard.MediaString, "arg", true, []ArgSource{
 				positionSource(0),
-				stdinSource("media:enc=utf-8;ext=txt"),
+				stdinSource("media:enc=utf8;ext=txt;plain-text"),
 			}),
 			NewCapArg(standard.MediaInteger, "arg2", false, []ArgSource{
 				positionSource(1),
@@ -299,9 +299,9 @@ func Test590_cli_flag_only_args(t *testing.T) {
 // TEST1294: RULE15 - void-input cap with stdin source rejected
 func Test1294_rule15_void_input_with_stdin_rejected(t *testing.T) {
 	cap := makeTestCapWithUrnAndArgs(t,
-		`cap:in="media:void";test;out="media:fmt=json;record"`,
+		`cap:in="media:void";test;out="media:enc=utf8;fmt=json;record"`,
 		[]CapArg{
-			NewCapArg(standard.MediaString, "input", true, []ArgSource{stdinSource("media:enc=utf-8;ext=txt")}),
+			NewCapArg(standard.MediaString, "input", true, []ArgSource{stdinSource("media:enc=utf8;ext=txt;plain-text")}),
 		},
 	)
 	err := ValidateCapArgs(cap)
@@ -312,7 +312,7 @@ func Test1294_rule15_void_input_with_stdin_rejected(t *testing.T) {
 // TEST1295: RULE15 - non-void-input cap without stdin source rejected
 func Test1295_rule15_non_void_input_without_stdin_rejected(t *testing.T) {
 	cap := makeTestCapWithUrnAndArgs(t,
-		`cap:in="media:document;ext=pdf";extract;out="media:enc=utf-8;ext=txt"`,
+		`cap:in="media:document;ext=pdf";extract;out="media:enc=utf8;ext=txt;plain-text"`,
 		[]CapArg{
 			NewCapArg(standard.MediaString, "input", true, []ArgSource{positionSource(0)}),
 		},
@@ -325,7 +325,7 @@ func Test1295_rule15_non_void_input_without_stdin_rejected(t *testing.T) {
 // TEST1296: RULE15 - void-input cap with only cli_flag sources passes
 func Test1296_rule15_void_input_cli_only_ok(t *testing.T) {
 	cap := makeTestCapWithUrnAndArgs(t,
-		`cap:in="media:void";test;out="media:fmt=json;record"`,
+		`cap:in="media:void";test;out="media:enc=utf8;fmt=json;record"`,
 		[]CapArg{
 			NewCapArg(standard.MediaString, "arg", true, []ArgSource{cliFlagSource("--query")}),
 		},
@@ -342,7 +342,7 @@ func Test1953_rule14_streaming_only_on_main_input(t *testing.T) {
 	main := NewCapArg("media:document;ext=pdf", "arg", true, []ArgSource{stdinSource("media:document;ext=pdf")})
 	main.Streaming = true
 	ok := makeTestCapWithUrnAndArgs(t,
-		`cap:in="media:document;ext=pdf";extract;out="media:enc=utf-8;ext=txt"`,
+		`cap:in="media:document;ext=pdf";extract;out="media:enc=utf8;ext=txt;plain-text"`,
 		[]CapArg{main},
 	)
 	require.NoError(t, ValidateCapArgs(ok), "streaming main input must pass")
@@ -354,7 +354,7 @@ func Test1953_rule14_streaming_only_on_main_input(t *testing.T) {
 	side := NewCapArg(standard.MediaString, "arg2", false, []ArgSource{cliFlagSource("--lang")})
 	side.Streaming = true
 	bad := makeTestCapWithUrnAndArgs(t,
-		`cap:in="media:document;ext=pdf";extract;out="media:enc=utf-8;ext=txt"`,
+		`cap:in="media:document;ext=pdf";extract;out="media:enc=utf8;ext=txt;plain-text"`,
 		[]CapArg{main, side},
 	)
 	err := ValidateCapArgs(bad)
@@ -366,7 +366,7 @@ func Test1953_rule14_streaming_only_on_main_input(t *testing.T) {
 // TEST1297: RULE15 - non-void-input cap with stdin source passes
 func Test1297_rule15_non_void_input_with_stdin_ok(t *testing.T) {
 	cap := makeTestCapWithUrnAndArgs(t,
-		`cap:in="media:document;ext=pdf";extract;out="media:enc=utf-8;ext=txt"`,
+		`cap:in="media:document;ext=pdf";extract;out="media:enc=utf8;ext=txt;plain-text"`,
 		[]CapArg{
 			NewCapArg(standard.MediaString, "arg", true, []ArgSource{stdinSource("media:document;ext=pdf")}),
 		},
@@ -381,14 +381,14 @@ func Test1297_rule15_non_void_input_with_stdin_ok(t *testing.T) {
 // once advertised a `streaming` input as bounded.
 func Test1964_unknown_definition_field_is_refused(t *testing.T) {
 	var arg CapArg
-	err := json.Unmarshal([]byte(`{"media_urn":"media:enc=utf-8","name":"input","required":true,"sources":[{"stdin":"media:enc=utf-8"}],"chunking":"adaptive"}`), &arg)
+	err := json.Unmarshal([]byte(`{"media_urn":"media:enc=utf8","name":"input","required":true,"sources":[{"stdin":"media:enc=utf8"}],"chunking":"adaptive"}`), &arg)
 	require.Error(t, err, "unknown arg field must be refused")
 	assert.Contains(t, err.Error(), "chunking")
-	require.NoError(t, json.Unmarshal([]byte(`{"media_urn":"media:enc=utf-8","name":"input","required":true,"sources":[{"stdin":"media:enc=utf-8"}],"streaming":true}`), &arg))
+	require.NoError(t, json.Unmarshal([]byte(`{"media_urn":"media:enc=utf8","name":"input","required":true,"sources":[{"stdin":"media:enc=utf8"}],"streaming":true}`), &arg))
 	assert.True(t, arg.Streaming)
 
 	var out CapOutput
-	err = json.Unmarshal([]byte(`{"media_urn":"media:enc=utf-8","name":"output","output_description":"x","windowed":true}`), &out)
+	err = json.Unmarshal([]byte(`{"media_urn":"media:enc=utf8","name":"output","output_description":"x","windowed":true}`), &out)
 	require.Error(t, err, "unknown output field must be refused")
 	assert.Contains(t, err.Error(), "windowed")
 }
@@ -399,7 +399,7 @@ func Test12705_rule15_the_stdin_argument_is_the_caps_input(t *testing.T) {
 	capOf := func(stdin string) *Cap {
 		return makeTestCapWithUrnAndArgs(t,
 			`cap:in="media:document;ext=pdf";test;out="media:record"`,
-			[]CapArg{NewCapArg("media:enc=utf-8;file-path", "document", true, []ArgSource{stdinSource(stdin)})},
+			[]CapArg{NewCapArg("media:enc=utf8;file-path", "document", true, []ArgSource{stdinSource(stdin)})},
 		)
 	}
 	assert.NoError(t, ValidateCapArgs(capOf("media:document;ext=pdf")))
@@ -448,19 +448,19 @@ func Test12706_rule17_argument_names(t *testing.T) {
 // TEST12707: RULE18 - an argument says what it accepts in one place; and what
 // it accepts is not what it is delivered under.
 func Test12707_rule18_accepts_and_the_two_urns_of_an_argument(t *testing.T) {
-	series := "media:fmt=json;list;record;time-series"
+	series := "media:enc=utf8;fmt=json;list;record;time-series"
 	benchmark := NewCapArg(
-		"media:benchmark;fmt=json;list;record;time-series", "benchmark",
+		"media:benchmark;enc=utf8;fmt=json;list;record;time-series", "benchmark",
 		true,
 		[]ArgSource{cliFlagSource("--benchmark")},
 	).Accepting(series)
 	// It accepts a plain series, and is delivered under its own URN: two
 	// args accepting one type stay distinct on the wire.
 	assert.Equal(t, series, benchmark.AcceptedUrn())
-	assert.Equal(t, "media:benchmark;fmt=json;list;record;time-series", benchmark.StreamUrn())
+	assert.Equal(t, "media:benchmark;enc=utf8;fmt=json;list;record;time-series", benchmark.StreamUrn())
 
 	// The main input accepts, and is delivered under, its stdin URN.
-	main := NewCapArg("media:enc=utf-8;file-path", "path", true, []ArgSource{stdinSource(series)})
+	main := NewCapArg("media:enc=utf8;file-path", "path", true, []ArgSource{stdinSource(series)})
 	assert.Equal(t, series, main.AcceptedUrn())
 	assert.Equal(t, series, main.StreamUrn())
 
@@ -476,14 +476,14 @@ func Test12707_rule18_accepts_and_the_two_urns_of_an_argument(t *testing.T) {
 	err := ValidateCapArgs(makeTestCapWithUrnAndArgs(t, capUrn, []CapArg{main.Accepting(series)}))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "RULE18")
-	assert.Contains(t, err.Error(), "media:enc=utf-8;file-path")
+	assert.Contains(t, err.Error(), "media:enc=utf8;file-path")
 	// Declaring what one copy accepts does not change the argument it was made from.
 	assert.Nil(t, main.Accepts)
 }
 
 func capWithOutputs(t *testing.T, outSpec string, outputs []CapOutput) *Cap {
 	t.Helper()
-	u, err := urn.NewCapUrnFromString(`cap:in="media:enc=utf-8";test;out="` + outSpec + `"`)
+	u, err := urn.NewCapUrnFromString(`cap:in="media:enc=utf8";test;out="` + outSpec + `"`)
 	require.NoError(t, err)
 	c := NewCap(u, "Test", []string{"cmd"})
 	c.SetOutputs(outputs)
@@ -493,8 +493,8 @@ func capWithOutputs(t *testing.T, outSpec string, outputs []CapOutput) *Cap {
 // TEST12708: RULE19, RULE20 - outputs have well-formed, distinct names and
 // distinct media URNs, compared as URNs.
 func Test12708_rule19_rule20_output_names_and_identities(t *testing.T) {
-	const regression = "media:fmt=json;record;regression"
-	const residual = "media:fmt=json;list;record;residual"
+	const regression = "media:enc=utf8;fmt=json;record;regression"
+	const residual = "media:enc=utf8;fmt=json;list;record;residual"
 	fit := func() CapOutput { return *NewCapOutput(regression, "fit", "the fit") }
 	assert.NoError(t, ValidateCapOutputs(capWithOutputs(t, regression, []CapOutput{fit(), *NewCapOutput(residual, "residuals", "")})))
 
@@ -513,15 +513,15 @@ func Test12708_rule19_rule20_output_names_and_identities(t *testing.T) {
 	assert.Contains(t, message, "RULE19")
 	assert.Contains(t, message, "share the name 'fit'")
 	// The same URN with its tags in another order is the same output.
-	message = refused([]CapOutput{fit(), *NewCapOutput("media:regression;record;fmt=json", "again", "")})
+	message = refused([]CapOutput{fit(), *NewCapOutput("media:regression;record;fmt=json;enc=utf8", "again", "")})
 	assert.Contains(t, message, "RULE20")
 }
 
 // TEST12709: RULE21 - exactly one output is the main one, the cap's `out=`;
 // a cap whose `out=` is void declares none.
 func Test12709_rule21_exactly_one_main_output(t *testing.T) {
-	const fit = "media:fmt=json;record;regression"
-	none := capWithOutputs(t, fit, []CapOutput{*NewCapOutput("media:fmt=json;list;record;residual", "residuals", "")})
+	const fit = "media:enc=utf8;fmt=json;record;regression"
+	none := capWithOutputs(t, fit, []CapOutput{*NewCapOutput("media:enc=utf8;fmt=json;list;record;residual", "residuals", "")})
 	err := ValidateCapOutputs(none)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "RULE21")
@@ -530,7 +530,7 @@ func Test12709_rule21_exactly_one_main_output(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "RULE21")
 
-	one := capWithOutputs(t, fit, []CapOutput{*NewCapOutput("media:regression;fmt=json;record", "fit", "")})
+	one := capWithOutputs(t, fit, []CapOutput{*NewCapOutput("media:regression;fmt=json;record;enc=utf8", "fit", "")})
 	assert.NoError(t, ValidateCapOutputs(one), "the main output is found by URN equivalence")
 	require.NotNil(t, one.MainOutput())
 	assert.Equal(t, "fit", one.MainOutput().Name)
@@ -538,7 +538,7 @@ func Test12709_rule21_exactly_one_main_output(t *testing.T) {
 	void := capWithOutputs(t, "media:void", nil)
 	assert.NoError(t, ValidateCapOutputs(void))
 	assert.Nil(t, void.MainOutput())
-	err = ValidateCapOutputs(capWithOutputs(t, "media:void", []CapOutput{*NewCapOutput("media:enc=utf-8", "text", "")}))
+	err = ValidateCapOutputs(capWithOutputs(t, "media:void", []CapOutput{*NewCapOutput("media:enc=utf8", "text", "")}))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "RULE21")
 	assert.Contains(t, err.Error(), "media:void")
@@ -547,26 +547,26 @@ func Test12709_rule21_exactly_one_main_output(t *testing.T) {
 // TEST12710: RULE22 - only a non-main output of a cap that takes an input
 // may carry that input's type.
 func Test12710_rule22_what_an_output_carries(t *testing.T) {
-	router := capWithOutputs(t, "media:enc=utf-8;kept", []CapOutput{
-		*NewCapOutput("media:enc=utf-8;kept", "yes", "").AsOptional(true),
-		*NewCapOutput("media:enc=utf-8;dropped", "no", "").AsOptional(true).CarryingInput(),
+	router := capWithOutputs(t, "media:enc=utf8;kept", []CapOutput{
+		*NewCapOutput("media:enc=utf8;kept", "yes", "").AsOptional(true),
+		*NewCapOutput("media:enc=utf8;dropped", "no", "").AsOptional(true).CarryingInput(),
 	})
 	assert.NoError(t, ValidateCapOutputs(router))
 
-	mainCarries := capWithOutputs(t, "media:enc=utf-8;kept", []CapOutput{
-		*NewCapOutput("media:enc=utf-8;kept", "yes", "").CarryingInput(),
+	mainCarries := capWithOutputs(t, "media:enc=utf8;kept", []CapOutput{
+		*NewCapOutput("media:enc=utf8;kept", "yes", "").CarryingInput(),
 	})
 	err := ValidateCapOutputs(mainCarries)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "RULE22")
 	assert.Contains(t, err.Error(), "main output")
 
-	u, uerr := urn.NewCapUrnFromString(`cap:in="media:void";now;out="media:enc=utf-8;stamp"`)
+	u, uerr := urn.NewCapUrnFromString(`cap:in="media:void";now;out="media:enc=utf8;stamp"`)
 	require.NoError(t, uerr)
 	source := NewCap(u, "Now", []string{"now"})
 	source.SetOutputs([]CapOutput{
-		*NewCapOutput("media:enc=utf-8;stamp", "stamp", ""),
-		*NewCapOutput("media:enc=utf-8;echo", "echo", "").CarryingInput(),
+		*NewCapOutput("media:enc=utf8;stamp", "stamp", ""),
+		*NewCapOutput("media:enc=utf8;echo", "echo", "").CarryingInput(),
 	})
 	err = ValidateCapOutputs(source)
 	require.Error(t, err)

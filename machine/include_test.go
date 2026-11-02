@@ -428,8 +428,8 @@ func Test12809_inclusion_nests_and_an_untaken_output_is_not_the_wholes(t *testin
 }
 
 const (
-	looseCapUrn = `cap:in="media:fmt=json;list;record;time-series";loose;out="media:enc=utf-8"`
-	tightCapUrn = `cap:in="media:enc=utf-8;note";tight;out="media:tightened"`
+	looseCapUrn = `cap:in="media:enc=utf8;fmt=json;list;record;time-series";loose;out="media:enc=utf8"`
+	tightCapUrn = `cap:in="media:enc=utf8;note";tight;out="media:tightened"`
 )
 
 // registryWithARefinement is the registry of the tests above, with a step
@@ -439,7 +439,7 @@ func registryWithARefinement() *fabric.FabricRegistry {
 	registry.AddCapsToCache([]*cap.Cap{
 		definition(looseCapUrn, "loose",
 			[]cap.CapArg{stdinArg(seriesMedia, "series")},
-			[]cap.CapOutput{outputOf("media:enc=utf-8", "text", "Some text")}),
+			[]cap.CapOutput{outputOf("media:enc=utf8", "text", "Some text")}),
 		definition(tightCapUrn, "tight",
 			[]cap.CapArg{stdinArg(noteMedia, "note")},
 			[]cap.CapOutput{outputOf("media:tightened", "tightened", "Tightened")}),

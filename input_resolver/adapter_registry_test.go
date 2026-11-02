@@ -15,7 +15,7 @@ func createTestRegistry(t *testing.T) *testMediaDefSource {
 	registry := newTestMediaDefSource()
 	registry.AddSpec(media.StoredMediaDef{
 		Version:    0,
-		Urn:        "media:fmt=json;record",
+		Urn:        "media:enc=utf8;fmt=json;record",
 		MediaType:  "application/json",
 		Title:      "JSON",
 		Extensions: []string{"json"},
@@ -29,7 +29,7 @@ func Test1276_RegisterNonConflicting(t *testing.T) {
 
 	err := registry.RegisterCapGroup(
 		"text-formats",
-		[]string{"media:fmt=json", "media:fmt=yaml"},
+		[]string{"media:enc=utf8;fmt=json", "media:enc=utf8;fmt=yaml"},
 		"txtcartridge",
 	)
 	if err != nil {
@@ -48,7 +48,7 @@ func Test1276_RegisterNonConflicting(t *testing.T) {
 func Test1478_ExactReregistrationIsIdempotent(t *testing.T) {
 	registry := NewMediaAdapterRegistry(createTestRegistry(t))
 
-	urns := []string{"media:fmt=json", "media:fmt=yaml"}
+	urns := []string{"media:enc=utf8;fmt=json", "media:enc=utf8;fmt=yaml"}
 	if err := registry.RegisterCapGroup("text-formats", urns, "txtcartridge"); err != nil {
 		t.Fatalf("first registration failed: %v", err)
 	}
@@ -60,7 +60,7 @@ func Test1478_ExactReregistrationIsIdempotent(t *testing.T) {
 	}
 
 	// A partially-new group from the same owner registers only the new URN.
-	extended := []string{"media:fmt=json", "media:fmt=toml"}
+	extended := []string{"media:enc=utf8;fmt=json", "media:fmt=toml"}
 	if err := registry.RegisterCapGroup("text-formats", extended, "txtcartridge"); err != nil {
 		t.Fatalf("known URNs skip, new URNs register: %v", err)
 	}
@@ -69,7 +69,7 @@ func Test1478_ExactReregistrationIsIdempotent(t *testing.T) {
 	}
 
 	// Another cartridge claiming an identical URN is still ambiguity.
-	if err := registry.RegisterCapGroup("text-formats", []string{"media:fmt=json"}, "other"); err == nil {
+	if err := registry.RegisterCapGroup("text-formats", []string{"media:enc=utf8;fmt=json"}, "other"); err == nil {
 		t.Fatal("an identical URN from a DIFFERENT cartridge must stay rejected")
 	}
 }
@@ -79,12 +79,12 @@ func Test1277_RejectConformingOverlap(t *testing.T) {
 	registry := NewMediaAdapterRegistry(createTestRegistry(t))
 
 	// Register group A with media:fmt=json.
-	if err := registry.RegisterCapGroup("group-a", []string{"media:fmt=json"}, "cartridge-a"); err != nil {
+	if err := registry.RegisterCapGroup("group-a", []string{"media:enc=utf8;fmt=json"}, "cartridge-a"); err != nil {
 		t.Fatalf("group-a registration failed: %v", err)
 	}
 
-	// Try to register group B with media:fmt=json;record (conforms to media:fmt=json).
-	err := registry.RegisterCapGroup("group-b", []string{"media:fmt=json;record"}, "cartridge-b")
+	// Try to register group B with media:enc=utf8;fmt=json;record (conforms to media:enc=utf8;fmt=json).
+	err := registry.RegisterCapGroup("group-b", []string{"media:enc=utf8;fmt=json;record"}, "cartridge-b")
 	if err == nil {
 		t.Fatal("Conforming overlap must be rejected")
 	}
@@ -101,7 +101,7 @@ func Test1278_RejectEntireGroup(t *testing.T) {
 	registry := NewMediaAdapterRegistry(createTestRegistry(t))
 
 	// Register an adapter for media:fmt=json.
-	if err := registry.RegisterCapGroup("group-a", []string{"media:fmt=json"}, "cartridge-a"); err != nil {
+	if err := registry.RegisterCapGroup("group-a", []string{"media:enc=utf8;fmt=json"}, "cartridge-a"); err != nil {
 		t.Fatalf("group-a registration failed: %v", err)
 	}
 
@@ -109,9 +109,9 @@ func Test1278_RejectEntireGroup(t *testing.T) {
 	err := registry.RegisterCapGroup(
 		"group-b",
 		[]string{
-			"media:fmt=yaml", // ok
-			"media:fmt=json", // conflicts with media:fmt=json
-			"media:fmt=csv",  // ok
+			"media:enc=utf8;fmt=yaml", // ok
+			"media:enc=utf8;fmt=json", // conflicts with media:enc=utf8;fmt=json
+			"media:enc=utf8;fmt=csv",  // ok
 		},
 		"cartridge-b",
 	)
@@ -132,8 +132,8 @@ func Test1279_IntraGroupConflict(t *testing.T) {
 	err := registry.RegisterCapGroup(
 		"bad-group",
 		[]string{
-			"media:fmt=json",
-			"media:fmt=json", // conforms to media:fmt=json
+			"media:enc=utf8;fmt=json",
+			"media:enc=utf8;fmt=json", // conforms to media:enc=utf8;fmt=json
 		},
 		"cartridge-x",
 	)
@@ -149,8 +149,8 @@ func Test1279_IntraGroupConflict(t *testing.T) {
 func Test1280_FindAdaptersForExtension(t *testing.T) {
 	registry := NewMediaAdapterRegistry(createTestRegistry(t))
 
-	// Register adapter for media:fmt=json (which should match .json extension candidates).
-	if err := registry.RegisterCapGroup("text-group", []string{"media:fmt=json"}, "txtcartridge"); err != nil {
+	// Register adapter for media:enc=utf8;fmt=json (which should match .json extension candidates).
+	if err := registry.RegisterCapGroup("text-group", []string{"media:enc=utf8;fmt=json"}, "txtcartridge"); err != nil {
 		t.Fatalf("registration failed: %v", err)
 	}
 

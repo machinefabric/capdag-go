@@ -26,7 +26,7 @@ import (
 // file-path media URN; cardinality (single file vs many) lives on the arg
 // definition's is_sequence flag, not on URN tags. Matches Rust's
 // MEDIA_FILE_PATH constant.
-const MediaFilePath = "media:enc=utf-8;file-path"
+const MediaFilePath = "media:enc=utf8;file-path"
 
 // StreamEmitter allows handlers to emit CBOR values and logs.
 // Handlers emit CBOR values via EmitCbor() or logs via EmitLog().
@@ -1000,7 +1000,7 @@ func (pr *CartridgeRuntime) autoRegisterDiscard() {
 // The default implementation drains input and returns an empty END (no match found).
 // Cartridge authors can override this by calling Register after construction.
 func (pr *CartridgeRuntime) autoRegisterAdapterSelection() {
-	const capAdapterSelection = `cap:in="media:";out="media:adapter-selection;fmt=json;record"`
+	const capAdapterSelection = `cap:in="media:";out="media:adapter-selection;enc=utf8;fmt=json;record"`
 	pr.mu.Lock()
 	defer pr.mu.Unlock()
 
@@ -4142,7 +4142,7 @@ func (pr *CartridgeRuntime) extractArgValue(argDef *cap.CapArg, cliArgs []string
 	// Try default value.
 	//
 	// The wire contract for an arg stream is "bytes of the typed
-	// media URN". For a `media:enc=utf-8`-shaped arg that's plain
+	// media URN". For a `media:enc=utf8`-shaped arg that's plain
 	// UTF-8 text — NOT a JSON-encoded form. A naive `json.Marshal`
 	// of the `RawMessage` would corrupt every string default by
 	// keeping the surrounding `"…"` quotes, which the handler's

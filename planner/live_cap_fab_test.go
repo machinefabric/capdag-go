@@ -95,12 +95,12 @@ func Test774_get_reachable_targets_finds_all_targets(t *testing.T) {
 // TEST777: Tests type checking prevents using PDF-specific cap with PNG input Verifies that media type compatibility is enforced during pathfinding
 func Test777_type_mismatch_pdf_cap_does_not_match_png_input(t *testing.T) {
 	graph := NewLiveCapFab()
-	pdfToText := makeTestCapForGraph("media:document;ext=pdf", "media:enc=utf-8", "pdf2text", "PDF to Text")
+	pdfToText := makeTestCapForGraph("media:document;ext=pdf", "media:enc=utf8", "pdf2text", "PDF to Text")
 	graph.AddCap(pdfToText)
 
 	source, err := urn.NewMediaUrnFromString("media:ext=png;image")
 	require.NoError(t, err)
-	target, err := urn.NewMediaUrnFromString("media:enc=utf-8")
+	target, err := urn.NewMediaUrnFromString("media:enc=utf8")
 	require.NoError(t, err)
 
 	paths := graph.FindPathsToExactTarget(source, target, false, 5, 10)
@@ -125,12 +125,12 @@ func Test778_type_mismatch_png_cap_does_not_match_pdf_input(t *testing.T) {
 // TEST779: Tests get_reachable_targets() only returns targets reachable via type-compatible caps Verifies that PNG and PDF inputs reach different cap targets (not each other's)
 func Test779_get_reachable_targets_respects_type_matching(t *testing.T) {
 	graph := NewLiveCapFab()
-	pdfToText := makeTestCapForGraph("media:document;ext=pdf", "media:enc=utf-8", "pdf2text", "PDF to Text")
+	pdfToText := makeTestCapForGraph("media:document;ext=pdf", "media:enc=utf8", "pdf2text", "PDF to Text")
 	pngToThumb := makeTestCapForGraph("media:ext=png;image", "media:thumbnail", "png2thumb", "PNG to Thumbnail")
 	graph.AddCap(pdfToText)
 	graph.AddCap(pngToThumb)
 
-	mediaTextable, err := urn.NewMediaUrnFromString("media:enc=utf-8")
+	mediaTextable, err := urn.NewMediaUrnFromString("media:enc=utf8")
 	require.NoError(t, err)
 	mediaThumbnail, err := urn.NewMediaUrnFromString("media:thumbnail")
 	require.NoError(t, err)
@@ -212,8 +212,8 @@ func Test787_find_paths_sorting_prefers_shorter(t *testing.T) {
 // TEST788: ForEach is only synthesized when is_sequence=true
 func Test788_foreach_only_with_sequence_input(t *testing.T) {
 	graph := NewLiveCapFab()
-	disbind := makeTestCapForGraph("media:document;ext=pdf", "media:page;enc=utf-8", "disbind", "Disbind PDF")
-	choose := makeTestCapForGraph("media:enc=utf-8", "media:decision;fmt=json;record", "choose", "Make a Decision")
+	disbind := makeTestCapForGraph("media:document;ext=pdf", "media:page;enc=utf8", "disbind", "Disbind PDF")
+	choose := makeTestCapForGraph("media:enc=utf8", "media:decision;enc=utf8;fmt=json;record", "choose", "Make a Decision")
 	graph.SyncFromCaps([]*cap.Cap{disbind, choose})
 	nodeCount, edgeCount := graph.Stats()
 	assert.Equal(t, 2, edgeCount, "Graph should contain exactly 2 Cap edges")
@@ -221,7 +221,7 @@ func Test788_foreach_only_with_sequence_input(t *testing.T) {
 
 	source, err := urn.NewMediaUrnFromString("media:document;ext=pdf")
 	require.NoError(t, err)
-	target, err := urn.NewMediaUrnFromString("media:decision;fmt=json;record")
+	target, err := urn.NewMediaUrnFromString("media:decision;enc=utf8;fmt=json;record")
 	require.NoError(t, err)
 
 	hasForEach := func(paths []*Strand) bool {
@@ -252,23 +252,23 @@ func Test788_foreach_only_with_sequence_input(t *testing.T) {
 func Test8064_sequence_consumer_never_follows_foreach_directly(t *testing.T) {
 	graph := NewLiveCapFab()
 	concat := makeTestCapForGraph(
-		"media:enc=utf-8",
-		"media:enc=utf-8;ext=txt",
+		"media:enc=utf8",
+		"media:enc=utf8;ext=txt;plain-text",
 		"concat",
 		"Concat Text",
 	)
 	concat.Args[0].IsSequence = true
 	graph.AddCap(concat)
 	graph.AddCap(makeTestCapForGraph(
-		"media:enc=utf-8",
-		"media:enc=utf-8;summary",
+		"media:enc=utf8",
+		"media:enc=utf8;summary",
 		"summarize",
 		"Summarize Text",
 	))
 
-	source, err := urn.NewMediaUrnFromString("media:enc=utf-8;page")
+	source, err := urn.NewMediaUrnFromString("media:enc=utf8;page")
 	require.NoError(t, err)
-	target, err := urn.NewMediaUrnFromString("media:enc=utf-8;ext=txt")
+	target, err := urn.NewMediaUrnFromString("media:enc=utf8;ext=txt;plain-text")
 	require.NoError(t, err)
 	paths := graph.FindPathsToExactTarget(source, target, true, 4, 20)
 
@@ -296,22 +296,22 @@ func Test8064_sequence_consumer_never_follows_foreach_directly(t *testing.T) {
 }
 
 // TEST1111: ForEach works for user-provided list sources not in the graph.
-// User provides media:list;txt;enc=utf-8 with is_sequence=true → ForEach+cap path found.
+// User provides media:list;txt;enc=utf8 with is_sequence=true → ForEach+cap path found.
 func Test1111_foreach_for_user_provided_list_source(t *testing.T) {
 	graph := NewLiveCapFab()
 
 	// Cap: textable → decision (accepts singular textable)
 	makeDecision := makeTestCapForGraph(
-		"media:enc=utf-8",
-		"media:decision;fmt=json;record",
+		"media:enc=utf8",
+		"media:decision;enc=utf8;fmt=json;record",
 		"make_decision",
 		"Make Decision",
 	)
 	graph.SyncFromCaps([]*cap.Cap{makeDecision})
 
-	source, err := urn.NewMediaUrnFromString("media:list;txt;enc=utf-8")
+	source, err := urn.NewMediaUrnFromString("media:list;txt;enc=utf8")
 	require.NoError(t, err)
-	target, err := urn.NewMediaUrnFromString("media:decision;fmt=json;record")
+	target, err := urn.NewMediaUrnFromString("media:decision;enc=utf8;fmt=json;record")
 	require.NoError(t, err)
 
 	// User provides multiple files → is_sequence=true
@@ -328,7 +328,7 @@ func Test1111_foreach_for_user_provided_list_source(t *testing.T) {
 		}
 	}
 	require.NotNil(t, foundPath,
-		"Should find path: ForEach → make_decision. User-provided list source media:list;txt;enc=utf-8 must be iterable. Found %d paths.",
+		"Should find path: ForEach → make_decision. User-provided list source media:list;txt;enc=utf8 must be iterable. Found %d paths.",
 		len(paths))
 
 	// ForEach step media def should be equivalent to source
@@ -341,18 +341,18 @@ func Test1112_no_collect_in_path_finding(t *testing.T) {
 	graph := NewLiveCapFab()
 
 	summarize := makeTestCapForGraph(
-		"media:enc=utf-8",
-		"media:summary;enc=utf-8",
+		"media:enc=utf8",
+		"media:summary;enc=utf8",
 		"summarize",
 		"Summarize",
 	)
 	graph.SyncFromCaps([]*cap.Cap{summarize})
 
-	source, err := urn.NewMediaUrnFromString("media:enc=utf-8")
+	source, err := urn.NewMediaUrnFromString("media:enc=utf8")
 	require.NoError(t, err)
 	// list;summary;textable is a different semantic type — can't reach it
 	// without a cap that outputs it or a Collect step (not synthesized)
-	target, err := urn.NewMediaUrnFromString("media:list;summary;enc=utf-8")
+	target, err := urn.NewMediaUrnFromString("media:list;summary;enc=utf8")
 	require.NoError(t, err)
 
 	paths := graph.FindPathsToExactTarget(source, target, false, 10, 20)
@@ -363,10 +363,10 @@ func Test1112_no_collect_in_path_finding(t *testing.T) {
 func Test1113_multi_cap_path_no_collect(t *testing.T) {
 	graph := NewLiveCapFab()
 
-	disbind := makeTestCapForGraph("media:document;ext=pdf", "media:page;enc=utf-8", "disbind", "Disbind PDF")
+	disbind := makeTestCapForGraph("media:document;ext=pdf", "media:page;enc=utf8", "disbind", "Disbind PDF")
 	summarize := makeTestCapForGraph(
-		"media:page;enc=utf-8",
-		"media:summary;enc=utf-8",
+		"media:page;enc=utf8",
+		"media:summary;enc=utf8",
 		"summarize",
 		"Summarize Page",
 	)
@@ -374,7 +374,7 @@ func Test1113_multi_cap_path_no_collect(t *testing.T) {
 
 	source, err := urn.NewMediaUrnFromString("media:document;ext=pdf")
 	require.NoError(t, err)
-	target, err := urn.NewMediaUrnFromString("media:summary;enc=utf-8")
+	target, err := urn.NewMediaUrnFromString("media:summary;enc=utf8")
 	require.NoError(t, err)
 
 	paths := graph.FindPathsToExactTarget(source, target, false, 10, 20)
@@ -387,9 +387,9 @@ func Test1114_graph_stores_only_cap_edges(t *testing.T) {
 	graph := NewLiveCapFab()
 
 	caps := []*cap.Cap{
-		makeTestCapForGraph("media:document;ext=pdf", "media:page;enc=utf-8", "disbind", "Disbind"),
-		makeTestCapForGraph("media:page;enc=utf-8", "media:summary;enc=utf-8", "summarize", "Summarize"),
-		makeTestCapForGraph("media:enc=utf-8", "media:decision;fmt=json;record", "decide", "Decide"),
+		makeTestCapForGraph("media:document;ext=pdf", "media:page;enc=utf8", "disbind", "Disbind"),
+		makeTestCapForGraph("media:page;enc=utf8", "media:summary;enc=utf8", "summarize", "Summarize"),
+		makeTestCapForGraph("media:enc=utf8", "media:decision;enc=utf8;fmt=json;record", "decide", "Decide"),
 	}
 	graph.SyncFromCaps(caps)
 
@@ -406,14 +406,14 @@ func Test1115_dynamic_foreach_with_is_sequence(t *testing.T) {
 
 	// Need a cap that accepts the source type for ForEach to be synthesized
 	c := makeTestCapForGraph(
-		"media:enc=utf-8",
-		"media:summary;enc=utf-8",
+		"media:enc=utf8",
+		"media:summary;enc=utf8",
 		"summarize",
 		"Summarize",
 	)
 	graph.SyncFromCaps([]*cap.Cap{c})
 
-	source, err := urn.NewMediaUrnFromString("media:enc=utf-8")
+	source, err := urn.NewMediaUrnFromString("media:enc=utf8")
 	require.NoError(t, err)
 
 	edges, outSeqs := graph.getOutgoingEdges(source, true)
@@ -437,7 +437,7 @@ func Test1115_dynamic_foreach_with_is_sequence(t *testing.T) {
 func Test1116_collect_never_synthesized(t *testing.T) {
 	graph := NewLiveCapFab()
 
-	source, err := urn.NewMediaUrnFromString("media:page;enc=utf-8")
+	source, err := urn.NewMediaUrnFromString("media:page;enc=utf8")
 	require.NoError(t, err)
 
 	// Neither scalar nor sequence should produce Collect
@@ -457,14 +457,14 @@ func Test1117_no_foreach_when_not_sequence(t *testing.T) {
 	graph := NewLiveCapFab()
 
 	c := makeTestCapForGraph(
-		"media:enc=utf-8",
-		"media:summary;enc=utf-8",
+		"media:enc=utf8",
+		"media:summary;enc=utf8",
 		"summarize",
 		"Summarize",
 	)
 	graph.SyncFromCaps([]*cap.Cap{c})
 
-	source, err := urn.NewMediaUrnFromString("media:enc=utf-8")
+	source, err := urn.NewMediaUrnFromString("media:enc=utf8")
 	require.NoError(t, err)
 
 	edges, _ := graph.getOutgoingEdges(source, false)
@@ -477,7 +477,7 @@ func Test1117_no_foreach_when_not_sequence(t *testing.T) {
 func Test1118_no_foreach_without_cap_consumers(t *testing.T) {
 	graph := NewLiveCapFab() // empty graph — no caps
 
-	source, err := urn.NewMediaUrnFromString("media:enc=utf-8")
+	source, err := urn.NewMediaUrnFromString("media:enc=utf8")
 	require.NoError(t, err)
 
 	edges, _ := graph.getOutgoingEdges(source, true)
@@ -492,7 +492,7 @@ func Test1289_bfs_reachable_includes_source_roundtrip(t *testing.T) {
 
 	// textable → integer (coerce)
 	graph.AddCap(makeTestCapForGraph(
-		"media:enc=utf-8",
+		"media:enc=utf8",
 		"media:integer;numeric",
 		"coerce_to_int",
 		"Coerce to Integer",
@@ -500,12 +500,12 @@ func Test1289_bfs_reachable_includes_source_roundtrip(t *testing.T) {
 	// integer → textable (coerce back)
 	graph.AddCap(makeTestCapForGraph(
 		"media:integer;numeric",
-		"media:enc=utf-8",
+		"media:enc=utf8",
 		"coerce_to_text",
 		"Coerce to Text",
 	))
 
-	source, err := urn.NewMediaUrnFromString("media:enc=utf-8")
+	source, err := urn.NewMediaUrnFromString("media:enc=utf8")
 	require.NoError(t, err)
 
 	targets := graph.GetReachableTargets(source, false, 5)
@@ -526,7 +526,7 @@ func Test1290_iddfs_finds_roundtrip_paths(t *testing.T) {
 
 	// textable → integer
 	graph.AddCap(makeTestCapForGraph(
-		"media:enc=utf-8",
+		"media:enc=utf8",
 		"media:integer;numeric",
 		"coerce_to_int",
 		"Coerce to Integer",
@@ -534,14 +534,14 @@ func Test1290_iddfs_finds_roundtrip_paths(t *testing.T) {
 	// integer → textable
 	graph.AddCap(makeTestCapForGraph(
 		"media:integer;numeric",
-		"media:enc=utf-8",
+		"media:enc=utf8",
 		"coerce_to_text",
 		"Coerce to Text",
 	))
 
-	source, err := urn.NewMediaUrnFromString("media:enc=utf-8")
+	source, err := urn.NewMediaUrnFromString("media:enc=utf8")
 	require.NoError(t, err)
-	target, err := urn.NewMediaUrnFromString("media:enc=utf-8")
+	target, err := urn.NewMediaUrnFromString("media:enc=utf8")
 	require.NoError(t, err)
 
 	paths := graph.FindPathsToExactTarget(source, target, false, 5, 100)
@@ -563,7 +563,7 @@ func Test1291_iddfs_roundtrip_with_sequence(t *testing.T) {
 
 	// textable → integer
 	graph.AddCap(makeTestCapForGraph(
-		"media:enc=utf-8",
+		"media:enc=utf8",
 		"media:integer;numeric",
 		"coerce_to_int",
 		"Coerce to Integer",
@@ -571,14 +571,14 @@ func Test1291_iddfs_roundtrip_with_sequence(t *testing.T) {
 	// integer → textable
 	graph.AddCap(makeTestCapForGraph(
 		"media:integer;numeric",
-		"media:enc=utf-8",
+		"media:enc=utf8",
 		"coerce_to_text",
 		"Coerce to Text",
 	))
 
-	source, err := urn.NewMediaUrnFromString("media:enc=utf-8")
+	source, err := urn.NewMediaUrnFromString("media:enc=utf8")
 	require.NoError(t, err)
-	target, err := urn.NewMediaUrnFromString("media:enc=utf-8")
+	target, err := urn.NewMediaUrnFromString("media:enc=utf8")
 	require.NoError(t, err)
 
 	// With is_sequence=true, the path goes through ForEach first
@@ -645,7 +645,7 @@ func Test1293_roundtrip_requires_cap_steps(t *testing.T) {
 
 // TEST789: Tests that caps loaded from JSON have correct in_spec/out_spec
 func Test789_cap_from_json_has_valid_specs(t *testing.T) {
-	jsonStr := `{"urn":"cap:in=\"media:document;ext=pdf\";disbind;out=\"media:disbound-page;enc=utf-8\"","aliases":["disbind"],"title":"Disbind PDF","args":[{"media_urn":"media:document;ext=pdf","name":"input","required":true,"sources":[{"stdin":"media:document;ext=pdf"}]}],"outputs":[{"media_urn":"media:disbound-page;enc=utf-8","name":"output","output_description":"output"}]}`
+	jsonStr := `{"urn":"cap:in=\"media:document;ext=pdf\";disbind;out=\"media:disbound-page;enc=utf8\"","aliases":["disbind"],"title":"Disbind PDF","args":[{"media_urn":"media:document;ext=pdf","name":"input","required":true,"sources":[{"stdin":"media:document;ext=pdf"}]}],"outputs":[{"media_urn":"media:disbound-page;enc=utf8","name":"output","output_description":"output"}]}`
 
 	var c cap.Cap
 	err := json.Unmarshal([]byte(jsonStr), &c)
@@ -670,7 +670,7 @@ func Test790_identity_urn_is_specific(t *testing.T) {
 	assert.Equal(t, urn.CapEffectNone, identityUrn.Effect())
 
 	// A specific cap should NOT be equivalent to identity
-	specificCap, err := urn.NewCapUrnFromString(`cap:in="media:document;ext=pdf";disbind;out="media:disbound-page;enc=utf-8"`)
+	specificCap, err := urn.NewCapUrnFromString(`cap:in="media:document;ext=pdf";disbind;out="media:disbound-page;enc=utf8"`)
 	require.NoError(t, err)
 
 	assert.False(t, specificCap.IsEquivalent(identityUrn),
@@ -680,7 +680,7 @@ func Test790_identity_urn_is_specific(t *testing.T) {
 // TEST1150: Adding one cap creates one edge and makes its output reachable in one step.
 func Test1150_add_cap_and_basic_traversal(t *testing.T) {
 	graph := NewLiveCapFab()
-	c := makeTestCapForGraph("media:document;ext=pdf", "media:digitized-text", "extract_text", "Extract Text")
+	c := makeTestCapForGraph("media:document;ext=pdf", "media:digitized", "extract_text", "Extract Text")
 	graph.AddCap(c)
 
 	nodeCount, edgeCount := graph.Stats()
@@ -691,7 +691,7 @@ func Test1150_add_cap_and_basic_traversal(t *testing.T) {
 	require.NoError(t, err)
 	targets := graph.GetReachableTargets(source, false, 5)
 
-	digitizedText, err := urn.NewMediaUrnFromString("media:digitized-text")
+	digitizedText, err := urn.NewMediaUrnFromString("media:digitized")
 	require.NoError(t, err)
 
 	var found *ReachableTargetInfo
@@ -750,8 +750,8 @@ func Test1151_exact_vs_conformance_matching(t *testing.T) {
 func Test1152_multi_step_path(t *testing.T) {
 	graph := NewLiveCapFab()
 
-	cap1 := makeTestCapForGraph("media:document;ext=pdf", "media:digitized-text", "extract", "Extract")
-	cap2 := makeTestCapForGraph("media:digitized-text", "media:summary-text", "summarize", "Summarize")
+	cap1 := makeTestCapForGraph("media:document;ext=pdf", "media:digitized", "extract", "Extract")
+	cap2 := makeTestCapForGraph("media:digitized", "media:summary-text", "summarize", "Summarize")
 	graph.AddCap(cap1)
 	graph.AddCap(cap2)
 
@@ -771,14 +771,14 @@ func Test1152_multi_step_path(t *testing.T) {
 func Test1153_deterministic_ordering(t *testing.T) {
 	graph := NewLiveCapFab()
 
-	cap1 := makeTestCapForGraph("media:document;ext=pdf", "media:digitized-text", "extract_a", "Extract A")
-	cap2 := makeTestCapForGraph("media:document;ext=pdf", "media:digitized-text", "extract_b", "Extract B")
+	cap1 := makeTestCapForGraph("media:document;ext=pdf", "media:digitized", "extract_a", "Extract A")
+	cap2 := makeTestCapForGraph("media:document;ext=pdf", "media:digitized", "extract_b", "Extract B")
 	graph.AddCap(cap1)
 	graph.AddCap(cap2)
 
 	source, err := urn.NewMediaUrnFromString("media:document;ext=pdf")
 	require.NoError(t, err)
-	target, err := urn.NewMediaUrnFromString("media:digitized-text")
+	target, err := urn.NewMediaUrnFromString("media:digitized")
 	require.NoError(t, err)
 
 	paths1 := graph.FindPathsToExactTarget(source, target, false, 5, 10)
@@ -800,8 +800,8 @@ func Test1154_sync_from_caps(t *testing.T) {
 	graph := NewLiveCapFab()
 
 	caps := []*cap.Cap{
-		makeTestCapForGraph("media:document;ext=pdf", "media:digitized-text", "op1", "Op1"),
-		makeTestCapForGraph("media:digitized-text", "media:summary-text", "op2", "Op2"),
+		makeTestCapForGraph("media:document;ext=pdf", "media:digitized", "op1", "Op1"),
+		makeTestCapForGraph("media:digitized", "media:summary-text", "op2", "Op2"),
 	}
 	graph.SyncFromCaps(caps)
 
@@ -811,7 +811,7 @@ func Test1154_sync_from_caps(t *testing.T) {
 
 	// Sync again with different caps — should replace
 	newCaps := []*cap.Cap{
-		makeTestCapForGraph("media:image", "media:digitized-text", "ocr", "OCR"),
+		makeTestCapForGraph("media:image", "media:digitized", "ocr", "OCR"),
 	}
 	graph.SyncFromCaps(newCaps)
 
@@ -840,8 +840,8 @@ func allBookends(caps []*cap.Cap) map[string]bool {
 func Test791_sync_from_cap_urns_adds_edges(t *testing.T) {
 	registry := fabric.NewForTest()
 
-	disbind := makeTestCapForGraph("media:document;ext=pdf", "media:enc=utf-8;page", "disbind", "Disbind PDF")
-	choose := makeTestCapForGraph("media:enc=utf-8", "media:decision;fmt=json;record", "choose", "Make a Decision")
+	disbind := makeTestCapForGraph("media:document;ext=pdf", "media:enc=utf8;page", "disbind", "Disbind PDF")
+	choose := makeTestCapForGraph("media:enc=utf8", "media:decision;enc=utf8;fmt=json;record", "choose", "Make a Decision")
 	registry.AddCapsToCache([]*cap.Cap{disbind, choose})
 
 	// Cap URN strings as cartridges would report them.
@@ -863,14 +863,14 @@ func Test791_sync_from_cap_urns_adds_edges(t *testing.T) {
 // `rest`, a sequence output `parts`, and an output `same` that carries the
 // input unchanged. And `count`, which takes `rest`.
 func splitCaps() (*cap.Cap, *cap.Cap) {
-	split := makeTestCapForGraph("media:enc=utf-8;ext=txt", "media:enc=utf-8;head", "split", "Split")
-	split.AddOutput(*cap.NewCapOutput("media:enc=utf-8;head", "head", "the head"))
-	split.AddOutput(*cap.NewCapOutput("media:enc=utf-8;rest", "rest", "the rest"))
-	parts := cap.NewCapOutput("media:enc=utf-8;part", "parts", "the parts")
+	split := makeTestCapForGraph("media:enc=utf8;ext=txt;plain-text", "media:enc=utf8;head", "split", "Split")
+	split.AddOutput(*cap.NewCapOutput("media:enc=utf8;head", "head", "the head"))
+	split.AddOutput(*cap.NewCapOutput("media:enc=utf8;rest", "rest", "the rest"))
+	parts := cap.NewCapOutput("media:enc=utf8;part", "parts", "the parts")
 	parts.IsSequence = true
 	split.AddOutput(*parts)
-	split.AddOutput(*cap.NewCapOutput("media:enc=utf-8;same", "same", "the input").CarryingInput())
-	count := makeTestCapForGraph("media:enc=utf-8;rest", "media:integer;numeric", "count", "Count")
+	split.AddOutput(*cap.NewCapOutput("media:enc=utf8;same", "same", "the input").CarryingInput())
+	count := makeTestCapForGraph("media:enc=utf8;rest", "media:integer;numeric", "count", "Count")
 	count.AddOutput(*cap.NewCapOutput("media:integer;numeric", "output", "Count"))
 	return split, count
 }
@@ -893,7 +893,7 @@ func Test12847_a_caps_other_outputs_are_reachable_by_planning(t *testing.T) {
 		require.NoError(t, err)
 		return u
 	}
-	text := media("media:enc=utf-8;ext=txt")
+	text := media("media:enc=utf8;ext=txt;plain-text")
 	onlyStep := func(target string) *StrandStep {
 		paths := graph.FindPathsToExactTarget(text, media(target), false, 3, 10)
 		require.Len(t, paths, 1, "one path to %s", target)
@@ -901,18 +901,18 @@ func Test12847_a_caps_other_outputs_are_reachable_by_planning(t *testing.T) {
 		return paths[0].Steps[0]
 	}
 
-	assert.Nil(t, onlyStep("media:enc=utf-8;head").OutputUrn)
+	assert.Nil(t, onlyStep("media:enc=utf8;head").OutputUrn)
 
-	rest := onlyStep("media:enc=utf-8;rest")
+	rest := onlyStep("media:enc=utf8;rest")
 	assert.True(t, rest.CapUrnVal.IsEquivalent(split.Urn))
 	require.NotNil(t, rest.OutputUrn)
-	assert.Equal(t, "media:enc=utf-8;rest", rest.OutputUrn.String())
+	assert.Equal(t, "media:enc=utf8;rest", rest.OutputUrn.String())
 	assert.False(t, rest.OutputIsSequence)
-	assert.Equal(t, "media:enc=utf-8;rest", rest.ToSpec.String(), "the output's own type, not the effect's")
+	assert.Equal(t, "media:enc=utf8;rest", rest.ToSpec.String(), "the output's own type, not the effect's")
 
-	assert.True(t, onlyStep("media:enc=utf-8;part").OutputIsSequence, "the output's own cardinality")
+	assert.True(t, onlyStep("media:enc=utf8;part").OutputIsSequence, "the output's own cardinality")
 
-	assert.Empty(t, graph.FindPathsToExactTarget(text, media("media:enc=utf-8;same"), false, 3, 10),
+	assert.Empty(t, graph.FindPathsToExactTarget(text, media("media:enc=utf8;same"), false, 3, 10),
 		"a carried output is reached by no edge")
 
 	// Through another output and on: count is fed by split, by token.
@@ -933,7 +933,7 @@ func Test12847_a_caps_other_outputs_are_reachable_by_planning(t *testing.T) {
 // the target through a value that never exists.
 func Test12877_a_sink_is_never_a_step_of_a_path(t *testing.T) {
 	discard := makeTestCapForGraph("media:", "media:void", "discard", "Discard")
-	render := makeTestCapForGraph("media:enc=utf-8;ext=txt", "media:ext=png;image", "render", "Render")
+	render := makeTestCapForGraph("media:enc=utf8;ext=txt;plain-text", "media:ext=png;image", "render", "Render")
 	thumbnail := makeTestCapForGraph("media:", "media:ext=png;image", "thumbnail", "Thumbnail")
 	graph := NewLiveCapFab()
 	graph.AddCap(discard)
@@ -942,7 +942,7 @@ func Test12877_a_sink_is_never_a_step_of_a_path(t *testing.T) {
 	_, edgeCount := graph.Stats()
 	assert.Equal(t, 2, edgeCount, "the sink adds no edge")
 
-	text, err := urn.NewMediaUrnFromString("media:enc=utf-8;ext=txt")
+	text, err := urn.NewMediaUrnFromString("media:enc=utf8;ext=txt;plain-text")
 	require.NoError(t, err)
 	png, err := urn.NewMediaUrnFromString("media:ext=png;image")
 	require.NoError(t, err)

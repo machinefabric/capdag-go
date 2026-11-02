@@ -729,7 +729,7 @@ func Test12385_what_reaches_the_wire_is_a_flow_in_order(t *testing.T) {
 	var wire bytes.Buffer
 	writer := newSyncFrameWriter(NewFrameWriter(&wire), NewDropCounters(), NewStragglerCounters())
 	rid := NewMessageIdRandom()
-	emitter := newThreadSafeEmitter(writer, rid, nil, "s1", "media:enc=utf-8", 4, nil, 0)
+	emitter := newThreadSafeEmitter(writer, rid, nil, "s1", "media:enc=utf8", 4, nil, 0)
 	if err := emitter.Write(bytes.Repeat([]byte{7}, 10)); err != nil {
 		t.Fatalf("write: %v", err)
 	}

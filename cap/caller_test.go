@@ -102,15 +102,15 @@ func Test162_StdinSourceDebug(t *testing.T) {
 
 // TEST274: Test CapArgumentValue::new stores media_urn and raw byte value
 func Test274_CapArgumentValueNew(t *testing.T) {
-	arg := NewCapArgumentValue("media:enc=utf-8;model-spec", []byte("gpt-4"))
-	assert.Equal(t, "media:enc=utf-8;model-spec", arg.MediaUrn)
+	arg := NewCapArgumentValue("media:enc=utf8;model-spec", []byte("gpt-4"))
+	assert.Equal(t, "media:enc=utf8;model-spec", arg.MediaUrn)
 	assert.Equal(t, []byte("gpt-4"), arg.Value)
 }
 
 // TEST275: Test CapArgumentValue::from_str converts string to UTF-8 bytes
 func Test275_CapArgumentValueFromStr(t *testing.T) {
-	arg := NewCapArgumentValueFromStr("media:enc=utf-8;string", "hello world")
-	assert.Equal(t, "media:enc=utf-8;string", arg.MediaUrn)
+	arg := NewCapArgumentValueFromStr("media:enc=utf8;string", "hello world")
+	assert.Equal(t, "media:enc=utf8;string", arg.MediaUrn)
 	assert.Equal(t, []byte("hello world"), arg.Value)
 }
 

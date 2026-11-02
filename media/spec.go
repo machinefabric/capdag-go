@@ -4,7 +4,7 @@
 // Format: `media:<type>` with optional tags.
 //
 // Examples:
-// - `media:enc=utf-8`
+// - `media:enc=utf8`
 // - `media:document;ext=pdf`
 //
 // MediaDef is always a structured object - NO string form parsing.
@@ -22,7 +22,7 @@ import (
 // Built-in media URN constants with coercion tags
 const (
 	MediaVoid     = "media:void"
-	MediaString   = "media:enc=utf-8"
+	MediaString   = "media:enc=utf8"
 	MediaInteger  = "media:integer;numeric"
 	MediaNumber   = "media:numeric"
 	MediaBoolean  = "media:bool"
@@ -30,7 +30,7 @@ const (
 	MediaIdentity = "media:"
 	// List types
 	MediaList        = "media:list"
-	MediaStringList  = "media:enc=utf-8;list"
+	MediaStringList  = "media:enc=utf8;list"
 	MediaIntegerList = "media:integer;list;numeric"
 	MediaNumberList  = "media:list;numeric"
 	MediaBooleanList = "media:bool;list"
@@ -44,29 +44,30 @@ const (
 	MediaPdf  = "media:document;ext=pdf"
 	MediaEpub = "media:document;ext=epub"
 	// Text format types (PRIMARY naming - type IS the format)
-	MediaMd         = "media:enc=utf-8;ext=md"
-	MediaTxt        = "media:enc=utf-8;ext=txt"
-	MediaRst        = "media:enc=utf-8;ext=rst"
-	MediaLog        = "media:enc=utf-8;ext=log"
-	MediaHtml       = "media:enc=utf-8;ext=html"
-	MediaXml        = "media:enc=utf-8;ext=xml"
-	MediaJson       = "media:fmt=json;record"
-	MediaJsonSchema = "media:fmt=json;json-schema;record"
-	MediaYaml       = "media:fmt=yaml;record"
+	MediaMd         = "media:enc=utf8;ext=md;plain-text"
+	MediaTxt        = "media:enc=utf8;ext=txt;plain-text"
+	MediaRst        = "media:enc=utf8;ext=rst;plain-text"
+	MediaLog        = "media:enc=utf8;ext=log;plain-text"
+	MediaHtml       = "media:enc=utf8;ext=html"
+	MediaXml        = "media:enc=utf8;ext=xml"
+	MediaJson       = "media:enc=utf8;fmt=json;record"
+	MediaJsonSchema = "media:enc=utf8;fmt=json;json-schema;record"
+	MediaYaml       = "media:enc=utf8;fmt=yaml;record"
 	// Semantic input types
-	MediaModelSpec = "media:enc=utf-8;model-spec"
-	MediaModelRepo = "media:fmt=json;model-repo;record"
+	MediaModelSpec = "media:enc=utf8;model-spec"
+	MediaModelRepo = "media:enc=utf8;fmt=json;model-repo;record"
 	// File path type — single URN; cardinality lives on is_sequence.
-	MediaFilePath = "media:enc=utf-8;file-path"
+	MediaFilePath = "media:enc=utf8;file-path"
 	// Semantic output types
 	MediaModelDim     = "media:integer;model-dim;numeric"
-	MediaDecision     = "media:decision;fmt=json;record"
-	MediaTextablePage = "media:enc=utf-8;ext=txt;page;plain-text"
-	// MediaPlainText is the canonical input/output of cap:save-as-txt.
-	MediaPlainText = "media:enc=utf-8;ext=txt;plain-text"
+	MediaDecision     = "media:decision;enc=utf8;fmt=json;record"
+	MediaTextablePage = "media:enc=utf8;ext=txt;page;plain-text"
+	// MediaPlainText is plain text — UTF-8 text written to be read; what the
+	// caps that read text as language take.
+	MediaPlainText = "media:enc=utf8;plain-text"
 	// Semantic output types for model operations
-	MediaAvailabilityOutput = "media:fmt=json;model-availability;record"
-	MediaPathOutput         = "media:fmt=json;model-path;record"
+	MediaAvailabilityOutput = "media:enc=utf8;fmt=json;model-availability;record"
+	MediaPathOutput         = "media:enc=utf8;fmt=json;model-path;record"
 )
 
 // Profile URL constants
@@ -243,7 +244,7 @@ func (r *ResolvedMediaDef) IsStructured() bool {
 }
 
 // HasEncoding returns true if the media declares a character encoding via the
-// `enc=` tag (e.g. enc=utf-8). This is the positive test for "is this value
+// `enc=` tag (e.g. enc=utf8). This is the positive test for "is this value
 // text-representable" — there is no `textable` coercion marker and no separate
 // binary/text axis; text is identified by the presence of an encoding.
 func (r *ResolvedMediaDef) HasEncoding() bool {
@@ -390,7 +391,7 @@ func ValidateNoMediaDefDuplicates(mediaDefs []MediaDef) error {
 // This is the SINGLE resolution path for all media URN lookups.
 //
 // Arguments:
-//   - mediaUrn: The media URN to resolve (e.g., "media:enc=utf-8")
+//   - mediaUrn: The media URN to resolve (e.g., "media:enc=utf8")
 //   - registry: The FabricRegistry for spec lookups
 //
 // Returns:

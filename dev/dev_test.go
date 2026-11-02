@@ -99,7 +99,7 @@ func Test7154_scaffold_writes_a_runnable_project_in_every_language(t *testing.T)
 		}
 
 		// The project name reaches the cap it declares, in every language.
-		want := fmt.Sprintf("media:enc=utf-8;%s-input", name)
+		want := fmt.Sprintf("media:enc=utf8;%s-input", name)
 		if !strings.Contains(sources.String(), want) {
 			t.Fatalf("%s: input media URN is not seeded from the project name", language.ID)
 		}
@@ -205,7 +205,7 @@ func Test7156_dev_install_and_find_by_alias(t *testing.T) {
 	if err := os.MkdirAll(project, 0o755); err != nil {
 		t.Fatalf("creating project: %v", err)
 	}
-	capURN := `cap:greet;in="media:enc=utf-8";out="media:enc=utf-8;greeting"`
+	capURN := `cap:greet;in="media:enc=utf8";out="media:enc=utf8;greeting"`
 	writeStubEntry(t, project, "greeter", "greet", capURN)
 
 	userDir := filepath.Join(root, "cartridges")
@@ -408,7 +408,7 @@ func Test7160_vendored_stub_contract_matches_the_canonical_source(t *testing.T) 
 // to a DIFFERENT cap is rejected; a brand-new alias, and a dev cap that matches
 // an existing fabric cap exactly, are both accepted.
 func Test7158_fabric_conflict_guard(t *testing.T) {
-	alphaURN := `cap:alpha;in="media:enc=utf-8";out="media:enc=utf-8;alpha"`
+	alphaURN := `cap:alpha;in="media:enc=utf8";out="media:enc=utf8;alpha"`
 	alphaParsed, err := urn.NewCapUrnFromString(alphaURN)
 	if err != nil {
 		t.Fatalf("parsing the seed URN: %v", err)
@@ -425,7 +425,7 @@ func Test7158_fabric_conflict_guard(t *testing.T) {
 
 	// A dev cap claiming `alpha` but with a DIFFERENT URN => conflict.
 	betaParsed, err := urn.NewCapUrnFromString(
-		`cap:beta;in="media:enc=utf-8";out="media:enc=utf-8;beta"`)
+		`cap:beta;in="media:enc=utf8";out="media:enc=utf8;beta"`)
 	if err != nil {
 		t.Fatalf("parsing the clashing URN: %v", err)
 	}
@@ -440,7 +440,7 @@ func Test7158_fabric_conflict_guard(t *testing.T) {
 
 	// A brand-new alias the fabric never heard of => fine.
 	gammaParsed, err := urn.NewCapUrnFromString(
-		`cap:gamma;in="media:enc=utf-8";out="media:enc=utf-8;gamma"`)
+		`cap:gamma;in="media:enc=utf8";out="media:enc=utf8;gamma"`)
 	if err != nil {
 		t.Fatalf("parsing the fresh URN: %v", err)
 	}
@@ -625,7 +625,7 @@ func Test12716_an_entry_manifest_with_an_invalid_definition_is_refused(t *testin
 		t.Fatalf("creating project: %v", err)
 	}
 	// `out=` states a greeting and the definition declares no output.
-	u, err := urn.NewCapUrnFromString(`cap:greet;in="media:void";out="media:enc=utf-8;greeting"`)
+	u, err := urn.NewCapUrnFromString(`cap:greet;in="media:void";out="media:enc=utf8;greeting"`)
 	if err != nil {
 		t.Fatalf("cap URN: %v", err)
 	}

@@ -28,8 +28,8 @@ func testRegistry(t *testing.T) *testMediaDefSource {
 	t.Helper()
 	registry := newTestMediaDefSource()
 	for _, def := range []MediaDef{
-		{Urn: "media:enc=utf-8", MediaType: "text/plain", ProfileURI: "https://capdag.com/schema/string"},
-		{Urn: "media:enc=utf-8;record", MediaType: "application/json", ProfileURI: "https://capdag.com/schema/object"},
+		{Urn: "media:enc=utf8", MediaType: "text/plain", ProfileURI: "https://capdag.com/schema/string"},
+		{Urn: "media:enc=utf8;record", MediaType: "application/json", ProfileURI: "https://capdag.com/schema/object"},
 		{Urn: "media:", MediaType: "application/octet-stream"},
 	} {
 		registry.AddSpec(def.ToStored())
@@ -41,11 +41,11 @@ func testRegistry(t *testing.T) *testMediaDefSource {
 func Test088_resolve_seeded_spec(t *testing.T) {
 	registry := testRegistry(t)
 	registry.AddSpec(MediaDef{
-		Urn:       "media:enc=utf-8",
+		Urn:       "media:enc=utf8",
 		MediaType: "text/plain",
 		Title:     "Textable",
 	}.ToStored())
-	resolved, err := ResolveMediaUrn("media:enc=utf-8", registry)
+	resolved, err := ResolveMediaUrn("media:enc=utf8", registry)
 	require.NoError(t, err)
 	assert.Equal(t, "text/plain", resolved.MediaType)
 	assert.Empty(t, resolved.ProfileURI, "abstract value-type spec carries no profile_uri")
@@ -76,15 +76,15 @@ func Test089_resolve_seeded_record_spec(t *testing.T) {
 func Test6282_resolve_custom_media_def(t *testing.T) {
 	registry := newTestMediaDefSource()
 	registry.AddSpec(StoredMediaDef{
-		Urn:        "media:custom-spec;fmt=json",
+		Urn:        "media:custom-spec;enc=utf8;fmt=json",
 		MediaType:  "application/json",
 		Title:      "Custom Spec",
 		ProfileURI: "https://example.com/schema",
 	})
-	resolved, err := ResolveMediaUrn("media:custom-spec;fmt=json", registry)
+	resolved, err := ResolveMediaUrn("media:custom-spec;enc=utf8;fmt=json", registry)
 	require.NoError(t, err)
 	require.NotNil(t, resolved)
-	assert.Equal(t, "media:custom-spec;fmt=json", resolved.SpecID)
+	assert.Equal(t, "media:custom-spec;enc=utf8;fmt=json", resolved.SpecID)
 	assert.Equal(t, "application/json", resolved.MediaType)
 	assert.Equal(t, "https://example.com/schema", resolved.ProfileURI)
 	assert.Nil(t, resolved.Schema)
@@ -98,16 +98,16 @@ func Test6283_resolve_custom_with_schema(t *testing.T) {
 		"properties": map[string]any{"name": map[string]any{"type": "string"}},
 	}
 	registry.AddSpec(StoredMediaDef{
-		Urn:        "media:fmt=json;output-spec;record",
+		Urn:        "media:enc=utf8;fmt=json;output-spec;record",
 		MediaType:  "application/json",
 		Title:      "Output Spec",
 		ProfileURI: "https://example.com/schema/output",
 		Schema:     schema,
 	})
-	resolved, err := ResolveMediaUrn("media:fmt=json;output-spec;record", registry)
+	resolved, err := ResolveMediaUrn("media:enc=utf8;fmt=json;output-spec;record", registry)
 	require.NoError(t, err)
 	require.NotNil(t, resolved)
-	assert.Equal(t, "media:fmt=json;output-spec;record", resolved.SpecID)
+	assert.Equal(t, "media:enc=utf8;fmt=json;output-spec;record", resolved.SpecID)
 	assert.Equal(t, "application/json", resolved.MediaType)
 	assert.Equal(t, "https://example.com/schema/output", resolved.ProfileURI)
 	require.NotNil(t, resolved.Schema)
@@ -233,7 +233,7 @@ func Test99_resolved_is_binary(t *testing.T) {
 // TEST100: Test ResolvedMediaDef is_record returns true when record marker is present
 func Test100_resolved_is_map(t *testing.T) {
 	resolved := &ResolvedMediaDef{
-		SpecID:      standard.MediaJSON, // "media:fmt=json;record"
+		SpecID:      standard.MediaJSON, // "media:enc=utf8;fmt=json;record"
 		MediaType:   "application/json",
 		ProfileURI:  "",
 		Schema:      nil,
@@ -252,7 +252,7 @@ func Test100_resolved_is_map(t *testing.T) {
 // TEST101: Test ResolvedMediaDef is_scalar returns true when list marker is absent
 func Test101_resolved_is_scalar(t *testing.T) {
 	resolved := &ResolvedMediaDef{
-		SpecID:      "media:enc=utf-8",
+		SpecID:      "media:enc=utf8",
 		MediaType:   "text/plain",
 		ProfileURI:  "",
 		Schema:      nil,
@@ -270,7 +270,7 @@ func Test101_resolved_is_scalar(t *testing.T) {
 // TEST102: Test ResolvedMediaDef is_list returns true when list marker is present
 func Test102_resolved_is_list(t *testing.T) {
 	resolved := &ResolvedMediaDef{
-		SpecID:      "media:enc=utf-8;list",
+		SpecID:      "media:enc=utf8;list",
 		MediaType:   "application/json",
 		ProfileURI:  "",
 		Schema:      nil,
@@ -288,7 +288,7 @@ func Test102_resolved_is_list(t *testing.T) {
 // TEST103: Test ResolvedMediaDef is_json returns true when json tag is present
 func Test103_resolved_is_json(t *testing.T) {
 	resolved := &ResolvedMediaDef{
-		SpecID:      "media:fmt=json;record",
+		SpecID:      "media:enc=utf8;fmt=json;record",
 		MediaType:   "application/json",
 		ProfileURI:  "",
 		Schema:      nil,
@@ -305,7 +305,7 @@ func Test103_resolved_is_json(t *testing.T) {
 // TEST104: Test ResolvedMediaDef is_text returns true when enc tag is present
 func Test104_resolved_is_text(t *testing.T) {
 	resolved := &ResolvedMediaDef{
-		SpecID:      "media:enc=utf-8",
+		SpecID:      "media:enc=utf8",
 		MediaType:   "text/plain",
 		ProfileURI:  "",
 		Schema:      nil,
@@ -315,7 +315,7 @@ func Test104_resolved_is_text(t *testing.T) {
 		Metadata:    nil,
 		Extensions:  []string{},
 	}
-	assert.True(t, resolved.HasEncoding(), "enc=utf-8 means text-representable")
+	assert.True(t, resolved.HasEncoding(), "enc=utf8 means text-representable")
 	assert.False(t, resolved.IsJSON())
 }
 
@@ -534,7 +534,7 @@ func Test616_stored_media_def_to_media_def(t *testing.T) {
 func Test288_media_documentation_propagates_through_resolve(t *testing.T) {
 	registry := testRegistry(t)
 	body := "## Markdown body\n\nWith `code` and a [link](https://example.com)."
-	docUrn := "media:doc-test-1131;enc=utf-8"
+	docUrn := "media:doc-test-1131;enc=utf8"
 	spec := MediaDef{
 		Urn:           docUrn,
 		MediaType:     "text/plain",

@@ -385,10 +385,10 @@ func Test260_extract_effective_payload_no_content_type(t *testing.T) {
 
 // TEST261: Test extract_effective_payload with CBOR content extracts matching argument value
 func Test261_extract_effective_payload_cbor_match(t *testing.T) {
-	// Build CBOR arguments: [{media_urn: "media:string;enc=utf-8", value: bytes("hello")}]
+	// Build CBOR arguments: [{media_urn: "media:string;enc=utf8", value: bytes("hello")}]
 	args := []interface{}{
 		map[string]interface{}{
-			"media_urn": "media:string;enc=utf-8",
+			"media_urn": "media:string;enc=utf8",
 			"value":     []byte("hello"),
 		},
 	}
@@ -397,8 +397,8 @@ func Test261_extract_effective_payload_cbor_match(t *testing.T) {
 		t.Fatalf("Failed to encode payload: %v", err)
 	}
 
-	// The cap URN has in=media:string;enc=utf-8
-	capDef := createTestCap(`cap:in="media:string;enc=utf-8";test;out="media:void"`, "Test", "test", nil)
+	// The cap URN has in=media:string;enc=utf8
+	capDef := createTestCap(`cap:in="media:string;enc=utf8";test;out="media:void"`, "Test", "test", nil)
 	result, err := extractEffectivePayload(payload, "application/cbor", capDef, false)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
@@ -441,7 +441,7 @@ func Test262_extract_effective_payload_cbor_no_match(t *testing.T) {
 		t.Fatalf("Failed to encode payload: %v", err)
 	}
 
-	capDef := createTestCap(`cap:in="media:string;enc=utf-8";test;out="media:void"`, "Test", "test", nil)
+	capDef := createTestCap(`cap:in="media:string;enc=utf8";test;out="media:void"`, "Test", "test", nil)
 	_, err = extractEffectivePayload(payload, "application/cbor", capDef, false)
 	if err == nil {
 		t.Fatal("Expected error when no argument matches expected input")
@@ -555,11 +555,11 @@ func Test271_handler_replacement(t *testing.T) {
 func Test272_extract_effective_payload_multiple_args(t *testing.T) {
 	args := []interface{}{
 		map[string]interface{}{
-			"media_urn": "media:other-type;enc=utf-8",
+			"media_urn": "media:other-type;enc=utf8",
 			"value":     []byte("wrong"),
 		},
 		map[string]interface{}{
-			"media_urn": "media:model-spec;enc=utf-8",
+			"media_urn": "media:model-spec;enc=utf8",
 			"value":     []byte("correct"),
 		},
 	}
@@ -568,7 +568,7 @@ func Test272_extract_effective_payload_multiple_args(t *testing.T) {
 		t.Fatalf("Failed to encode payload: %v", err)
 	}
 
-	capDef := createTestCap(`cap:in="media:model-spec;enc=utf-8";infer;out="media:void"`, "Test", "infer", nil)
+	capDef := createTestCap(`cap:in="media:model-spec;enc=utf8";infer;out="media:void"`, "Test", "infer", nil)
 	result, err := extractEffectivePayload(payload, "application/cbor", capDef, false)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
@@ -584,7 +584,7 @@ func Test272_extract_effective_payload_multiple_args(t *testing.T) {
 		t.Errorf("Expected both arguments present, got %d", len(resultArr))
 	}
 
-	inSpec, _ := urn.NewMediaUrnFromString("media:model-spec;enc=utf-8")
+	inSpec, _ := urn.NewMediaUrnFromString("media:model-spec;enc=utf8")
 	var foundValue []byte
 	for _, arg := range resultArr {
 		argMap, ok := arg.(map[interface{}]interface{})
@@ -879,7 +879,7 @@ func Test336_FilePathReadsFilePassesBytes(t *testing.T) {
 		"process",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;enc=utf-8",
+				MediaUrn: "media:file-path;enc=utf8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:document;ext=pdf"),
@@ -958,7 +958,7 @@ func Test337_FilePathWithoutStdinPassesString(t *testing.T) {
 		"test",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;enc=utf-8",
+				MediaUrn: "media:file-path;enc=utf8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					positionSource(0), // NO stdin source!
@@ -999,7 +999,7 @@ func Test338_FilePathViaCliFlag(t *testing.T) {
 		"process",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;enc=utf-8",
+				MediaUrn: "media:file-path;enc=utf8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:document;ext=pdf"),
@@ -1050,7 +1050,7 @@ func Test339_FilePathArrayGlobExpansion(t *testing.T) {
 	}
 
 	batchArg := cap.CapArg{
-		MediaUrn:   "media:file-path;enc=utf-8",
+		MediaUrn:   "media:file-path;enc=utf8",
 		Required:   true,
 		IsSequence: true,
 		Sources: []cap.ArgSource{
@@ -1125,7 +1125,7 @@ func Test340_FileNotFoundClearError(t *testing.T) {
 		"test",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;enc=utf-8",
+				MediaUrn: "media:file-path;enc=utf8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:document;ext=pdf"),
@@ -1173,7 +1173,7 @@ func Test341_StdinPrecedenceOverFilePath(t *testing.T) {
 		"test",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;enc=utf-8",
+				MediaUrn: "media:file-path;enc=utf8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:"), // First
@@ -1215,7 +1215,7 @@ func Test342_FilePathPositionZeroReadsFirstArg(t *testing.T) {
 		"test",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;enc=utf-8",
+				MediaUrn: "media:file-path;enc=utf8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:"),
@@ -1267,10 +1267,10 @@ func Test343_NonFilePathArgsUnaffected(t *testing.T) {
 		"test",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:model-spec;enc=utf-8", // NOT file-path
+				MediaUrn: "media:model-spec;enc=utf8", // NOT file-path
 				Required: true,
 				Sources: []cap.ArgSource{
-					stdinSource("media:model-spec;enc=utf-8"),
+					stdinSource("media:model-spec;enc=utf8"),
 					positionSource(0),
 				},
 			},
@@ -1305,7 +1305,7 @@ func Test6586_FilePathArrayInvalidJSONFails(t *testing.T) {
 		"batch",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;enc=utf-8",
+				MediaUrn: "media:file-path;enc=utf8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:"),
@@ -1350,7 +1350,7 @@ func Test6587_FilePathArrayOneFileMissingFailsHard(t *testing.T) {
 		"batch",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;enc=utf-8",
+				MediaUrn: "media:file-path;enc=utf8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:"),
@@ -1401,7 +1401,7 @@ func Test346_LargeFileReadsSuccessfully(t *testing.T) {
 		"test",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;enc=utf-8",
+				MediaUrn: "media:file-path;enc=utf8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:"),
@@ -1445,7 +1445,7 @@ func Test347_EmptyFileReadsAsEmptyBytes(t *testing.T) {
 		"test",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;enc=utf-8",
+				MediaUrn: "media:file-path;enc=utf8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:"),
@@ -1490,7 +1490,7 @@ func Test348_FilePathConversionRespectsSourceOrder(t *testing.T) {
 		"test",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;enc=utf-8",
+				MediaUrn: "media:file-path;enc=utf8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					positionSource(0),     // First
@@ -1536,7 +1536,7 @@ func Test349_FilePathMultipleSourcesFallback(t *testing.T) {
 		"test",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;enc=utf-8",
+				MediaUrn: "media:file-path;enc=utf8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					cliFlagSource("--file"), // First (not provided)
@@ -1578,12 +1578,12 @@ func Test350_FullCLIModeWithFilePathIntegration(t *testing.T) {
 	}
 
 	capDef := createTestCap(
-		`cap:in="media:document;ext=pdf";process;out="media:result;enc=utf-8"`,
+		`cap:in="media:document;ext=pdf";process;out="media:result;enc=utf8"`,
 		"Process PDF",
 		"process",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;enc=utf-8",
+				MediaUrn: "media:file-path;enc=utf8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:document;ext=pdf"),
@@ -1604,7 +1604,7 @@ func Test350_FullCLIModeWithFilePathIntegration(t *testing.T) {
 	// wrapper to recover the raw file bytes.
 	var receivedPayload []byte
 	runtime.Register(
-		`cap:in="media:document;ext=pdf";process;out="media:result;enc=utf-8"`,
+		`cap:in="media:document;ext=pdf";process;out="media:result;enc=utf8"`,
 		func(frames <-chan Frame, emitter StreamEmitter, peer PeerInvoker) error {
 			payload, err := CollectFirstArg(frames)
 			if err != nil {
@@ -1652,7 +1652,7 @@ func Test350_FullCLIModeWithFilePathIntegration(t *testing.T) {
 // args. Mirrors Rust test351_file_path_array_empty_array.
 func Test6588_FilePathArrayEmptyArray(t *testing.T) {
 	batchArg := cap.CapArg{
-		MediaUrn:   "media:file-path;enc=utf-8",
+		MediaUrn:   "media:file-path;enc=utf8",
 		Required:   false,
 		IsSequence: true,
 		Sources: []cap.ArgSource{
@@ -1669,7 +1669,7 @@ func Test6588_FilePathArrayEmptyArray(t *testing.T) {
 	// CBOR-mode payload: value is an empty Array
 	args := []interface{}{
 		map[string]interface{}{
-			"media_urn": "media:file-path;enc=utf-8",
+			"media_urn": "media:file-path;enc=utf8",
 			"value":     []interface{}{},
 		},
 	}
@@ -1726,7 +1726,7 @@ func Test352_FilePermissionDeniedClearError(t *testing.T) {
 		"test",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;enc=utf-8",
+				MediaUrn: "media:file-path;enc=utf8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:"),
@@ -1759,15 +1759,15 @@ func Test352_FilePermissionDeniedClearError(t *testing.T) {
 // TEST353: CBOR payload format matches between CLI and CBOR mode
 func Test353_CBORPayloadFormatConsistency(t *testing.T) {
 	capDef := createTestCap(
-		`cap:in="media:text;enc=utf-8";test;out="media:void"`,
+		`cap:in="media:text;enc=utf8";test;out="media:void"`,
 		"Test",
 		"test",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:text;enc=utf-8",
+				MediaUrn: "media:text;enc=utf8",
 				Required: true,
 				Sources: []cap.ArgSource{
-					stdinSource("media:text;enc=utf-8"),
+					stdinSource("media:text;enc=utf8"),
 					positionSource(0),
 				},
 			},
@@ -1805,8 +1805,8 @@ func Test353_CBORPayloadFormatConsistency(t *testing.T) {
 		t.Fatal("Expected argument to have media_urn and value fields")
 	}
 
-	if mediaUrn != "media:text;enc=utf-8" {
-		t.Errorf("Expected media_urn 'media:text;enc=utf-8', got: %s", mediaUrn)
+	if mediaUrn != "media:text;enc=utf8" {
+		t.Errorf("Expected media_urn 'media:text;enc=utf8', got: %s", mediaUrn)
 	}
 
 	if string(value) != "test value" {
@@ -1824,7 +1824,7 @@ func Test354_GlobPatternNoMatchesEmptyArray(t *testing.T) {
 		"batch",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;enc=utf-8",
+				MediaUrn: "media:file-path;enc=utf8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:"),
@@ -1877,7 +1877,7 @@ func Test355_GlobPatternSkipsDirectories(t *testing.T) {
 	}
 
 	batchArg := cap.CapArg{
-		MediaUrn:   "media:file-path;enc=utf-8",
+		MediaUrn:   "media:file-path;enc=utf8",
 		Required:   true,
 		IsSequence: true,
 		Sources: []cap.ArgSource{
@@ -1948,7 +1948,7 @@ func Test356_MultipleGlobPatternsCombined(t *testing.T) {
 	}
 
 	batchArg := cap.CapArg{
-		MediaUrn:   "media:file-path;enc=utf-8",
+		MediaUrn:   "media:file-path;enc=utf8",
 		Required:   true,
 		IsSequence: true,
 		Sources: []cap.ArgSource{
@@ -1968,7 +1968,7 @@ func Test356_MultipleGlobPatternsCombined(t *testing.T) {
 	pattern2 := filepath.Join(tempDir, "*.json")
 	args := []interface{}{
 		map[string]interface{}{
-			"media_urn": "media:file-path;enc=utf-8",
+			"media_urn": "media:file-path;enc=utf8",
 			"value":     []interface{}{pattern1, pattern2},
 		},
 	}
@@ -2036,7 +2036,7 @@ func Test357_SymlinksFollowed(t *testing.T) {
 		"test",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;enc=utf-8",
+				MediaUrn: "media:file-path;enc=utf8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:"),
@@ -2081,7 +2081,7 @@ func Test358_BinaryFileNonUTF8(t *testing.T) {
 		"test",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;enc=utf-8",
+				MediaUrn: "media:file-path;enc=utf8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:"),
@@ -2120,7 +2120,7 @@ func Test358_BinaryFileNonUTF8(t *testing.T) {
 // TEST359: Invalid glob pattern fails with clear error
 func Test359_InvalidGlobPatternFails(t *testing.T) {
 	batchArg := cap.CapArg{
-		MediaUrn:   "media:file-path;enc=utf-8",
+		MediaUrn:   "media:file-path;enc=utf8",
 		Required:   true,
 		IsSequence: true,
 		Sources: []cap.ArgSource{
@@ -2138,7 +2138,7 @@ func Test359_InvalidGlobPatternFails(t *testing.T) {
 	// Invalid glob pattern (unclosed bracket) sent in CBOR mode.
 	args := []interface{}{
 		map[string]interface{}{
-			"media_urn": "media:file-path;enc=utf-8",
+			"media_urn": "media:file-path;enc=utf8",
 			"value":     "[invalid",
 		},
 	}
@@ -2170,7 +2170,7 @@ func Test360_ExtractEffectivePayloadWithFileData(t *testing.T) {
 		"process",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;enc=utf-8",
+				MediaUrn: "media:file-path;enc=utf8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:document;ext=pdf"),
@@ -2253,7 +2253,7 @@ func Test361_CLIModeFilePath(t *testing.T) {
 		"process",
 		[]cap.CapArg{
 			{
-				MediaUrn: "media:file-path;enc=utf-8",
+				MediaUrn: "media:file-path;enc=utf8",
 				Required: true,
 				Sources: []cap.ArgSource{
 					stdinSource("media:document;ext=pdf"),
@@ -2529,7 +2529,7 @@ func Test364_CBORModeFilePath(t *testing.T) {
 	// Build CBOR arguments with file-path URN
 	args := []cap.CapArgumentValue{
 		{
-			MediaUrn: "media:file-path;enc=utf-8",
+			MediaUrn: "media:file-path;enc=utf8",
 			Value:    []byte(tempFile),
 		},
 	}
@@ -2564,7 +2564,7 @@ func Test364_CBORModeFilePath(t *testing.T) {
 	mediaUrn, _ := argMap["media_urn"].(string)
 	value, _ := argMap["value"].([]byte)
 
-	if mediaUrn != "media:file-path;enc=utf-8" {
+	if mediaUrn != "media:file-path;enc=utf8" {
 		t.Errorf("Expected media:file-path URN, got: %s", mediaUrn)
 	}
 	if string(value) != tempFile {
@@ -2944,9 +2944,9 @@ func streamsToSlice(streams []testStream) []struct {
 // TEST678: find_stream with exact equivalent URN (same tags, different order) succeeds
 func Test678_find_stream_equivalent_urn(t *testing.T) {
 	streams := streamsToSlice([]testStream{
-		{"media:txt;enc=utf-8", []byte("hello world")},
+		{"media:txt;enc=utf8", []byte("hello world")},
 	})
-	result, err := FindStream(streams, "media:txt;enc=utf-8")
+	result, err := FindStream(streams, "media:txt;enc=utf8")
 	if err != nil {
 		t.Fatalf("FindStream error: %v", err)
 	}
@@ -2958,12 +2958,12 @@ func Test678_find_stream_equivalent_urn(t *testing.T) {
 	}
 }
 
-// TEST679: find_stream with base URN vs full URN fails — is_equivalent is strict This is the root cause of the cartridge_client.rs bug. Sender sent "media:llm-generation-request" but receiver looked for "media:fmt=json;llm-generation-request;record".
+// TEST679: find_stream with base URN vs full URN fails — is_equivalent is strict This is the root cause of the cartridge_client.rs bug. Sender sent "media:llm-generation-request" but receiver looked for "media:enc=utf8;fmt=json;llm-generation-request;record".
 func Test679_find_stream_base_vs_full_fails(t *testing.T) {
 	streams := streamsToSlice([]testStream{
-		{"media:txt;enc=utf-8", []byte("hello")},
+		{"media:txt;enc=utf8", []byte("hello")},
 	})
-	result, _ := FindStream(streams, "media:enc=utf-8")
+	result, _ := FindStream(streams, "media:enc=utf8")
 	if result != nil {
 		t.Fatal("Base URN must not match more specific URN (is_equivalent is strict)")
 	}
@@ -2972,7 +2972,7 @@ func Test679_find_stream_base_vs_full_fails(t *testing.T) {
 // TEST680: require_stream with missing URN returns hard StreamError
 func Test680_require_stream_missing_fails(t *testing.T) {
 	streams := streamsToSlice([]testStream{
-		{"media:txt;enc=utf-8", []byte("hello")},
+		{"media:txt;enc=utf8", []byte("hello")},
 	})
 	_, err := RequireStream(streams, "media:binary")
 	if err == nil {
@@ -2986,9 +2986,9 @@ func Test680_require_stream_missing_fails(t *testing.T) {
 // TEST681: find_stream with multiple streams returns the correct one
 func Test681_find_stream_multiple(t *testing.T) {
 	streams := streamsToSlice([]testStream{
-		{"media:txt;enc=utf-8", []byte("text data")},
+		{"media:txt;enc=utf8", []byte("text data")},
 		{"media:ext=png;image", []byte("image data")},
-		{"media:fmt=json", []byte("json data")},
+		{"media:enc=utf8;fmt=json", []byte("json data")},
 	})
 	result, err := FindStream(streams, "media:ext=png;image")
 	if err != nil {
@@ -3002,9 +3002,9 @@ func Test681_find_stream_multiple(t *testing.T) {
 // TEST682: require_stream_str returns UTF-8 string for text data
 func Test682_require_stream_returns_data(t *testing.T) {
 	streams := streamsToSlice([]testStream{
-		{"media:txt;enc=utf-8", []byte("hello text")},
+		{"media:txt;enc=utf8", []byte("hello text")},
 	})
-	result, err := RequireStream(streams, "media:txt;enc=utf-8")
+	result, err := RequireStream(streams, "media:txt;enc=utf8")
 	if err != nil {
 		t.Fatalf("RequireStream failed: %v", err)
 	}
@@ -3016,7 +3016,7 @@ func Test682_require_stream_returns_data(t *testing.T) {
 // TEST683: find_stream returns None for invalid media URN string (not a parse error — just None)
 func Test683_find_stream_invalid_urn_returns_nil(t *testing.T) {
 	streams := streamsToSlice([]testStream{
-		{"media:txt;enc=utf-8", []byte("data")},
+		{"media:txt;enc=utf8", []byte("data")},
 	})
 	found, _ := FindStream(streams, "")
 	if found != nil {
@@ -3305,7 +3305,7 @@ func extractStreamsFromFrames(t *testing.T, frames []Frame) []struct {
 
 // TEST675: build_request_frames with full media URN preserves it in STREAM_START frame
 func Test675_build_request_frames_preserves_media_urn_in_stream_start(t *testing.T) {
-	fullUrn := "media:fmt=json;llm-generation-request;record"
+	fullUrn := "media:enc=utf8;fmt=json;llm-generation-request;record"
 	arg := cap.NewCapArgumentValue(fullUrn, []byte("{\"prompt\":\"test\"}"))
 	rid := NewMessageIdRandom()
 	frames := BuildRequestFrames(rid, "cap:test", []cap.CapArgumentValue{arg}, 32768)
@@ -3329,7 +3329,7 @@ func Test675_build_request_frames_preserves_media_urn_in_stream_start(t *testing
 
 // TEST676: Full round-trip: build_request_frames → extract streams → find_stream succeeds
 func Test676_build_request_frames_round_trip_find_stream_succeeds(t *testing.T) {
-	fullUrn := "media:fmt=json;llm-generation-request;record"
+	fullUrn := "media:enc=utf8;fmt=json;llm-generation-request;record"
 	payload := []byte("{\"prompt\":\"hello\",\"model_spec\":\"test\"}")
 	arg := cap.NewCapArgumentValue(fullUrn, payload)
 	rid := NewMessageIdRandom()
@@ -3350,11 +3350,11 @@ func Test676_build_request_frames_round_trip_find_stream_succeeds(t *testing.T) 
 	}
 }
 
-// TEST677: build_request_frames with BASE URN → find_stream with FULL URN FAILS This documents the root cause of the cartridge_client.rs bug: sender used "media:llm-generation-request" (base), receiver looked for "media:fmt=json;llm-generation-request;record" (full). is_equivalent requires exact tag set match, so base != full.
+// TEST677: build_request_frames with BASE URN → find_stream with FULL URN FAILS This documents the root cause of the cartridge_client.rs bug: sender used "media:llm-generation-request" (base), receiver looked for "media:enc=utf8;fmt=json;llm-generation-request;record" (full). is_equivalent requires exact tag set match, so base != full.
 func Test677_base_urn_does_not_match_full_urn_in_find_stream(t *testing.T) {
 	// Sender uses BASE URN (the bug)
 	baseUrn := "media:llm-generation-request"
-	fullUrn := "media:fmt=json;llm-generation-request;record"
+	fullUrn := "media:enc=utf8;fmt=json;llm-generation-request;record"
 	arg := cap.NewCapArgumentValue(baseUrn, []byte("{}"))
 	rid := NewMessageIdRandom()
 	frames := BuildRequestFrames(rid, "cap:test", []cap.CapArgumentValue{arg}, 32768)
@@ -3830,7 +3830,7 @@ func Test540_output_stream_close_sends_stream_end(t *testing.T) {
 // emitted after that flush ships with Finalize. Nothing is lost, order is
 // preserved, and the frame count is the batch count, not the emission count.
 func Test8119_coalesce_age_bound_flushes_on_next_write(t *testing.T) {
-	frames := outputEmitterCapture(t, "stream-1", "media:enc=utf-8", 256000, func(e *threadSafeEmitter) {
+	frames := outputEmitterCapture(t, "stream-1", "media:enc=utf8", 256000, func(e *threadSafeEmitter) {
 		_ = e.EmitCbor([]byte("ab"))
 		_ = e.EmitCbor([]byte("cd"))
 		// Cross the age bound, then emit again: THIS emission must flush all
@@ -3866,7 +3866,7 @@ func Test8119_coalesce_age_bound_flushes_on_next_write(t *testing.T) {
 // ship first, then the barrier value, and Finalize flushes the tail. The
 // STREAM_END promises the coalesced count.
 func Test8120_non_bytes_emission_barriers_coalesced_bytes(t *testing.T) {
-	frames := outputEmitterCapture(t, "stream-1", "media:enc=utf-8", 256000, func(e *threadSafeEmitter) {
+	frames := outputEmitterCapture(t, "stream-1", "media:enc=utf8", 256000, func(e *threadSafeEmitter) {
 		_ = e.EmitCbor([]byte("tok1"))
 		_ = e.EmitCbor([]byte("tok2"))
 		_ = e.EmitCbor(uint64(7))
@@ -4226,7 +4226,7 @@ func Test7050_sender_stalls_at_window_and_resumes_on_grant(t *testing.T) {
 	rid := NewMessageIdRandom()
 
 	// Window of 4 chunks; payload needs 6 chunks at max_chunk=4 bytes.
-	emitter := newThreadSafeEmitter(w, rid, nil, "s1", "media:enc=utf-8", 4, router, 4)
+	emitter := newThreadSafeEmitter(w, rid, nil, "s1", "media:enc=utf8", 4, router, 4)
 
 	data := make([]byte, 24) // 6 chunks of 4 bytes
 	for i := range data {
@@ -4306,7 +4306,7 @@ func Test7062_log_flows_while_window_exhausted(t *testing.T) {
 	router := NewCreditRouter()
 	rid := NewMessageIdRandom()
 
-	emitter := newThreadSafeEmitter(w, rid, nil, "s1", "media:enc=utf-8", 4, router, 1)
+	emitter := newThreadSafeEmitter(w, rid, nil, "s1", "media:enc=utf8", 4, router, 1)
 	t.Cleanup(func() { router.CloseRequest(rid, "test-cleanup") })
 
 	// Exhaust the window (1 chunk), then block trying to send another.
@@ -4364,7 +4364,7 @@ func TestPeerInvokerArgStreamsAreCredited(t *testing.T) {
 	for i := range argData {
 		argData[i] = byte(i)
 	}
-	args := []cap.CapArgumentValue{cap.NewCapArgumentValue("media:enc=utf-8", argData)}
+	args := []cap.CapArgumentValue{cap.NewCapArgumentValue("media:enc=utf8", argData)}
 
 	invokeDone := make(chan error, 1)
 	go func() {
@@ -4558,7 +4558,7 @@ func Test7052_input_grants_are_batched(t *testing.T) {
 	if err := hostWriter.WriteFrame(NewReq(rid, testCapUrn, nil, "application/cbor")); err != nil {
 		t.Fatalf("REQ: %v", err)
 	}
-	if err := hostWriter.WriteFrame(NewStreamStart(rid, "s1", "media:enc=utf-8", boolPtr(false))); err != nil {
+	if err := hostWriter.WriteFrame(NewStreamStart(rid, "s1", "media:enc=utf8", boolPtr(false))); err != nil {
 		t.Fatalf("STREAM_START: %v", err)
 	}
 	for i := uint64(0); i < 16; i++ {
@@ -5217,7 +5217,7 @@ func Test351_frames_cut_short_are_an_error(t *testing.T) {
 		t.Fatal(err)
 	}
 	chunk := *NewChunk(rid, "arg0", 0, payload, 0, ComputeChecksum(payload))
-	start := *NewStreamStart(rid, "arg0", "media:enc=utf-8", boolPtr(false))
+	start := *NewStreamStart(rid, "arg0", "media:enc=utf8", boolPtr(false))
 	feed := func(frames ...Frame) <-chan Frame {
 		ch := make(chan Frame, len(frames))
 		for _, f := range frames {
@@ -5233,7 +5233,7 @@ func Test351_frames_cut_short_are_an_error(t *testing.T) {
 		"CollectStreams":        func(c <-chan Frame) error { _, err := CollectStreams(c); return err },
 		"CollectAllArgs":        func(c <-chan Frame) error { _, err := CollectAllArgs(c); return err },
 		"CollectFirstArg":       func(c <-chan Frame) error { _, err := CollectFirstArg(c); return err },
-		"CollectArgsByMediaUrn": func(c <-chan Frame) error { _, err := CollectArgsByMediaUrn(c, "media:enc=utf-8"); return err },
+		"CollectArgsByMediaUrn": func(c <-chan Frame) error { _, err := CollectArgsByMediaUrn(c, "media:enc=utf8"); return err },
 		"CollectPeerResponse":   func(c <-chan Frame) error { _, err := CollectPeerResponse(c); return err },
 	}
 	for name, read := range readers {

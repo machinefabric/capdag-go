@@ -38,8 +38,8 @@ func Test1520_effective_capacity_min_semantics(t *testing.T) {
 // with capacities resolved by pool name uniformly.
 func Test1521_declared_states_materialize_every_pool(t *testing.T) {
 	declaredCaps := poolTestCaps(t,
-		`cap:generate;in="media:enc=utf-8";out="media:enc=utf-8"`,
-		`cap:embed;in="media:enc=utf-8";out="media:embeddings"`,
+		`cap:generate;in="media:enc=utf8";out="media:enc=utf8"`,
+		`cap:embed;in="media:enc=utf8";out="media:embeddings"`,
 	)
 	generate := declaredCaps[0].String()
 	embed := declaredCaps[1].String()
@@ -86,7 +86,7 @@ func Test1521_declared_states_materialize_every_pool(t *testing.T) {
 // named like a cap URN, an unknown member, a duplicate member, and an
 // unknown capacity key are each refused with the offender named.
 func Test1522_pool_declaration_validation_refuses_illegal_shapes(t *testing.T) {
-	declaredCaps := poolTestCaps(t, `cap:generate;in="media:enc=utf-8";out="media:enc=utf-8"`)
+	declaredCaps := poolTestCaps(t, `cap:generate;in="media:enc=utf8";out="media:enc=utf8"`)
 	generate := declaredCaps[0].String()
 
 	reserved := &PoolDeclarations{Pools: map[string][]string{PoolAll: {generate}}}

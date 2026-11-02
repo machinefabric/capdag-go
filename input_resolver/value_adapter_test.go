@@ -49,8 +49,8 @@ func Test1221_RefineWithMatchingAdapter(t *testing.T) {
 
 	// The adapter is keyed by the `media:test` prefix; the base URN starts
 	// with that prefix, so the adapter fires and appends `;refined`.
-	result := registry.RefineMediaUrn("media:test;enc=utf-8", "a-special-value")
-	if result != "media:test;enc=utf-8;refined" {
+	result := registry.RefineMediaUrn("media:test;enc=utf8", "a-special-value")
+	if result != "media:test;enc=utf8;refined" {
 		t.Fatalf("got %q", result)
 	}
 }
@@ -60,8 +60,8 @@ func Test1222_RefineNoMatchingAdapter(t *testing.T) {
 	registry := NewValueAdapterRegistry()
 	registry.Register("media:test", specialAdapter{})
 
-	result := registry.RefineMediaUrn("media:other;enc=utf-8", "a-special-value")
-	if result != "media:other;enc=utf-8" {
+	result := registry.RefineMediaUrn("media:other;enc=utf8", "a-special-value")
+	if result != "media:other;enc=utf8" {
 		t.Fatalf("got %q", result)
 	}
 }
@@ -71,8 +71,8 @@ func Test1223_RefineAdapterReturnsNone(t *testing.T) {
 	registry := NewValueAdapterRegistry()
 	registry.Register("media:test", specialAdapter{})
 
-	result := registry.RefineMediaUrn("media:test;enc=utf-8", "ordinary-value")
-	if result != "media:test;enc=utf-8" {
+	result := registry.RefineMediaUrn("media:test;enc=utf8", "ordinary-value")
+	if result != "media:test;enc=utf8" {
 		t.Fatalf("got %q", result)
 	}
 }
@@ -115,11 +115,11 @@ func Test1226_HasAdapter(t *testing.T) {
 // TEST1228: Value adapters can append a more specific marker when both base URN and value match.
 func Test1228_ValueAdapterRefineMatch(t *testing.T) {
 	adapter := testValueAdapter{}
-	result := adapter.Refine("media:enc=utf-8;test", "something-special")
+	result := adapter.Refine("media:enc=utf8;test", "something-special")
 	if result == nil {
 		t.Fatal("expected non-nil refinement")
 	}
-	if result.MediaUrn != "media:enc=utf-8;test;special" {
+	if result.MediaUrn != "media:enc=utf8;test;special" {
 		t.Fatalf("got %q", result.MediaUrn)
 	}
 }
@@ -127,7 +127,7 @@ func Test1228_ValueAdapterRefineMatch(t *testing.T) {
 // TEST1229: Value adapters return no refinement when the base media URN is outside their domain.
 func Test1229_ValueAdapterRefineNoMatchBase(t *testing.T) {
 	adapter := testValueAdapter{}
-	result := adapter.Refine("media:enc=utf-8;other", "something-special")
+	result := adapter.Refine("media:enc=utf8;other", "something-special")
 	if result != nil {
 		t.Fatalf("expected nil, got %v", result)
 	}
@@ -136,7 +136,7 @@ func Test1229_ValueAdapterRefineNoMatchBase(t *testing.T) {
 // TEST1230: Value adapters return no refinement when the inspected value does not match.
 func Test1230_ValueAdapterRefineNoMatchValue(t *testing.T) {
 	adapter := testValueAdapter{}
-	result := adapter.Refine("media:enc=utf-8;test", "ordinary-value")
+	result := adapter.Refine("media:enc=utf8;test", "ordinary-value")
 	if result != nil {
 		t.Fatalf("expected nil, got %v", result)
 	}

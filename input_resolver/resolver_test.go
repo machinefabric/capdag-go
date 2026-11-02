@@ -42,7 +42,7 @@ func createTestFabricRegistry(t *testing.T) *testMediaDefSource {
 	// JSON family.
 	registry.AddSpec(media.StoredMediaDef{
 		Version:    0,
-		Urn:        "media:fmt=json;record",
+		Urn:        "media:enc=utf8;fmt=json;record",
 		MediaType:  "application/json",
 		Title:      "JSON",
 		Extensions: []string{"json"},
@@ -51,7 +51,7 @@ func createTestFabricRegistry(t *testing.T) *testMediaDefSource {
 	// Plain text.
 	registry.AddSpec(media.StoredMediaDef{
 		Version:    0,
-		Urn:        "media:enc=utf-8;ext=txt;list",
+		Urn:        "media:enc=utf8;ext=txt;list;plain-text",
 		MediaType:  "text/plain",
 		Title:      "Text",
 		Extensions: []string{"txt"},
@@ -62,7 +62,7 @@ func createTestFabricRegistry(t *testing.T) *testMediaDefSource {
 	// filtered out.
 	registry.AddSpec(media.StoredMediaDef{
 		Version:   0,
-		Urn:       "media:enc=utf-8;model-spec",
+		Urn:       "media:enc=utf8;model-spec",
 		MediaType: "text/plain",
 		Title:     "Model spec",
 		Validation: &media.MediaValidation{
@@ -198,16 +198,16 @@ func Test1098_ExtensionBasedPdf(t *testing.T) {
 // TEST1236: Colon-delimited model spec text survives TXT candidate discrimination.
 func Test1236_Disc2ModelSpecValidationPatternFiltersContent(t *testing.T) {
 	registry := createTestFabricRegistry(t)
-	candidates := []string{"media:enc=utf-8;model-spec"}
+	candidates := []string{"media:enc=utf8;model-spec"}
 
 	// Spec-shaped content survives the regex filter.
 	survivors := DiscriminateCandidatesByValidation(
 		[]byte("hf:MaziyarPanahi/Mistral-7B-Instruct-v0.3-GGUF"),
 		candidates,
 		registry,
-		"media:enc=utf-8",
+		"media:enc=utf8",
 	)
-	if !containsStr(survivors, "media:enc=utf-8;model-spec") {
+	if !containsStr(survivors, "media:enc=utf8;model-spec") {
 		t.Fatalf("spec-shaped content must survive, got: %v", survivors)
 	}
 
@@ -216,9 +216,9 @@ func Test1236_Disc2ModelSpecValidationPatternFiltersContent(t *testing.T) {
 		[]byte("this is not a model spec"),
 		candidates,
 		registry,
-		"media:enc=utf-8",
+		"media:enc=utf8",
 	)
-	if containsStr(survivorsProse, "media:enc=utf-8;model-spec") {
+	if containsStr(survivorsProse, "media:enc=utf8;model-spec") {
 		t.Fatalf("prose must NOT survive, got: %v", survivorsProse)
 	}
 }
@@ -255,13 +255,13 @@ func Test1288_StructureFromMarkerTags(t *testing.T) {
 	if got := structureFromMarkerTags(mustUrn("media:document;ext=pdf")); got != ScalarOpaque {
 		t.Errorf("ext=pdf → %v, want ScalarOpaque", got)
 	}
-	if got := structureFromMarkerTags(mustUrn("media:fmt=json;record")); got != ScalarRecord {
+	if got := structureFromMarkerTags(mustUrn("media:enc=utf8;fmt=json;record")); got != ScalarRecord {
 		t.Errorf("fmt=json;record → %v, want ScalarRecord", got)
 	}
-	if got := structureFromMarkerTags(mustUrn("media:enc=utf-8;list")); got != ListOpaque {
-		t.Errorf("enc=utf-8;list → %v, want ListOpaque", got)
+	if got := structureFromMarkerTags(mustUrn("media:enc=utf8;list")); got != ListOpaque {
+		t.Errorf("enc=utf8;list → %v, want ListOpaque", got)
 	}
-	if got := structureFromMarkerTags(mustUrn("media:fmt=json;list;record")); got != ListRecord {
+	if got := structureFromMarkerTags(mustUrn("media:enc=utf8;fmt=json;list;record")); got != ListRecord {
 		t.Errorf("fmt=json;list;record → %v, want ListRecord", got)
 	}
 }
@@ -293,11 +293,11 @@ func Test1286_ConfirmedAdapterReturnsUrns(t *testing.T) {
 	adapterRegistry := NewMediaAdapterRegistry(registry)
 
 	// Register an adapter for media:fmt=json.
-	if err := adapterRegistry.RegisterCapGroup("test-group", []string{"media:fmt=json"}, "test-cartridge"); err != nil {
+	if err := adapterRegistry.RegisterCapGroup("test-group", []string{"media:enc=utf8;fmt=json"}, "test-cartridge"); err != nil {
 		t.Fatalf("registration failed: %v", err)
 	}
 
-	invoker := &mockInvoker{response: []string{"media:fmt=json;record"}}
+	invoker := &mockInvoker{response: []string{"media:enc=utf8;fmt=json;record"}}
 
 	resolved, err := DetectFileConfirmed(context.Background(), path, adapterRegistry, invoker)
 	if err != nil {
@@ -319,7 +319,7 @@ func Test1287_ConfirmedAllAdaptersNoMatch(t *testing.T) {
 	registry := createTestFabricRegistry(t)
 	adapterRegistry := NewMediaAdapterRegistry(registry)
 
-	if err := adapterRegistry.RegisterCapGroup("test-group", []string{"media:fmt=json"}, "test-cartridge"); err != nil {
+	if err := adapterRegistry.RegisterCapGroup("test-group", []string{"media:enc=utf8;fmt=json"}, "test-cartridge"); err != nil {
 		t.Fatalf("registration failed: %v", err)
 	}
 

@@ -14,9 +14,9 @@ import (
 // Test helper for manifest tests - use proper media URNs with tags
 func manifestTestUrn(tags string) string {
 	if tags == "" {
-		return `cap:in="media:void";out="media:fmt=json;record"`
+		return `cap:in="media:void";out="media:enc=utf8;fmt=json;record"`
 	}
-	return `cap:in="media:void";out="media:fmt=json;record";` + tags
+	return `cap:in="media:void";out="media:enc=utf8;fmt=json;record";` + tags
 }
 
 // TEST148: Manifest creation with cap groups
@@ -352,7 +352,7 @@ func Test1284_cap_group_with_adapter_urns(t *testing.T) {
 	group := CapGroup{
 		Name:        "data-formats",
 		Caps:        []cap.Cap{*capDef},
-		AdapterUrns: []string{"media:fmt=json", "media:fmt=csv"},
+		AdapterUrns: []string{"media:enc=utf8;fmt=json", "media:enc=utf8;fmt=csv"},
 	}
 
 	manifest := NewCapManifest("TestCartridge", "1.0.0", "release", nil, "Test", []CapGroup{group})
@@ -362,8 +362,8 @@ func Test1284_cap_group_with_adapter_urns(t *testing.T) {
 
 	jsonStr := string(jsonData)
 	assert.Contains(t, jsonStr, `"adapter_urns"`)
-	assert.Contains(t, jsonStr, "media:fmt=json")
-	assert.Contains(t, jsonStr, "media:fmt=csv")
+	assert.Contains(t, jsonStr, "media:enc=utf8;fmt=json")
+	assert.Contains(t, jsonStr, "media:enc=utf8;fmt=csv")
 
 	var deserialized CapManifest
 	err = json.Unmarshal(jsonData, &deserialized)
@@ -530,7 +530,7 @@ func Test12711_validate_refuses_an_invalid_definition(t *testing.T) {
 	}
 	complete := func() *cap.Cap {
 		c := convert()
-		c.AddOutput(*cap.NewCapOutput("media:fmt=json;record", "record", "The record"))
+		c.AddOutput(*cap.NewCapOutput("media:enc=utf8;fmt=json;record", "record", "The record"))
 		return c
 	}
 	assert.NoError(t, manifestWith(complete()).Validate())
@@ -543,7 +543,7 @@ func Test12711_validate_refuses_an_invalid_definition(t *testing.T) {
 
 	// Two arguments under one name.
 	twins := complete()
-	for _, each := range [][2]string{{"media:enc=utf-8", "--a"}, {"media:integer", "--b"}} {
+	for _, each := range [][2]string{{"media:enc=utf8", "--a"}, {"media:integer", "--b"}} {
 		flag := each[1]
 		twins.Args = append(twins.Args, cap.NewCapArg(each[0], "same", false, []cap.ArgSource{{CliFlag: &flag}}))
 	}
@@ -572,14 +572,14 @@ func Test12717_an_advertised_manifest_is_parsed_and_checked(t *testing.T) {
 		return cap.NewCap(u, "Convert", []string{"convert"})
 	}
 	complete := convert()
-	complete.AddOutput(*cap.NewCapOutput("media:fmt=json;record", "record", "The record"))
+	complete.AddOutput(*cap.NewCapOutput("media:enc=utf8;fmt=json;record", "record", "The record"))
 	taken, err := CapManifestFromAdvertised(manifestWith(complete))
 	require.NoError(t, err, "a valid manifest")
 	require.Len(t, taken.AllCaps(), 2)
 	caps := taken.AllCaps()
 	record := caps[1].OutputNamed("record")
 	require.NotNil(t, record)
-	assert.Equal(t, "media:fmt=json;record", record.MediaUrn)
+	assert.Equal(t, "media:enc=utf8;fmt=json;record", record.MediaUrn)
 
 	_, err = CapManifestFromAdvertised(manifestWith(convert()))
 	require.Error(t, err)

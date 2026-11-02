@@ -132,7 +132,7 @@ func Test12732_the_forms_of_a_wiring(t *testing.T) {
 // keyword where a header puts it.
 func Test12734_cap_headers_and_machine_headers(t *testing.T) {
 	statements, err := parseSyntax(
-		"extract cap:in=\"media:document;ext=pdf\";extract;out=\"media:enc=utf-8\"\n" +
+		"extract cap:in=\"media:document;ext=pdf\";extract;out=\"media:enc=utf8\"\n" +
 			"clean machine \"lib/clean \\\"v2\\\".machine\"\n" +
 			"[machine cap:in=media:;machine;out=media:]\n" +
 			"machine -> machine -> machinery",
@@ -142,7 +142,7 @@ func Test12734_cap_headers_and_machine_headers(t *testing.T) {
 
 	require.Equal(t, syntaxCapHeader, statements[0].kind)
 	assert.Equal(t, "extract", statements[0].alias)
-	assert.Equal(t, `cap:in="media:document;ext=pdf";extract;out="media:enc=utf-8"`, statements[0].capUrn)
+	assert.Equal(t, `cap:in="media:document;ext=pdf";extract;out="media:enc=utf8"`, statements[0].capUrn)
 
 	require.Equal(t, syntaxMachineHeader, statements[1].kind)
 	assert.Equal(t, "clean", statements[1].alias)

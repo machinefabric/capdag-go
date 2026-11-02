@@ -21,9 +21,9 @@ func createTestRegistry(t *testing.T) *testMediaDefSource {
 	t.Helper()
 	registry := newTestMediaDefSource()
 	for _, def := range []media.MediaDef{
-		{Urn: "media:enc=utf-8", MediaType: "text/plain", ProfileURI: media.ProfileStr},
-		{Urn: "media:record;enc=utf-8", MediaType: "application/json", ProfileURI: media.ProfileObj},
-		{Urn: "media:fmt=json;record", MediaType: "application/json", ProfileURI: media.ProfileObj},
+		{Urn: "media:enc=utf8", MediaType: "text/plain", ProfileURI: media.ProfileStr},
+		{Urn: "media:record;enc=utf8", MediaType: "application/json", ProfileURI: media.ProfileObj},
+		{Urn: "media:enc=utf8;fmt=json;record", MediaType: "application/json", ProfileURI: media.ProfileObj},
 		{Urn: "media:", MediaType: "application/octet-stream"},
 		{Urn: "media:void", MediaType: "application/x-void", ProfileURI: media.ProfileVoid},
 	} {
@@ -35,9 +35,9 @@ func createTestRegistry(t *testing.T) *testMediaDefSource {
 // Test helper for integration tests - use proper media URNs with tags
 func intTestUrn(tags string) string {
 	if tags == "" {
-		return `cap:in="media:void";out="media:fmt=json;record"`
+		return `cap:in="media:void";out="media:enc=utf8;fmt=json;record"`
 	}
-	return `cap:in="media:void";out="media:fmt=json;record";` + tags
+	return `cap:in="media:void";out="media:enc=utf8;fmt=json;record";` + tags
 }
 
 // Test6428_IntegrationVersionlessCapCreation verifies caps can be created without version fields
@@ -51,7 +51,7 @@ func Test6428_IntegrationVersionlessCapCreation(t *testing.T) {
 
 	// Verify the cap has direction specs in canonical form
 	assert.Contains(t, capDef.UrnString(), `in=media:void`)
-	assert.Contains(t, capDef.UrnString(), `out="media:fmt=json;record"`)
+	assert.Contains(t, capDef.UrnString(), `out="media:enc=utf8;fmt=json;record"`)
 	assert.Equal(t, "transform-command", capDef.PrimaryAlias())
 
 	// Test case 2: Create cap with description but no version
@@ -118,7 +118,7 @@ func Test6433_IntegrationCapValidation(t *testing.T) {
 	coordinator := cap.NewCapValidationCoordinator()
 
 	// Create a cap with arguments - use proper tags
-	urn, err := urn.NewCapUrnFromString(`cap:in="media:void";process;out="media:fmt=json;record";target=data`)
+	urn, err := urn.NewCapUrnFromString(`cap:in="media:void";process;out="media:enc=utf8;fmt=json;record";target=data`)
 	require.NoError(t, err)
 
 	capDef := cap.NewCap(urn, "Data Processor", []string{"process-data"})
@@ -192,12 +192,12 @@ func Test0183_IntegrationMediaUrnResolution(t *testing.T) {
 
 	// Test custom media URN resolution
 	registry.AddSpec(media.MediaDef{
-		Urn:        "media:custom;enc=utf-8",
+		Urn:        "media:custom;enc=utf8",
 		MediaType:  "text/html",
 		ProfileURI: "https://example.com/schema/html",
 	}.ToStored())
 
-	resolved, err = media.ResolveMediaUrn("media:custom;enc=utf-8", registry)
+	resolved, err = media.ResolveMediaUrn("media:custom;enc=utf8", registry)
 	require.NoError(t, err)
 	assert.Equal(t, "text/html", resolved.MediaType)
 	assert.Equal(t, "https://example.com/schema/html", resolved.ProfileURI)
@@ -210,18 +210,18 @@ func Test0183_IntegrationMediaUrnResolution(t *testing.T) {
 // Test0209_IntegrationMediaDefConstruction verifies media.MediaDef construction
 func Test0209_IntegrationMediaDefConstruction(t *testing.T) {
 	// Test basic construction
-	def := media.NewMediaDef("media:test;enc=utf-8", "text/plain", "https://capdag.com/schema/str")
-	assert.Equal(t, "media:test;enc=utf-8", def.Urn)
+	def := media.NewMediaDef("media:test;enc=utf8", "text/plain", "https://capdag.com/schema/str")
+	assert.Equal(t, "media:test;enc=utf8", def.Urn)
 	assert.Equal(t, "text/plain", def.MediaType)
 	assert.Equal(t, "https://capdag.com/schema/str", def.ProfileURI)
 
 	// Test with title
-	defWithTitle := media.NewMediaDefWithTitle("media:test;enc=utf-8", "text/plain", "https://example.com/schema", "Test Title")
+	defWithTitle := media.NewMediaDefWithTitle("media:test;enc=utf8", "text/plain", "https://example.com/schema", "Test Title")
 	assert.Equal(t, "Test Title", defWithTitle.Title)
 
 	// Test object form with schema
 	schema := map[string]interface{}{"type": "object"}
-	schemaDef := media.NewMediaDefWithSchema("media:test;fmt=json", "application/json", "https://example.com/schema", schema)
+	schemaDef := media.NewMediaDefWithSchema("media:test;fmt=json;enc=utf8", "application/json", "https://example.com/schema", schema)
 	assert.NotNil(t, schemaDef.Schema)
 }
 
@@ -1061,7 +1061,7 @@ func Test0269_ArgumentsRoundtrip(t *testing.T) {
 
 	// Create arguments
 	args := []cap.CapArgumentValue{
-		cap.NewCapArgumentValueFromStr("media:model-spec;enc=utf-8", "gpt-4"),
+		cap.NewCapArgumentValueFromStr("media:model-spec;enc=utf8", "gpt-4"),
 	}
 
 	// Encode arguments to CBOR
@@ -1415,7 +1415,7 @@ func Test6532_ArgumentsMultiple(t *testing.T) {
 
 	// Create multiple arguments
 	args := []cap.CapArgumentValue{
-		cap.NewCapArgumentValueFromStr("media:model-spec;enc=utf-8", "gpt-4"),
+		cap.NewCapArgumentValueFromStr("media:model-spec;enc=utf8", "gpt-4"),
 		cap.NewCapArgumentValue("media:document;ext=pdf", []byte{0x89, 0x50, 0x4E, 0x47}),
 	}
 

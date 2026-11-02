@@ -21,17 +21,17 @@ const CapDiscard = "cap:out=media:void"
 // Default implementation returns empty END (no match).
 // Cartridges that inspect file content override this with a handler
 // that returns {"media_urns": [...]}.
-const CapAdapterSelection = `cap:in="media:";out="media:adapter-selection;fmt=json;record"`
+const CapAdapterSelection = `cap:in="media:";out="media:adapter-selection;enc=utf8;fmt=json;record"`
 
 // CapLookupCapFabric resolves a canonical cap URN to its full flattened
 // cap definition by fetching from the public fabric registry. Implemented
 // by fetchcartridge.
-const CapLookupCapFabric = `cap:in="media:cap-urn;enc=utf-8";fabric;lookup-cap;out="media:cap-definition;fmt=json;record"`
+const CapLookupCapFabric = `cap:in="media:cap-urn;enc=utf8";fabric;lookup-cap;out="media:cap-definition;enc=utf8;fmt=json;record"`
 
 // CapLookupMediaDefFabric resolves a canonical media URN to its full
 // media definition by fetching from the public fabric registry.
 // Implemented by fetchcartridge.
-const CapLookupMediaDefFabric = `cap:in="media:enc=utf-8;media-urn";fabric;lookup-media-def;out="media:fmt=json;media-definition;record"`
+const CapLookupMediaDefFabric = `cap:in="media:enc=utf8;media-urn";fabric;lookup-media-def;out="media:enc=utf8;fmt=json;media-definition;record"`
 
 // =============================================================================
 // STANDARD CAP URN BUILDERS
@@ -40,17 +40,17 @@ const CapLookupMediaDefFabric = `cap:in="media:enc=utf-8;media-urn";fabric;looku
 
 // LlmGenerateTextUrn builds the URN for generic text-generation capability.
 func LlmGenerateTextUrn() string {
-	return fmt.Sprintf(`cap:in="%s";llm;ml-model;generate-text;out="%s"`, MediaString, MediaString)
+	return fmt.Sprintf(`cap:in="%s";llm;ml-model;generate-text;out="%s"`, MediaPlainText, MediaTXT)
 }
 
 // ModelAvailabilityUrn builds a URN string for model-availability capability
 func ModelAvailabilityUrn() string {
-	return "cap:in=media:enc=utf-8;model-spec;model-availability;out=media:availability-output"
+	return "cap:in=media:enc=utf8;model-spec;model-availability;out=media:availability-output"
 }
 
 // ModelPathUrn builds a URN string for model-path capability
 func ModelPathUrn() string {
-	return "cap:in=media:enc=utf-8;model-spec;model-path;out=media:path-output"
+	return "cap:in=media:enc=utf8;model-spec;model-path;out=media:path-output"
 }
 
 // MediaUrnForType maps a type name to its media URN constant.
@@ -130,14 +130,14 @@ func AllCoercionPaths() [][2]string {
 // (`{same, confidence, reason}`) out. The first of the
 // semantic-primitive family (docs/semantic-primitives.md).
 func SameUrn(langCode string) string {
-	return fmt.Sprintf(`cap:same;language=%s;constrained;in="%s";out="%s"`, langCode, MediaString, MediaSemanticJudgment)
+	return fmt.Sprintf(`cap:same;language=%s;constrained;in="%s";out="%s"`, langCode, MediaPlainText, MediaSemanticJudgment)
 }
 
 // semanticJudgmentUrn builds the shared shape of the semantic-primitive
 // judgment cap URNs (docs/semantic-primitives.md): a bare marker + language +
 // constrained, text in, judgment-envelope out.
 func semanticJudgmentUrn(marker, langCode string) string {
-	return fmt.Sprintf(`cap:%s;language=%s;constrained;in="%s";out="%s"`, marker, langCode, MediaString, MediaSemanticJudgment)
+	return fmt.Sprintf(`cap:%s;language=%s;constrained;in="%s";out="%s"`, marker, langCode, MediaPlainText, MediaSemanticJudgment)
 }
 
 // ClassifyUrn builds the URN for the `classify` closed-set labeling capability.
@@ -185,7 +185,7 @@ func ExplainUrn(langCode string) string {
 // capability. Unlike the judgment caps its output is finalised plain text
 // (the summary itself), not a judgment record.
 func SummarizeUrn(langCode string) string {
-	return fmt.Sprintf(`cap:summarize;language=%s;constrained;in="%s";out="%s"`, langCode, MediaString, MediaPlainText)
+	return fmt.Sprintf(`cap:summarize;language=%s;constrained;in="%s";out="%s"`, langCode, MediaPlainText, MediaTXT)
 }
 
 // FormatConversionUrn builds a URN for converting between formats.

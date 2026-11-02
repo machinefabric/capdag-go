@@ -31,15 +31,17 @@ func Test309_model_availability_and_path_are_distinct(t *testing.T) {
 		"availability and path must be distinct cap URNs")
 }
 
-// TEST310: llm_generate_text_urn() produces a valid cap URN with a UTF-8 text input and plain-text terminal output.
+// TEST310: llm_generate_text_urn() produces a valid cap URN with a plain-text input and a `.txt` plain-text output.
 func Test310_llm_generate_text_urn_shape(t *testing.T) {
 	urnStr := LlmGenerateTextUrn()
 	assert.True(t, strings.HasPrefix(urnStr, "cap:"), "must be a cap URN")
 	assert.True(t, strings.Contains(urnStr, "generate-text"), "must have generate-text")
 	assert.True(t, strings.Contains(urnStr, "llm"), "must have llm tag")
 	assert.True(t, strings.Contains(urnStr, "ml-model"), "must have ml-model tag")
-	assert.True(t, strings.Contains(urnStr, "in="), "must have in spec")
-	assert.True(t, strings.Contains(urnStr, "out="), "must have out spec")
+	// The urn package cannot be imported here (import cycle), so the specs
+	// are checked as the builder spells them.
+	assert.True(t, strings.Contains(urnStr, `in="`+MediaPlainText+`"`), "must take plain text: %s", urnStr)
+	assert.True(t, strings.Contains(urnStr, `out="`+MediaTXT+`"`), "must give a .txt plain-text file: %s", urnStr)
 }
 
 // TEST312: Test all URN builders produce parseable cap URNs
@@ -65,7 +67,7 @@ func Test312_all_urn_builders_produce_valid_urns(t *testing.T) {
 	} {
 		urnStr := fn("en")
 		assert.True(t, strings.HasPrefix(urnStr, "cap:"), "must be a cap URN: %s", urnStr)
-		assert.True(t, strings.Contains(urnStr, `in="media:enc=utf-8"`), "must accept text input: %s", urnStr)
+		assert.True(t, strings.Contains(urnStr, `in="`+MediaPlainText+`"`), "must take plain text: %s", urnStr)
 		assert.True(t, strings.Contains(urnStr, MediaSemanticJudgment), "must produce a semantic-judgment record: %s", urnStr)
 		assert.True(t, strings.Contains(urnStr, "constrained"), "must be constrained: %s", urnStr)
 		assert.True(t, strings.Contains(urnStr, "language=en"), "must carry the language tag: %s", urnStr)
@@ -73,8 +75,8 @@ func Test312_all_urn_builders_produce_valid_urns(t *testing.T) {
 
 	summarizeStr := SummarizeUrn("en")
 	assert.True(t, strings.HasPrefix(summarizeStr, "cap:"), "must be a cap URN")
-	assert.True(t, strings.Contains(summarizeStr, `in="media:enc=utf-8"`), "must accept text input")
-	assert.True(t, strings.Contains(summarizeStr, MediaPlainText), "must produce finalised plain text, not a judgment record")
+	assert.True(t, strings.Contains(summarizeStr, `in="`+MediaPlainText+`"`), "must take plain text")
+	assert.True(t, strings.Contains(summarizeStr, `out="`+MediaTXT+`"`), "must produce a .txt plain-text file, not a judgment record")
 }
 
 // TEST473: CAP_DISCARD is the canonical discard URN (default in= and

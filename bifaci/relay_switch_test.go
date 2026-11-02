@@ -928,7 +928,7 @@ func Test438_preferred_cap_falls_back_when_not_comparable(t *testing.T) {
 
 	request := `cap:in="media:document;ext=pdf";generate-thumbnail;out="media:ext=png;image;thumbnail"`
 	// Preference for an unrelated cap — no equivalent match, falls back to closest-specificity
-	unrelated := `cap:in="media:txt;enc=utf-8";generate-thumbnail;out="media:ext=png;image;thumbnail"`
+	unrelated := `cap:in="media:txt;enc=utf8";generate-thumbnail;out="media:ext=png;image;thumbnail"`
 
 	sw.mu.Lock()
 	defer sw.mu.Unlock()

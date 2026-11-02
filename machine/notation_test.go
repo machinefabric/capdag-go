@@ -20,15 +20,15 @@ import (
 // (capdag/docs/09-machine-notation.md).
 
 const (
-	seriesMedia     = "media:fmt=json;list;record;time-series"
-	benchmarkMedia  = "media:benchmark;fmt=json;list;record;time-series"
+	seriesMedia     = "media:enc=utf8;fmt=json;list;record;time-series"
+	benchmarkMedia  = "media:benchmark;enc=utf8;fmt=json;list;record;time-series"
 	windowMedia     = "media:integer;window"
-	labelMedia      = "media:enc=utf-8;label"
-	tagMedia        = "media:enc=utf-8;tag"
-	comparisonMedia = "media:comparison;fmt=json;record"
-	residualsMedia  = "media:fmt=json;list;record;residual"
-	noteMedia       = "media:enc=utf-8;note"
-	referenceMedia  = "media:enc=utf-8;series-ref"
+	labelMedia      = "media:enc=utf8;label"
+	tagMedia        = "media:enc=utf8;tag"
+	comparisonMedia = "media:comparison;enc=utf8;fmt=json;record"
+	residualsMedia  = "media:enc=utf8;fmt=json;list;record;residual"
+	noteMedia       = "media:enc=utf8;note"
+	referenceMedia  = "media:enc=utf8;series-ref"
 )
 
 // definition builds a cap and holds it to the definition rules: a fixture that
@@ -165,11 +165,11 @@ func titledRegistry() *fabric.FabricRegistry {
 	return registry
 }
 
-const notationHeaders = `[compare cap:in="media:fmt=json;list;record;time-series";compare;out="media:comparison;fmt=json;record"]` +
-	`[fetch cap:in=media:void;fetch;out="media:fmt=json;list;record;time-series"]` +
-	`[publish cap:in="media:comparison;fmt=json;record";publish;out=media:void]` +
-	`[mean cap:in="media:fmt=json;list;record;residual";mean;out="media:mean;numeric"]` +
-	`[score cap:in="media:fmt=json;list;record;residual";score;out="media:numeric;score"]`
+const notationHeaders = `[compare cap:in="media:enc=utf8;fmt=json;list;record;time-series";compare;out="media:comparison;enc=utf8;fmt=json;record"]` +
+	`[fetch cap:in=media:void;fetch;out="media:enc=utf8;fmt=json;list;record;time-series"]` +
+	`[publish cap:in="media:comparison;enc=utf8;fmt=json;record";publish;out=media:void]` +
+	`[mean cap:in="media:enc=utf8;fmt=json;list;record;residual";mean;out="media:mean;numeric"]` +
+	`[score cap:in="media:enc=utf8;fmt=json;list;record;residual";score;out="media:numeric;score"]`
 
 func parseNotation(wirings string) (*Machine, *MachineParseError) {
 	return ParseMachine(notationHeaders+wirings, notationRegistry())
@@ -299,8 +299,8 @@ func Test12737_a_named_member_binds_the_arg_it_names(t *testing.T) {
 	withMix.AddCapsToCache([]*cap.Cap{definition(mixUrn, "mix",
 		[]cap.CapArg{
 			stdinArg(seriesMedia, "first"),
-			flagArg("media:second;fmt=json;list;record;time-series", "second").Accepting(seriesMedia),
-			flagArg("media:third;fmt=json;list;record;time-series", "third").Accepting(seriesMedia),
+			flagArg("media:second;fmt=json;list;record;time-series;enc=utf8", "second").Accepting(seriesMedia),
+			flagArg("media:third;fmt=json;list;record;time-series;enc=utf8", "third").Accepting(seriesMedia),
 		},
 		[]cap.CapOutput{outputOf(comparisonMedia, "mixed", "The mix")})})
 	_, mixErr := ParseMachine(notationHeaders+"[mix "+mixUrn+"]"+produced+`[(reference="c") -> fetch -> c][(first=c, a, b) -> mix -> result]`, withMix)
@@ -711,7 +711,7 @@ func Test12743_render_payload_carries_names_constants_and_outputs(t *testing.T) 
 // is part of what the machine is, although both hold one type.
 func Test12833_a_carried_output_holds_the_inputs_type(t *testing.T) {
 	const (
-		verdictMedia = "media:enc=utf-8;verdict"
+		verdictMedia = "media:enc=utf8;verdict"
 		keptMedia    = "media:kept;marker"
 		droppedMedia = "media:dropped;marker"
 		routeUrn     = `cap:in="` + seriesMedia + `";route;out="` + verdictMedia + `"`
@@ -794,7 +794,7 @@ func Test12838_urns_are_ordered_by_their_parts_not_their_text(t *testing.T) {
 	// value before the same tag with one; values in their own order.
 	assert.True(t, standsBefore("media:file", "media:file;sample"))
 	assert.True(t, standsBefore("media:enc", "media:enc=ascii"))
-	assert.True(t, standsBefore("media:enc=ascii", "media:enc=utf-8"))
+	assert.True(t, standsBefore("media:enc=ascii", "media:enc=utf8"))
 	assert.Zero(t, mediaUrn("media:sample;file").Compare(mediaUrn(sample)))
 
 	capBefore := func(first, second string) bool {

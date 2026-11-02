@@ -13,9 +13,9 @@ import (
 // Test helper for response wrapper tests - use proper media URNs with tags
 func respTestUrn(tags string) string {
 	if tags == "" {
-		return `cap:in="media:void";out="media:fmt=json;record"`
+		return `cap:in="media:void";out="media:enc=utf8;fmt=json;record"`
 	}
-	return `cap:in="media:void";out="media:fmt=json;record";` + tags
+	return `cap:in="media:void";out="media:enc=utf8;fmt=json;record";` + tags
 }
 
 // TEST168: Test ResponseWrapper from JSON deserializes to correct structured type
@@ -157,30 +157,30 @@ func Test6230_ResponseWrapperMatchesOutputType(t *testing.T) {
 	// Use the constant values directly since the cap URNs reference these specific media URN strings
 	// Seed the registry with the media defs the test caps reference.
 	for _, def := range []media.MediaDef{
-		{Urn: "media:enc=utf-8", MediaType: "text/plain", ProfileURI: media.ProfileStr},
+		{Urn: "media:enc=utf8", MediaType: "text/plain", ProfileURI: media.ProfileStr},
 		{Urn: "media:", MediaType: "application/octet-stream"},
-		{Urn: "media:fmt=json;record", MediaType: "application/json", ProfileURI: media.ProfileObj},
+		{Urn: "media:enc=utf8;fmt=json;record", MediaType: "application/json", ProfileURI: media.ProfileObj},
 		{Urn: "media:void", MediaType: "application/x-void", ProfileURI: media.ProfileVoid},
 	} {
 		registry.AddSpec(def.ToStored())
 	}
 
 	// Setup cap definitions with media URNs - all need in/out with proper tags
-	stringCapUrn, err := urn.NewCapUrnFromString(`cap:in="media:void";test;out="media:enc=utf-8"`)
+	stringCapUrn, err := urn.NewCapUrnFromString(`cap:in="media:void";test;out="media:enc=utf8"`)
 	require.NoError(t, err)
 	stringCap := NewCap(stringCapUrn, "String Test", []string{"test"})
 	// Use expanded URN form matching the cap's out spec for proper resolution
-	stringCap.AddOutput(*NewCapOutput("media:enc=utf-8", "output", "String output"))
+	stringCap.AddOutput(*NewCapOutput("media:enc=utf8", "output", "String output"))
 
 	binaryCapUrn, err := urn.NewCapUrnFromString(`cap:in="media:void";test;out="media:"`)
 	require.NoError(t, err)
 	binaryCap := NewCap(binaryCapUrn, "Binary Test", []string{"test"})
 	binaryCap.AddOutput(*NewCapOutput("media:", "output", "Binary output"))
 
-	jsonCapUrn, err := urn.NewCapUrnFromString(`cap:in="media:void";test;out="media:fmt=json;record"`)
+	jsonCapUrn, err := urn.NewCapUrnFromString(`cap:in="media:void";test;out="media:enc=utf8;fmt=json;record"`)
 	require.NoError(t, err)
 	jsonCap := NewCap(jsonCapUrn, "JSON Test", []string{"test"})
-	jsonCap.AddOutput(*NewCapOutput("media:fmt=json;record", "output", "JSON output"))
+	jsonCap.AddOutput(*NewCapOutput("media:enc=utf8;fmt=json;record", "output", "JSON output"))
 
 	// Test text response with string output type
 	textResponse := NewResponseWrapperFromText([]byte("test"))
@@ -242,13 +242,13 @@ func Test6234_ResponseWrapperValidateAgainstCap(t *testing.T) {
 	registry := testRegistry(t)
 	// Setup cap with output schema. The output is the cap's main one: its
 	// URN is the cap URN's out=.
-	capUrn, err := urn.NewCapUrnFromString(`cap:in="media:void";out="media:result;enc=utf-8;record";test`)
+	capUrn, err := urn.NewCapUrnFromString(`cap:in="media:void";out="media:result;enc=utf8;record";test`)
 	require.NoError(t, err)
 	cap := NewCap(capUrn, "Test Cap", []string{"test"})
 
 	// Add custom spec with schema - needs map tag for JSON
 	registry.AddSpec((media.NewMediaDefWithSchema(
-		"media:result;enc=utf-8;record",
+		"media:result;enc=utf8;record",
 		"application/json",
 		"https://example.com/schema/result",
 		map[string]interface{}{
@@ -260,7 +260,7 @@ func Test6234_ResponseWrapperValidateAgainstCap(t *testing.T) {
 		},
 	)).ToStored())
 
-	cap.AddOutput(*NewCapOutput("media:result;enc=utf-8;record", "output", "Result output"))
+	cap.AddOutput(*NewCapOutput("media:result;enc=utf8;record", "output", "Result output"))
 
 	// Valid JSON response
 	validResponse := NewResponseWrapperFromJSON([]byte(`{"status": "ok"}`))

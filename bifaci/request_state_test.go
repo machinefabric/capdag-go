@@ -81,7 +81,7 @@ func Test7087_snapshot_field_names_are_stable(t *testing.T) {
 	k := rsKey(1, 9)
 	require.NoError(t, table.Register(k, rsState(0, intPtr(1), true)))
 	rid := NewMessageIdFromUint(9)
-	ss := NewStreamStart(rid, "s", "media:enc=utf-8", boolPtr(false))
+	ss := NewStreamStart(rid, "s", "media:enc=utf8", boolPtr(false))
 	table.RecordFrame(k, FrameDirectionInbound, ss)
 
 	raw, err := json.Marshal(table.Snapshot())
@@ -233,7 +233,7 @@ func Test7032_record_frame_stats_and_phase(t *testing.T) {
 	assert.Equal(t, RequestPhaseCreated, table.Get(k).Phase)
 
 	rid := NewMessageIdFromUint(7)
-	ss := NewStreamStartUnbounded(rid, "s1", "media:enc=utf-8", nil)
+	ss := NewStreamStartUnbounded(rid, "s1", "media:enc=utf8", nil)
 	table.RecordFrame(k, FrameDirectionInbound, ss)
 	assert.Equal(t, RequestPhaseStreaming, table.Get(k).Phase)
 

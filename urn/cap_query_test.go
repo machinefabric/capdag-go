@@ -28,7 +28,7 @@ func queryMedia(t *testing.T, s string) *MediaUrn {
 // request spelled that way asked for a cap that takes everything, and found
 // none. The unknown side asks nothing; the stated side is held to.
 func Test12368_AQuestionMayLeaveASideUnknown(t *testing.T) {
-	pages := queryCap(t, `cap:disbind;in="media:document;ext=pdf";out="media:enc=utf-8;ext=txt;page"`)
+	pages := queryCap(t, `cap:disbind;in="media:document;ext=pdf";out="media:enc=utf8;ext=txt;page;plain-text"`)
 	toJpeg := queryCap(t, `cap:convert-image;in="media:ext=png;image";out="media:ext=jpeg;image"`)
 	someImage := queryCap(t, `cap:render;in="media:document;ext=pdf";out="media:image"`)
 	passesThrough := queryCap(t, "cap:decimate-sequence;effect=none")

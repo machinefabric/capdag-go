@@ -30,7 +30,7 @@ func Test6347_ParseWithSubtype(t *testing.T) {
 
 // Mirror-specific coverage: Test parsing media URN with profile extracts profile URL correctly
 func Test6351_ParseWithProfile(t *testing.T) {
-	urn, err := NewMediaUrnFromString("media:enc=utf-8;string")
+	urn, err := NewMediaUrnFromString("media:enc=utf8;string")
 	require.NoError(t, err)
 	assert.True(t, urn.HasTag("enc"))
 }
@@ -65,10 +65,10 @@ func Test062_is_record(t *testing.T) {
 
 	jsonUrn, err := NewMediaUrnFromString(standard.MediaJSON)
 	require.NoError(t, err)
-	assert.True(t, jsonUrn.IsRecord()) // "media:fmt=json;record"
+	assert.True(t, jsonUrn.IsRecord()) // "media:enc=utf8;fmt=json;record"
 
 	// Without record marker, is_record is false
-	scalar, err := NewMediaUrnFromString("media:enc=utf-8")
+	scalar, err := NewMediaUrnFromString("media:enc=utf8")
 	require.NoError(t, err)
 	assert.False(t, scalar.IsRecord())
 
@@ -131,7 +131,7 @@ func Test065_is_opaque(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, pdfUrn.IsOpaque())
 
-	textUrn, err := NewMediaUrnFromString("media:enc=utf-8")
+	textUrn, err := NewMediaUrnFromString("media:enc=utf8")
 	require.NoError(t, err)
 	assert.True(t, textUrn.IsOpaque())
 
@@ -154,7 +154,7 @@ func Test066_is_json(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, jsonUrn.IsJson())
 
-	customJson, err := NewMediaUrnFromString("media:custom;fmt=json")
+	customJson, err := NewMediaUrnFromString("media:custom;enc=utf8;fmt=json")
 	require.NoError(t, err)
 	assert.True(t, customJson.IsJson())
 
@@ -163,14 +163,20 @@ func Test066_is_json(t *testing.T) {
 	assert.False(t, nonJson.IsJson())
 }
 
-// TEST67: Text-representability is now carried by the orthogonal `enc=` tag (the old `textable` marker and is_text() are gone). A media is "text" iff it declares an encoding. enc is orthogonal to format/numeric, so only media that actually carry enc= are text.
+// TEST67: A media is characters iff it declares an encoding (`enc=`). Every textual value carries it — free text and the textual serializations alike (a JSON record is UTF-8) — while a boolean, a number, an image and the top type do not. Whether text is written to be read is `plain-text`'s to say (TEST1973), never enc's.
 func Test067_is_text(t *testing.T) {
-	// Has enc= → text-representable
-	stringUrn, err := NewMediaUrnFromString(standard.MediaString) // media:enc=utf-8
+	// Has enc= → characters
+	stringUrn, err := NewMediaUrnFromString(standard.MediaString) // media:enc=utf8
 	require.NoError(t, err)
 	assert.True(t, stringUrn.HasTag("enc"))
 
-	// No enc= → not text-representable
+	jsonUrn, err := NewMediaUrnFromString(standard.MediaJSON) // media:enc=utf8;fmt=json;record
+	require.NoError(t, err)
+	jsonEnc, ok := jsonUrn.GetTag("enc")
+	assert.True(t, ok)
+	assert.Equal(t, "utf8", jsonEnc, "a JSON record is UTF-8")
+
+	// No enc= → not characters
 	boolUrn, err := NewMediaUrnFromString(standard.MediaBoolean) // media:bool — its own kind
 	require.NoError(t, err)
 	assert.False(t, boolUrn.HasTag("enc"))
@@ -178,10 +184,6 @@ func Test067_is_text(t *testing.T) {
 	intUrn, err := NewMediaUrnFromString(standard.MediaInteger) // media:integer;numeric
 	require.NoError(t, err)
 	assert.False(t, intUrn.HasTag("enc"))
-
-	jsonUrn, err := NewMediaUrnFromString(standard.MediaJSON) // media:fmt=json;record
-	require.NoError(t, err)
-	assert.False(t, jsonUrn.HasTag("enc"))
 
 	binary, err := NewMediaUrnFromString("media:")
 	require.NoError(t, err)
@@ -218,7 +220,7 @@ func Test6359_WithSubtypeConstructor(t *testing.T) {
 
 // TEST71: Test to_string roundtrip ensures serialization and deserialization preserve URN structure
 func Test071_to_string_roundtrip(t *testing.T) {
-	original := "media:enc=utf-8;string"
+	original := "media:enc=utf8;string"
 	urn1, err := NewMediaUrnFromString(original)
 	require.NoError(t, err)
 
@@ -275,11 +277,51 @@ func Test073_extension_helpers(t *testing.T) {
 	ext, ok := pdfUrn.GetTag("ext")
 	assert.True(t, ok)
 	assert.Equal(t, "pdf", ext)
+
+	// A UTF-8 text file carries enc=utf8 + ext, and a prose type is plain text besides
+	md, err := NewMediaUrnFromString(TextMediaUrnForExt("md"))
+	require.NoError(t, err)
+	mdEnc, ok := md.GetTag("enc")
+	assert.True(t, ok)
+	assert.Equal(t, "utf8", mdEnc)
+	assert.True(t, md.HasTag("plain-text"), "Markdown is plain text")
+	assert.Equal(t, standard.MediaMarkdown, TextMediaUrnForExt("md"), "the helper spells the published Markdown URN")
+	html, err := NewMediaUrnFromString(TextMediaUrnForExt("html"))
+	require.NoError(t, err)
+	assert.False(t, html.HasTag("plain-text"), "HTML is markup, not plain text")
+	assert.Equal(t, standard.MediaHTML, TextMediaUrnForExt("html"))
+}
+
+// TEST1973: Plain text is UTF-8 text written to be read. Every prose file type and the kinds of plain text conform to MEDIA_PLAIN_TEXT; a bare UTF-8 string, markup and serialized data do not. Every textual value — plain text and the textual serializations alike — is a UTF-8 string and conforms to MEDIA_STRING.
+func Test1973_plain_text_and_utf8_strings(t *testing.T) {
+	parse := func(s string) *MediaUrn {
+		u, err := NewMediaUrnFromString(s)
+		require.NoError(t, err, s)
+		return u
+	}
+	plain := parse(standard.MediaPlainText)
+	str := parse(standard.MediaString)
+	for _, u := range []string{
+		standard.MediaTXT, standard.MediaMarkdown, standard.MediaRST, standard.MediaLog, standard.MediaTextablePage,
+		"media:digitized;enc=utf8;ext=txt;plain-text",
+		"media:enc=utf8;ext=txt;image-description;plain-text",
+	} {
+		assert.True(t, parse(u).ConformsTo(plain), "%s is plain text", u)
+	}
+	for _, u := range []string{standard.MediaString, standard.MediaHTML, standard.MediaJSON, standard.MediaYAML, standard.MediaCSV, "media:code;enc=utf8;python"} {
+		assert.False(t, parse(u).ConformsTo(plain), "%s is not plain text", u)
+	}
+	for _, u := range []string{standard.MediaPlainText, standard.MediaTXT, standard.MediaHTML, standard.MediaJSON, standard.MediaJSONList, standard.MediaYAML, standard.MediaCSV} {
+		assert.True(t, parse(u).ConformsTo(str), "%s is a UTF-8 string", u)
+	}
+	for _, u := range []string{standard.MediaBoolean, standard.MediaInteger, standard.MediaPNG, standard.MediaObject} {
+		assert.False(t, parse(u).ConformsTo(str), "%s is not characters", u)
+	}
 }
 
 // TEST74: Test media URN conforms_to using tagged URN semantics with specific and generic requirements
 func Test074_media_urn_matching(t *testing.T) {
-	specific, err := NewMediaUrnFromString("media:enc=utf-8;string")
+	specific, err := NewMediaUrnFromString("media:enc=utf8;string")
 	require.NoError(t, err)
 
 	generic, err := NewMediaUrnFromString("media:string")
@@ -315,7 +357,7 @@ func Test076_specificity(t *testing.T) {
 	simple, err := NewMediaUrnFromString("media:string")
 	require.NoError(t, err)
 
-	detailed, err := NewMediaUrnFromString("media:enc=utf-8;string")
+	detailed, err := NewMediaUrnFromString("media:enc=utf8;string")
 	require.NoError(t, err)
 
 	// More tags = higher specificity
@@ -324,7 +366,7 @@ func Test076_specificity(t *testing.T) {
 
 // TEST77: Test serde roundtrip serializes to JSON string and deserializes back correctly
 func Test077_serde_roundtrip(t *testing.T) {
-	original, err := NewMediaUrnFromString("media:enc=utf-8;string")
+	original, err := NewMediaUrnFromString("media:enc=utf8;string")
 	require.NoError(t, err)
 
 	// JSON marshaling
@@ -353,27 +395,33 @@ func Test078_object_does_not_conform_to_string(t *testing.T) {
 
 // TEST304: Test MEDIA_AVAILABILITY_OUTPUT constant parses as valid media URN with correct tags
 func Test304_media_availability_output_constant(t *testing.T) {
-	urn, err := NewMediaUrnFromString("media:fmt=json;model-availability;record")
+	urn, err := NewMediaUrnFromString("media:enc=utf8;fmt=json;model-availability;record")
 	require.NoError(t, err)
 	assert.True(t, urn.IsJson(), "model-availability is a JSON record")
-	assert.False(t, urn.HasTag("enc"), "a JSON record is not also text (no enc=)")
+	enc, ok := urn.GetTag("enc")
+	assert.True(t, ok)
+	assert.Equal(t, "utf8", enc, "a JSON record is UTF-8")
+	assert.False(t, urn.HasTag("plain-text"), "a JSON record is not plain text")
 	assert.True(t, urn.IsRecord())
 }
 
 // TEST305: Test MEDIA_PATH_OUTPUT constant parses as valid media URN with correct tags
 func Test305_media_path_output_constant(t *testing.T) {
-	urn, err := NewMediaUrnFromString("media:fmt=json;model-path;record")
+	urn, err := NewMediaUrnFromString("media:enc=utf8;fmt=json;model-path;record")
 	require.NoError(t, err)
 	assert.True(t, urn.IsJson(), "model-path is a JSON record")
-	assert.False(t, urn.HasTag("enc"), "a JSON record is not also text (no enc=)")
+	enc, ok := urn.GetTag("enc")
+	assert.True(t, ok)
+	assert.Equal(t, "utf8", enc, "a JSON record is UTF-8")
+	assert.False(t, urn.HasTag("plain-text"), "a JSON record is not plain text")
 	assert.True(t, urn.IsRecord())
 }
 
 // TEST306: Test MEDIA_AVAILABILITY_OUTPUT and MEDIA_PATH_OUTPUT are distinct URNs
 func Test306_availability_and_path_output_distinct(t *testing.T) {
-	availUrn, err := NewMediaUrnFromString("media:fmt=json;model-availability;record")
+	availUrn, err := NewMediaUrnFromString("media:enc=utf8;fmt=json;model-availability;record")
 	require.NoError(t, err)
-	pathUrn, err := NewMediaUrnFromString("media:fmt=json;model-path;record")
+	pathUrn, err := NewMediaUrnFromString("media:enc=utf8;fmt=json;model-path;record")
 	require.NoError(t, err)
 	assert.False(t, availUrn.Equals(pathUrn))
 	// They must NOT conform to each other (different marker tags)
@@ -628,9 +676,9 @@ func Test853_lub_no_common_tags(t *testing.T) {
 
 // TEST854: LUB keeps common tags, drops differing ones
 func Test854_lub_partial_overlap(t *testing.T) {
-	jsonRec, err := NewMediaUrnFromString("media:fmt=json;record")
+	jsonRec, err := NewMediaUrnFromString("media:enc=utf8;fmt=json;record")
 	require.NoError(t, err)
-	yamlRec, err := NewMediaUrnFromString("media:fmt=yaml;record")
+	yamlRec, err := NewMediaUrnFromString("media:enc=utf8;fmt=yaml;record")
 	require.NoError(t, err)
 	lub := LeastUpperBound([]*MediaUrn{jsonRec, yamlRec})
 	expected, err := NewMediaUrnFromString("media:record")
@@ -640,12 +688,12 @@ func Test854_lub_partial_overlap(t *testing.T) {
 
 // TEST855: LUB of list and non-list drops list tag
 func Test855_lub_list_vs_scalar(t *testing.T) {
-	jsonList, err := NewMediaUrnFromString("media:fmt=json;list")
+	jsonList, err := NewMediaUrnFromString("media:enc=utf8;fmt=json;list")
 	require.NoError(t, err)
-	jsonScalar, err := NewMediaUrnFromString("media:fmt=json")
+	jsonScalar, err := NewMediaUrnFromString("media:enc=utf8;fmt=json")
 	require.NoError(t, err)
 	lub := LeastUpperBound([]*MediaUrn{jsonList, jsonScalar})
-	expected, err := NewMediaUrnFromString("media:fmt=json")
+	expected, err := NewMediaUrnFromString("media:enc=utf8;fmt=json")
 	require.NoError(t, err)
 	assert.True(t, lub.IsEquivalent(expected), "LUB should drop list tag, got %s", lub.String())
 }
@@ -668,11 +716,11 @@ func Test857_lub_single(t *testing.T) {
 
 // TEST858: LUB with three+ inputs narrows correctly
 func Test858_lub_three_inputs(t *testing.T) {
-	a, err := NewMediaUrnFromString("media:fmt=json;list;record")
+	a, err := NewMediaUrnFromString("media:enc=utf8;fmt=json;list;record")
 	require.NoError(t, err)
-	b, err := NewMediaUrnFromString("media:fmt=csv;list;record")
+	b, err := NewMediaUrnFromString("media:enc=utf8;fmt=csv;list;record")
 	require.NoError(t, err)
-	c, err := NewMediaUrnFromString("media:fmt=ndjson;list")
+	c, err := NewMediaUrnFromString("media:enc=utf8;fmt=ndjson;list")
 	require.NoError(t, err)
 	lub := LeastUpperBound([]*MediaUrn{a, b, c})
 	expected, err := NewMediaUrnFromString("media:list")

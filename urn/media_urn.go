@@ -561,10 +561,22 @@ func FileMediaUrnForExt(ext string) string {
 	return fmt.Sprintf("media:ext=%s", ext)
 }
 
+// PlainTextExtensions are the file extensions whose content is plain text —
+// prose written to be read rather than code, markup or data to be parsed. A
+// UTF-8 file of one of these types also carries `plain-text`, as the fabric's
+// `plain-text` dim declares.
+var PlainTextExtensions = []string{"txt", "md", "rst", "asciidoc", "org", "log"}
+
 // TextMediaUrnForExt builds a UTF-8 text file media URN with the given file
-// extension (e.g. media:enc=utf-8;ext=md).
+// extension (media:enc=utf8;ext=html); a prose type is plain text besides
+// (media:enc=utf8;ext=md;plain-text).
 func TextMediaUrnForExt(ext string) string {
-	return fmt.Sprintf("media:enc=utf-8;ext=%s", ext)
+	for _, prose := range PlainTextExtensions {
+		if ext == prose {
+			return fmt.Sprintf("media:enc=utf8;ext=%s;plain-text", ext)
+		}
+	}
+	return fmt.Sprintf("media:enc=utf8;ext=%s", ext)
 }
 
 // ImageMediaUrnForExt builds an image media URN with the given file extension.

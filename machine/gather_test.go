@@ -14,14 +14,14 @@ import (
 // exists. Three page sources feed a one-arg concat cap whose arg is a sequence
 // — all three land on the same arg, in source-declaration order.
 func Test1400_gather_n_sources_into_sequence_arg(t *testing.T) {
-	sources := []*urn.MediaUrn{mediaUrn("media:enc=utf-8;page"), mediaUrn("media:enc=utf-8;page"), mediaUrn("media:enc=utf-8;page")}
-	args := []*urn.MediaUrn{mediaUrn("media:enc=utf-8")}
+	sources := []*urn.MediaUrn{mediaUrn("media:enc=utf8;page"), mediaUrn("media:enc=utf8;page"), mediaUrn("media:enc=utf8;page")}
+	args := []*urn.MediaUrn{mediaUrn("media:enc=utf8")}
 	pairs, err := matchSourcesToArgs(sources, args, []bool{true}, -1)
 	require.Nil(t, err, "three sources must gather into the sequence arg")
 	require.Len(t, pairs, 3, "one binding per gathered source")
 	for _, pair := range pairs {
-		assert.True(t, pair.arg.IsEquivalent(mediaUrn("media:enc=utf-8")))
-		assert.True(t, pair.source.IsEquivalent(mediaUrn("media:enc=utf-8;page")))
+		assert.True(t, pair.arg.IsEquivalent(mediaUrn("media:enc=utf8")))
+		assert.True(t, pair.source.IsEquivalent(mediaUrn("media:enc=utf8;page")))
 	}
 	// The same three with an arg that takes one value have nowhere to go.
 	_, err = matchSourcesToArgs(sources, args, []bool{false}, -1)
@@ -32,8 +32,8 @@ func Test1400_gather_n_sources_into_sequence_arg(t *testing.T) {
 // though gathering everything into the sequence arg is also valid. s1 exactly
 // fits the scalar page arg; s2 only fits the sequence arg.
 func Test1401_product_precedence_over_gather(t *testing.T) {
-	sources := []*urn.MediaUrn{mediaUrn("media:enc=utf-8;page"), mediaUrn("media:enc=utf-8;summary")}
-	args := []*urn.MediaUrn{mediaUrn("media:enc=utf-8;page"), mediaUrn("media:enc=utf-8")}
+	sources := []*urn.MediaUrn{mediaUrn("media:enc=utf8;page"), mediaUrn("media:enc=utf8;summary")}
+	args := []*urn.MediaUrn{mediaUrn("media:enc=utf8;page"), mediaUrn("media:enc=utf8")}
 	pairs, err := matchSourcesToArgs(sources, args, []bool{false, true}, -1)
 	require.Nil(t, err, "unique injection must resolve")
 	require.Len(t, pairs, 2)
@@ -44,15 +44,15 @@ func Test1401_product_precedence_over_gather(t *testing.T) {
 		placed[pair.arg.String()] = pair.source.String()
 	}
 	assert.Equal(t, map[string]string{
-		mediaUrn("media:enc=utf-8;page").String(): mediaUrn("media:enc=utf-8;page").String(),
-		mediaUrn("media:enc=utf-8").String():      mediaUrn("media:enc=utf-8;summary").String(),
+		mediaUrn("media:enc=utf8;page").String(): mediaUrn("media:enc=utf8;page").String(),
+		mediaUrn("media:enc=utf8").String():      mediaUrn("media:enc=utf8;summary").String(),
 	}, placed)
 
 	// Two pages, a sequence arg that takes pages and a scalar arg that takes
 	// any text: each page can take either arg, at one cost — a tie. Gathering
 	// both into the sequence arg would be cheaper and unique, and it is not
 	// what is asked: a tied product is ambiguous, it does not become a gather.
-	pages := []*urn.MediaUrn{mediaUrn("media:enc=utf-8;page"), mediaUrn("media:enc=utf-8;page")}
+	pages := []*urn.MediaUrn{mediaUrn("media:enc=utf8;page"), mediaUrn("media:enc=utf8;page")}
 	_, err = matchSourcesToArgs(pages, args, []bool{true, false}, -1)
 	assert.Equal(t, &matchFailure{ambiguous: true, undecided: []undecidedSource{
 		{source: 0, args: []int{0, 1}}, {source: 1, args: []int{0, 1}},
@@ -65,9 +65,9 @@ func Test1402_gather_ambiguity_and_scalar_pigeonhole_fail_hard(t *testing.T) {
 	// Two equally-costed sequence args (each drops a different one of the
 	// source's tags → the same absolute specificity gap) → every distribution
 	// of the three sources ties → ambiguous.
-	chunk := mediaUrn("media:chunk;enc=utf-8;page")
+	chunk := mediaUrn("media:chunk;enc=utf8;page")
 	sources := []*urn.MediaUrn{chunk, chunk, chunk}
-	args := []*urn.MediaUrn{mediaUrn("media:enc=utf-8;page"), mediaUrn("media:chunk;enc=utf-8")}
+	args := []*urn.MediaUrn{mediaUrn("media:enc=utf8;page"), mediaUrn("media:chunk;enc=utf8")}
 	_, err := matchSourcesToArgs(sources, args, []bool{true, true}, -1)
 	assert.Equal(t, &matchFailure{ambiguous: true, undecided: []undecidedSource{
 		{source: 0, args: []int{0, 1}}, {source: 1, args: []int{0, 1}}, {source: 2, args: []int{0, 1}},
@@ -79,24 +79,24 @@ func Test1402_gather_ambiguity_and_scalar_pigeonhole_fail_hard(t *testing.T) {
 func gatherFixture(t *testing.T, firstProducesSequence bool) (*MachineStrand, *MachineAbstractionError) {
 	t.Helper()
 	const (
-		urnA      = `cap:in="media:document;ext=pdf";op-a;out="media:enc=utf-8;page"`
-		urnB      = `cap:in="media:ext=md";op-b;out="media:enc=utf-8;page"`
-		urnConcat = `cap:in="media:enc=utf-8";concat;out="media:enc=utf-8;ext=txt"`
+		urnA      = `cap:in="media:document;ext=pdf";op-a;out="media:enc=utf8;page"`
+		urnB      = `cap:in="media:ext=md;plain-text";op-b;out="media:enc=utf8;page"`
+		urnConcat = `cap:in="media:enc=utf8";concat;out="media:enc=utf8;ext=txt;plain-text"`
 	)
-	capA := buildCap(urnA, "op_a", []string{"media:document;ext=pdf"}, "media:enc=utf-8;page")
+	capA := buildCap(urnA, "op_a", []string{"media:document;ext=pdf"}, "media:enc=utf8;page")
 	capA.Outputs[0].IsSequence = firstProducesSequence
-	capB := buildCap(urnB, "op_b", []string{"media:ext=md"}, "media:enc=utf-8;page")
-	concat := buildCap(urnConcat, "concat", []string{"media:enc=utf-8"}, "media:enc=utf-8;ext=txt")
+	capB := buildCap(urnB, "op_b", []string{"media:ext=md;plain-text"}, "media:enc=utf8;page")
+	concat := buildCap(urnConcat, "concat", []string{"media:enc=utf8"}, "media:enc=utf8;ext=txt;plain-text")
 	concat.Args[0].IsSequence = true
 	registry := registryWith([]*cap.Cap{capA, capB, concat})
 
 	// nodes: 0=pdf, 1=md, 2=page(from a), 3=page(from b), 4=txt
 	nodes := []*urn.MediaUrn{
 		mediaUrn("media:document;ext=pdf"),
-		mediaUrn("media:ext=md"),
-		mediaUrn("media:enc=utf-8;page"),
-		mediaUrn("media:enc=utf-8;page"),
-		mediaUrn("media:enc=utf-8;ext=txt"),
+		mediaUrn("media:ext=md;plain-text"),
+		mediaUrn("media:enc=utf8;page"),
+		mediaUrn("media:enc=utf8;page"),
+		mediaUrn("media:enc=utf8;ext=txt;plain-text"),
 	}
 	wirings := []preInternedWiring{
 		{tokenId: mustStepToken(t, "tok-a"), capUrn: capUrnVal(urnA), sourceNodeIds: []NodeId{0}, targets: []wiringTarget{{node: 2}}},

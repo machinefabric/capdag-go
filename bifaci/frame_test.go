@@ -728,7 +728,7 @@ func Test366_stream_end_frame(t *testing.T) {
 func Test367_stream_start_with_empty_stream_id(t *testing.T) {
 	reqId := NewMessageIdRandom()
 	streamId := ""
-	mediaUrn := "media:fmt=json"
+	mediaUrn := "media:enc=utf8;fmt=json"
 
 	frame := NewStreamStart(reqId, streamId, mediaUrn, nil)
 
@@ -2192,7 +2192,7 @@ func Test7011_credit_is_non_flow(t *testing.T) {
 func Test7012_stream_start_unbounded_roundtrip(t *testing.T) {
 	rid := NewMessageIdRandom()
 	isSeq := false
-	bounded := NewStreamStart(rid, "s1", "media:enc=utf-8", &isSeq)
+	bounded := NewStreamStart(rid, "s1", "media:enc=utf8", &isSeq)
 	assert.False(t, bounded.IsUnbounded())
 	decoded, err := DecodeFrame(mustEncode(t, bounded))
 	require.NoError(t, err)
@@ -2200,7 +2200,7 @@ func Test7012_stream_start_unbounded_roundtrip(t *testing.T) {
 	assert.Nil(t, decoded.Unbounded, "bounded frames omit the key")
 
 	isSeqTrue := true
-	unbounded := NewStreamStartUnbounded(rid, "s2", "media:enc=utf-8", &isSeqTrue)
+	unbounded := NewStreamStartUnbounded(rid, "s2", "media:enc=utf8", &isSeqTrue)
 	assert.True(t, unbounded.IsUnbounded())
 	decoded2, err := DecodeFrame(mustEncode(t, unbounded))
 	require.NoError(t, err)
@@ -2507,19 +2507,19 @@ func Test12718_stream_start_names_its_output(t *testing.T) {
 		return decoded
 	}
 	// Two outputs of one cap may carry the same type: the name tells them apart.
-	kept := NewStreamStart(rid, "s1", "media:enc=utf-8", &isSequence).ForOutput("media:enc=utf-8;kept")
-	dropped := NewStreamStart(rid, "s2", "media:enc=utf-8", &isSequence).ForOutput("media:dropped;enc=utf-8")
+	kept := NewStreamStart(rid, "s1", "media:enc=utf8", &isSequence).ForOutput("media:enc=utf8;kept")
+	dropped := NewStreamStart(rid, "s2", "media:enc=utf8", &isSequence).ForOutput("media:dropped;enc=utf8")
 	keptBack, droppedBack := roundTrip(kept), roundTrip(dropped)
 	output, named := keptBack.OutputUrn()
 	assert.True(t, named)
-	assert.Equal(t, "media:enc=utf-8;kept", output)
+	assert.Equal(t, "media:enc=utf8;kept", output)
 	output, named = droppedBack.OutputUrn()
 	assert.True(t, named)
-	assert.Equal(t, "media:dropped;enc=utf-8", output)
+	assert.Equal(t, "media:dropped;enc=utf8", output)
 	require.NotNil(t, keptBack.MediaUrn)
 	require.NotNil(t, droppedBack.MediaUrn)
 	assert.Equal(t, *keptBack.MediaUrn, *droppedBack.MediaUrn, "the data's type is its own field")
-	assert.Equal(t, "media:enc=utf-8", *keptBack.MediaUrn)
+	assert.Equal(t, "media:enc=utf8", *keptBack.MediaUrn)
 
 	// The unbounded form keeps both.
 	isFeed := true
@@ -2531,7 +2531,7 @@ func Test12718_stream_start_names_its_output(t *testing.T) {
 
 	// The main output's stream and a request stream name no output, and the
 	// key is not written.
-	encoded, err := EncodeFrame(NewStreamStart(rid, "s4", "media:enc=utf-8", nil))
+	encoded, err := EncodeFrame(NewStreamStart(rid, "s4", "media:enc=utf8", nil))
 	require.NoError(t, err)
 	var written map[int]interface{}
 	require.NoError(t, cbor.Unmarshal(encoded, &written))
@@ -2559,7 +2559,7 @@ func Test12718_stream_start_names_its_output(t *testing.T) {
 	require.NoError(t, err)
 	var entries map[int]interface{}
 	require.NoError(t, cbor.Unmarshal(encoded, &entries))
-	require.Equal(t, "media:enc=utf-8;kept", entries[21])
+	require.Equal(t, "media:enc=utf8;kept", entries[21])
 	entries[21] = 7
 	malformed, err := cbor.Marshal(entries)
 	require.NoError(t, err)

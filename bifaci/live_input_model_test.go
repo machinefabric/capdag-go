@@ -74,7 +74,7 @@ func Test7070_unbounded_input_consumed_live(t *testing.T) {
 		t.Fatalf("REQ: %v", err)
 	}
 	seqTrue := true
-	if err := hostWriter.WriteFrame(NewStreamStartUnbounded(rid, "live", "media:enc=utf-8", &seqTrue)); err != nil {
+	if err := hostWriter.WriteFrame(NewStreamStartUnbounded(rid, "live", "media:enc=utf8", &seqTrue)); err != nil {
 		t.Fatalf("STREAM_START: %v", err)
 	}
 	if err := hostWriter.WriteFrame(mkChunk(0)); err != nil {
@@ -145,7 +145,7 @@ func Test7073_collect_refuses_unbounded_streams(t *testing.T) {
 		rid := NewMessageIdRandom()
 		ch := make(chan Frame, 4)
 		seqTrue := true
-		ch <- *NewStreamStartUnbounded(rid, "s1", "media:enc=utf-8", &seqTrue)
+		ch <- *NewStreamStartUnbounded(rid, "s1", "media:enc=utf8", &seqTrue)
 		payload, err := cborlib.Marshal([]byte{1})
 		if err != nil {
 			t.Fatalf("cbor encode: %v", err)

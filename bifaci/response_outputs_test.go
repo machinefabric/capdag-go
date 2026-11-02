@@ -17,11 +17,11 @@ import (
 )
 
 const (
-	seriesOut    = "media:enc=utf-8;series"
-	fitOut       = "media:fmt=json;record;regression"
-	residualsOut = "media:fmt=json;list;record;residual"
-	noteOut      = "media:enc=utf-8;note"
-	rejectedOut  = "media:enc=utf-8;rejected"
+	seriesOut    = "media:enc=utf8;series"
+	fitOut       = "media:enc=utf8;fmt=json;record;regression"
+	residualsOut = "media:enc=utf8;fmt=json;list;record;residual"
+	noteOut      = "media:enc=utf8;note"
+	rejectedOut  = "media:enc=utf8;rejected"
 )
 
 // regressCap is a cap with four outputs: the main one, a required sequence,
@@ -134,10 +134,10 @@ func Test12719_a_request_answers_on_every_declared_output(t *testing.T) {
 		return found
 	}
 	assert.Same(t, req.Output(), stream(fitOut))
-	assert.Same(t, req.Output(), stream("media:regression;record;fmt=json"))
+	assert.Same(t, req.Output(), stream("media:regression;record;fmt=json;enc=utf8"))
 	// Another output, with its tags in another order, is the same stream.
 	residuals := stream(residualsOut)
-	assert.Same(t, residuals, stream("media:residual;record;list;fmt=json"))
+	assert.Same(t, residuals, stream("media:residual;record;list;fmt=json;enc=utf8"))
 	assert.NotSame(t, residuals, req.Output())
 	// Any stream of the request leads to the others.
 	fromResiduals, err := OutputFor(residuals, noteOut)
@@ -178,7 +178,7 @@ func Test12719_a_request_answers_on_every_declared_output(t *testing.T) {
 
 	// What the cap does not declare is not an output of it — a tag short or a
 	// tag more is another URN.
-	for _, unknown := range []string{"media:enc=utf-8", "media:fmt=json;record", "media:enc=utf-8;note;extra", "not a urn"} {
+	for _, unknown := range []string{"media:enc=utf8", "media:enc=utf8;fmt=json;record", "media:enc=utf8;note;extra", "not a urn"} {
 		_, err := req.OutputFor(unknown)
 		var refused *UnknownOutputError
 		require.ErrorAs(t, err, &refused, unknown)
@@ -323,7 +323,7 @@ func Test12720_unwritten_outputs_when_the_handler_returns(t *testing.T) {
 
 	// A cap whose `out=` is void has no output: nothing is opened for it, and
 	// the request still ends.
-	all = liveRun(t, `cap:in="media:enc=utf-8";sink;out=media:void`, nil, silent)
+	all = liveRun(t, `cap:in="media:enc=utf8";sink;out=media:void`, nil, silent)
 	assert.Empty(t, startsOf(all))
 	require.Len(t, all, 1)
 	assert.Equal(t, FrameTypeEnd, all[0].FrameType)
@@ -331,28 +331,28 @@ func Test12720_unwritten_outputs_when_the_handler_returns(t *testing.T) {
 	// The main output's label follows the cap's effect, and is not its name:
 	// a cap that passes its input through labels the stream with the input's
 	// type and names the output its `out=`.
-	pass := `cap:effect=none;in="media:enc=utf-8;line";out="media:enc=utf-8";pass`
+	pass := `cap:effect=none;in="media:enc=utf8;line";out="media:enc=utf8";pass`
 	sent = startsOf(liveRun(t, pass, nil, silent))
 	require.Len(t, sent, 1)
 	assert.Equal(t, "", sent[0].output, "the main output's stream names no output")
 	derived, err := DeriveResponseMedia(pass)
 	require.NoError(t, err)
 	assert.Equal(t, derived, sent[0].label)
-	assert.NotEqual(t, "media:enc=utf-8", sent[0].label, "the label is the input's type")
+	assert.NotEqual(t, "media:enc=utf8", sent[0].label, "the label is the input's type")
 
 	// A cap served without a definition answers on the one output its URN states.
-	sent = startsOf(liveRun(t, `cap:in="media:enc=utf-8";count;out="media:integer"`, nil, silent))
+	sent = startsOf(liveRun(t, `cap:in="media:enc=utf8";count;out="media:integer"`, nil, silent))
 	require.Len(t, sent, 1)
 	assert.Equal(t, started{label: "media:integer", streamID: sent[0].streamID}, sent[0])
 
 	// An output the definition marks optional and the handler does not write
 	// is not sent even when it is the main one.
-	parsed, err := urn.NewCapUrnFromString(`cap:in="media:enc=utf-8";maybe;out="media:enc=utf-8;found"`)
+	parsed, err := urn.NewCapUrnFromString(`cap:in="media:enc=utf8";maybe;out="media:enc=utf8;found"`)
 	require.NoError(t, err)
-	stdin := "media:enc=utf-8"
+	stdin := "media:enc=utf8"
 	maybe := cap.NewCapWithArgs(parsed, "Maybe", []string{"maybe"},
-		[]cap.CapArg{cap.NewCapArg("media:enc=utf-8", "text", true, []cap.ArgSource{{Stdin: &stdin}})})
-	maybe.AddOutput(*cap.NewCapOutput("media:enc=utf-8;found", "found", "What was found").AsOptional(true))
+		[]cap.CapArg{cap.NewCapArg("media:enc=utf8", "text", true, []cap.ArgSource{{Stdin: &stdin}})})
+	maybe.AddOutput(*cap.NewCapOutput("media:enc=utf8;found", "found", "What was found").AsOptional(true))
 	require.NoError(t, cap.ValidateCapDefinition(maybe))
 	all = liveRun(t, maybe.UrnString(), createTestManifest("Maybe", "1.0.0", "Test", []*cap.Cap{maybe}), silent)
 	assert.Empty(t, startsOf(all))
@@ -360,11 +360,11 @@ func Test12720_unwritten_outputs_when_the_handler_returns(t *testing.T) {
 
 	// A MAIN output declared a sequence and never written is an empty
 	// sequence too: the stream says what the definition says.
-	parsed, err = urn.NewCapUrnFromString(`cap:in="media:enc=utf-8";lines;out="media:enc=utf-8;line"`)
+	parsed, err = urn.NewCapUrnFromString(`cap:in="media:enc=utf8";lines;out="media:enc=utf8;line"`)
 	require.NoError(t, err)
 	lines := cap.NewCapWithArgs(parsed, "Lines", []string{"lines"},
-		[]cap.CapArg{cap.NewCapArg("media:enc=utf-8", "text", true, []cap.ArgSource{{Stdin: &stdin}})})
-	every := cap.NewCapOutput("media:enc=utf-8;line", "lines", "Every line")
+		[]cap.CapArg{cap.NewCapArg("media:enc=utf8", "text", true, []cap.ArgSource{{Stdin: &stdin}})})
+	every := cap.NewCapOutput("media:enc=utf8;line", "lines", "Every line")
 	every.IsSequence = true
 	lines.AddOutput(*every)
 	require.NoError(t, cap.ValidateCapDefinition(lines))
@@ -463,15 +463,15 @@ func feedFrames(frames ...Frame) <-chan Frame {
 // The response ends at the request's END, not at the first stream's end.
 func Test12730_a_peer_response_has_a_stream_per_output(t *testing.T) {
 	rid := NewMessageIdRandom()
-	const rest = "media:enc=utf-8;split-rest"
+	const rest = "media:enc=utf8;split-rest"
 	single := false
 	frames := func() <-chan Frame {
 		return feedFrames(
 			// The other output starts first, ends first, and carries the
 			// same type as the main one.
-			*NewStreamStart(rid, "rest", "media:enc=utf-8", &single).ForOutput(rest),
+			*NewStreamStart(rid, "rest", "media:enc=utf8", &single).ForOutput(rest),
 			valueChunk(t, rid, "rest", 0, []byte("R1")),
-			*NewStreamStart(rid, "head", "media:enc=utf-8", &single),
+			*NewStreamStart(rid, "head", "media:enc=utf8", &single),
 			valueChunk(t, rid, "head", 0, []byte("H1")),
 			valueChunk(t, rid, "rest", 1, []byte("R2")),
 			*NewStreamEnd(rid, "rest", 2),
@@ -509,10 +509,10 @@ func Test12730_a_peer_response_has_a_stream_per_output(t *testing.T) {
 
 	// One value is the main output's one value, whatever else was answered.
 	value, err := DemuxPeerResponse(feedFrames(
-		*NewStreamStart(rid, "rest", "media:enc=utf-8", &single).ForOutput(rest),
+		*NewStreamStart(rid, "rest", "media:enc=utf8", &single).ForOutput(rest),
 		valueChunk(t, rid, "rest", 0, []byte("R1")),
 		*NewStreamEnd(rid, "rest", 1),
-		*NewStreamStart(rid, "head", "media:enc=utf-8", &single),
+		*NewStreamStart(rid, "head", "media:enc=utf8", &single),
 		valueChunk(t, rid, "head", 0, []byte("H1")),
 		*NewStreamEnd(rid, "head", 1),
 		*NewEnd(rid, nil),
@@ -524,7 +524,7 @@ func Test12730_a_peer_response_has_a_stream_per_output(t *testing.T) {
 	// and the response ends there: what follows it is not read.
 	stray := DemuxPeerResponse(feedFrames(
 		valueChunk(t, rid, "ghost", 0, []byte("?")),
-		*NewStreamStart(rid, "head", "media:enc=utf-8", &single),
+		*NewStreamStart(rid, "head", "media:enc=utf8", &single),
 		valueChunk(t, rid, "head", 0, []byte("H1")),
 		*NewEnd(rid, nil),
 	))
@@ -537,9 +537,9 @@ func Test12730_a_peer_response_has_a_stream_per_output(t *testing.T) {
 	// So does a second STREAM_START for a stream: which of the two the chunks
 	// after it belong to is not something to guess.
 	twice := DemuxPeerResponse(feedFrames(
-		*NewStreamStart(rid, "head", "media:enc=utf-8", &single),
+		*NewStreamStart(rid, "head", "media:enc=utf8", &single),
 		valueChunk(t, rid, "head", 0, []byte("H1")),
-		*NewStreamStart(rid, "head", "media:enc=utf-8", &single).ForOutput(rest),
+		*NewStreamStart(rid, "head", "media:enc=utf8", &single).ForOutput(rest),
 		valueChunk(t, rid, "head", 1, []byte("H2")),
 		*NewEnd(rid, nil),
 	))
@@ -560,8 +560,8 @@ func Test12730_a_peer_response_has_a_stream_per_output(t *testing.T) {
 		wrong := *damaged.Checksum + 1
 		damaged.Checksum = &wrong
 		return feedFrames(
-			*NewStreamStart(rid, "rest", "media:enc=utf-8", &single).ForOutput(rest),
-			*NewStreamStart(rid, "head", "media:enc=utf-8", &single),
+			*NewStreamStart(rid, "rest", "media:enc=utf8", &single).ForOutput(rest),
+			*NewStreamStart(rid, "head", "media:enc=utf8", &single),
 			valueChunk(t, rid, "head", 0, []byte("H1")),
 			damaged,
 			*NewStreamEnd(rid, "rest", 1),
@@ -592,7 +592,7 @@ func Test12730_a_peer_response_has_a_stream_per_output(t *testing.T) {
 	// A response whose frames stop before END was cut short, however many of
 	// its streams had ended.
 	_, err = DemuxPeerResponse(feedFrames(
-		*NewStreamStart(rid, "head", "media:enc=utf-8", &single),
+		*NewStreamStart(rid, "head", "media:enc=utf8", &single),
 		valueChunk(t, rid, "head", 0, []byte("H1")),
 		*NewStreamEnd(rid, "head", 1),
 	)).CollectBytes()
@@ -609,7 +609,7 @@ func Test12730_a_peer_response_has_a_stream_per_output(t *testing.T) {
 		{*NewEnd(rid, nil)},
 	} {
 		sent := []Frame{
-			*NewStreamStart(rid, "rows", "media:enc=utf-8", &sequence).ForOutput(rest),
+			*NewStreamStart(rid, "rows", "media:enc=utf8", &sequence).ForOutput(rest),
 			*NewChunk(rid, "rows", 0, half, 0, ComputeChecksum(half)),
 		}
 		partial := DemuxPeerResponse(feedFrames(append(sent, ending...)...))
@@ -631,7 +631,7 @@ func Test12730_a_peer_response_has_a_stream_per_output(t *testing.T) {
 	runtime.Register(testCapUrn, func(input <-chan Frame, _ StreamEmitter, peer PeerInvoker) error {
 		for range input {
 		}
-		reply, err := peer.Invoke(`cap:in="media:void";split;out="media:enc=utf-8"`, nil)
+		reply, err := peer.Invoke(`cap:in="media:void";split;out="media:enc=utf8"`, nil)
 		if err != nil {
 			return err
 		}
@@ -669,8 +669,8 @@ func Test12730_a_peer_response_has_a_stream_per_output(t *testing.T) {
 		}
 	}
 	// The peer answers on two streams, four chunks each.
-	require.NoError(t, hostWriter.WriteFrame(NewStreamStart(callee, "rest", "media:enc=utf-8", &single).ForOutput(rest)))
-	require.NoError(t, hostWriter.WriteFrame(NewStreamStart(callee, "head", "media:enc=utf-8", &single)))
+	require.NoError(t, hostWriter.WriteFrame(NewStreamStart(callee, "rest", "media:enc=utf8", &single).ForOutput(rest)))
+	require.NoError(t, hostWriter.WriteFrame(NewStreamStart(callee, "head", "media:enc=utf8", &single)))
 	for index := uint64(0); index < 4; index++ {
 		for _, stream := range []string{"rest", "head"} {
 			chunk := valueChunk(t, callee, stream, index, []byte{stream[0], byte('0' + index)})
@@ -742,9 +742,9 @@ func Test12721_a_request_stream_names_no_output(t *testing.T) {
 	var pending sync.Map
 	peer := newPeerInvokerImpl(writer, &pending, DefaultMaxChunk, nil, 0)
 
-	_, err := peer.Invoke(`cap:in="media:enc=utf-8;prompt";ask;out="media:enc=utf-8"`, []cap.CapArgumentValue{
-		{MediaUrn: "media:enc=utf-8;prompt", Value: []byte("why")},
-		{MediaUrn: "media:enc=utf-8;model-spec", Value: []byte("small")},
+	_, err := peer.Invoke(`cap:in="media:enc=utf8;prompt";ask;out="media:enc=utf8"`, []cap.CapArgumentValue{
+		{MediaUrn: "media:enc=utf8;prompt", Value: []byte("why")},
+		{MediaUrn: "media:enc=utf8;model-spec", Value: []byte("small")},
 	})
 	require.NoError(t, err)
 
@@ -753,8 +753,8 @@ func Test12721_a_request_stream_names_no_output(t *testing.T) {
 	for _, start := range sent {
 		assert.Equal(t, "", start.output, "an argument stream does not carry key 21")
 	}
-	assert.Equal(t, "media:enc=utf-8;prompt", sent[0].label)
-	assert.Equal(t, "media:enc=utf-8;model-spec", sent[1].label)
+	assert.Equal(t, "media:enc=utf8;prompt", sent[0].label)
+	assert.Equal(t, "media:enc=utf8;model-spec", sent[1].label)
 }
 
 // TEST12731: a request stream names no output: an argument is identified by
@@ -763,7 +763,7 @@ func Test12721_a_request_stream_names_no_output(t *testing.T) {
 // reaches the handler as an argument, and the handler is not left waiting:
 // its input ends short of END.
 func Test12731_a_request_stream_that_names_an_output_is_refused(t *testing.T) {
-	const capUrn = `cap:in="media:enc=utf-8";echo-named;out="media:enc=utf-8"`
+	const capUrn = `cap:in="media:enc=utf8";echo-named;out="media:enc=utf8"`
 	run := func(named bool) (reply []Frame, handled []Frame) {
 		runtime, err := NewCartridgeRuntimeWithManifest(createTestManifest("Echo", "1.0.0", "Test", nil))
 		require.NoError(t, err)
@@ -780,9 +780,9 @@ func Test12731_a_request_stream_that_names_an_output_is_refused(t *testing.T) {
 			return emitter.EmitCbor([]byte("ok"))
 		})
 		rid := NewMessageIdRandom()
-		start := NewStreamStart(rid, "arg0", "media:enc=utf-8", nil)
+		start := NewStreamStart(rid, "arg0", "media:enc=utf8", nil)
 		if named {
-			start.ForOutput("media:enc=utf-8;kept")
+			start.ForOutput("media:enc=utf8;kept")
 		}
 		payload, err := cborlib.Marshal([]byte("x"))
 		require.NoError(t, err)
@@ -815,7 +815,7 @@ func Test12731_a_request_stream_that_names_an_output_is_refused(t *testing.T) {
 	require.Equal(t, FrameTypeErr, refused.FrameType, "the request is refused: %v", reply)
 	assert.Equal(t, "PROTOCOL_ERROR", refused.ErrorCode())
 	assert.Contains(t, refused.ErrorMessage(), "names an output")
-	assert.Contains(t, refused.ErrorMessage(), "media:enc=utf-8;kept")
+	assert.Contains(t, refused.ErrorMessage(), "media:enc=utf8;kept")
 	assert.Equal(t, 0, countOf(reply, FrameTypeEnd))
 	assert.Equal(t, 0, countOf(handled, FrameTypeStreamStart), "nothing of the request is read as an argument")
 	assert.Equal(t, 0, countOf(handled, FrameTypeChunk))

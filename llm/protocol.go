@@ -289,9 +289,9 @@ const (
 	CapLLMInferenceConstrained = "cap:constrained;gguf;in=\"media:llm-generation-request;json;record\";llm;ml-model;llm-inference-constrained;out=\"media:llm-text-stream;ndjson\""
 	CapLLMVocab                = "cap:llm-vocab;llm;ml-model;gguf;in=\"media:llm-generation-request;json;record\";out=\"media:llm-vocab-response;json;record\""
 	CapLLMModelInfo            = "cap:llm-model-info;llm;ml-model;gguf;in=\"media:llm-generation-request;json;record\";out=\"media:llm-model-info;json;record\""
-	CapGenerateEmbeddings      = "cap:generate-embeddings;ml-model;gguf;in=\"media:enc=utf-8\";out=\"media:embedding-vector;fmt=json;record\""
-	CapEmbeddingsDimensions    = "cap:gguf;in=\"media:embeddings;enc=utf-8;gguf;model-spec;tokenizer-embedded-gguf\";ml-model;embeddings-dimensions;out=\"media:integer;model-dim;numeric\""
-	CapDescribeImage           = "cap:gguf;in=\"media:ext=png;image\";ml-model;describe-image;out=\"media:enc=utf-8;ext=txt;image-description;plain-text\";vision"
+	CapGenerateEmbeddings      = "cap:generate-embeddings;ml-model;gguf;in=\"media:enc=utf8\";out=\"media:embedding-vector;enc=utf8;fmt=json;record\""
+	CapEmbeddingsDimensions    = "cap:gguf;in=\"media:embeddings;enc=utf8;gguf;model-spec;tokenizer-embedded-gguf\";ml-model;embeddings-dimensions;out=\"media:integer;model-dim;numeric\""
+	CapDescribeImage           = "cap:gguf;in=\"media:ext=png;image\";ml-model;describe-image;out=\"media:enc=utf8;ext=txt;image-description;plain-text\";vision"
 )
 
 // -----------------------------------------------------------------------------

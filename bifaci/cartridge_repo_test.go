@@ -197,7 +197,7 @@ func Test322_cartridge_info_build_for_platform(t *testing.T) {
 
 // TEST12849: a registry is bytes another program wrote, so reading one holds every cap definition in it to the definition rules: a cartridge whose definition breaks one is refused, naming the cartridge, its channel, the cap and the rule; whole definitions are read.
 func Test12849_reading_a_registry_holds_its_definitions_to_the_rules(t *testing.T) {
-	const compare = `cap:in="media:enc=utf-8";compare;out="media:record"`
+	const compare = `cap:in="media:enc=utf8";compare;out="media:record"`
 	entry := func(c cap.Cap) CartridgeRegistryEntry {
 		return CartridgeRegistryEntry{
 			Name: "Comparer", Description: "d", Author: "a", TeamId: "TEAM123", LatestVersion: "1.0.0",
@@ -479,7 +479,7 @@ func Test328_cartridge_repo_server_get_by_category(t *testing.T) {
 
 // TEST329: CartridgeRepoServer.get_suggestions_for_cap() finds cartridges providing a given cap URN
 func Test329_cartridge_repo_server_get_by_cap(t *testing.T) {
-	capUrn := `cap:in="media:document;ext=pdf";disbind;out="media:disbound-page;list;enc=utf-8"`
+	capUrn := `cap:in="media:document;ext=pdf";disbind;out="media:disbound-page;list;enc=utf8"`
 	entry := CartridgeRegistryEntry{
 		Name:          "PDF Cartridge",
 		Description:   "Process PDFs",
@@ -517,7 +517,7 @@ func Test329_cartridge_repo_server_get_by_cap(t *testing.T) {
 	// Same cap URN, same in/out, same op, but the out-spec's tags appear
 	// in a different declared order. Tagged-URN equivalence treats them
 	// as identical, so the lookup must still resolve.
-	reorderedUrn := `cap:in="media:document;ext=pdf";disbind;out="media:list;disbound-page;enc=utf-8"`
+	reorderedUrn := `cap:in="media:document;ext=pdf";disbind;out="media:list;disbound-page;enc=utf8"`
 	reordered, err := server.GetCartridgesByCap(reorderedUrn)
 	if err != nil {
 		t.Fatalf("Failed to get by reordered cap: %v", err)
@@ -579,7 +579,7 @@ func Test330_cartridge_repo_client_update_cache(t *testing.T) {
 func Test331_cartridge_repo_client_get_suggestions(t *testing.T) {
 	repo := NewCartridgeRepo(3600)
 
-	capUrn := `cap:in="media:document;ext=pdf";disbind;out="media:disbound-page;list;enc=utf-8"`
+	capUrn := `cap:in="media:document;ext=pdf";disbind;out="media:disbound-page;list;enc=utf8"`
 	registry := &CartridgeRegistryResponse{
 		Cartridges: []CartridgeInfo{
 			{
@@ -671,8 +671,8 @@ func Test332_cartridge_repo_client_get_cartridge(t *testing.T) {
 func Test333_cartridge_repo_client_get_all_caps(t *testing.T) {
 	repo := NewCartridgeRepo(3600)
 
-	cap1 := `cap:in="media:document;ext=pdf";disbind;out="media:disbound-page;list;enc=utf-8"`
-	cap2 := `cap:in="media:txt;enc=utf-8";disbind;out="media:disbound-page;list;enc=utf-8"`
+	cap1 := `cap:in="media:document;ext=pdf";disbind;out="media:disbound-page;list;enc=utf8"`
+	cap2 := `cap:in="media:txt;enc=utf8";disbind;out="media:disbound-page;list;enc=utf8"`
 
 	registry := &CartridgeRegistryResponse{
 		Cartridges: []CartridgeInfo{
@@ -1018,13 +1018,13 @@ func Test632_deserialize_minimal_registry_cap(t *testing.T) {
 // TEST633: A registry cap with a description, named arguments and several outputs parses, each part where the definition holds it.
 func Test633_deserialize_rich_registry_cap(t *testing.T) {
 	jsonStr := `{
-		"urn": "cap:in=\"media:document;ext=pdf\";disbind;out=\"media:enc=utf-8;page\"",
+		"urn": "cap:in=\"media:document;ext=pdf\";disbind;out=\"media:enc=utf8;page\"",
 		"title": "Disbind PDF",
 		"aliases": ["disbind"],
 		"cap_description": "Extract each PDF page as plain page text.",
 		"args": [
 			{
-				"media_urn": "media:enc=utf-8;file-path",
+				"media_urn": "media:enc=utf8;file-path",
 				"name": "document",
 				"required": true,
 				"is_sequence": false,
@@ -1034,13 +1034,13 @@ func Test633_deserialize_rich_registry_cap(t *testing.T) {
 		],
 		"outputs": [
 			{
-				"media_urn": "media:enc=utf-8;page",
+				"media_urn": "media:enc=utf8;page",
 				"name": "pages",
 				"is_sequence": true,
 				"output_description": "One page text per PDF page"
 			},
 			{
-				"media_urn": "media:enc=utf-8;outline",
+				"media_urn": "media:enc=utf8;outline",
 				"name": "outline",
 				"optional": true,
 				"output_description": "The document's outline, when it has one"
@@ -1057,7 +1057,7 @@ func Test633_deserialize_rich_registry_cap(t *testing.T) {
 	if read.CapDescription == nil || *read.CapDescription != "Extract each PDF page as plain page text." {
 		t.Errorf("Expected cap_description, got %v", read.CapDescription)
 	}
-	if len(read.Args) != 1 || read.Args[0].Name != "document" || read.Args[0].MediaUrn != "media:enc=utf-8;file-path" {
+	if len(read.Args) != 1 || read.Args[0].Name != "document" || read.Args[0].MediaUrn != "media:enc=utf8;file-path" {
 		t.Fatalf("Expected the named document argument, got %+v", read.Args)
 	}
 	if len(read.Args[0].Sources) != 2 || read.Args[0].Sources[1].Position == nil || *read.Args[0].Sources[1].Position != 0 {
@@ -1118,7 +1118,7 @@ func Test635_deserialize_cartridge_info_wire_shape(t *testing.T) {
 				"name": "pdf-formats",
 				"caps": [
 					{"urn": "cap:effect=none", "title": "Identity", "aliases": ["identity"], "args": [{"media_urn": "media:", "name": "input", "required": true, "sources": [{"stdin": "media:"}]}], "outputs": [{"media_urn": "media:", "name": "output", "output_description": "The input data, unchanged"}]},
-					{"urn": "cap:in=\"media:document;ext=pdf\";disbind;out=\"media:enc=utf-8;page\"", "title": "Disbind PDF Into Page Text", "aliases": ["disbind"], "args": [{"media_urn": "media:document;ext=pdf", "name": "document", "required": true, "sources": [{"stdin": "media:document;ext=pdf"}]}], "outputs": [{"media_urn": "media:enc=utf-8;page", "name": "pages", "is_sequence": true, "output_description": "The pages"}]}
+					{"urn": "cap:in=\"media:document;ext=pdf\";disbind;out=\"media:enc=utf8;page\"", "title": "Disbind PDF Into Page Text", "aliases": ["disbind"], "args": [{"media_urn": "media:document;ext=pdf", "name": "document", "required": true, "sources": [{"stdin": "media:document;ext=pdf"}]}], "outputs": [{"media_urn": "media:enc=utf8;page", "name": "pages", "is_sequence": true, "output_description": "The pages"}]}
 				],
 				"adapter_urns": ["media:document;ext=pdf"]
 			}

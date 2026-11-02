@@ -246,9 +246,9 @@ func buildForeachPlan() *MachinePlan {
 		[]ForEachSource{{Node: "cap_0", Item: "foreach_0_item_0"}},
 		[]NodeId{"foreach_0_item_0", "body_cap_0", "body_cap_1"}))
 	plan.AddNode(NewItemNode("foreach_0_item_0", "foreach_0", "cap_0", "media:pdf-page"))
-	plan.AddNode(NewMachineNode("body_cap_0", `cap:in=media:pdf-page;out="media:enc=utf-8;text"`))
-	plan.AddNode(NewMachineNode("body_cap_1", `cap:in="media:enc=utf-8;text";out="media:decision;fmt=json;record"`))
-	plan.AddNode(NewMachineNode("cap_post", `cap:in="media:decision;fmt=json;record";out="media:fmt=json"`))
+	plan.AddNode(NewMachineNode("body_cap_0", `cap:in=media:pdf-page;out="media:enc=utf8;text"`))
+	plan.AddNode(NewMachineNode("body_cap_1", `cap:in="media:enc=utf8;text";out="media:decision;enc=utf8;fmt=json;record"`))
+	plan.AddNode(NewMachineNode("cap_post", `cap:in="media:decision;enc=utf8;fmt=json;record";out="media:enc=utf8;fmt=json"`))
 	plan.AddNode(NewOutputNode("output", "result", "cap_post"))
 
 	plan.AddEdge(NewDirectEdge("input_slot", "cap_0"))
@@ -403,8 +403,8 @@ func Test936_has_foreach(t *testing.T) {
 	assert.False(t, linearPlan.HasForeach())
 
 	gatherPlan := NewMachinePlan("gather_only")
-	gatherPlan.AddNode(NewInputSlotNode("input", "input", "media:enc=utf-8", CardinalitySingle))
-	gatherPlan.AddNode(NewMachineNode("cap_0", `cap:in="media:enc=utf-8";summarize;out=media:summary`))
+	gatherPlan.AddNode(NewInputSlotNode("input", "input", "media:enc=utf8", CardinalitySingle))
+	gatherPlan.AddNode(NewMachineNode("cap_0", `cap:in="media:enc=utf8";summarize;out=media:summary`))
 	gatherPlan.AddNode(NewCollectNode("collect_0", []string{"cap_0"}, "media:summary"))
 	gatherPlan.AddNode(NewOutputNode("output", "result", "collect_0"))
 	require.NoError(t, gatherPlan.Validate())
@@ -429,8 +429,8 @@ func Test12753_a_plan_says_which_map_a_node_runs_in(t *testing.T) {
 	plan.AddNode(NewForEachNode("foreach_1",
 		[]ForEachSource{{Node: "body_cap_0", Item: "foreach_1_item_0"}},
 		[]NodeId{"foreach_1_item_0", "inner_cap"}))
-	plan.AddNode(NewItemNode("foreach_1_item_0", "foreach_1", "body_cap_0", "media:enc=utf-8;text"))
-	plan.AddNode(NewMachineNode("inner_cap", `cap:in="media:enc=utf-8;text";out=media:word`))
+	plan.AddNode(NewItemNode("foreach_1_item_0", "foreach_1", "body_cap_0", "media:enc=utf8;text"))
+	plan.AddNode(NewMachineNode("inner_cap", `cap:in="media:enc=utf8;text";out=media:word`))
 	outer := plan.Nodes["foreach_0"].NodeType
 	outer.Body = append(outer.Body, "foreach_1")
 	require.NoError(t, plan.Validate())

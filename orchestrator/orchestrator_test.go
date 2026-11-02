@@ -14,13 +14,13 @@ import (
 )
 
 const (
-	extractCap   = `cap:in="media:document;ext=pdf";extract;out="media:enc=utf-8;ext=txt"`
-	summarizeCap = `cap:in="media:enc=utf-8;ext=txt";summarize;out="media:enc=utf-8;summary"`
-	concatCap    = `cap:in="media:enc=utf-8";concat;out="media:enc=utf-8;joined"`
-	splitCap     = `cap:in="media:enc=utf-8;ext=txt";split;out="media:enc=utf-8;head"`
+	extractCap   = `cap:in="media:document;ext=pdf";extract;out="media:enc=utf8;ext=txt;plain-text"`
+	summarizeCap = `cap:in="media:enc=utf8;ext=txt;plain-text";summarize;out="media:enc=utf8;summary"`
+	concatCap    = `cap:in="media:enc=utf8";concat;out="media:enc=utf8;joined"`
+	splitCap     = `cap:in="media:enc=utf8;ext=txt;plain-text";split;out="media:enc=utf8;head"`
 	nowCap       = `cap:in="media:void";now;out="media:stamp"`
-	contextUrn   = "media:context;enc=utf-8"
-	restUrn      = "media:enc=utf-8;rest"
+	contextUrn   = "media:context;enc=utf8"
+	restUrn      = "media:enc=utf8;rest"
 )
 
 // testCap is the smallest definition of `capUrn`: its input on stdin unless
@@ -63,7 +63,7 @@ func testPlan(t *testing.T) *planner.MachinePlan {
 	plan.AddNode(planner.NewMachineNode("now", nowCap))
 	plan.AddNode(planner.NewMachineNode("split", splitCap))
 	plan.AddNode(planner.NewCapOutputNode("split.rest", "split", restUrn, "rest", false))
-	plan.AddNode(planner.NewCollectNode("both", []string{"summarize", "split.rest"}, "media:enc=utf-8"))
+	plan.AddNode(planner.NewCollectNode("both", []string{"summarize", "split.rest"}, "media:enc=utf8"))
 	plan.AddNode(planner.NewMachineNode("concat", concatCap))
 	plan.AddNode(planner.NewOutputNode("out", "result", "concat"))
 	plan.AddEdge(planner.NewDirectEdge("doc", "extract"))
@@ -114,11 +114,11 @@ func Test1161_a_plan_converts_to_steps_with_their_inputs_and_outputs(t *testing.
 	extract := stepOf(t, graph, "extract")
 	assert.Equal(t, []StepInput{{StreamUrn: "media:document;ext=pdf", Source: NodeStepSource("doc")}}, extract.Inputs)
 	assert.Empty(t, extract.Outputs)
-	assert.Equal(t, "media:enc=utf-8;ext=txt", extract.OutMedia)
+	assert.Equal(t, "media:enc=utf8;ext=txt;plain-text", extract.OutMedia)
 
 	summarize := stepOf(t, graph, "summarize")
 	assert.Equal(t, []StepInput{
-		{StreamUrn: "media:enc=utf-8;ext=txt", Source: NodeStepSource("extract")},
+		{StreamUrn: "media:enc=utf8;ext=txt;plain-text", Source: NodeStepSource("extract")},
 		{StreamUrn: contextUrn, Source: NodeStepSource("now")},
 	}, summarize.Inputs)
 
@@ -130,7 +130,7 @@ func Test1161_a_plan_converts_to_steps_with_their_inputs_and_outputs(t *testing.
 
 	concat := stepOf(t, graph, "concat")
 	assert.Equal(t, []StepInput{{
-		StreamUrn: "media:enc=utf-8",
+		StreamUrn: "media:enc=utf8",
 		Source:    GatherStepSource([]string{"summarize", "split.rest"}),
 	}}, concat.Inputs)
 	assert.Equal(t, []string{"summarize", "split.rest"}, concat.SourceNodes())
@@ -139,7 +139,7 @@ func Test1161_a_plan_converts_to_steps_with_their_inputs_and_outputs(t *testing.
 	// input is there as what the graph is given.
 	assert.Equal(t, "media:document;ext=pdf", graph.Nodes["doc"])
 	assert.Equal(t, restUrn, graph.Nodes["split.rest"])
-	assert.Equal(t, "media:enc=utf-8;joined", graph.Nodes["concat"])
+	assert.Equal(t, "media:enc=utf8;joined", graph.Nodes["concat"])
 	assert.NotContains(t, graph.Nodes, "both", "a gather is an input, not a node of the graph")
 	assert.NotContains(t, graph.Nodes, "out")
 
@@ -148,9 +148,9 @@ func Test1161_a_plan_converts_to_steps_with_their_inputs_and_outputs(t *testing.
 	alone, err := StepsToResolvedGraph(testPlan(t), []string{"split"}, testRegistry(t))
 	require.NoError(t, err)
 	assert.Equal(t, map[string]string{
-		"split":      "media:enc=utf-8;head",
+		"split":      "media:enc=utf8;head",
 		"split.rest": restUrn,
-		"extract":    "media:enc=utf-8;ext=txt",
+		"extract":    "media:enc=utf8;ext=txt;plain-text",
 	}, alone.Nodes)
 
 	// And a step that reads a step's other output from outside the graph is
@@ -158,8 +158,8 @@ func Test1161_a_plan_converts_to_steps_with_their_inputs_and_outputs(t *testing.
 	gathering, err := StepsToResolvedGraph(testPlan(t), []string{"concat"}, testRegistry(t))
 	require.NoError(t, err)
 	assert.Equal(t, map[string]string{
-		"concat":     "media:enc=utf-8;joined",
-		"summarize":  "media:enc=utf-8;summary",
+		"concat":     "media:enc=utf8;joined",
+		"summarize":  "media:enc=utf8;summary",
 		"split.rest": restUrn,
 	}, gathering.Nodes)
 }
@@ -217,10 +217,10 @@ func Test771_a_step_no_invocation_can_be_given_is_refused(t *testing.T) {
 	}
 	refused(func(plan *planner.MachinePlan) {
 		plan.AddEdge(planner.NewDirectEdge("now", "summarize"))
-	}, "step 'summarize' is wired twice on input stream 'media:enc=utf-8;ext=txt'")
+	}, "step 'summarize' is wired twice on input stream 'media:enc=utf8;ext=txt;plain-text'")
 	// The same arg, its tags in another order.
 	refused(func(plan *planner.MachinePlan) {
-		plan.AddEdge(planner.NewArgEdge("doc", "summarize", "media:enc=utf-8;context"))
+		plan.AddEdge(planner.NewArgEdge("doc", "summarize", "media:enc=utf8;context"))
 	}, "step 'summarize' is wired twice on input stream")
 	refused(func(plan *planner.MachinePlan) {
 		plan.AddEdge(planner.NewIterationEdge("now", "summarize"))
