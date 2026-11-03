@@ -636,12 +636,14 @@ func Test558_predicate_constant_consistency(t *testing.T) {
 	assert.True(t, boolUrn.IsScalar())
 	assert.False(t, boolUrn.IsNumeric())
 
-	// MEDIA_JSON must be json, record, structured, NOT enc/list.
-	// JSON content carries fmt=json (not enc=) — it is a serialization, not bare text.
+	// MEDIA_JSON must be json, record, structured, NOT list. JSON is
+	// characters, so it carries enc=utf8; fmt=json says how they are structured.
 	jsonUrn, err := NewMediaUrnFromString(standard.MediaJSON)
 	require.NoError(t, err)
 	assert.True(t, jsonUrn.IsJson())
-	assert.False(t, jsonUrn.HasTag("enc"))
+	enc, hasEnc := jsonUrn.GetTag("enc")
+	assert.True(t, hasEnc)
+	assert.Equal(t, "utf8", enc)
 	assert.True(t, jsonUrn.IsRecord())
 	assert.True(t, jsonUrn.IsStructured())
 	assert.False(t, jsonUrn.IsList())
@@ -662,28 +664,34 @@ func Test852_lub_identical(t *testing.T) {
 	assert.True(t, lub.IsEquivalent(pdf))
 }
 
-// TEST853: LUB of URNs with no common tags returns media: (universal)
-func Test853_lub_no_common_tags(t *testing.T) {
+// TEST853: LUB promotes a shared key with differing values to "some value": both
+// inputs HAVE an ext (pdf vs png), so the bound is media:ext — the denominator
+// generic caps like in="media:ext" accept — not the trivial media:. The image
+// marker is only on one side, so it is dropped.
+func Test853_lub_shared_key_promotes_to_wildcard(t *testing.T) {
 	pdf, err := NewMediaUrnFromString("media:document;ext=pdf")
 	require.NoError(t, err)
 	png, err := NewMediaUrnFromString("media:ext=png;image")
 	require.NoError(t, err)
 	lub := LeastUpperBound([]*MediaUrn{pdf, png})
-	universal, err := NewMediaUrnFromString("media:")
+	expected, err := NewMediaUrnFromString("media:ext")
 	require.NoError(t, err)
-	assert.True(t, lub.IsEquivalent(universal), "LUB of pdf and png should be media: but got %s", lub.String())
+	assert.True(t, lub.IsEquivalent(expected), "LUB of ext=pdf and ext=png;image should be media:ext but got %s", lub.String())
+	assert.True(t, pdf.ConformsTo(lub))
+	assert.True(t, png.ConformsTo(lub))
 }
 
-// TEST854: LUB keeps common tags, drops differing ones
+// TEST854: LUB keeps common tags, drops differing ones. Both inputs are UTF-8
+// text (shared enc=utf8) but differ in structure (list vs record).
 func Test854_lub_partial_overlap(t *testing.T) {
-	jsonRec, err := NewMediaUrnFromString("media:enc=utf8;fmt=json;record")
+	textList, err := NewMediaUrnFromString("media:enc=utf8;list")
 	require.NoError(t, err)
-	yamlRec, err := NewMediaUrnFromString("media:enc=utf8;fmt=yaml;record")
+	textRecord, err := NewMediaUrnFromString("media:enc=utf8;record")
 	require.NoError(t, err)
-	lub := LeastUpperBound([]*MediaUrn{jsonRec, yamlRec})
-	expected, err := NewMediaUrnFromString("media:record")
+	lub := LeastUpperBound([]*MediaUrn{textList, textRecord})
+	expected, err := NewMediaUrnFromString("media:enc=utf8")
 	require.NoError(t, err)
-	assert.True(t, lub.IsEquivalent(expected), "LUB should drop differing fmt, keep record, got %s", lub.String())
+	assert.True(t, lub.IsEquivalent(expected), "LUB should be media:enc=utf8 but got %s", lub.String())
 }
 
 // TEST855: LUB of list and non-list drops list tag
@@ -723,21 +731,26 @@ func Test858_lub_three_inputs(t *testing.T) {
 	c, err := NewMediaUrnFromString("media:enc=utf8;fmt=ndjson;list")
 	require.NoError(t, err)
 	lub := LeastUpperBound([]*MediaUrn{a, b, c})
-	expected, err := NewMediaUrnFromString("media:list")
+	// All three are UTF-8 lists and all three HAVE a fmt (json/csv/ndjson —
+	// differing values → "some fmt"); record is on a and b only → dropped.
+	expected, err := NewMediaUrnFromString("media:enc=utf8;fmt;list")
 	require.NoError(t, err)
-	assert.True(t, lub.IsEquivalent(expected), "LUB should be media:list but got %s", lub.String())
+	assert.True(t, lub.IsEquivalent(expected), "LUB should be media:enc=utf8;fmt;list but got %s", lub.String())
+	assert.True(t, a.ConformsTo(lub))
+	assert.True(t, b.ConformsTo(lub))
+	assert.True(t, c.ConformsTo(lub))
 }
 
-// TEST859: LUB with valued tags (non-marker) that differ
+// TEST859: LUB with valued tags (non-marker) that differ promotes the key
 func Test859_lub_valued_tags(t *testing.T) {
 	v1, err := NewMediaUrnFromString("media:ext=png;image")
 	require.NoError(t, err)
 	v2, err := NewMediaUrnFromString("media:ext=jpeg;image")
 	require.NoError(t, err)
 	lub := LeastUpperBound([]*MediaUrn{v1, v2})
-	expected, err := NewMediaUrnFromString("media:image")
+	expected, err := NewMediaUrnFromString("media:ext;image")
 	require.NoError(t, err)
-	assert.True(t, lub.IsEquivalent(expected), "LUB should drop conflicting ext tag, got %s", lub.String())
+	assert.True(t, lub.IsEquivalent(expected), "LUB should promote conflicting ext to some ext, got %s", lub.String())
 }
 
 // TEST628: Verify media URN constants all start with "media:" prefix

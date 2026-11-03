@@ -397,46 +397,32 @@ func (m *MediaUrn) WithoutTag(key string) *MediaUrn {
 	return &MediaUrn{inner: m.inner.WithoutTag(key)}
 }
 
-// LeastUpperBound computes the least upper bound (most specific common type) of a set of MediaUrns.
-// Returns the MediaUrn whose tag set is the intersection of all input tag sets:
-// only tags present in ALL inputs with matching values are kept.
+// LeastUpperBound is the most specific media type every one of urns conforms
+// to: their common denominator, as a gather's element type or the meeting point
+// where branches of different media converge.
 //
-// - Empty input -> media: (universal type)
-// - Single input -> returned as-is
+// Made by tagged-urn's proved model (taggedurn.LeastUpperBound): key by key, the
+// bound allows every state some input allows, and where no single form says
+// exactly that, it is the least bound that excludes only values the inputs
+// name.
+//
+//   - [media:document;ext=pdf, media:ext=png;image] -> media:ext
+//   - [media:ext=png, media:ext!=pdf] -> media:ext!=pdf (one holds the other)
+//   - [media:enc=utf8;fmt=json;list, media:enc=utf8;fmt=json] -> media:enc=utf8;fmt=json
+//   - no inputs -> media:
 func LeastUpperBound(urns []*MediaUrn) *MediaUrn {
-	if len(urns) == 0 {
-		u, _ := NewMediaUrnFromString("media:")
-		return u
-	}
-
-	if len(urns) == 1 {
-		return urns[0]
-	}
-
-	// Start with the first URN's tags, intersect with each subsequent URN
-	firstTags := urns[0].inner.AllTags()
-	commonTags := make(map[string]string, len(firstTags))
-	for k, v := range firstTags {
-		commonTags[k] = v
-	}
-
-	for _, u := range urns[1:] {
-		if u.inner == nil {
-			// No tags = empty intersection
-			commonTags = make(map[string]string)
-			break
+	tagged := make([]*taggedurn.TaggedUrn, 0, len(urns))
+	for _, u := range urns {
+		if u == nil || u.inner == nil {
+			panic("capdag: the bound of a MediaUrn that was never made")
 		}
-		otherTags := u.inner.AllTags()
-		for key, value := range commonTags {
-			otherValue, exists := otherTags[key]
-			if !exists || otherValue != value {
-				delete(commonTags, key)
-			}
-		}
+		tagged = append(tagged, u.inner)
 	}
-
-	result := taggedurn.NewTaggedUrnFromTags("media", commonTags)
-	return &MediaUrn{inner: result}
+	bound, err := taggedurn.LeastUpperBound("media", tagged)
+	if err != nil {
+		panic(fmt.Sprintf("capdag: the bound of media URNs: %v", err))
+	}
+	return &MediaUrn{inner: bound}
 }
 
 // =========================================================================
