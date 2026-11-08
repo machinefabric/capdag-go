@@ -7,10 +7,10 @@ go 1.22
 // Dispatch, acceptance and specificity are decided by code generated from ../formal
 // (package formal), which runs on lungo's runtime through lungo-go, at exactly the lungo
 // release that generated it; its URNs are tagged-urn-go's.
-require github.com/machinefabric/lungo-go v1.117.0
+require github.com/machinefabric/lungo-go v0.0.0
 
 require (
-	github.com/machinefabric/tagged-urn-go v1.146.40
+	github.com/machinefabric/tagged-urn-go v0.0.0
 	github.com/jowharshamshiri/ops-go v1.21.109
 	github.com/fxamacker/cbor/v2 v2.9.0
 	github.com/google/uuid v1.6.0
@@ -27,3 +27,11 @@ require (
 	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+// MFR_LOCAL_LIBS: the working copy of tagged-urn-go in this workspace, and lungo-go
+// from the local distribution built from the working copy of lungo, rather than
+// published releases. The requires above carry the v0.0.0 placeholder a replaced
+// module takes. Re-render without it before committing or releasing.
+replace github.com/machinefabric/tagged-urn-go => ../../tagged-urn/tagged-urn-go
+
+replace github.com/machinefabric/lungo-go => ../../.sdx/disposable/build/lungo/distribution/go
