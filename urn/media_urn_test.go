@@ -636,12 +636,14 @@ func Test558_predicate_constant_consistency(t *testing.T) {
 	assert.True(t, boolUrn.IsScalar())
 	assert.False(t, boolUrn.IsNumeric())
 
-	// MEDIA_JSON must be json, record, structured, NOT enc/list.
-	// JSON content carries fmt=json (not enc=) — it is a serialization, not bare text.
+	// MEDIA_JSON must be json, record, structured, NOT list. JSON is
+	// characters, so it carries enc=utf8; fmt=json says how they are structured.
 	jsonUrn, err := NewMediaUrnFromString(standard.MediaJSON)
 	require.NoError(t, err)
 	assert.True(t, jsonUrn.IsJson())
-	assert.False(t, jsonUrn.HasTag("enc"))
+	enc, hasEnc := jsonUrn.GetTag("enc")
+	assert.True(t, hasEnc)
+	assert.Equal(t, "utf8", enc)
 	assert.True(t, jsonUrn.IsRecord())
 	assert.True(t, jsonUrn.IsStructured())
 	assert.False(t, jsonUrn.IsList())
