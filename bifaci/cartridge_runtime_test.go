@@ -5367,12 +5367,16 @@ func Test375_the_runtime_acts_on_a_cancel(t *testing.T) {
 
 	// running's input has ended; its handler is waiting to be released. The
 	// cancel ends it, and releasing the handler afterwards sends nothing more.
-	// The runtime reads its frames in order, so the reply to a heartbeat sent
-	// after the cancel is proof the cancel was acted on before the release.
+	// The main loop takes its frames in order, so its refusal of a request
+	// for a cap nobody serves, sent after the cancel, is proof the cancel was
+	// acted on before the release. (A heartbeat is no such proof: the reader
+	// answers it the moment it arrives, ahead of the loop.)
 	send(NewCancelFrame(running, reason))
-	probe := NewMessageIdRandom()
-	send(NewHeartbeat(probe))
-	waitFor(func(f Frame) bool { return f.Id.Equals(probe) && f.FrameType == FrameTypeHeartbeat }, "the heartbeat sent after the cancel")
+	barrier := NewMessageIdRandom()
+	send(NewReq(barrier, `cap:in="media:void";nobody-serves-this;out="media:void"`, nil, "application/cbor"))
+	waitFor(func(f Frame) bool {
+		return f.Id.Equals(barrier) && f.FrameType == FrameTypeErr && f.ErrorCode() == "NO_HANDLER"
+	}, "the refusal of the request sent after the cancel")
 	release <- struct{}{}
 	err2 := waitFor(func(f Frame) bool {
 		return f.Id.Equals(running) && (f.FrameType == FrameTypeErr || f.FrameType == FrameTypeEnd)
@@ -5407,5 +5411,262 @@ func Test375_the_runtime_acts_on_a_cancel(t *testing.T) {
 		if terminals != 1 {
 			t.Errorf("request %s ended %d times", rid.ToString(), terminals)
 		}
+	}
+}
+
+// TEST12650: A heartbeat is answered while a handler leaves a peer call's
+// answer unread. The read loop answered heartbeats itself, and it also handed
+// each frame of a peer response to its handler through a bounded channel:
+// once a handler that was busy elsewhere let that channel fill, the loop
+// stopped reading, the next probe went unanswered, and the host declared the
+// cartridge dead in the middle of correct work.
+func Test12650_a_heartbeat_is_answered_while_a_handler_leaves_its_peer_answer_unread(t *testing.T) {
+	rt, err := NewCartridgeRuntime([]byte(testManifest))
+	if err != nil {
+		t.Fatalf("failed to create runtime: %v", err)
+	}
+	invoked := make(chan struct{})
+	release := make(chan struct{})
+	rt.Register(testCapUrn, func(frames <-chan Frame, emitter StreamEmitter, peer PeerInvoker) error {
+		if _, err := CollectStreams(frames); err != nil {
+			return err
+		}
+		answer, err := peer.Invoke(`cap:in="media:void";peer-test;out="media:void"`, nil)
+		if err != nil {
+			return err
+		}
+		close(invoked)
+		// Busy with something else until the test lets it go; only then
+		// does it read the answer, to its end.
+		<-release
+		for range answer {
+		}
+		return nil
+	})
+	hostWriter, outFrames, _ := startTestCartridge(t, rt, DefaultInitialCredit)
+	// Runs before the harness waits for the runtime (cleanups run last-in,
+	// first-out): a failure part-way must not leave the handler waiting.
+	var releaseOnce sync.Once
+	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
+
+	waitFor := func(pred func(f Frame) bool, what string) Frame {
+		t.Helper()
+		deadline := time.After(5 * time.Second)
+		for {
+			select {
+			case f, ok := <-outFrames:
+				if !ok {
+					t.Fatalf("output closed waiting for %s", what)
+				}
+				if pred(f) {
+					return f
+				}
+			case <-deadline:
+				t.Fatalf("timed out waiting for %s", what)
+			}
+		}
+	}
+
+	rid := NewMessageIdRandom()
+	if err := hostWriter.WriteFrame(NewReq(rid, testCapUrn, nil, "application/cbor")); err != nil {
+		t.Fatalf("write REQ: %v", err)
+	}
+	if err := hostWriter.WriteFrame(NewEnd(rid, nil)); err != nil {
+		t.Fatalf("write END: %v", err)
+	}
+	peerReq := waitFor(func(f Frame) bool { return f.FrameType == FrameTypeReq }, "the handler's peer call")
+	<-invoked
+
+	// The callee answers with far more than the handler's channel holds, then
+	// probes. The writes go through an unbuffered pipe, so they run on their
+	// own goroutine: a cartridge that stops reading stops them too.
+	const chunks = 1000
+	probe := NewMessageIdRandom()
+	hostDone := make(chan error, 1)
+	go func() {
+		hostDone <- func() error {
+			if err := hostWriter.WriteFrame(NewStreamStart(peerReq.Id, "answer", "media:", nil)); err != nil {
+				return err
+			}
+			for i := uint64(0); i < chunks; i++ {
+				payload := []byte{byte(i)}
+				if err := hostWriter.WriteFrame(NewChunk(peerReq.Id, "answer", i, payload, i, ComputeChecksum(payload))); err != nil {
+					return err
+				}
+			}
+			if err := hostWriter.WriteFrame(NewHeartbeat(probe)); err != nil {
+				return err
+			}
+			if err := hostWriter.WriteFrame(NewStreamEnd(peerReq.Id, "answer", chunks)); err != nil {
+				return err
+			}
+			return hostWriter.WriteFrame(NewEnd(peerReq.Id, nil))
+		}()
+	}()
+
+	reply := waitFor(func(f Frame) bool { return f.FrameType == FrameTypeHeartbeat }, "the reply to the probe sent behind the unread answer")
+	if !reply.Id.Equals(probe) {
+		t.Fatalf("the reply is to the probe that was sent: got %s", reply.Id.ToString())
+	}
+	if _, ok := reply.Meta[MetaPools]; !ok {
+		t.Fatal("the pool state rides every reply; the host refuses one without it")
+	}
+
+	// Let the handler read its answer: the request then ends normally.
+	releaseOnce.Do(func() { close(release) })
+	waitFor(func(f Frame) bool { return f.Id.Equals(rid) && f.FrameType == FrameTypeEnd }, "END for the request")
+	if err := <-hostDone; err != nil {
+		t.Fatalf("the host's writes: %v", err)
+	}
+}
+
+// responderWithNoPools is a heartbeat responder over real pools (none
+// declared), as a started cartridge has.
+func responderWithNoPools(t *testing.T) *heartbeatResponder {
+	t.Helper()
+	pools, err := newRuntimePools(nil, &PoolDeclarations{})
+	if err != nil {
+		t.Fatalf("no patterns and no declarations is a valid cartridge: %v", err)
+	}
+	return &heartbeatResponder{
+		pools:             &poolsCell{pools: pools},
+		dropCounters:      NewDropCounters(),
+		stragglerCounters: NewStragglerCounters(),
+	}
+}
+
+// readerUnderTest starts the frame reader between two pipes, as the runtime
+// starts it between stdin and stdout: it returns the host's writer, the
+// host's reader of what the cartridge wrote, and the reader's feed.
+func readerUnderTest(t *testing.T) (*FrameWriter, *io.PipeWriter, *FrameReader, *frameFeed) {
+	t.Helper()
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+	writer := newSyncFrameWriter(NewFrameWriter(outW), NewDropCounters(), NewStragglerCounters())
+	feed := spawnFrameReader(NewFrameReader(inR), responderWithNoPools(t), writer)
+	t.Cleanup(func() {
+		inW.Close()
+		outR.Close()
+	})
+	return NewFrameWriter(inW), inW, NewFrameReader(outR), feed
+}
+
+// TEST12647: A heartbeat is answered while the main loop takes nothing — the
+// reader's goroutine answers it by itself. A cartridge whose main loop waited
+// on a handler stopped answering, and was declared dead in the middle of
+// correct work.
+func Test12647_heartbeat_is_answered_without_the_main_loop(t *testing.T) {
+	hostWriter, _, hostReader, feed := readerUnderTest(t)
+
+	probe := NewMessageIdRandom()
+	// Nothing reads the feed from here on: whatever answers, it is not the
+	// main loop.
+	if err := hostWriter.WriteFrame(NewHeartbeat(probe)); err != nil {
+		t.Fatalf("the host's write: %v", err)
+	}
+	replies := make(chan *Frame, 1)
+	go func() {
+		reply, err := hostReader.ReadFrame()
+		if err != nil {
+			t.Errorf("the host's read: %v", err)
+			close(replies)
+			return
+		}
+		replies <- reply
+	}()
+	var reply *Frame
+	select {
+	case reply = <-replies:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the heartbeat is answered with no main loop taking frames")
+	}
+	if reply == nil {
+		t.Fatal("no reply was read")
+	}
+	if reply.FrameType != FrameTypeHeartbeat {
+		t.Fatalf("the reply is a heartbeat, got %v", reply.FrameType)
+	}
+	if !reply.Id.Equals(probe) {
+		t.Fatal("the reply is to the probe that was sent")
+	}
+	if _, ok := reply.Meta[MetaPools]; !ok {
+		t.Fatal("the pool state rides every reply; the host refuses one without it")
+	}
+
+	// And the main loop is still told, so that it turns and admits.
+	select {
+	case passedOn := <-feed.Frames():
+		if passedOn.FrameType != FrameTypeHeartbeat || !passedOn.Id.Equals(probe) {
+			t.Fatalf("the probe is passed on as it came: %v", passedOn.FrameType)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the frame is passed on")
+	}
+}
+
+// TEST12648: Every other frame goes to the main loop untouched and in order,
+// and nothing is written for it; the end of input ends the reader and closes
+// the loop's channel.
+func Test12648_other_frames_reach_the_loop_in_order_and_eof_closes_it(t *testing.T) {
+	hostWriter, hostIn, hostReader, feed := readerUnderTest(t)
+
+	written := make(chan *Frame, 8)
+	go func() {
+		defer close(written)
+		for {
+			f, err := hostReader.ReadFrame()
+			if err != nil {
+				return
+			}
+			written <- f
+		}
+	}()
+
+	first, second := NewMessageIdRandom(), NewMessageIdRandom()
+	for _, f := range []*Frame{NewEnd(first, nil), NewHeartbeat(NewMessageIdRandom()), NewEnd(second, nil)} {
+		if err := hostWriter.WriteFrame(f); err != nil {
+			t.Fatalf("the host's write: %v", err)
+		}
+	}
+	hostIn.Close() // the host closes its end
+
+	var seen []Frame
+	deadline := time.After(5 * time.Second)
+	for done := false; !done; {
+		select {
+		case f, ok := <-feed.Frames():
+			if !ok {
+				done = true
+				continue
+			}
+			seen = append(seen, f)
+		case <-deadline:
+			t.Fatal("the end of input closes the loop's channel")
+		}
+	}
+	if feed.Err() != nil {
+		t.Fatalf("the end of input is not an error: %v", feed.Err())
+	}
+	if len(seen) != 3 || seen[0].FrameType != FrameTypeEnd || seen[1].FrameType != FrameTypeHeartbeat || seen[2].FrameType != FrameTypeEnd {
+		t.Fatalf("in the order the host sent them: %v", seen)
+	}
+	if !seen[0].Id.Equals(first) || !seen[2].Id.Equals(second) {
+		t.Fatal("each frame passed on untouched")
+	}
+
+	select {
+	case reply := <-written:
+		if reply == nil || reply.FrameType != FrameTypeHeartbeat {
+			t.Fatalf("one reply, to the one heartbeat: %v", reply)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the heartbeat is answered")
+	}
+	select {
+	case extra, ok := <-written:
+		if ok {
+			t.Fatalf("nothing is written for the other frames: %v", extra.FrameType)
+		}
+	case <-time.After(200 * time.Millisecond):
 	}
 }
