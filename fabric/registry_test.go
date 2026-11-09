@@ -996,8 +996,9 @@ func Test12715_a_cached_definition_that_breaks_a_rule_is_dropped(t *testing.T) {
 // TEST12816: fetching a cap requires the definition of every media URN a
 // machine can meet through it: its in= and out=, every arg's own URN and
 // the type it accepts, and every output's URN — not the main output's
-// alone. Each once; the wildcard names no definition; a URN that does not
-// parse fails the footprint rather than being left out of it.
+// alone. Each once, the universal type `media:` among them (it is a
+// definition like any other); a URN that does not parse fails the footprint
+// rather than being left out of it.
 func Test12816_a_caps_media_footprint_covers_every_output_and_accepted_type(t *testing.T) {
 	u, err := urn.NewCapUrnFromString(`cap:in="media:document;ext=pdf";footprint;out="media:enc=utf8"`)
 	require.NoError(t, err)
@@ -1021,6 +1022,7 @@ func Test12816_a_caps_media_footprint_covers_every_output_and_accepted_type(t *t
 		"media:enc=utf8;second",
 		"media:enc=utf8;accepted",
 		"media:enc=utf8;rest",
+		"media:",
 	} {
 		normalized, err := NormalizeMediaURN(each)
 		require.NoError(t, err)
@@ -1028,12 +1030,31 @@ func Test12816_a_caps_media_footprint_covers_every_output_and_accepted_type(t *t
 	}
 	got, err := collectReferencedMediaURNs(c)
 	require.NoError(t, err)
-	assert.ElementsMatch(t, expected, got, "each once, the wildcard left out")
+	assert.ElementsMatch(t, expected, got, "each once, the universal type included")
 
 	c.AddOutput(*cap.NewCapOutput("not a urn", "broken", "broken"))
 	_, err = collectReferencedMediaURNs(c)
 	require.Error(t, err, "a URN that does not parse fails the footprint")
 	assert.Equal(t, ErrParse, kindOf(err))
+}
+
+// TEST1974: the universal type `media:` is a definition like any other: under
+// a versioned manifest it resolves at the definition version the manifest
+// pins, and a manifest that does not hold it does not resolve it.
+func Test1974_the_universal_type_resolves_at_its_pinned_defver(t *testing.T) {
+	reg := NewForTest()
+	reg.manifestVersion = 12
+	reg.manifest = media.EmptyManifest(12)
+	reg.manifest.Media["media:"] = 2
+	defver, err := reg.MediaDefverFor("media:")
+	require.NoError(t, err)
+	assert.Equal(t, uint32(2), defver)
+
+	delete(reg.manifest.Media, "media:")
+	_, err = reg.MediaDefverFor("media:")
+	require.Error(t, err)
+	assert.Equal(t, ErrNotFound, kindOf(err), "%v", err)
+	assert.Contains(t, err.Error(), "media def 'media:' is not part of manifest v12")
 }
 
 // =============================================================================

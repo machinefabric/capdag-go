@@ -1075,10 +1075,6 @@ func (r *FabricRegistry) mediaDefver(normalizedURN string) (uint32, error) {
 	if r.manifestVersion == 0 {
 		return 0, nil
 	}
-	// The bare `media:` wildcard is a sentinel with no published spec.
-	if normalizedURN == "media:" {
-		return 0, nil
-	}
 	defver, ok := r.manifest.Media[normalizedURN]
 	if !ok {
 		return 0, errf(ErrNotFound, "media def '%s' is not part of manifest v%d", normalizedURN, r.manifestVersion)
@@ -1179,24 +1175,15 @@ func (r *FabricRegistry) Charter() *bifaci.Charter {
 // Atomic cap fetch — the core of the merged registry
 // ---------------------------------------------------------------------------
 
-// isWildcardMediaURN reports whether urnStr is the bare `media:` identity URN.
-// The wildcard is not a fetchable spec — it is the universal input/output
-// marker — so it is skipped from a cap's recursive fetch list.
-func isWildcardMediaURN(urnStr string) bool {
-	parsed, err := urn.NewMediaUrnFromString(urnStr)
-	if err != nil {
-		return false
-	}
-	return parsed.IsTop()
-}
-
-// collectReferencedMediaURNs returns every media URN a cap references, skipping
-// the bare `media:` wildcard. Order is deterministic (in-spec, out-spec, args,
-// stdin sources, output) and de-duplicated.
+// collectReferencedMediaURNs returns every media URN a cap references, the
+// universal type `media:` among them: the fabric defines it like any other
+// media URN, and a node of that type is drawn with its title. Order is
+// deterministic (in-spec, out-spec, args, stdin sources, output) and
+// de-duplicated.
 func collectReferencedMediaURNs(c *cap.Cap) ([]string, error) {
 	var seen []string
 	push := func(u string) error {
-		if u == "" || isWildcardMediaURN(u) {
+		if u == "" {
 			return nil
 		}
 		normalized, err := NormalizeMediaURN(u)
