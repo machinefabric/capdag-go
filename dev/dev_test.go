@@ -261,7 +261,7 @@ func Test7156_dev_install_and_find_by_alias(t *testing.T) {
 	}
 }
 
-// TEST7157: dev-install refuses a PUBLISHED manifest. `registry_url` non-null
+// TEST7157: `dev install` refuses a PUBLISHED manifest. `registry_url` non-null
 // means the cartridge belongs to a registry, and staging it under the dev slug
 // would put a published identity in a slot reserved for local work.
 func Test7157_dev_install_rejects_published_manifest(t *testing.T) {
@@ -330,7 +330,7 @@ func Test7159_two_entries_is_ambiguous_not_a_coin_flip(t *testing.T) {
 
 // TEST7160: the vendored stub contract is IDENTICAL to the canonical source.
 //
-// This is the whole promise of `capdag new`: the same command from any capdag
+// This is the whole promise of `capdag dev new`: the same command from any capdag
 // binary writes the same project. Every mirror's copy is generated from this
 // one source, so a difference here means the reference itself was vendored
 // from a different commit than the stub repo currently holds — which would
@@ -350,7 +350,6 @@ func Test7160_vendored_stub_contract_matches_the_canonical_source(t *testing.T) 
 		ContractVersion int    `json:"contract_version"`
 		Placeholder     string `json:"placeholder"`
 		Languages       map[string]struct {
-			Flag  string `json:"flag"`
 			Entry string `json:"entry"`
 			Files []struct {
 				Source     string `json:"source"`
@@ -382,9 +381,8 @@ func Test7160_vendored_stub_contract_matches_the_canonical_source(t *testing.T) 
 		if !ok {
 			t.Fatalf("vendored language %q is not in the canonical contract", vendored.ID)
 		}
-		if spec.Flag != vendored.Flag || spec.Entry != vendored.Entry {
-			t.Fatalf("%s: vendored flag/entry (%s, %s) differ from canonical (%s, %s)",
-				vendored.ID, vendored.Flag, vendored.Entry, spec.Flag, spec.Entry)
+		if spec.Entry != vendored.Entry {
+			t.Fatalf("%s: vendored entry %s differs from canonical %s", vendored.ID, vendored.Entry, spec.Entry)
 		}
 		if len(spec.Files) != len(vendored.Files) {
 			t.Fatalf("%s: vendored %d files, canonical %d", vendored.ID, len(vendored.Files), len(spec.Files))

@@ -2,19 +2,19 @@
 //
 // It backs three developer commands and the local-manifest run path:
 //
-//   - ScaffoldCartridge — `capdag new <name> --<language>`: write a fresh,
+//   - ScaffoldCartridge — `capdag dev new <path> --lang <language>`: write a fresh,
 //     runnable cartridge project (one custom cap, one Op that peer-calls a
 //     model, one manifest) into a new directory, in any language the vendored
 //     canonical stubs cover. The stubs are the SAME bytes in every capdag
 //     implementation (see stubs_generated.go), so the project you get does not
 //     depend on which capdag binary you ran.
-//   - StageDevCartridge — `capdag dev-install <project-dir>`: read the project's
+//   - StageDevCartridge — `capdag dev install <project-dir>`: read the project's
 //     manifest, then copy it under the per-user cartridge root's reserved `dev`
 //     slug so the capdag host discovers it. Re-running overwrites the same
 //     version directory — the update step of the edit/reinstall loop.
 //   - FindDevCapByAlias + CheckNoFabricConflict — the local-manifest run path:
-//     when `capdag <alias>` names a cap the fabric does NOT define, a locally
-//     dev-installed cartridge's OWN manifest answers it, as long as the cap does
+//     when `capdag run <alias>` names a cap the fabric does NOT define, a locally
+//     installed dev cartridge's OWN manifest answers it, as long as the cap does
 //     not conflict with the fabric. A dev cap never needs to be published to be
 //     developed and run locally.
 //
@@ -67,7 +67,7 @@ func (e *NoEntryError) Error() string {
 	return fmt.Sprintf(
 		"no cartridge entry found in '%s'. Looked for %s. A compiled cartridge must be "+
 			"BUILT before it is installed — the host launches the binary, not the sources. "+
-			"Create the project with `capdag new`.",
+			"Create the project with `capdag dev new`.",
 		e.Project, entryCandidatesDescription(e.Project))
 }
 
@@ -86,13 +86,13 @@ func (e *AmbiguousEntryError) Error() string {
 }
 
 // NotDevError is a manifest that declares a registry URL, i.e. a published
-// cartridge being dev-installed.
+// cartridge being installed as a dev cartridge.
 type NotDevError struct{ RegistryURL string }
 
 func (e *NotDevError) Error() string {
 	return fmt.Sprintf(
 		"this project's manifest declares registry_url %q, so it is a PUBLISHED cartridge, "+
-			"not a dev one. `dev-install` stages only dev cartridges (registry_url null).",
+			"not a dev one. `capdag dev install` stages only dev cartridges (registry_url null).",
 		e.RegistryURL)
 }
 
@@ -115,33 +115,21 @@ func (e *FabricConflictError) Error() string {
 // The vendored stub contract.
 // ---------------------------------------------------------------------------
 
-// Languages returns every language `capdag new` can scaffold, in contract order.
+// Languages returns every language `capdag dev new` can scaffold, in contract order.
 //
-// A mirror that offered a subset would silently make `capdag new --rust` mean
+// A mirror that offered a subset would silently make `capdag dev new --lang rust` mean
 // different things depending on which capdag binary you happened to run.
 func Languages() []StubLanguage { return StubLanguages }
 
-// Language looks a language up by its id ("python") or its flag ("--python"),
-// returning nil for anything else. The caller turns nil into an error that lists
+// Language looks a language up by its id ("python"), returning nil for anything else. The caller turns nil into an error that lists
 // what IS available, which is the only useful thing to say.
 func Language(selector string) *StubLanguage {
 	for i := range StubLanguages {
-		if StubLanguages[i].ID == selector || StubLanguages[i].Flag == selector {
+		if StubLanguages[i].ID == selector {
 			return &StubLanguages[i]
 		}
 	}
 	return nil
-}
-
-// LanguageFlagList renders the scaffoldable flags for usage and error messages,
-// built from the contract so a newly vendored language appears everywhere at
-// once rather than in whichever message someone remembered to update.
-func LanguageFlagList() string {
-	flags := make([]string, 0, len(StubLanguages))
-	for i := range StubLanguages {
-		flags = append(flags, StubLanguages[i].Flag)
-	}
-	return strings.Join(flags, " | ")
 }
 
 // render substitutes the project name into a stub's text.
@@ -226,9 +214,9 @@ func ScaffoldCartridge(name string, language *StubLanguage, parentDir string) (s
 // ---------------------------------------------------------------------------
 
 // projectName is the name a scaffolded directory carries: its own directory
-// name. `capdag new <name>` creates <parent>/<name> and every rendered path is
-// seeded from that name, so the directory IS the name. Reading it back is how
-// dev-install knows what a compiled entry is called without being told.
+// name. `capdag dev new <path>` creates the directory <path>, its last part the
+// name, and every rendered path is seeded from that name, so the directory IS
+// the name. Reading it back is how `capdag dev install` knows what a compiled entry is called without being told.
 func projectName(projectDir string) string {
 	return filepath.Base(filepath.Clean(projectDir))
 }
@@ -304,7 +292,7 @@ func ReadEntryManifest(entry string) (*bifaci.CapManifest, error) {
 }
 
 // ---------------------------------------------------------------------------
-// dev-install — stage a project under the `dev` slug.
+// dev install — stage a project under the `dev` slug.
 // ---------------------------------------------------------------------------
 
 // DevVersionDir is the install directory for a dev cartridge under
@@ -463,7 +451,7 @@ func StageDevCartridge(
 // The local-manifest run path.
 // ---------------------------------------------------------------------------
 
-// FindDevCapByAlias searches every dev-installed cartridge's own manifest for a
+// FindDevCapByAlias searches every installed dev cartridge's own manifest for a
 // cap carrying `alias`, returning the cap and its version directory.
 //
 // Returns (nil, "", nil) when no dev cartridge claims the alias — an ordinary
@@ -505,7 +493,7 @@ func FindDevCapByAlias(userCartridgeDir string, registryVersion uint32, alias st
 }
 
 // walkVersionDirs lists every {channel}/{name}/{version}/ directory under a dev
-// root. A missing root is not an error — nothing has been dev-installed yet.
+// root. A missing root is not an error — no dev cartridge has been installed yet.
 func walkVersionDirs(devRoot string) ([]string, error) {
 	channels, err := readSubdirs(devRoot)
 	if err != nil {

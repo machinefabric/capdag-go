@@ -69,12 +69,12 @@ in the Rust specification rather than in copied tables here.
 Every CapDAG CLI renders the same canonical starter project:
 
 ```bash
-capdag new sentiment-tagger --go
+capdag dev new sentiment-tagger --lang go
 cd sentiment-tagger
 go mod tidy
 go build -buildvcs=false -o sentiment-tagger .
-capdag dev-install .
-echo "I love this" | capdag sentiment-tagger
+capdag dev install
+echo "I love this" | capdag run sentiment-tagger
 ```
 
 The generated README explains its model-backed peer call and development loop.
