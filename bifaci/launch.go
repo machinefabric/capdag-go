@@ -15,7 +15,7 @@ import (
 //
 //	%1 is not a valid Win32 application
 //
-// so `capdag dev-install` could not read a Python project's manifest, and no
+// so `capdag dev install` could not read a Python project's manifest, and no
 // scaffolded Python cartridge could be launched at all on the platform. Naming
 // the interpreter is what the shebang was doing; doing it here does it on both.
 //

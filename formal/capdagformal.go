@@ -2219,6 +2219,673 @@ func (t gradeDescriptor) Decode(r *lungo.Reader) (Grade, error) {
 	return nil, lungo.Malformed("constructor index %d of CapDAG.Grade", c)
 }
 
+// RunPhase is Lean's CapDAG.Run.Control.RunPhase: one of RunPhaseRunning, RunPhaseStopping, RunPhaseAborting, RunPhaseEnded.
+type RunPhase interface{ isRunPhase() }
+
+// RunPhaseRunning is Lean's CapDAG.Run.Control.RunPhase.running.
+type RunPhaseRunning struct{}
+
+func (RunPhaseRunning) isRunPhase() {}
+
+// RunPhaseStopping is Lean's CapDAG.Run.Control.RunPhase.stopping.
+type RunPhaseStopping struct{}
+
+func (RunPhaseStopping) isRunPhase() {}
+
+// RunPhaseAborting is Lean's CapDAG.Run.Control.RunPhase.aborting.
+type RunPhaseAborting struct{}
+
+func (RunPhaseAborting) isRunPhase() {}
+
+// RunPhaseEnded is Lean's CapDAG.Run.Control.RunPhase.ended.
+type RunPhaseEnded struct{}
+
+func (RunPhaseEnded) isRunPhase() {}
+
+// RunPhaseFingerprint is the layout fingerprint of Lean's CapDAG.Run.Control.RunPhase: a package using RunPhase from this one checks it.
+const RunPhaseFingerprint = "9b90c7742e44d84be0eb1459ef38080f0c1d2ed5bcf1860d0c34e71a535db4f1"
+
+type runPhaseDescriptor struct{}
+
+// RunPhaseType describes CapDAG.Run.Control.RunPhase for polymorphic functions.
+func RunPhaseType() lungo.Type[RunPhase] {
+	return runPhaseDescriptor{}
+}
+
+func (t runPhaseDescriptor) Expr() []byte { return lungo.InductiveExpr(23) }
+
+func (t runPhaseDescriptor) Encode(w *lungo.Writer, v RunPhase) error {
+	switch x := v.(type) {
+	case RunPhaseRunning:
+		w.U32(0)
+		return nil
+	case *RunPhaseRunning:
+		if x == nil {
+			return lungo.Malformed("a nil *RunPhaseRunning")
+		}
+		return t.Encode(w, *x)
+	case RunPhaseStopping:
+		w.U32(1)
+		return nil
+	case *RunPhaseStopping:
+		if x == nil {
+			return lungo.Malformed("a nil *RunPhaseStopping")
+		}
+		return t.Encode(w, *x)
+	case RunPhaseAborting:
+		w.U32(2)
+		return nil
+	case *RunPhaseAborting:
+		if x == nil {
+			return lungo.Malformed("a nil *RunPhaseAborting")
+		}
+		return t.Encode(w, *x)
+	case RunPhaseEnded:
+		w.U32(3)
+		return nil
+	case *RunPhaseEnded:
+		if x == nil {
+			return lungo.Malformed("a nil *RunPhaseEnded")
+		}
+		return t.Encode(w, *x)
+	}
+	return lungo.Malformed("a nil RunPhase")
+}
+
+func (t runPhaseDescriptor) Decode(r *lungo.Reader) (RunPhase, error) {
+	c, err := r.U32()
+	if err != nil {
+		return nil, err
+	}
+	switch c {
+	case 0:
+		var v RunPhaseRunning
+		return v, nil
+	case 1:
+		var v RunPhaseStopping
+		return v, nil
+	case 2:
+		var v RunPhaseAborting
+		return v, nil
+	case 3:
+		var v RunPhaseEnded
+		return v, nil
+	}
+	return nil, lungo.Malformed("constructor index %d of CapDAG.Run.Control.RunPhase", c)
+}
+
+// RunOutcome is Lean's CapDAG.Run.Control.RunOutcome: one of RunOutcomeCompleted, RunOutcomeTolerated, RunOutcomeStopped, RunOutcomeFailed, RunOutcomeAborted.
+type RunOutcome interface{ isRunOutcome() }
+
+// RunOutcomeCompleted is Lean's CapDAG.Run.Control.RunOutcome.completed.
+type RunOutcomeCompleted struct{}
+
+func (RunOutcomeCompleted) isRunOutcome() {}
+
+// RunOutcomeTolerated is Lean's CapDAG.Run.Control.RunOutcome.tolerated.
+type RunOutcomeTolerated struct{}
+
+func (RunOutcomeTolerated) isRunOutcome() {}
+
+// RunOutcomeStopped is Lean's CapDAG.Run.Control.RunOutcome.stopped.
+type RunOutcomeStopped struct{}
+
+func (RunOutcomeStopped) isRunOutcome() {}
+
+// RunOutcomeFailed is Lean's CapDAG.Run.Control.RunOutcome.failed.
+type RunOutcomeFailed struct{}
+
+func (RunOutcomeFailed) isRunOutcome() {}
+
+// RunOutcomeAborted is Lean's CapDAG.Run.Control.RunOutcome.aborted.
+type RunOutcomeAborted struct{}
+
+func (RunOutcomeAborted) isRunOutcome() {}
+
+// RunOutcomeFingerprint is the layout fingerprint of Lean's CapDAG.Run.Control.RunOutcome: a package using RunOutcome from this one checks it.
+const RunOutcomeFingerprint = "488f30c13e7da989b6df7a79e6e894861cce0db4ca431c2460b5d3df125af273"
+
+type runOutcomeDescriptor struct{}
+
+// RunOutcomeType describes CapDAG.Run.Control.RunOutcome for polymorphic functions.
+func RunOutcomeType() lungo.Type[RunOutcome] {
+	return runOutcomeDescriptor{}
+}
+
+func (t runOutcomeDescriptor) Expr() []byte { return lungo.InductiveExpr(24) }
+
+func (t runOutcomeDescriptor) Encode(w *lungo.Writer, v RunOutcome) error {
+	switch x := v.(type) {
+	case RunOutcomeCompleted:
+		w.U32(0)
+		return nil
+	case *RunOutcomeCompleted:
+		if x == nil {
+			return lungo.Malformed("a nil *RunOutcomeCompleted")
+		}
+		return t.Encode(w, *x)
+	case RunOutcomeTolerated:
+		w.U32(1)
+		return nil
+	case *RunOutcomeTolerated:
+		if x == nil {
+			return lungo.Malformed("a nil *RunOutcomeTolerated")
+		}
+		return t.Encode(w, *x)
+	case RunOutcomeStopped:
+		w.U32(2)
+		return nil
+	case *RunOutcomeStopped:
+		if x == nil {
+			return lungo.Malformed("a nil *RunOutcomeStopped")
+		}
+		return t.Encode(w, *x)
+	case RunOutcomeFailed:
+		w.U32(3)
+		return nil
+	case *RunOutcomeFailed:
+		if x == nil {
+			return lungo.Malformed("a nil *RunOutcomeFailed")
+		}
+		return t.Encode(w, *x)
+	case RunOutcomeAborted:
+		w.U32(4)
+		return nil
+	case *RunOutcomeAborted:
+		if x == nil {
+			return lungo.Malformed("a nil *RunOutcomeAborted")
+		}
+		return t.Encode(w, *x)
+	}
+	return lungo.Malformed("a nil RunOutcome")
+}
+
+func (t runOutcomeDescriptor) Decode(r *lungo.Reader) (RunOutcome, error) {
+	c, err := r.U32()
+	if err != nil {
+		return nil, err
+	}
+	switch c {
+	case 0:
+		var v RunOutcomeCompleted
+		return v, nil
+	case 1:
+		var v RunOutcomeTolerated
+		return v, nil
+	case 2:
+		var v RunOutcomeStopped
+		return v, nil
+	case 3:
+		var v RunOutcomeFailed
+		return v, nil
+	case 4:
+		var v RunOutcomeAborted
+		return v, nil
+	}
+	return nil, lungo.Malformed("constructor index %d of CapDAG.Run.Control.RunOutcome", c)
+}
+
+// RunAsk is Lean's CapDAG.Run.Control.RunAsk: one of RunAskInterrupt, RunAskStop, RunAskAbort, RunAskDrained, RunAskGraceOver.
+type RunAsk interface{ isRunAsk() }
+
+// RunAskInterrupt is Lean's CapDAG.Run.Control.RunAsk.interrupt.
+type RunAskInterrupt struct{}
+
+func (RunAskInterrupt) isRunAsk() {}
+
+// RunAskStop is Lean's CapDAG.Run.Control.RunAsk.stop.
+type RunAskStop struct{}
+
+func (RunAskStop) isRunAsk() {}
+
+// RunAskAbort is Lean's CapDAG.Run.Control.RunAsk.abort.
+type RunAskAbort struct{}
+
+func (RunAskAbort) isRunAsk() {}
+
+// RunAskDrained is Lean's CapDAG.Run.Control.RunAsk.drained.
+type RunAskDrained struct{}
+
+func (RunAskDrained) isRunAsk() {}
+
+// RunAskGraceOver is Lean's CapDAG.Run.Control.RunAsk.graceOver.
+type RunAskGraceOver struct{}
+
+func (RunAskGraceOver) isRunAsk() {}
+
+// RunAskFingerprint is the layout fingerprint of Lean's CapDAG.Run.Control.RunAsk: a package using RunAsk from this one checks it.
+const RunAskFingerprint = "67e4380d6283cd01c5cc9ebc04c02f8ba0921b5fbb73702f73936a519c45672b"
+
+type runAskDescriptor struct{}
+
+// RunAskType describes CapDAG.Run.Control.RunAsk for polymorphic functions.
+func RunAskType() lungo.Type[RunAsk] {
+	return runAskDescriptor{}
+}
+
+func (t runAskDescriptor) Expr() []byte { return lungo.InductiveExpr(25) }
+
+func (t runAskDescriptor) Encode(w *lungo.Writer, v RunAsk) error {
+	switch x := v.(type) {
+	case RunAskInterrupt:
+		w.U32(0)
+		return nil
+	case *RunAskInterrupt:
+		if x == nil {
+			return lungo.Malformed("a nil *RunAskInterrupt")
+		}
+		return t.Encode(w, *x)
+	case RunAskStop:
+		w.U32(1)
+		return nil
+	case *RunAskStop:
+		if x == nil {
+			return lungo.Malformed("a nil *RunAskStop")
+		}
+		return t.Encode(w, *x)
+	case RunAskAbort:
+		w.U32(2)
+		return nil
+	case *RunAskAbort:
+		if x == nil {
+			return lungo.Malformed("a nil *RunAskAbort")
+		}
+		return t.Encode(w, *x)
+	case RunAskDrained:
+		w.U32(3)
+		return nil
+	case *RunAskDrained:
+		if x == nil {
+			return lungo.Malformed("a nil *RunAskDrained")
+		}
+		return t.Encode(w, *x)
+	case RunAskGraceOver:
+		w.U32(4)
+		return nil
+	case *RunAskGraceOver:
+		if x == nil {
+			return lungo.Malformed("a nil *RunAskGraceOver")
+		}
+		return t.Encode(w, *x)
+	}
+	return lungo.Malformed("a nil RunAsk")
+}
+
+func (t runAskDescriptor) Decode(r *lungo.Reader) (RunAsk, error) {
+	c, err := r.U32()
+	if err != nil {
+		return nil, err
+	}
+	switch c {
+	case 0:
+		var v RunAskInterrupt
+		return v, nil
+	case 1:
+		var v RunAskStop
+		return v, nil
+	case 2:
+		var v RunAskAbort
+		return v, nil
+	case 3:
+		var v RunAskDrained
+		return v, nil
+	case 4:
+		var v RunAskGraceOver
+		return v, nil
+	}
+	return nil, lungo.Malformed("constructor index %d of CapDAG.Run.Control.RunAsk", c)
+}
+
+// RunNext is Lean's CapDAG.Run.Control.RunNext.
+type RunNext struct {
+	Phase RunPhase
+	Act   RunAct
+}
+
+// RunNextFingerprint is the layout fingerprint of Lean's CapDAG.Run.Control.RunNext: a package using RunNext from this one checks it.
+const RunNextFingerprint = "ed3067eec3d1ed1784061abb5cd9f6a344c9044fb5ce4e2e991157d961689844"
+
+type runNextDescriptor struct{}
+
+// RunNextType describes CapDAG.Run.Control.RunNext for polymorphic functions.
+func RunNextType() lungo.Type[RunNext] {
+	return runNextDescriptor{}
+}
+
+func (t runNextDescriptor) Expr() []byte { return lungo.InductiveExpr(26) }
+
+func (t runNextDescriptor) Encode(w *lungo.Writer, v RunNext) error {
+	w.U32(0)
+	if err := RunPhaseType().Encode(w, v.Phase); err != nil {
+		return err
+	}
+	if err := RunActType().Encode(w, v.Act); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (t runNextDescriptor) Decode(r *lungo.Reader) (RunNext, error) {
+	var v RunNext
+	c, err := r.U32()
+	if err != nil {
+		return v, err
+	}
+	if c != 0 {
+		return v, lungo.Malformed("constructor index %d of CapDAG.Run.Control.RunNext", c)
+	}
+	f0, err := RunPhaseType().Decode(r)
+	if err != nil {
+		return v, err
+	}
+	v.Phase = f0
+	f1, err := RunActType().Decode(r)
+	if err != nil {
+		return v, err
+	}
+	v.Act = f1
+	return v, nil
+}
+
+// StepState is Lean's CapDAG.Run.Step.StepState: one of StepStateWaiting, StepStateRunning, StepStateDone, StepStateSkipped, StepStateTolerated, StepStateFailed, StepStateNotRun, StepStateCancelled.
+type StepState interface{ isStepState() }
+
+// StepStateWaiting is Lean's CapDAG.Run.Step.StepState.waiting.
+type StepStateWaiting struct{}
+
+func (StepStateWaiting) isStepState() {}
+
+// StepStateRunning is Lean's CapDAG.Run.Step.StepState.running.
+type StepStateRunning struct{}
+
+func (StepStateRunning) isStepState() {}
+
+// StepStateDone is Lean's CapDAG.Run.Step.StepState.done.
+type StepStateDone struct{}
+
+func (StepStateDone) isStepState() {}
+
+// StepStateSkipped is Lean's CapDAG.Run.Step.StepState.skipped.
+type StepStateSkipped struct{}
+
+func (StepStateSkipped) isStepState() {}
+
+// StepStateTolerated is Lean's CapDAG.Run.Step.StepState.tolerated.
+type StepStateTolerated struct{}
+
+func (StepStateTolerated) isStepState() {}
+
+// StepStateFailed is Lean's CapDAG.Run.Step.StepState.failed.
+type StepStateFailed struct{}
+
+func (StepStateFailed) isStepState() {}
+
+// StepStateNotRun is Lean's CapDAG.Run.Step.StepState.notRun.
+type StepStateNotRun struct{}
+
+func (StepStateNotRun) isStepState() {}
+
+// StepStateCancelled is Lean's CapDAG.Run.Step.StepState.cancelled.
+type StepStateCancelled struct{}
+
+func (StepStateCancelled) isStepState() {}
+
+// StepStateFingerprint is the layout fingerprint of Lean's CapDAG.Run.Step.StepState: a package using StepState from this one checks it.
+const StepStateFingerprint = "29605211a3fdc3a760359c75d5cb65673e50c5813e851ed461dd9b955dbdfcfa"
+
+type stepStateDescriptor struct{}
+
+// StepStateType describes CapDAG.Run.Step.StepState for polymorphic functions.
+func StepStateType() lungo.Type[StepState] {
+	return stepStateDescriptor{}
+}
+
+func (t stepStateDescriptor) Expr() []byte { return lungo.InductiveExpr(27) }
+
+func (t stepStateDescriptor) Encode(w *lungo.Writer, v StepState) error {
+	switch x := v.(type) {
+	case StepStateWaiting:
+		w.U32(0)
+		return nil
+	case *StepStateWaiting:
+		if x == nil {
+			return lungo.Malformed("a nil *StepStateWaiting")
+		}
+		return t.Encode(w, *x)
+	case StepStateRunning:
+		w.U32(1)
+		return nil
+	case *StepStateRunning:
+		if x == nil {
+			return lungo.Malformed("a nil *StepStateRunning")
+		}
+		return t.Encode(w, *x)
+	case StepStateDone:
+		w.U32(2)
+		return nil
+	case *StepStateDone:
+		if x == nil {
+			return lungo.Malformed("a nil *StepStateDone")
+		}
+		return t.Encode(w, *x)
+	case StepStateSkipped:
+		w.U32(3)
+		return nil
+	case *StepStateSkipped:
+		if x == nil {
+			return lungo.Malformed("a nil *StepStateSkipped")
+		}
+		return t.Encode(w, *x)
+	case StepStateTolerated:
+		w.U32(4)
+		return nil
+	case *StepStateTolerated:
+		if x == nil {
+			return lungo.Malformed("a nil *StepStateTolerated")
+		}
+		return t.Encode(w, *x)
+	case StepStateFailed:
+		w.U32(5)
+		return nil
+	case *StepStateFailed:
+		if x == nil {
+			return lungo.Malformed("a nil *StepStateFailed")
+		}
+		return t.Encode(w, *x)
+	case StepStateNotRun:
+		w.U32(6)
+		return nil
+	case *StepStateNotRun:
+		if x == nil {
+			return lungo.Malformed("a nil *StepStateNotRun")
+		}
+		return t.Encode(w, *x)
+	case StepStateCancelled:
+		w.U32(7)
+		return nil
+	case *StepStateCancelled:
+		if x == nil {
+			return lungo.Malformed("a nil *StepStateCancelled")
+		}
+		return t.Encode(w, *x)
+	}
+	return lungo.Malformed("a nil StepState")
+}
+
+func (t stepStateDescriptor) Decode(r *lungo.Reader) (StepState, error) {
+	c, err := r.U32()
+	if err != nil {
+		return nil, err
+	}
+	switch c {
+	case 0:
+		var v StepStateWaiting
+		return v, nil
+	case 1:
+		var v StepStateRunning
+		return v, nil
+	case 2:
+		var v StepStateDone
+		return v, nil
+	case 3:
+		var v StepStateSkipped
+		return v, nil
+	case 4:
+		var v StepStateTolerated
+		return v, nil
+	case 5:
+		var v StepStateFailed
+		return v, nil
+	case 6:
+		var v StepStateNotRun
+		return v, nil
+	case 7:
+		var v StepStateCancelled
+		return v, nil
+	}
+	return nil, lungo.Malformed("constructor index %d of CapDAG.Run.Step.StepState", c)
+}
+
+// StepReport is Lean's CapDAG.Run.Step.StepReport: one of StepReportProgress, StepReportSkipped, StepReportTolerated, StepReportFailed, StepReportRunEnded.
+type StepReport interface{ isStepReport() }
+
+// StepReportProgress is Lean's CapDAG.Run.Step.StepReport.progress.
+type StepReportProgress struct {
+	Complete bool
+}
+
+func (StepReportProgress) isStepReport() {}
+
+// StepReportSkipped is Lean's CapDAG.Run.Step.StepReport.skipped.
+type StepReportSkipped struct{}
+
+func (StepReportSkipped) isStepReport() {}
+
+// StepReportTolerated is Lean's CapDAG.Run.Step.StepReport.tolerated.
+type StepReportTolerated struct{}
+
+func (StepReportTolerated) isStepReport() {}
+
+// StepReportFailed is Lean's CapDAG.Run.Step.StepReport.failed.
+type StepReportFailed struct{}
+
+func (StepReportFailed) isStepReport() {}
+
+// StepReportRunEnded is Lean's CapDAG.Run.Step.StepReport.runEnded.
+type StepReportRunEnded struct {
+	Completed bool
+	Aborted   bool
+}
+
+func (StepReportRunEnded) isStepReport() {}
+
+// StepReportFingerprint is the layout fingerprint of Lean's CapDAG.Run.Step.StepReport: a package using StepReport from this one checks it.
+const StepReportFingerprint = "72ac48415e459328353488d886a31a3874490648ec761e7e8b14a08f7644ac29"
+
+type stepReportDescriptor struct{}
+
+// StepReportType describes CapDAG.Run.Step.StepReport for polymorphic functions.
+func StepReportType() lungo.Type[StepReport] {
+	return stepReportDescriptor{}
+}
+
+func (t stepReportDescriptor) Expr() []byte { return lungo.InductiveExpr(28) }
+
+func (t stepReportDescriptor) Encode(w *lungo.Writer, v StepReport) error {
+	switch x := v.(type) {
+	case StepReportProgress:
+		w.U32(0)
+		if err := lungo.BoolType.Encode(w, x.Complete); err != nil {
+			return err
+		}
+		return nil
+	case *StepReportProgress:
+		if x == nil {
+			return lungo.Malformed("a nil *StepReportProgress")
+		}
+		return t.Encode(w, *x)
+	case StepReportSkipped:
+		w.U32(1)
+		return nil
+	case *StepReportSkipped:
+		if x == nil {
+			return lungo.Malformed("a nil *StepReportSkipped")
+		}
+		return t.Encode(w, *x)
+	case StepReportTolerated:
+		w.U32(2)
+		return nil
+	case *StepReportTolerated:
+		if x == nil {
+			return lungo.Malformed("a nil *StepReportTolerated")
+		}
+		return t.Encode(w, *x)
+	case StepReportFailed:
+		w.U32(3)
+		return nil
+	case *StepReportFailed:
+		if x == nil {
+			return lungo.Malformed("a nil *StepReportFailed")
+		}
+		return t.Encode(w, *x)
+	case StepReportRunEnded:
+		w.U32(4)
+		if err := lungo.BoolType.Encode(w, x.Completed); err != nil {
+			return err
+		}
+		if err := lungo.BoolType.Encode(w, x.Aborted); err != nil {
+			return err
+		}
+		return nil
+	case *StepReportRunEnded:
+		if x == nil {
+			return lungo.Malformed("a nil *StepReportRunEnded")
+		}
+		return t.Encode(w, *x)
+	}
+	return lungo.Malformed("a nil StepReport")
+}
+
+func (t stepReportDescriptor) Decode(r *lungo.Reader) (StepReport, error) {
+	c, err := r.U32()
+	if err != nil {
+		return nil, err
+	}
+	switch c {
+	case 0:
+		var v StepReportProgress
+		f0, err := lungo.BoolType.Decode(r)
+		if err != nil {
+			return nil, err
+		}
+		v.Complete = f0
+		return v, nil
+	case 1:
+		var v StepReportSkipped
+		return v, nil
+	case 2:
+		var v StepReportTolerated
+		return v, nil
+	case 3:
+		var v StepReportFailed
+		return v, nil
+	case 4:
+		var v StepReportRunEnded
+		f0, err := lungo.BoolType.Decode(r)
+		if err != nil {
+			return nil, err
+		}
+		v.Completed = f0
+		f1, err := lungo.BoolType.Decode(r)
+		if err != nil {
+			return nil, err
+		}
+		v.Aborted = f1
+		return v, nil
+	}
+	return nil, lungo.Malformed("constructor index %d of CapDAG.Run.Step.StepReport", c)
+}
+
 // Constraint is Lean's TaggedUrn.Constraint: one of ConstraintMissing, ConstraintUnconstrained, ConstraintOptionalNot, ConstraintPresent, ConstraintPresentNot, ConstraintExact, ConstraintAbsent.
 type Constraint interface{ isConstraint() }
 
@@ -2273,7 +2940,7 @@ func ConstraintType() lungo.Type[Constraint] {
 	return constraintDescriptor{}
 }
 
-func (t constraintDescriptor) Expr() []byte { return lungo.InductiveExpr(23) }
+func (t constraintDescriptor) Expr() []byte { return lungo.InductiveExpr(29) }
 
 func (t constraintDescriptor) Encode(w *lungo.Writer, v Constraint) error {
 	switch x := v.(type) {
@@ -2409,7 +3076,7 @@ func PoolType() lungo.Type[Pool] {
 	return poolDescriptor{}
 }
 
-func (t poolDescriptor) Expr() []byte { return lungo.InductiveExpr(24) }
+func (t poolDescriptor) Expr() []byte { return lungo.InductiveExpr(30) }
 
 func (t poolDescriptor) Encode(w *lungo.Writer, v Pool) error {
 	w.U32(0)
@@ -2491,7 +3158,7 @@ func WfAskType() lungo.Type[WfAsk] {
 	return wfAskDescriptor{}
 }
 
-func (t wfAskDescriptor) Expr() []byte { return lungo.InductiveExpr(25) }
+func (t wfAskDescriptor) Expr() []byte { return lungo.InductiveExpr(31) }
 
 func (t wfAskDescriptor) Encode(w *lungo.Writer, v WfAsk) error {
 	switch x := v.(type) {
@@ -2575,6 +3242,117 @@ func (t wfAskDescriptor) Decode(r *lungo.Reader) (WfAsk, error) {
 		return v, nil
 	}
 	return nil, lungo.Malformed("constructor index %d of CapDAG.Exec.WfAsk", c)
+}
+
+// RunAct is Lean's CapDAG.Run.Control.RunAct: one of RunActNone, RunActStop, RunActCancel, RunActKill, RunActFinish.
+type RunAct interface{ isRunAct() }
+
+// RunActNone is Lean's CapDAG.Run.Control.RunAct.none.
+type RunActNone struct{}
+
+func (RunActNone) isRunAct() {}
+
+// RunActStop is Lean's CapDAG.Run.Control.RunAct.stop.
+type RunActStop struct{}
+
+func (RunActStop) isRunAct() {}
+
+// RunActCancel is Lean's CapDAG.Run.Control.RunAct.cancel.
+type RunActCancel struct{}
+
+func (RunActCancel) isRunAct() {}
+
+// RunActKill is Lean's CapDAG.Run.Control.RunAct.kill.
+type RunActKill struct{}
+
+func (RunActKill) isRunAct() {}
+
+// RunActFinish is Lean's CapDAG.Run.Control.RunAct.finish.
+type RunActFinish struct{}
+
+func (RunActFinish) isRunAct() {}
+
+// RunActFingerprint is the layout fingerprint of Lean's CapDAG.Run.Control.RunAct: a package using RunAct from this one checks it.
+const RunActFingerprint = "f48722d20571ec5842888991bdef26addc3a210e2b8eb68384575008b80b216c"
+
+type runActDescriptor struct{}
+
+// RunActType describes CapDAG.Run.Control.RunAct for polymorphic functions.
+func RunActType() lungo.Type[RunAct] {
+	return runActDescriptor{}
+}
+
+func (t runActDescriptor) Expr() []byte { return lungo.InductiveExpr(32) }
+
+func (t runActDescriptor) Encode(w *lungo.Writer, v RunAct) error {
+	switch x := v.(type) {
+	case RunActNone:
+		w.U32(0)
+		return nil
+	case *RunActNone:
+		if x == nil {
+			return lungo.Malformed("a nil *RunActNone")
+		}
+		return t.Encode(w, *x)
+	case RunActStop:
+		w.U32(1)
+		return nil
+	case *RunActStop:
+		if x == nil {
+			return lungo.Malformed("a nil *RunActStop")
+		}
+		return t.Encode(w, *x)
+	case RunActCancel:
+		w.U32(2)
+		return nil
+	case *RunActCancel:
+		if x == nil {
+			return lungo.Malformed("a nil *RunActCancel")
+		}
+		return t.Encode(w, *x)
+	case RunActKill:
+		w.U32(3)
+		return nil
+	case *RunActKill:
+		if x == nil {
+			return lungo.Malformed("a nil *RunActKill")
+		}
+		return t.Encode(w, *x)
+	case RunActFinish:
+		w.U32(4)
+		return nil
+	case *RunActFinish:
+		if x == nil {
+			return lungo.Malformed("a nil *RunActFinish")
+		}
+		return t.Encode(w, *x)
+	}
+	return lungo.Malformed("a nil RunAct")
+}
+
+func (t runActDescriptor) Decode(r *lungo.Reader) (RunAct, error) {
+	c, err := r.U32()
+	if err != nil {
+		return nil, err
+	}
+	switch c {
+	case 0:
+		var v RunActNone
+		return v, nil
+	case 1:
+		var v RunActStop
+		return v, nil
+	case 2:
+		var v RunActCancel
+		return v, nil
+	case 3:
+		var v RunActKill
+		return v, nil
+	case 4:
+		var v RunActFinish
+		return v, nil
+	}
+	return nil, lungo.Malformed("constructor index %d of CapDAG.Run.Control.RunAct", c)
 }
 
 // GateAcquire is Lean's CapDAG.Bifaci.Credit.Gate.acquire : CapDAG.Bifaci.Credit.Gate → Nat → CapDAG.Bifaci.Credit.Acquire
@@ -3331,6 +4109,98 @@ func Specificity(c_ WfCap) (result *big.Int, err error) {
 	}
 	status, out := call(C.lungo_entry(C.capdagFormal__call_l_CapDAG_dExec_dspecificity), w.Bytes())
 	return lungo.DecodeValue(program(), status, out, lungo.NatType)
+}
+
+// Admits is Lean's CapDAG.Run.Control.admits : CapDAG.Run.Control.RunPhase → Bool
+func Admits(a RunPhase) (result bool, err error) {
+	w := lungo.NewCall(program())
+	defer w.Release()
+	if err = RunPhaseType().Encode(w, a); err != nil {
+		return
+	}
+	status, out := call(C.lungo_entry(C.capdagFormal__call_l_CapDAG_dRun_dControl_dadmits), w.Bytes())
+	return lungo.DecodeValue(program(), status, out, lungo.BoolType)
+}
+
+// ExitStatus is Lean's CapDAG.Run.Control.exitStatus : CapDAG.Run.Control.RunOutcome → Nat
+func ExitStatus(a RunOutcome) (result *big.Int, err error) {
+	w := lungo.NewCall(program())
+	defer w.Release()
+	if err = RunOutcomeType().Encode(w, a); err != nil {
+		return
+	}
+	status, out := call(C.lungo_entry(C.capdagFormal__call_l_CapDAG_dRun_dControl_dexitStatus), w.Bytes())
+	return lungo.DecodeValue(program(), status, out, lungo.NatType)
+}
+
+// JoinOutcomes is Lean's CapDAG.Run.Control.joinOutcomes : CapDAG.Run.Control.RunOutcome → CapDAG.Run.Control.RunOutcome → CapDAG.Run.Control.RunOutcome
+func JoinOutcomes(a RunOutcome, b RunOutcome) (result RunOutcome, err error) {
+	w := lungo.NewCall(program())
+	defer w.Release()
+	if err = RunOutcomeType().Encode(w, a); err != nil {
+		return
+	}
+	if err = RunOutcomeType().Encode(w, b); err != nil {
+		return
+	}
+	status, out := call(C.lungo_entry(C.capdagFormal__call_l_CapDAG_dRun_dControl_djoinOutcomes), w.Bytes())
+	return lungo.DecodeValue(program(), status, out, RunOutcomeType())
+}
+
+// Next is Lean's CapDAG.Run.Control.next : CapDAG.Run.Control.RunPhase → CapDAG.Run.Control.RunAsk → CapDAG.Run.Control.RunNext
+func Next(a RunPhase, a2 RunAsk) (result RunNext, err error) {
+	w := lungo.NewCall(program())
+	defer w.Release()
+	if err = RunPhaseType().Encode(w, a); err != nil {
+		return
+	}
+	if err = RunAskType().Encode(w, a2); err != nil {
+		return
+	}
+	status, out := call(C.lungo_entry(C.capdagFormal__call_l_CapDAG_dRun_dControl_dnext), w.Bytes())
+	return lungo.DecodeValue(program(), status, out, RunNextType())
+}
+
+// Outcome is Lean's CapDAG.Run.Control.outcome : CapDAG.Run.Control.RunPhase → Bool → Bool → CapDAG.Run.Control.RunOutcome
+func Outcome(a RunPhase, a2 bool, a3 bool) (result RunOutcome, err error) {
+	w := lungo.NewCall(program())
+	defer w.Release()
+	if err = RunPhaseType().Encode(w, a); err != nil {
+		return
+	}
+	if err = lungo.BoolType.Encode(w, a2); err != nil {
+		return
+	}
+	if err = lungo.BoolType.Encode(w, a3); err != nil {
+		return
+	}
+	status, out := call(C.lungo_entry(C.capdagFormal__call_l_CapDAG_dRun_dControl_doutcome), w.Bytes())
+	return lungo.DecodeValue(program(), status, out, RunOutcomeType())
+}
+
+// Final is Lean's CapDAG.Run.Step.StepState.final : CapDAG.Run.Step.StepState → Bool
+func Final(a StepState) (result bool, err error) {
+	w := lungo.NewCall(program())
+	defer w.Release()
+	if err = StepStateType().Encode(w, a); err != nil {
+		return
+	}
+	status, out := call(C.lungo_entry(C.capdagFormal__call_l_CapDAG_dRun_dStep_dStepState_dfinal), w.Bytes())
+	return lungo.DecodeValue(program(), status, out, lungo.BoolType)
+}
+
+// On is Lean's CapDAG.Run.Step.on : CapDAG.Run.Step.StepState → CapDAG.Run.Step.StepReport → Option CapDAG.Run.Step.StepState
+func On(a StepState, a2 StepReport) (result lungo.Option[StepState], err error) {
+	w := lungo.NewCall(program())
+	defer w.Release()
+	if err = StepStateType().Encode(w, a); err != nil {
+		return
+	}
+	if err = StepReportType().Encode(w, a2); err != nil {
+		return
+	}
+	status, out := call(C.lungo_entry(C.capdagFormal__call_l_CapDAG_dRun_dStep_don), w.Bytes())
+	return lungo.DecodeValue(program(), status, out, lungo.OptionType(StepStateType()))
 }
 
 // Make is Lean's TaggedUrn.Exec.make : String → List (String × TaggedUrn.Constraint) → Option TaggedUrn.Exec.Wf
