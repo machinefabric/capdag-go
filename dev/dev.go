@@ -92,7 +92,9 @@ type NotDevError struct{ RegistryURL string }
 func (e *NotDevError) Error() string {
 	return fmt.Sprintf(
 		"this project's manifest declares registry_url %q, so it is a PUBLISHED cartridge, "+
-			"not a dev one. `capdag dev install` stages only dev cartridges (registry_url null).",
+			"not a dev one. `capdag dev install` stages only dev cartridges (registry_url null). "+
+			"Publish it through the cartridge registry instead, or set registry_url to null "+
+			"for local development.",
 		e.RegistryURL)
 }
 

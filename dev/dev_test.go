@@ -264,6 +264,8 @@ func Test7156_dev_install_and_find_by_alias(t *testing.T) {
 // TEST7157: `dev install` refuses a PUBLISHED manifest. `registry_url` non-null
 // means the cartridge belongs to a registry, and staging it under the dev slug
 // would put a published identity in a slot reserved for local work.
+// The refusal names the registry and the command that refused, and says
+// what to do instead.
 func Test7157_dev_install_rejects_published_manifest(t *testing.T) {
 	root := tempRoot(t, "published")
 	project := filepath.Join(root, "proj")
@@ -285,6 +287,49 @@ func Test7157_dev_install_rejects_published_manifest(t *testing.T) {
 	}
 	if _, ok := err.(*NotDevError); !ok {
 		t.Fatalf("expected NotDevError, got %T: %v", err, err)
+	}
+	for _, said := range []string{url, "`capdag dev install`", "set registry_url to null"} {
+		if !strings.Contains(err.Error(), said) {
+			t.Fatalf("the refusal does not say %q: %v", said, err)
+		}
+	}
+	if _, statErr := os.Stat(filepath.Join(root, "cartridges")); !os.IsNotExist(statErr) {
+		t.Fatalf("nothing was to be staged, and the cartridge directory is there: %v", statErr)
+	}
+}
+
+// TEST7166: a project with no cartridge entry is refused. The error names
+// the project, every entry that would have been taken — each language's,
+// under the project's name — and the command that makes a project.
+func Test7166_a_project_with_no_entry_is_refused_naming_each_entry_and_dev_new(t *testing.T) {
+	root := tempRoot(t, "noentry")
+	project := filepath.Join(root, "tagger")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatalf("creating project: %v", err)
+	}
+	_, err := ProjectEntry(project)
+	if err == nil {
+		t.Fatal("a project with no entry must be refused")
+	}
+	noEntry, ok := err.(*NoEntryError)
+	if !ok {
+		t.Fatalf("expected NoEntryError, got %T: %v", err, err)
+	}
+	if noEntry.Project != project {
+		t.Fatalf("the refusal names %q, not the project %q", noEntry.Project, project)
+	}
+	text := err.Error()
+	if !strings.Contains(text, project) {
+		t.Fatalf("the project is not named: %s", text)
+	}
+	for i := range StubLanguages {
+		language := &StubLanguages[i]
+		if !strings.Contains(text, Entry(language, "tagger")) {
+			t.Fatalf("%s's entry is not named: %s", language.Display, text)
+		}
+	}
+	if !strings.Contains(text, "`capdag dev new`") {
+		t.Fatalf("the command that makes a project is not named: %s", text)
 	}
 }
 
