@@ -113,6 +113,84 @@ func Test0094_fabric_manifest_mismatch_is_flagged(t *testing.T) {
 	expectIncompatible(t, out, CartridgeAttachmentErrorKindFabricManifestVersionMismatch)
 }
 
+// TEST1907: a cartridge's installed version is its newest, dotted numbers
+// compared as numbers: 1.174.414 is newer than 1.99.0, though it sorts before
+// it as text. Discovery shows that version, and a run uses it.
+func Test1907_the_newest_version_is_chosen_by_number_not_text(t *testing.T) {
+	dirs := []string{}
+	for _, v := range []string{"1.99.0", "1.174.414", "1.9.12", "1.174.9"} {
+		dirs = append(dirs, filepath.Join("cart", v))
+	}
+	assert.Equal(t, filepath.Join("cart", "1.174.414"), NewestVersionDir(dirs))
+	assert.Equal(t, "", NewestVersionDir(nil))
+
+	root := t.TempDir()
+	for _, installed := range []struct {
+		version  string
+		manifest uint32
+	}{{"1.99.0", 1}, {"1.174.414", 999}} {
+		json := `{"name":"cart","version":"` + installed.version +
+			`","channel":"nightly","registry_url":null,"entry":"cart","installed_at":"2024-01-01T00:00:00Z","fabric_manifest_version":` +
+			strconv.FormatUint(uint64(installed.manifest), 10) + `}`
+		installFixture(t, root, "dev", "nightly", "cart", installed.version, &json, "cart")
+	}
+	out, err := DiscoverCartridges(root, nightlyDevIdentity())
+	require.NoError(t, err)
+	// 1.174.414 is the one shown, and it is stamped for another manifest, so
+	// the cartridge is refused rather than 1.99.0 being probed.
+	expectIncompatible(t, out, CartridgeAttachmentErrorKindFabricManifestVersionMismatch)
+	assert.Equal(t, "1.174.414", out[0].Version)
+}
+
+// TEST1908: a cartridge stamped for another fabric manifest is refused naming
+// it, its version, its manifest and the host's, with the remedy that fits
+// where it came from: a registry install is installed again, a dev cartridge
+// rebuilt, and a bundled one means the build is wrong.
+func Test1908_a_manifest_refusal_names_both_manifests_and_the_remedy(t *testing.T) {
+	terms := AttachTerms{
+		Channel:               CartridgeChannelRelease,
+		FabricManifestVersion: 13,
+		Bundle:                NoBundle("no bundle here"),
+	}
+	anchor := "https://registry.example/cartridges"
+	stamped := func(from *CartridgeInstallSource, registry *string, manifest uint32) *CartridgeJson {
+		return &CartridgeJson{
+			Name:                  "imagecartridge",
+			Version:               "1.174.414",
+			Channel:               string(CartridgeChannelRelease),
+			RegistryURL:           registry,
+			Entry:                 "imagecartridge",
+			InstalledAt:           "2024-01-01T00:00:00Z",
+			InstalledFrom:         from,
+			FabricManifestVersion: manifest,
+		}
+	}
+	source := func(s CartridgeInstallSource) *CartridgeInstallSource { return &s }
+	dir := filepath.Join("imagecartridge", "1.174.414")
+
+	assert.Nil(t, CartridgeRefusal(stamped(source(CartridgeInstallSourceRegistry), &anchor, 13), dir, terms))
+
+	refused := func(from *CartridgeInstallSource, registry *string) *Refusal {
+		r := CartridgeRefusal(stamped(from, registry, 12), dir, terms)
+		require.NotNil(t, r, "stamped for 12, refused by a host at 13")
+		return r
+	}
+	installed := refused(source(CartridgeInstallSourceRegistry), &anchor)
+	assert.Equal(t, CartridgeAttachmentErrorKindFabricManifestVersionMismatch, installed.Kind)
+	assert.Equal(t,
+		"imagecartridge 1.174.414 was installed for fabric manifest 12, and this host reads "+
+			"fabric manifest 13. Remove it and install it again from its registry.",
+		installed.Message)
+	// Provenance other than `bundle` carries no meaning: a registry_url is
+	// what makes it a registry install.
+	assert.Equal(t, installed, refused(nil, &anchor))
+	rebuild := "Rebuild it with MFR_FABRIC_MANIFEST_VERSION=13 and install it again."
+	assert.True(t, strings.HasSuffix(refused(source(CartridgeInstallSourceDev), nil).Message, rebuild))
+	assert.True(t, strings.HasSuffix(refused(nil, nil).Message, rebuild))
+	assert.True(t, strings.HasSuffix(refused(source(CartridgeInstallSourceBundle), &anchor).Message,
+		"its bundle holds a cartridge for another fabric manifest."))
+}
+
 // TEST120: Registry url under dev slug is rejected
 func Test0120_registry_url_under_dev_slug_is_rejected(t *testing.T) {
 	root := t.TempDir()

@@ -17,7 +17,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -77,6 +78,167 @@ type DiscoveredCartridge struct {
 	Version     string
 	CapGroups   []CapGroup
 	Error       *CartridgeAttachmentError
+}
+
+// AttachTerms is what a host holds a cartridge to before it attaches it, from
+// what the cartridge's cartridge.json says: the part of a host's identity that
+// CartridgeRefusal reads.
+type AttachTerms struct {
+	Channel               CartridgeChannel
+	FabricManifestVersion uint32
+	// Bundle is what proves a cartridge that says it was bundled; see
+	// DiscoveryIdentity.Bundle.
+	Bundle BundleProof
+}
+
+// AttachTerms is the terms this host attaches cartridges on.
+func (identity *DiscoveryIdentity) AttachTerms() AttachTerms {
+	return AttachTerms{
+		Channel:               identity.Channel,
+		FabricManifestVersion: identity.FabricManifestVersion,
+		Bundle:                identity.Bundle,
+	}
+}
+
+// Refusal is why a host does not attach a cartridge.
+type Refusal struct {
+	Kind    CartridgeAttachmentErrorKind
+	Message string
+}
+
+// At is the refusal as the attachment error a roster carries.
+func (r *Refusal) At(detectedAtUnixSeconds int64) *CartridgeAttachmentError {
+	return &CartridgeAttachmentError{
+		Kind:                  r.Kind,
+		Message:               r.Message,
+		DetectedAtUnixSeconds: detectedAtUnixSeconds,
+	}
+}
+
+// CartridgeRefusal is why a cartridge whose cartridge.json reads as cj,
+// installed in versionDir, is not attached under terms; nil when it may be.
+//
+// The one rule every host decides by: discovery's roster and a run that
+// attaches the installed cartridge a cap needs both call it, so a cartridge
+// one of them refuses is never run by the other.
+func CartridgeRefusal(cj *CartridgeJson, versionDir string, terms AttachTerms) *Refusal {
+	if cj.Channel != string(terms.Channel) {
+		return &Refusal{
+			Kind: CartridgeAttachmentErrorKindMisplaced,
+			Message: fmt.Sprintf(
+				"Channel mismatch: cartridge declares '%s' but host is pinned to '%s'. Release and nightly artefacts must not mix.",
+				cj.Channel, terms.Channel,
+			),
+		}
+	}
+
+	// NO registry pin: the host's baked registry does NOT restrict which
+	// registries' cartridges are attached. Whether a version is actually
+	// LISTED upstream is the verdict layer's call.
+
+	bundled := cj.InstalledFrom != nil && *cj.InstalledFrom == CartridgeInstallSourceBundle
+	if cj.FabricManifestVersion != terms.FabricManifestVersion {
+		ours := terms.FabricManifestVersion
+		// What to do differs by where the cartridge came from, told as every
+		// host tells it: `installed_from: bundle` is the one provenance with
+		// meaning, and otherwise a RegistryURL is a registry install and none
+		// a dev cartridge.
+		var remedy string
+		switch {
+		case bundled:
+			remedy = "The build that bundled it is inconsistent: its bundle holds a cartridge for another fabric manifest."
+		case cj.RegistryURL != nil:
+			remedy = "Remove it and install it again from its registry."
+		default:
+			remedy = fmt.Sprintf("Rebuild it with MFR_FABRIC_MANIFEST_VERSION=%d and install it again.", ours)
+		}
+		return &Refusal{
+			Kind: CartridgeAttachmentErrorKindFabricManifestVersionMismatch,
+			Message: fmt.Sprintf(
+				"%s %s was installed for fabric manifest %d, and this host reads fabric manifest %d. %s",
+				cj.Name, cj.Version, cj.FabricManifestVersion, ours, remedy,
+			),
+		}
+	}
+
+	// Bundled-cartridge integrity. A cartridge marked `installed_from: bundle`
+	// is shipped INSIDE this build, not user-installed, and has no upstream
+	// registry to verify against — so it needs its own integrity proof.
+	//
+	// ONE mechanism, on every platform: the build's signed bundle manifest.
+	// The proof was established when this discovery started (see BundleProof);
+	// here it is applied to the cartridge in hand.
+	//
+	// This used to be platform-split, and macOS had no check of ours at all.
+	// The manifest is produced at the END of a build, after every platform
+	// signing step, which is what removed the ordering problem that split
+	// existed for. Apple's signature still matters, and it is what stops the
+	// operating system warning a user; it is not what decides whether code
+	// runs here.
+	if bundled {
+		if reason := terms.Bundle.Check(cj.Name, cj.Version, versionDir); reason != "" {
+			return &Refusal{
+				Kind:    CartridgeAttachmentErrorKindMisplaced,
+				Message: fmt.Sprintf("bundled cartridge integrity check failed: %s", reason),
+			}
+		}
+	}
+
+	return nil
+}
+
+// NewestVersionDir is the newest of a cartridge's installed version
+// directories, by their names: dotted numbers compare as numbers (1.174.0 is
+// newer than 1.99.0), anything else as text. Every host attaches this one and
+// only this one, so what a roster shows for a cartridge is what a run uses.
+// Empty for no directories.
+func NewestVersionDir(versionDirs []string) string {
+	newest := ""
+	for _, dir := range versionDirs {
+		if newest == "" || compareVersions(filepath.Base(dir), filepath.Base(newest)) > 0 {
+			newest = dir
+		}
+	}
+	return newest
+}
+
+// compareVersions orders two version strings: part by dotted part,
+// numerically where both parts are numbers, as text otherwise; a version that
+// runs out of parts first is the older.
+func compareVersions(a, b string) int {
+	left := strings.Split(a, ".")
+	right := strings.Split(b, ".")
+	for i := 0; ; i++ {
+		switch {
+		case i >= len(left) && i >= len(right):
+			return 0
+		case i >= len(left):
+			return -1
+		case i >= len(right):
+			return 1
+		}
+		x, xErr := strconv.ParseUint(left[i], 10, 64)
+		y, yErr := strconv.ParseUint(right[i], 10, 64)
+		var order int
+		if xErr == nil && yErr == nil {
+			order = cmpUint(x, y)
+		} else {
+			order = strings.Compare(left[i], right[i])
+		}
+		if order != 0 {
+			return order
+		}
+	}
+}
+
+func cmpUint(x, y uint64) int {
+	switch {
+	case x < y:
+		return -1
+	case x > y:
+		return 1
+	}
+	return 0
 }
 
 // unixSecondsNow is the current wall-clock time as Unix seconds, for stamping
@@ -225,11 +387,7 @@ func scanChannelRoot(scanRoot, slugDir string, folder RegistryFolder, folderErr 
 			continue
 		}
 
-		// Prefer the newest version (lexical-descending on the version folder name).
-		sort.Slice(versionDirs, func(i, j int) bool {
-			return filepath.Base(versionDirs[i]) > filepath.Base(versionDirs[j])
-		})
-		versionDir := versionDirs[0]
+		versionDir := NewestVersionDir(versionDirs)
 
 		pathDerivedName := filepath.Base(nameDir)
 		pathDerivedVersion := filepath.Base(versionDir)
@@ -284,7 +442,8 @@ func scanChannelRoot(scanRoot, slugDir string, folder RegistryFolder, folderErr 
 			continue
 		}
 
-		if cj.Channel != string(identity.Channel) {
+		if refused := CartridgeRefusal(cj, versionDir, identity.AttachTerms()); refused != nil {
+			fmt.Fprintf(os.Stderr, "cartridge refused — surfacing as incompatible: %s %s: %s\n", cj.Name, cj.Version, refused.Message)
 			*discovered = append(*discovered, DiscoveredCartridge{
 				Kind:        DiscoveredCartridgeIncompatible,
 				VersionDir:  versionDir,
@@ -292,74 +451,9 @@ func scanChannelRoot(scanRoot, slugDir string, folder RegistryFolder, folderErr 
 				Channel:     CartridgeChannel(cj.Channel),
 				RegistryURL: cj.RegistryURL,
 				Version:     cj.Version,
-				Error: &CartridgeAttachmentError{
-					Kind: CartridgeAttachmentErrorKindMisplaced,
-					Message: fmt.Sprintf(
-						"Channel mismatch: cartridge declares '%s' but host is pinned to '%s'. Release and nightly artefacts must not mix.",
-						cj.Channel, identity.Channel,
-					),
-					DetectedAtUnixSeconds: detectedAt,
-				},
+				Error:       refused.At(detectedAt),
 			})
 			continue
-		}
-
-		// NO registry pin: the host's baked registry does NOT restrict which
-		// registries' cartridges are discovered. Whether a version is actually
-		// LISTED upstream is the verdict layer's call, applied after discovery.
-
-		if cj.FabricManifestVersion != identity.FabricManifestVersion {
-			*discovered = append(*discovered, DiscoveredCartridge{
-				Kind:        DiscoveredCartridgeIncompatible,
-				VersionDir:  versionDir,
-				Id:          cj.Name,
-				Channel:     CartridgeChannel(cj.Channel),
-				RegistryURL: cj.RegistryURL,
-				Version:     cj.Version,
-				Error: &CartridgeAttachmentError{
-					Kind: CartridgeAttachmentErrorKindFabricManifestVersionMismatch,
-					Message: fmt.Sprintf(
-						"Cartridge built against fabric manifest version %d, but host is pinned to %d. Rebuild the cartridge with MFR_FABRIC_MANIFEST_VERSION=%d.",
-						cj.FabricManifestVersion, identity.FabricManifestVersion, identity.FabricManifestVersion,
-					),
-					DetectedAtUnixSeconds: detectedAt,
-				},
-			})
-			continue
-		}
-
-		// Bundled-cartridge integrity. A cartridge marked `installed_from: bundle`
-		// is shipped INSIDE this build, not user-installed, and has no upstream
-		// registry to verify against — so it needs its own integrity proof.
-		//
-		// ONE mechanism, on every platform: the build's signed bundle manifest.
-		// The proof was established when this discovery started (see BundleProof);
-		// here it is applied to the cartridge in hand.
-		//
-		// This used to be platform-split, and macOS had no check of ours at all.
-		// The manifest is produced at the END of a build, after every platform
-		// signing step, which is what removed the ordering problem that split
-		// existed for. Apple's signature still matters, and it is what stops the
-		// operating system warning a user; it is not what decides whether code
-		// runs here.
-		if cj.InstalledFrom != nil && *cj.InstalledFrom == CartridgeInstallSourceBundle {
-			if reason := identity.Bundle.Check(cj.Name, cj.Version, versionDir); reason != "" {
-				fmt.Fprintf(os.Stderr, "bundled cartridge is not proven by this build's signed bundle manifest — surfacing as incompatible: %s %s: %s\n", cj.Name, cj.Version, reason)
-				*discovered = append(*discovered, DiscoveredCartridge{
-					Kind:        DiscoveredCartridgeIncompatible,
-					VersionDir:  versionDir,
-					Id:          cj.Name,
-					Channel:     CartridgeChannel(cj.Channel),
-					RegistryURL: cj.RegistryURL,
-					Version:     cj.Version,
-					Error: &CartridgeAttachmentError{
-						Kind:                  CartridgeAttachmentErrorKindMisplaced,
-						Message:               fmt.Sprintf("bundled cartridge integrity check failed: %s", reason),
-						DetectedAtUnixSeconds: detectedAt,
-					},
-				})
-				continue
-			}
 		}
 
 		entryPoint := cj.ResolveEntryPoint(versionDir)
