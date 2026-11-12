@@ -4,7 +4,10 @@ package bifaci
 //
 // The on-disk scan + identity validation + HELLO probe that classifies each
 // installed cartridge version directory as attachable (Directory) or
-// Incompatible. This is the single source of truth used by BOTH the engine
+// Incompatible. A bundled cartridge is not probed: its build's signed bundle
+// manifest records what the probe would learn, and its bytes are held to that
+// manifest when a host starts it. This is the single source of truth used by
+// BOTH the engine
 // (for its bundled cartridges/ tree) and the daemon (for the user-installed
 // cartridge tree). Keeping one implementation guarantees the two hosts accept
 // exactly the same cartridges and reject the rest with byte-identical verdicts.
@@ -51,8 +54,9 @@ type DiscoveryIdentity struct {
 type DiscoveredCartridgeKind int
 
 const (
-	// DiscoveredCartridgeDirectory: passed every identity check and its HELLO
-	// probe succeeded. Its caps will be registered for dispatch.
+	// DiscoveredCartridgeDirectory: passed every identity check, and its caps
+	// are known: from its HELLO probe, or, for a bundled cartridge, from its
+	// build's signed bundle manifest. Its caps will be registered for dispatch.
 	DiscoveredCartridgeDirectory DiscoveredCartridgeKind = iota
 	// DiscoveredCartridgeIncompatible: found on disk but failed a check. NOT
 	// spawned, caps never enter the dispatch graph; surfaced with a structured
@@ -75,12 +79,20 @@ type DiscoveredCartridge struct {
 	RegistryURL *string
 	Version     string
 	CapGroups   []CapGroup
-	Error       *CartridgeAttachmentError
+	// BundleSHA256 is, for a bundled Directory cartridge, the directory hash
+	// its build's signed bundle manifest records; nil for an installed or dev
+	// one, and for an Incompatible one.
+	//
+	// Discovery does not hash a bundled cartridge. A host holds its directory
+	// to this value each time it starts the cartridge (VerifyBundledContent),
+	// and refuses to start one that was changed.
+	BundleSHA256 *string
+	Error        *CartridgeAttachmentError
 }
 
 // AttachTerms is what a host holds a cartridge to before it attaches it, from
 // what the cartridge's cartridge.json says: the part of a host's identity that
-// CartridgeRefusal reads.
+// CartridgeAdmission reads.
 type AttachTerms struct {
 	Channel               CartridgeChannel
 	FabricManifestVersion uint32
@@ -113,15 +125,20 @@ func (r *Refusal) At(detectedAtUnixSeconds int64) *CartridgeAttachmentError {
 	}
 }
 
-// CartridgeRefusal is why a cartridge whose cartridge.json reads as cj,
-// installed in versionDir, is not attached under terms; nil when it may be.
+// CartridgeAdmission is whether, and how, a cartridge whose cartridge.json
+// reads as cj is attached under terms. A non-nil Refusal says why it is not.
+// Otherwise a bundled cartridge comes back with what its build's signed bundle
+// manifest records of it, which it is attached as: its caps are the recorded
+// ones, and a host holds its directory to the recorded hash each time it
+// starts it (VerifyBundledContent). Any other cartridge comes back with nil,
+// and the host learns its caps by starting it.
 //
 // The one rule every host decides by: discovery's roster and a run that
 // attaches the installed cartridge a cap needs both call it, so a cartridge
-// one of them refuses is never run by the other.
-func CartridgeRefusal(cj *CartridgeJson, versionDir string, terms AttachTerms) *Refusal {
+// one of them refuses is never run by the other. It reads nothing on disk.
+func CartridgeAdmission(cj *CartridgeJson, terms AttachTerms) (*BundledCartridge, *Refusal) {
 	if cj.Channel != string(terms.Channel) {
-		return &Refusal{
+		return nil, &Refusal{
 			Kind: CartridgeAttachmentErrorKindMisplaced,
 			Message: fmt.Sprintf(
 				"Channel mismatch: cartridge declares '%s' but host is pinned to '%s'. Release and nightly artefacts must not mix.",
@@ -150,7 +167,7 @@ func CartridgeRefusal(cj *CartridgeJson, versionDir string, terms AttachTerms) *
 		default:
 			remedy = fmt.Sprintf("Rebuild it with MFR_FABRIC_MANIFEST_VERSION=%d and install it again.", ours)
 		}
-		return &Refusal{
+		return nil, &Refusal{
 			Kind: CartridgeAttachmentErrorKindFabricManifestVersionMismatch,
 			Message: fmt.Sprintf(
 				"%s %s was installed for fabric manifest %d, and this host reads fabric manifest %d. %s",
@@ -159,30 +176,43 @@ func CartridgeRefusal(cj *CartridgeJson, versionDir string, terms AttachTerms) *
 		}
 	}
 
-	// Bundled-cartridge integrity. A cartridge marked `installed_from: bundle`
-	// is shipped INSIDE this build, not user-installed, and has no upstream
-	// registry to verify against — so it needs its own integrity proof.
+	// A bundled cartridge. A cartridge marked `installed_from: bundle` is
+	// shipped INSIDE this build, not user-installed, and has no upstream
+	// registry to verify against — so it needs its own proof.
 	//
 	// ONE mechanism, on every platform: the build's signed bundle manifest.
-	// The proof was established when this discovery started (see BundleProof);
-	// here it is applied to the cartridge in hand.
+	// The proof was established when this host started (see BundleProof); here
+	// it is applied to the cartridge in hand. Apple's signature still matters,
+	// and it is what stops the operating system warning a user; it is not what
+	// decides whether code runs here.
 	//
-	// This used to be platform-split, and macOS had no check of ours at all.
-	// The manifest is produced at the END of a build, after every platform
-	// signing step, which is what removed the ordering problem that split
-	// existed for. Apple's signature still matters, and it is what stops the
-	// operating system warning a user; it is not what decides whether code
-	// runs here.
+	// The manifest records what a probe would learn — the caps the cartridge
+	// advertises, and the fabric manifest version it was built for — so the
+	// cartridge is attached from that record without being started or hashed.
 	if bundled {
-		if reason := terms.Bundle.Check(cj.Name, cj.Version, versionDir); reason != "" {
-			return &Refusal{
+		recorded, err := terms.Bundle.Admit(cj.Name, cj.Version, cj.Channel)
+		if err != nil {
+			return nil, &Refusal{
 				Kind:    CartridgeAttachmentErrorKindMisplaced,
-				Message: fmt.Sprintf("bundled cartridge integrity check failed: %s", reason),
+				Message: fmt.Sprintf("bundled cartridge integrity check failed: %v", err),
 			}
 		}
+		// cartridge.json is outside the hash, so what it says of the fabric was
+		// checked above only as far as it goes: the signed record is what is
+		// believed.
+		if recorded.FabricManifestVersion != terms.FabricManifestVersion {
+			return nil, &Refusal{
+				Kind: CartridgeAttachmentErrorKindFabricManifestVersionMismatch,
+				Message: fmt.Sprintf(
+					"%s %s was built for fabric manifest %d, as its build's signed bundle manifest records, and this host reads fabric manifest %d. The build that bundled it is inconsistent: its bundle holds a cartridge for another fabric manifest.",
+					cj.Name, cj.Version, recorded.FabricManifestVersion, terms.FabricManifestVersion,
+				),
+			}
+		}
+		return &recorded, nil
 	}
 
-	return nil
+	return nil, nil
 }
 
 // NewestVersionDir is the newest of a cartridge's installed version
@@ -401,7 +431,8 @@ func scanChannelRoot(scanRoot, slugDir string, folder RegistryFolder, folderErr 
 			continue
 		}
 
-		if refused := CartridgeRefusal(cj, versionDir, identity.AttachTerms()); refused != nil {
+		recorded, refused := CartridgeAdmission(cj, identity.AttachTerms())
+		if refused != nil {
 			fmt.Fprintf(os.Stderr, "cartridge refused — surfacing as incompatible: %s %s: %s\n", cj.Name, cj.Version, refused.Message)
 			*discovered = append(*discovered, DiscoveredCartridge{
 				Kind:        DiscoveredCartridgeIncompatible,
@@ -411,6 +442,25 @@ func scanChannelRoot(scanRoot, slugDir string, folder RegistryFolder, folderErr 
 				RegistryURL: cj.RegistryURL,
 				Version:     cj.Version,
 				Error:       refused.At(detectedAt),
+			})
+			continue
+		}
+		// A bundled cartridge is neither started nor hashed here: its build's
+		// signed bundle manifest records the caps a probe would learn, and a
+		// host holds its bytes to the recorded hash when it starts it, which is
+		// when they are about to run.
+		if recorded != nil {
+			bundleSHA256 := recorded.SHA256
+			*discovered = append(*discovered, DiscoveredCartridge{
+				Kind:         DiscoveredCartridgeDirectory,
+				EntryPoint:   cj.ResolveEntryPoint(versionDir),
+				VersionDir:   versionDir,
+				Id:           cj.Name,
+				Channel:      CartridgeChannel(cj.Channel),
+				RegistryURL:  cj.RegistryURL,
+				Version:      cj.Version,
+				CapGroups:    recorded.CapGroups,
+				BundleSHA256: &bundleSHA256,
 			})
 			continue
 		}

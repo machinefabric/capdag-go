@@ -260,6 +260,99 @@ func Test415_req_triggers_spawn(t *testing.T) {
 	_ = err
 }
 
+// startBundled registers a bundled cartridge whose entry point cannot be
+// started, held to the hash recorded answers for its directory, sends one REQ
+// for its cap, and answers what the host said and the cartridge's record
+// afterwards.
+func startBundled(t *testing.T, recorded func(dir string) string) (string, string, InstalledCartridgeRecord, InstalledCartridgeRecord) {
+	t.Helper()
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "cartridge.json"),
+		[]byte(`{"name":"cart","version":"1.0.0","channel":"release","registry_url":null,"entry":"bin","installed_at":"2026-01-01T00:00:00Z","installed_from":"bundle"}`),
+		0o644,
+	))
+	entry := filepath.Join(dir, "bin")
+	require.NoError(t, os.WriteFile(entry, []byte("not an executable"), 0o644))
+	hash := recorded(dir)
+
+	const capUrn = `cap:in="media:void";test;out="media:void"`
+	host := newTestHost()
+	host.RegisterCartridgeDir(RegisteredDirSpec{
+		EntryPoint:   entry,
+		VersionDir:   dir,
+		Id:           "cart",
+		Channel:      CartridgeChannelRelease,
+		RegistryURL:  nil,
+		Version:      "1.0.0",
+		CapGroups:    capGroupsFromURNs(t, capUrn),
+		BundleSHA256: &hash,
+	})
+	// Registration takes the recorded hash as the cartridge's identity rather
+	// than hashing the directory.
+	require.NotNil(t, host.cartridges[0].installedCartridgeRecord())
+	assert.Equal(t, hash, host.cartridges[0].installedCartridgeRecord().Sha256)
+
+	out := &relayOutbound{ch: make(chan *Frame, 16)}
+	xid := NewMessageIdFromUint(1)
+	req := NewReq(NewMessageIdRandom(), capUrn, []byte{}, "text/plain")
+	req.RoutingId = &xid
+	require.NoError(t, host.handleRelayFrame(req, out))
+
+	var code, said string
+	for len(out.ch) > 0 {
+		frame := <-out.ch
+		if frame.FrameType == FrameTypeErr {
+			code = frame.ErrorCode()
+			said = frame.ErrorMessage()
+			break
+		}
+	}
+	require.NotEmpty(t, said, "the cartridge cannot run, one way or the other, so the REQ must be answered with an ERR")
+	record := host.cartridges[0].installedCartridgeRecord()
+	require.NotNil(t, record)
+	host.mu.Lock()
+	advertised := host.buildInstalledCartridgeIdentities()
+	host.mu.Unlock()
+	require.NotEmpty(t, advertised, "the cartridge stays in the inventory")
+	return code, said, *record, advertised[0]
+}
+
+// TEST1962: a host holds a bundled cartridge to its recorded hash when it
+// starts it, and refuses a changed one by name, without starting it.
+//
+// Discovery no longer hashes a bundled cartridge (TEST1931), so this is the
+// check that catches a changed bundle. The entry point cannot be started: a
+// host that skipped the check would fail at the spawn instead, which is what
+// the unchanged case shows.
+func Test1962_a_changed_bundled_cartridge_is_refused_when_started(t *testing.T) {
+	code, said, record, advertised := startBundled(t, func(string) string { return strings.Repeat("f", 64) })
+	assert.Equal(t, "CARTRIDGE_REFUSED", code, "a changed bundled cartridge is refused, not a failed spawn")
+	assert.Contains(t, said, "the bundled cartridge cart 1.0.0 was changed after its build recorded it",
+		"the refusal must name the cartridge and say its bundle changed")
+	require.NotNil(t, record.AttachmentError, "the refusal is recorded against the cartridge")
+	assert.Equal(t, CartridgeAttachmentErrorKindMisplaced, record.AttachmentError.Kind)
+	assert.Contains(t, record.AttachmentError.Message, "was changed after its build recorded it")
+	// What the host advertises carries the same reason, so whatever shows its
+	// inventory says why, not that a handshake failed.
+	require.NotNil(t, advertised.AttachmentError, "the inventory says why it is refused")
+	assert.Equal(t, CartridgeAttachmentErrorKindMisplaced, advertised.AttachmentError.Kind)
+	assert.Contains(t, advertised.AttachmentError.Message, "was changed after its build recorded it")
+	assert.Empty(t, advertised.CapGroups, "a refused cartridge is not routable")
+
+	// Unchanged: the check passes and the host goes on to start it, which
+	// fails here only because the fixture is not a program.
+	code, said, record, _ = startBundled(t, func(dir string) string {
+		hash, err := HashCartridgeDirectory(dir)
+		require.NoError(t, err)
+		return hash
+	})
+	assert.Equal(t, "SPAWN_FAILED", code, "an unchanged cartridge must pass the check and be started")
+	assert.NotContains(t, said, "was changed", "an unchanged cartridge must pass the check")
+	assert.Contains(t, said, "failed to start cartridge", "an unchanged cartridge must be started")
+	assert.Nil(t, record.AttachmentError, "a cartridge that passed the check carries no refusal")
+}
+
 // TEST416: Attach cartridge performs HELLO handshake, extracts manifest, updates capabilities
 func Test416_attach_cartridge_handshake(t *testing.T) {
 	manifest := `{"name":"Test","version":"1.0","channel":"release","registry_url":null,"cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"identity","aliases":["identity"],"args":[{"media_urn":"media:","name":"input","required":true,"sources":[{"stdin":"media:"}]}],"outputs":[{"media_urn":"media:","name":"output","output_description":"output"}]}]}]}`
