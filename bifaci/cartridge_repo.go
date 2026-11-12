@@ -666,7 +666,11 @@ func validateVersionData(id, version string, versionData *CartridgeVersionData) 
 	return nil
 }
 
-// compareVersions compares semantic version strings; returns -1, 0, or 1
+// compareVersions orders two cartridge version strings by their dotted
+// numeric parts, returning -1, 0, or 1; a missing part counts as 0 and a part
+// that is not a number is skipped. The one order cartridge versions have: the
+// registry's latest, and the installed version a host attaches
+// (NewestVersionDir).
 func compareVersions(a, b string) int {
 	partsA := parseVersion(a)
 	partsB := parseVersion(b)

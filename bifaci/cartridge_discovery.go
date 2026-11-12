@@ -17,8 +17,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"time"
 )
 
@@ -188,10 +186,10 @@ func CartridgeRefusal(cj *CartridgeJson, versionDir string, terms AttachTerms) *
 }
 
 // NewestVersionDir is the newest of a cartridge's installed version
-// directories, by their names: dotted numbers compare as numbers (1.174.0 is
-// newer than 1.99.0), anything else as text. Every host attaches this one and
-// only this one, so what a roster shows for a cartridge is what a run uses.
-// Empty for no directories.
+// directories, by their names, in the order the registry gives versions
+// (compareVersions: dotted numbers compared as numbers, so 1.174.0 is newer
+// than 1.99.0). Every host attaches this one and only this one, so what a
+// roster shows for a cartridge is what a run uses. Empty for no directories.
 func NewestVersionDir(versionDirs []string) string {
 	newest := ""
 	for _, dir := range versionDirs {
@@ -200,45 +198,6 @@ func NewestVersionDir(versionDirs []string) string {
 		}
 	}
 	return newest
-}
-
-// compareVersions orders two version strings: part by dotted part,
-// numerically where both parts are numbers, as text otherwise; a version that
-// runs out of parts first is the older.
-func compareVersions(a, b string) int {
-	left := strings.Split(a, ".")
-	right := strings.Split(b, ".")
-	for i := 0; ; i++ {
-		switch {
-		case i >= len(left) && i >= len(right):
-			return 0
-		case i >= len(left):
-			return -1
-		case i >= len(right):
-			return 1
-		}
-		x, xErr := strconv.ParseUint(left[i], 10, 64)
-		y, yErr := strconv.ParseUint(right[i], 10, 64)
-		var order int
-		if xErr == nil && yErr == nil {
-			order = cmpUint(x, y)
-		} else {
-			order = strings.Compare(left[i], right[i])
-		}
-		if order != 0 {
-			return order
-		}
-	}
-}
-
-func cmpUint(x, y uint64) int {
-	switch {
-	case x < y:
-		return -1
-	case x > y:
-		return 1
-	}
-	return 0
 }
 
 // unixSecondsNow is the current wall-clock time as Unix seconds, for stamping
