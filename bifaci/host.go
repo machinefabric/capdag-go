@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -283,6 +284,33 @@ type ManagedCartridge struct {
 	// was created from (empty for binary/attached cartridges). Its
 	// presence marks a cartridge as roster-managed (isRegisteredDir).
 	cartridgeDir string
+	// bundleSHA256 is, for a bundled cartridge, the directory hash its
+	// build's signed bundle manifest records. The directory is held to it
+	// each time the cartridge is started, and a cartridge that was changed
+	// is refused there. nil for an installed, dev, binary or attached one.
+	bundleSHA256 *string
+}
+
+// recordAttachmentError marks the cartridge permanently failed for this host
+// and records why on its identity, so the inventory carries the reason.
+// Mirrors the reference ManagedCartridge::record_attachment_error.
+func (c *ManagedCartridge) recordAttachmentError(kind CartridgeAttachmentErrorKind, message string) {
+	c.helloFailed = true
+	if c.installedIdentity == nil {
+		// Every registration path stamps an identity; only an ad-hoc attach
+		// has none, and it never reaches the engine's inventory. Synthesizing
+		// one here would invent a channel, so this is a bug, said loudly.
+		panic(fmt.Sprintf(
+			"BUG: recordAttachmentError fired on a cartridge without an InstalledCartridgeRecord (path '%s'). "+
+				"Channels are part of identity; we never synthesize one without channel info.",
+			c.path,
+		))
+	}
+	c.installedIdentity.AttachmentError = &CartridgeAttachmentError{
+		Kind:                  kind,
+		Message:               message,
+		DetectedAtUnixSeconds: unixSecondsNow(),
+	}
 }
 
 // installedCartridgeRecord returns the cartridge's resolvable identity, or nil
@@ -620,6 +648,10 @@ type RegisteredDirSpec struct {
 	RegistryURL *string
 	Version     string
 	CapGroups   []CapGroup
+	// BundleSHA256 is, for a bundled cartridge, the directory hash its
+	// build's signed bundle manifest records (DiscoveredCartridge's
+	// BundleSHA256); nil for an installed or dev one.
+	BundleSHA256 *string
 }
 
 // hostCommand is a command applied inside the Run loop. Exactly one field is set.
@@ -775,6 +807,10 @@ func (h *CartridgeHost) RegisterCartridge(path, name, version string, channel Ca
 // hashable the cartridge is recorded with an EntryPointMissing attachment error
 // and hello_failed so it drops out of the cap table / inventory — mirroring the
 // reference new_registered_dir constructor.
+//
+// A bundled cartridge (spec.BundleSHA256 set) is not hashed here: its identity
+// is the hash its build's signed bundle manifest records, and its directory is
+// held to that hash each time the cartridge is started (spawnCartridgeLocked).
 func (h *CartridgeHost) RegisterCartridgeDir(spec RegisteredDirSpec) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -794,9 +830,18 @@ func (h *CartridgeHost) registerCartridgeDirLocked(spec RegisteredDirSpec) {
 		pendingHeartbeats: make(map[string]time.Time),
 		poolStates:        make(PoolStates),
 		pendingDesired:    make(DesiredCapacities),
+		bundleSHA256:      spec.BundleSHA256,
 	}
 
-	sha256, err := HashCartridgeDirectory(spec.VersionDir)
+	// A bundled cartridge's identity is the hash its build recorded; its
+	// directory is held to it when the cartridge is started, not here.
+	var sha256 string
+	var err error
+	if spec.BundleSHA256 != nil {
+		sha256 = *spec.BundleSHA256
+	} else {
+		sha256, err = HashCartridgeDirectory(spec.VersionDir)
+	}
 	if err != nil {
 		detectedAt := unixSecondsNow()
 		cartridge.helloFailed = true
@@ -822,8 +867,9 @@ func (h *CartridgeHost) registerCartridgeDirLocked(spec RegisteredDirSpec) {
 			Sha256:      sha256,
 			// Engine-spawned external cartridges are operational by
 			// construction: discovery validated the install context and
-			// probed the cartridge before this registration. There is no
-			// separate inspecting/verifying phase on this path.
+			// probed the cartridge (or, for a bundled one, took its caps
+			// from the signed bundle manifest) before this registration.
+			// There is no separate inspecting/verifying phase on this path.
 			Lifecycle: CartridgeLifecycleOperational,
 		}
 	}
@@ -1487,7 +1533,15 @@ func (h *CartridgeHost) handleRelayFrame(frame *Frame, relayWriter *relayOutboun
 				return nil
 			}
 			if err := h.spawnCartridgeLocked(cartridgeIdx); err != nil {
-				errFrame := NewErr(frame.Id, "SPAWN_FAILED", AttributionClassEnvironment, err.Error(), nil)
+				// A bundled cartridge the host will not start is refused by
+				// name, with why; any other failure to start is SPAWN_FAILED.
+				// Both are deployment problems — Environment.
+				code := "SPAWN_FAILED"
+				var refusal *BundleError
+				if errors.As(err, &refusal) && refusal.Kind == BundleErrorContentMismatch {
+					code = "CARTRIDGE_REFUSED"
+				}
+				errFrame := NewErr(frame.Id, code, AttributionClassEnvironment, err.Error(), nil)
 				errFrame.RoutingId = frame.RoutingId
 				relayWriter.WriteFrame(errFrame)
 				return nil
@@ -2052,6 +2106,23 @@ func (h *CartridgeHost) spawnCartridgeLocked(cartridgeIdx int) error {
 	}
 	generation := cartridge.generation + 1
 
+	// A bundled cartridge is held to the hash its build recorded each time it
+	// is started: discovery took its caps from the signed manifest and read
+	// none of its bytes, so this is where a changed bundle is caught, just
+	// before the bytes run. A refusal is permanent for this host.
+	if cartridge.bundleSHA256 != nil && cartridge.cartridgeDir != "" {
+		record := cartridge.installedCartridgeRecord()
+		if record == nil {
+			panic(fmt.Sprintf("BUG: the directory-registered cartridge at '%s' carries no identity; every directory registration stamps one", cartridge.cartridgeDir))
+		}
+		if refusal := VerifyBundledContent(record.Id, record.Version, cartridge.cartridgeDir, *cartridge.bundleSHA256); refusal != nil {
+			msg := refusal.Error()
+			fmt.Fprintf(os.Stderr, "[CartridgeHost] bundled cartridge refused: %s\n", msg)
+			cartridge.recordAttachmentError(CartridgeAttachmentErrorKindMisplaced, msg)
+			return refusal
+		}
+	}
+
 	cmd := Command(cartridge.path)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -2204,14 +2275,19 @@ func (h *CartridgeHost) buildInstalledCartridgeIdentities() []InstalledCartridge
 		// an attachment error — never silently absent. It carries no
 		// cap_groups, so it is never routable. Mirrors the reference
 		// build_installed_cartridge_identities.
+		// The reason recorded against the cartridge (a host's refusal to start
+		// it, for one) is the one advertised; only a cartridge with none
+		// recorded is reported as a failed handshake.
 		if cartridge.helloFailed {
 			out.CapGroups = nil
-			out.AttachmentError = &CartridgeAttachmentError{
-				Kind: CartridgeAttachmentErrorKindHandshakeFailed,
-				Message: "HELLO handshake failed (protocol version mismatch or " +
-					"malformed manifest) — rebuild the cartridge against the " +
-					"current protocol",
-				DetectedAtUnixSeconds: unixSecondsNow(),
+			if out.AttachmentError == nil {
+				out.AttachmentError = &CartridgeAttachmentError{
+					Kind: CartridgeAttachmentErrorKindHandshakeFailed,
+					Message: "HELLO handshake failed (protocol version mismatch or " +
+						"malformed manifest) — rebuild the cartridge against the " +
+						"current protocol",
+					DetectedAtUnixSeconds: unixSecondsNow(),
+				}
 			}
 			installed = append(installed, out)
 			continue
