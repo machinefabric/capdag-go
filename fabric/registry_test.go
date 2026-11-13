@@ -11,11 +11,14 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -954,15 +957,7 @@ func Test12714_a_served_definition_is_held_to_the_definition_rules(t *testing.T)
 // breaks a rule was written under other rules: loading drops its file and
 // keeps the rest, and the definition is fetched anew when next asked for.
 func Test12715_a_cached_definition_that_breaks_a_rule_is_dropped(t *testing.T) {
-	scratch := t.TempDir()
-	r := NewForTestInDir(DefaultConfig(), scratch)
-	entry := func(c *cap.Cap) []byte {
-		definition, err := json.Marshal(c)
-		require.NoError(t, err)
-		body, err := json.Marshal(capCacheEntry{Definition: definition, CachedAt: 0, TTLHours: 0})
-		require.NoError(t, err)
-		return body
-	}
+	cacheDir := t.TempDir()
 	capOf := func(op string) *cap.Cap {
 		u, err := urn.NewCapUrnFromString(`cap:in="media:void";` + op + `;out="media:record"`)
 		require.NoError(t, err)
@@ -975,22 +970,36 @@ func Test12715_a_cached_definition_that_breaks_a_rule_is_dropped(t *testing.T) {
 	// The same shape without the output its URN states (RULE21).
 	stale := capOf("stale")
 
-	keptFile := filepath.Join(scratch, "caps", "aa", "3.json")
-	staleFile := filepath.Join(scratch, "caps", "bb", "3.json")
-	for file, c := range map[string]*cap.Cap{keptFile: kept, staleFile: stale} {
-		require.NoError(t, os.MkdirAll(filepath.Dir(file), 0o755))
-		require.NoError(t, os.WriteFile(file, entry(c), 0o644))
+	manifest := media.EmptyManifest(11)
+	files := make([]string, 0, 2)
+	for _, c := range []*cap.Cap{kept, stale} {
+		key, err := NormalizeCapURN(c.Urn.String())
+		require.NoError(t, err)
+		manifest.Caps[key] = 3
+		file := entryPath(cacheDir, "caps", key, 3)
+		storeTestCap(t, file, c)
+		files = append(files, file)
 	}
 
-	r.loadAllCachedCaps()
-	_, hasKept := r.GetCachedCap(kept.Urn.String())
-	assert.True(t, hasKept, "the valid definition is loaded")
-	_, hasStale := r.GetCachedCap(stale.Urn.String())
-	assert.False(t, hasStale, "the definition that breaks a rule is not")
-	_, err := os.Stat(keptFile)
+	pinned, err := loadPinnedEntries(cacheDir, manifest)
+	require.NoError(t, err)
+	require.Len(t, pinned.caps, 1, "only the valid definition is loaded: %v", sortedKeys(pinned.caps))
+	for _, c := range pinned.caps {
+		assert.Equal(t, "kept", c.Title)
+	}
+	_, err = os.Stat(files[0])
 	assert.NoError(t, err)
-	_, err = os.Stat(staleFile)
+	_, err = os.Stat(files[1])
 	assert.True(t, os.IsNotExist(err), "the stale entry's file is removed")
+}
+
+// storeTestCap writes c as the cap cache entry at file, as the registry
+// writes one.
+func storeTestCap(t *testing.T, file string, c *cap.Cap) {
+	t.Helper()
+	definition, err := json.Marshal(c)
+	require.NoError(t, err)
+	require.NoError(t, storeEntry(file, capCacheEntry{Definition: definition, CachedAt: 0, TTLHours: 0}, "cap"))
 }
 
 // TEST12816: fetching a cap requires the definition of every media URN a
@@ -1264,4 +1273,243 @@ func Test1972_ADefinitionNeedsEveryDimItNames(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, ErrValidation, kindOf(err), "%v", err)
 	assert.Contains(t, err.Error(), "named more than once")
+}
+
+// ---------------------------------------------------------------------------
+// The disk cache shared by processes that run at once, and by capdag releases
+// pinned at different fabric manifests.
+// ---------------------------------------------------------------------------
+
+const sharedEntryURN = `cap:in="media:void";shared-entry;out="media:record"`
+
+// sharedEntryVariant is the cap sharedEntryURN at defver 3, titled title, with
+// a documentation large enough that writing it is not one step for the file
+// system.
+func sharedEntryVariant(t *testing.T, title string) *cap.Cap {
+	t.Helper()
+	u, err := urn.NewCapUrnFromString(sharedEntryURN)
+	require.NoError(t, err)
+	c := cap.NewCap(u, title, []string{"shared-entry"})
+	c.Version = 3
+	c.AddOutput(*cap.NewCapOutput("media:record", "record", "The record"))
+	c.SetDocumentation(strings.Repeat(title+"\n", 2_000))
+	return c
+}
+
+// sharedEntryManifest is manifest version pinning sharedEntryURN at defver 3.
+func sharedEntryManifest(t *testing.T, version uint32) *media.Manifest {
+	t.Helper()
+	key, err := NormalizeCapURN(sharedEntryURN)
+	require.NoError(t, err)
+	manifest := media.EmptyManifest(version)
+	manifest.Caps[key] = 3
+	return manifest
+}
+
+// sharedEntryFile is the file sharedEntryURN at defver 3 is kept in, in the
+// manifest version folder cacheDir.
+func sharedEntryFile(t *testing.T, cacheDir string) string {
+	t.Helper()
+	key, err := NormalizeCapURN(sharedEntryURN)
+	require.NoError(t, err)
+	return entryPath(cacheDir, "caps", key, 3)
+}
+
+// TEST1990: many readers and writers on one cache entry at once: every read
+// finds no entry or one whole entry a writer wrote, never part of one and
+// never an error, and no temporary file is left behind. The readers read for as
+// long as any writer writes, so every write overlaps reads.
+func Test1990_concurrent_readers_and_writers_never_see_a_torn_entry(t *testing.T) {
+	cacheDir := versionDir(t.TempDir(), 11)
+	manifest := sharedEntryManifest(t, 11)
+	file := sharedEntryFile(t, cacheDir)
+	variants := make([]*cap.Cap, 4)
+	entries := make([]capCacheEntry, 4)
+	for n := range variants {
+		variants[n] = sharedEntryVariant(t, fmt.Sprintf("written by writer %d", n))
+		definition, err := json.Marshal(variants[n])
+		require.NoError(t, err)
+		entries[n] = capCacheEntry{Definition: definition, CachedAt: 0, TTLHours: 0}
+	}
+	writtenByAWriter := func(c *cap.Cap) bool {
+		for _, v := range variants {
+			if v.Title == c.Title && c.Documentation != nil && *v.Documentation == *c.Documentation {
+				return true
+			}
+		}
+		return false
+	}
+
+	var (
+		mu       sync.Mutex
+		failures []string
+		writers  sync.WaitGroup
+		readers  sync.WaitGroup
+		done     atomic.Bool
+		reads    atomic.Int64
+	)
+	fail := func(message string) {
+		mu.Lock()
+		defer mu.Unlock()
+		failures = append(failures, message)
+	}
+	for _, entry := range entries {
+		writers.Add(1)
+		go func(entry capCacheEntry) {
+			defer writers.Done()
+			for i := 0; i < 400; i++ {
+				if err := storeEntry(file, entry, "cap"); err != nil {
+					fail("a write failed: " + err.Error())
+				}
+			}
+		}(entry)
+	}
+	// The readers read for as long as any writer writes, so every write
+	// overlaps reads.
+	for reader := 0; reader < 4; reader++ {
+		readers.Add(1)
+		go func() {
+			defer readers.Done()
+			for !done.Load() {
+				reads.Add(1)
+				pinned, err := loadPinnedEntries(cacheDir, manifest)
+				if err != nil {
+					fail(err.Error())
+					continue
+				}
+				for _, c := range pinned.caps {
+					if !writtenByAWriter(c) {
+						fail("read a cap no writer wrote: " + c.Title)
+					}
+				}
+			}
+		}()
+	}
+	writers.Wait()
+	done.Store(true)
+	readers.Wait()
+
+	assert.Positive(t, reads.Load(), "the readers read while the writers wrote")
+	if len(failures) > 0 {
+		t.Fatalf("%d torn or failed reads, first: %s", len(failures), failures[0])
+	}
+	pinned, err := loadPinnedEntries(cacheDir, manifest)
+	require.NoError(t, err)
+	assert.Len(t, pinned.caps, 1, "the entry is there at the end")
+	left, err := os.ReadDir(filepath.Dir(file))
+	require.NoError(t, err)
+	names := make([]string, 0, len(left))
+	for _, entry := range left {
+		names = append(names, entry.Name())
+	}
+	assert.Equal(t, []string{"3.json"}, names, "no temporary file is left behind")
+}
+
+// TEST1991: two fabric manifest versions share one registry folder: each
+// keeps its entries in a folder of its own, and reads only what was cached for
+// it, even where both manifests pin the same definition at the same defver.
+func Test1991_two_manifest_versions_read_only_their_own_entries(t *testing.T) {
+	registryDir := t.TempDir()
+	v10 := versionDir(registryDir, 10)
+	v13 := versionDir(registryDir, 13)
+	assert.NotEqual(t, v10, v13, "each manifest version has a folder of its own")
+
+	storeTestCap(t, sharedEntryFile(t, v10), sharedEntryVariant(t, "cached for manifest 10"))
+	pinned, err := loadPinnedEntries(v13, sharedEntryManifest(t, 13))
+	require.NoError(t, err)
+	assert.Empty(t, pinned.caps, "manifest 13 does not read what was cached for manifest 10")
+
+	storeTestCap(t, sharedEntryFile(t, v13), sharedEntryVariant(t, "cached for manifest 13"))
+	title := func(dir string, version uint32) string {
+		pinned, err := loadPinnedEntries(dir, sharedEntryManifest(t, version))
+		require.NoError(t, err)
+		require.Len(t, pinned.caps, 1)
+		for _, c := range pinned.caps {
+			return c.Title
+		}
+		return ""
+	}
+	assert.Equal(t, "cached for manifest 10", title(v10, 10))
+	assert.Equal(t, "cached for manifest 13", title(v13, 13))
+
+	a := newForTestInDirAt(DefaultConfig(), registryDir, 10)
+	b := newForTestInDirAt(DefaultConfig(), registryDir, 13)
+	assert.NotEqual(t, a.CacheDir(), b.CacheDir(), "registries at two manifests cache in two folders")
+	assert.Equal(t, registryDir, filepath.Dir(a.CacheDir()), "under one registry folder")
+	assert.Equal(t, registryDir, filepath.Dir(b.CacheDir()), "under one registry folder")
+}
+
+// TEST1992: an entry that is there and is not what its path names is reported
+// naming its file, and left where it is; it is never taken for a missing
+// entry. That covers a body that does not parse, one holding another
+// definition or defver, and a cached manifest that does not parse.
+func Test1992_a_corrupt_entry_is_reported_naming_its_file(t *testing.T) {
+	cacheDir := versionDir(t.TempDir(), 11)
+	manifest := sharedEntryManifest(t, 11)
+	file := sharedEntryFile(t, cacheDir)
+	require.NoError(t, os.MkdirAll(filepath.Dir(file), 0o755))
+
+	require.NoError(t, os.WriteFile(file, []byte(`{"definition": {"urn": "cap:in=`), 0o644))
+	_, err := loadPinnedEntries(cacheDir, manifest)
+	require.Error(t, err, "a truncated entry is an error")
+	assert.Equal(t, ErrCache, kindOf(err), "%v", err)
+	assert.Contains(t, err.Error(), "the cached cap "+file+" is corrupt: ", "names the file")
+	assert.Contains(t, err.Error(), "; remove the file, or run `capdag cache clear`")
+	assert.FileExists(t, file, "the file is left for whoever reads the error")
+
+	other := sharedEntryVariant(t, "another defver")
+	other.Version = 4
+	storeTestCap(t, file, other)
+	_, err = loadPinnedEntries(cacheDir, manifest)
+	require.Error(t, err, "another defver is an error")
+	assert.Equal(t, ErrCache, kindOf(err), "%v", err)
+	assert.Contains(t, err.Error(), file)
+	assert.Contains(t, err.Error(), "defver 4")
+	assert.FileExists(t, file)
+
+	manifestPath := filepath.Join(cacheDir, manifestFile)
+	require.NoError(t, os.WriteFile(manifestPath, []byte(`{"version": 11, "prev`), 0o644))
+	_, err = loadOrFetchManifest(cacheDir, &http.Client{}, layoutLocations("http://127.0.0.1:9"), 11)
+	require.Error(t, err, "a corrupt manifest is an error, not a fetch")
+	assert.Equal(t, ErrCache, kindOf(err), "%v", err)
+	assert.Contains(t, err.Error(), "the cached manifest "+manifestPath+" is corrupt: ")
+	assert.FileExists(t, manifestPath)
+}
+
+// TEST1993: clearing a manifest version's cache empties its folder and removes
+// the folders the shared layout before it kept in the registry's folder; other
+// manifest versions' folders and the stored charter stay.
+func Test1993_clearing_empties_one_version_and_removes_the_old_shared_folders(t *testing.T) {
+	registryDir := filepath.Join(t.TempDir(), "example-fabric")
+	v11 := versionDir(registryDir, 11)
+	v10 := versionDir(registryDir, 10)
+	storeTestCap(t, sharedEntryFile(t, v11), sharedEntryVariant(t, "eleven"))
+	storeTestCap(t, sharedEntryFile(t, v10), sharedEntryVariant(t, "ten"))
+	require.NoError(t, os.WriteFile(filepath.Join(v11, manifestFile), []byte("{}"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(v11, ".manifest.json.1-0.tmp"), []byte("half"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(registryDir, "charter.json"), []byte("{}"), 0o644))
+	for _, legacy := range legacyFolders {
+		require.NoError(t, os.MkdirAll(filepath.Join(registryDir, legacy, "ab"), 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(registryDir, legacy, "ab", "1.json"), []byte("{}"), 0o644))
+	}
+
+	require.NoError(t, clearCacheFolder(v11))
+
+	for _, kind := range kindFolders {
+		folder := filepath.Join(v11, kind)
+		assert.DirExists(t, folder, "%s stays", kind)
+		left, err := os.ReadDir(folder)
+		require.NoError(t, err)
+		assert.Empty(t, left, "%s is empty", kind)
+	}
+	top, err := os.ReadDir(v11)
+	require.NoError(t, err)
+	assert.Len(t, top, len(kindFolders), "only the kinds' folders are left")
+	for _, legacy := range legacyFolders {
+		assert.NoDirExists(t, filepath.Join(registryDir, legacy), "the old shared %s folder is removed", legacy)
+	}
+	pinned, err := loadPinnedEntries(v10, sharedEntryManifest(t, 10))
+	require.NoError(t, err)
+	assert.Len(t, pinned.caps, 1, "manifest 10's cache stays")
+	assert.FileExists(t, filepath.Join(registryDir, "charter.json"), "the charter stays")
 }
