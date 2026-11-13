@@ -475,8 +475,8 @@ type RequestTable struct {
 	// ridIndex maps a RID's string form to the XID it is currently indexed
 	// to — the secondary index for continuation frames arriving without a
 	// full RequestKey.
-	ridIndex          map[string]MessageId
-	recentTerminated  []TerminatedSummary
+	ridIndex         map[string]MessageId
+	recentTerminated []TerminatedSummary
 	// recentCapacity is how many ended requests the ring keeps:
 	// RecentTerminatedCap, except in the model's scripts, which fill a small
 	// ring to see the oldest forgotten.

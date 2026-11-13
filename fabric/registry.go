@@ -86,11 +86,11 @@ const (
 	// ErrPending: the pinned manifest names the definition, it is not in
 	// memory, and it has not been fetched. Only a synchronous lookup, which
 	// never touches the network, says this.
-	ErrPending        ErrorKind = "pending"
-	ErrParse          ErrorKind = "parse"
-	ErrCache          ErrorKind = "cache"
-	ErrValidation     ErrorKind = "validation"
-	ErrExtension      ErrorKind = "extension_not_found"
+	ErrPending    ErrorKind = "pending"
+	ErrParse      ErrorKind = "parse"
+	ErrCache      ErrorKind = "cache"
+	ErrValidation ErrorKind = "validation"
+	ErrExtension  ErrorKind = "extension_not_found"
 	// ErrCharter: the registry's charter could not be had, or was refused.
 	// Nothing the registry serves is used without it.
 	ErrCharter ErrorKind = "charter"
