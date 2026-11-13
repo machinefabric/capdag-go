@@ -9,6 +9,8 @@ package machine
 import (
 	"fmt"
 	"strings"
+
+	"github.com/machinefabric/capdag-go/fabric"
 )
 
 // MachineAbstractionError covers anchor-realization failures during resolution.
@@ -33,7 +35,13 @@ type MachineAbstractionError struct {
 	// Cause is why an included machine is not a valid machine
 	// (ErrAbstractionInvalidIncludedMachine).
 	Cause *MachineParseError
+	// Err is the registry's account of a definition it could not give
+	// (ErrAbstractionDefinitionUnavailable).
+	Err error
 }
+
+// Unwrap is the registry's account, for ErrAbstractionDefinitionUnavailable.
+func (e *MachineAbstractionError) Unwrap() error { return e.Err }
 
 func (e *MachineAbstractionError) Error() string {
 	return e.Message
@@ -170,7 +178,33 @@ const (
 	// ErrAbstractionUncachedCap — a step's cap has no cached definition, so
 	// the render payload has no title for it.
 	ErrAbstractionUncachedCap
+	// ErrAbstractionDefinitionUnavailable — a definition the machine needs (a
+	// cap, a media def, a cap alias) is in the registry and could not be had
+	// from it: its fetch was refused or got no answer, or it is not fetched
+	// yet. Err says which. Never raised for a definition the registry does not
+	// hold.
+	ErrAbstractionDefinitionUnavailable
 )
+
+// definitionUnavailableError is ErrAbstractionDefinitionUnavailable for urn.
+func definitionUnavailableError(urn string, err error) *MachineAbstractionError {
+	return &MachineAbstractionError{
+		Kind:    ErrAbstractionDefinitionUnavailable,
+		Message: fmt.Sprintf("the definition of '%s' could not be had from the registry: %v", urn, err),
+		Err:     err,
+	}
+}
+
+// definitionLookupError is what a registry lookup of urn that came back
+// empty-handed means for a machine: absent() when the registry's answer is
+// that it holds no such definition, else ErrAbstractionDefinitionUnavailable
+// carrying what kept it.
+func definitionLookupError(urn string, err error, absent func() *MachineAbstractionError) *MachineAbstractionError {
+	if fabric.IsNotFound(err) {
+		return absent()
+	}
+	return definitionUnavailableError(urn, err)
+}
 
 func noCapabilityStepsError() *MachineAbstractionError {
 	return &MachineAbstractionError{

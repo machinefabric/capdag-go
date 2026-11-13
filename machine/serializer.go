@@ -231,16 +231,18 @@ func (m *Machine) ToRenderPayloadJSON(registry *fabric.FabricRegistry) (string, 
 	edgeDefinitions := make([][]*cap.Cap, len(m.strands))
 	for sIdx, strand := range m.strands {
 		for _, node := range strand.nodes {
-			spec := registry.GetCachedMediaDef(node.String())
-			if spec == nil {
-				return "", uncachedMediaDefError(node.String())
+			spec, err := registry.GetCachedMediaDef(node.String())
+			if err != nil {
+				return "", definitionLookupError(node.String(), err,
+					func() *MachineAbstractionError { return uncachedMediaDefError(node.String()) })
 			}
 			nodeTitles[sIdx] = append(nodeTitles[sIdx], spec.Title)
 		}
 		for _, edge := range strand.edges {
-			definition, ok := registry.GetCachedCap(edge.CapUrn.String())
-			if !ok {
-				return "", uncachedCapError(edge.CapUrn.String())
+			definition, err := registry.GetCachedCap(edge.CapUrn.String())
+			if err != nil {
+				return "", definitionLookupError(edge.CapUrn.String(), err,
+					func() *MachineAbstractionError { return uncachedCapError(edge.CapUrn.String()) })
 			}
 			edgeTitles[sIdx] = append(edgeTitles[sIdx], definition.Title)
 			edgeDefinitions[sIdx] = append(edgeDefinitions[sIdx], definition)

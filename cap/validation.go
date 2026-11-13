@@ -129,13 +129,16 @@ func SchemaViolations(schema interface{}, value interface{}) []string {
 	return errs
 }
 
-// NewUnresolvableMediaUrnErrorForValidation creates an error for unresolvable media URNs in validation
-func NewUnresolvableMediaUrnErrorForValidation(capUrn, argumentName, mediaUrn string) *ValidationError {
+// NewUnresolvableMediaUrnErrorForValidation creates an error for a media URN
+// whose definition could not be resolved in validation. cause is the
+// registry's own account — absent, or a fetch it refused or did not answer —
+// and the message carries it rather than reading every failure as "not found".
+func NewUnresolvableMediaUrnErrorForValidation(capUrn, argumentName, mediaUrn string, cause error) *ValidationError {
 	return &ValidationError{
 		Type:         "UnresolvableMediaUrn",
 		CapUrn:       capUrn,
 		ArgumentName: argumentName,
-		Message:      fmt.Sprintf("Cap '%s' argument '%s' has unresolvable media URN '%s' - not found in registry", capUrn, argumentName, mediaUrn),
+		Message:      fmt.Sprintf("Cap '%s' argument '%s' has unresolvable media URN '%s': %v", capUrn, argumentName, mediaUrn, cause),
 	}
 }
 
@@ -352,7 +355,7 @@ func (iv *InputValidator) validateSingleArgument(cap *Cap, argDef *CapArg, value
 	// resolve -> local-schema-if-present -> else profile-uri-if-present -> rules.
 	resolved, err := argDef.Resolve(registry)
 	if err != nil {
-		return NewUnresolvableMediaUrnErrorForValidation(cap.UrnString(), argDef.MediaUrn, argDef.MediaUrn)
+		return NewUnresolvableMediaUrnErrorForValidation(cap.UrnString(), argDef.MediaUrn, argDef.MediaUrn, err)
 	}
 
 	// Schema/profile type validation.

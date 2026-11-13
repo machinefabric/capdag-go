@@ -32,8 +32,10 @@ package fabric
 import (
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -72,9 +74,19 @@ const httpTimeout = 10 * time.Second
 type ErrorKind string
 
 const (
-	ErrHTTP           ErrorKind = "http"
 	ErrNetworkBlocked ErrorKind = "network_blocked"
-	ErrNotFound       ErrorKind = "not_found"
+	// ErrNotFound: the registry's answer is that it does not hold the
+	// definition — the pinned manifest does not name it, or the registry
+	// answered 404 (or 410) for it. Nothing else is reported as missing.
+	ErrNotFound ErrorKind = "not_found"
+	// ErrFetchFailed: a fetch brought back no body — the registry refused it,
+	// or did not answer. Its Err is the *FetchFailure saying what, where, for
+	// which manifest, and why.
+	ErrFetchFailed ErrorKind = "fetch_failed"
+	// ErrPending: the pinned manifest names the definition, it is not in
+	// memory, and it has not been fetched. Only a synchronous lookup, which
+	// never touches the network, says this.
+	ErrPending        ErrorKind = "pending"
 	ErrParse          ErrorKind = "parse"
 	ErrCache          ErrorKind = "cache"
 	ErrValidation     ErrorKind = "validation"
@@ -92,10 +104,109 @@ type Error struct {
 }
 
 func (e *Error) Error() string {
+	if e.Err != nil && e.Message == "" {
+		return e.Err.Error()
+	}
 	if e.Err != nil {
 		return fmt.Sprintf("%s: %v", e.Message, e.Err)
 	}
 	return e.Message
+}
+
+// FetchCauseKind says why a fetch from the registry brought back no body.
+type FetchCauseKind string
+
+const (
+	// FetchStatus: the registry answered with a status that is neither a
+	// success nor an answer that the object is absent (404, 410).
+	FetchStatus FetchCauseKind = "status"
+	// FetchTimedOut: the registry did not answer before the client's timeout.
+	FetchTimedOut FetchCauseKind = "timed_out"
+	// FetchTransport: the request could not be made or its answer could not
+	// be read — the connection was refused or broke off.
+	FetchTransport FetchCauseKind = "transport"
+)
+
+// FetchFailure is one fetch from the registry that brought back no body: what
+// was being fetched, from where, for which fabric manifest, and why.
+type FetchFailure struct {
+	// What was fetched, e.g. "media def 'media:pdf' (defver 3)" or
+	// "manifest v10".
+	What            string
+	URL             string
+	ManifestVersion uint32
+	Cause           FetchCauseKind
+	// Status is the HTTP status, for FetchStatus.
+	Status int
+	// Detail is what happened on the connection, for FetchTransport.
+	Detail string
+}
+
+func (f *FetchFailure) Error() string {
+	switch f.Cause {
+	case FetchStatus:
+		reason := http.StatusText(f.Status)
+		if reason != "" {
+			reason = " " + reason
+		}
+		return fmt.Sprintf("the registry refused the fetch of %s for fabric manifest v%d: HTTP %d%s from %s",
+			f.What, f.ManifestVersion, f.Status, reason, f.URL)
+	case FetchTimedOut:
+		return fmt.Sprintf("the registry did not answer the fetch of %s for fabric manifest v%d: the request to %s timed out",
+			f.What, f.ManifestVersion, f.URL)
+	default:
+		return fmt.Sprintf("the fetch of %s for fabric manifest v%d from %s failed: %s",
+			f.What, f.ManifestVersion, f.URL, f.Detail)
+	}
+}
+
+// AsFetchFailure returns the failed fetch err carries, if it is one.
+func AsFetchFailure(err error) (*FetchFailure, bool) {
+	var failure *FetchFailure
+	if errors.As(err, &failure) {
+		return failure, true
+	}
+	return nil, false
+}
+
+// fetchObject returns the body of one registry object — what at url, fetched
+// for fabric manifest manifestVersion.
+//
+// A success is the body. 404 or 410 is the registry's answer that it does not
+// hold the object, and only that is ErrNotFound. Any other status, and a fetch
+// that got no answer, is ErrFetchFailed carrying a *FetchFailure: a refused
+// fetch is never reported as a missing definition.
+func fetchObject(client *http.Client, url, what string, manifestVersion uint32) ([]byte, error) {
+	failed := func(cause FetchCauseKind, status int, detail string) error {
+		return &Error{Kind: ErrFetchFailed, Err: &FetchFailure{
+			What: what, URL: url, ManifestVersion: manifestVersion,
+			Cause: cause, Status: status, Detail: detail,
+		}}
+	}
+	transport := func(err error) error {
+		var netErr net.Error
+		if errors.As(err, &netErr) && netErr.Timeout() {
+			return failed(FetchTimedOut, 0, "")
+		}
+		return failed(FetchTransport, 0, err.Error())
+	}
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil, transport(err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, transport(err)
+	}
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return body, nil
+	}
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone {
+		return nil, errf(ErrNotFound, "the registry has no %s for fabric manifest v%d (HTTP %d from %s)",
+			what, manifestVersion, resp.StatusCode, url)
+	}
+	return nil, failed(FetchStatus, resp.StatusCode, "")
 }
 
 func (e *Error) Unwrap() error { return e.Err }
@@ -363,7 +474,45 @@ type FabricRegistry struct {
 	manifestVersion uint32
 	manifest        *media.Manifest
 
+	// fetchFailures keeps what the last failed fetch of each definition came
+	// to, until a fetch of it succeeds. A synchronous lookup says this rather
+	// than "not fetched yet" when the registry already answered.
+	fetchFailures map[fetchKey]error
+
 	offline bool
+}
+
+// fetchKey names one definition at one version: its kind ("cap", "media",
+// "alias"), its normalized name, and its defver.
+type fetchKey struct {
+	kind   string
+	name   string
+	defver uint32
+}
+
+// note keeps what a fetch of key came to: a failure is remembered, and a
+// success forgets the failure before it.
+func (r *FabricRegistry) note(key fetchKey, err error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if err == nil {
+		delete(r.fetchFailures, key)
+	} else {
+		r.fetchFailures[key] = err
+	}
+}
+
+// notAtHand is why a definition the manifest names is not in memory: what its
+// last fetch came to, or ErrPending when it has not been fetched.
+func (r *FabricRegistry) notAtHand(key fetchKey, what, url string) error {
+	r.mu.RLock()
+	last, failed := r.fetchFailures[key]
+	r.mu.RUnlock()
+	if failed {
+		return last
+	}
+	return errf(ErrPending, "%s is named by manifest v%d and has not been fetched from %s",
+		what, r.manifestVersion, url)
 }
 
 // New builds a registry with the default config, pinned at the workspace-baked
@@ -441,6 +590,7 @@ func WithConfigAndManifestVersion(config Config, manifestVersion uint32) (*Fabri
 		extIndex:        make(map[string][]string),
 		manifestVersion: manifestVersion,
 		manifest:        manifest,
+		fetchFailures:   make(map[fetchKey]error),
 	}
 
 	r.loadAllCachedCaps()
@@ -507,18 +657,9 @@ func loadOrFetchManifest(manifestsDir string, client *http.Client, locations Loc
 	}
 
 	url := locations.Manifest(version)
-	resp, err := client.Get(url)
+	body, err := fetchObject(client, url, fmt.Sprintf("manifest v%d", version), version)
 	if err != nil {
-		return nil, &Error{Kind: ErrHTTP, Message: fmt.Sprintf("fetching manifest v%d at %s", version, url), Err: err}
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, errf(ErrNotFound, "manifest v%d not found in registry (HTTP %d) at %s",
-			version, resp.StatusCode, url)
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, &Error{Kind: ErrHTTP, Message: fmt.Sprintf("reading manifest v%d", version), Err: err}
+		return nil, err
 	}
 	var m media.Manifest
 	if err := json.Unmarshal(body, &m); err != nil {
@@ -869,19 +1010,7 @@ func (r *FabricRegistry) get(url string, what string) ([]byte, error) {
 	if offline {
 		return nil, errf(ErrNetworkBlocked, "network access blocked while offline: cannot fetch %s", what)
 	}
-	resp, err := r.client.Get(url)
-	if err != nil {
-		return nil, &Error{Kind: ErrHTTP, Message: fmt.Sprintf("failed to fetch %s", what), Err: err}
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, errf(ErrNotFound, "%s not found in registry (HTTP %d)", what, resp.StatusCode)
-	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, &Error{Kind: ErrHTTP, Message: fmt.Sprintf("reading the response for %s", what), Err: err}
-	}
-	return body, nil
+	return fetchObject(r.client, url, what, r.manifestVersion)
 }
 
 func (r *FabricRegistry) fetchCapFromRegistry(capURN string, defver uint32) (*cap.Cap, error) {
@@ -890,7 +1019,7 @@ func (r *FabricRegistry) fetchCapFromRegistry(capURN string, defver uint32) (*ca
 		return nil, err
 	}
 	url, _ := definitionURLAndCachePath(r.cacheDir, r.locations, "caps", normalized, defver)
-	body, err := r.get(url, fmt.Sprintf("cap '%s'", capURN))
+	body, err := r.get(url, fmt.Sprintf("cap '%s' (defver %d)", normalized, defver))
 	if err != nil {
 		return nil, err
 	}
@@ -924,7 +1053,7 @@ func (r *FabricRegistry) fetchMediaDefFromRegistry(mediaURN string, defver uint3
 		return nil, err
 	}
 	url, _ := definitionURLAndCachePath(r.cacheDir, r.locations, "media", normalized, defver)
-	body, err := r.get(url, fmt.Sprintf("media def '%s'", mediaURN))
+	body, err := r.get(url, fmt.Sprintf("media def '%s' (defver %d)", normalized, defver))
 	if err != nil {
 		return nil, err
 	}
@@ -941,7 +1070,7 @@ func (r *FabricRegistry) fetchAliasFromRegistry(normalizedName string, defver ui
 			"alias '%s' has non-positive defver %d; aliases are versioned-only", normalizedName, defver)
 	}
 	url, _ := definitionURLAndCachePath(r.cacheDir, r.locations, "aliases", normalizedName, defver)
-	body, err := r.get(url, fmt.Sprintf("alias '%s'", normalizedName))
+	body, err := r.get(url, fmt.Sprintf("alias '%s' (defver %d)", normalizedName, defver))
 	if err != nil {
 		return nil, err
 	}
@@ -974,7 +1103,7 @@ func (r *FabricRegistry) fetchDim(name string, defver uint32) (*media.StoredDim,
 			"dim '%s' has non-positive defver %d; dims are versioned-only", name, defver)
 	}
 	url, _ := definitionURLAndCachePath(r.cacheDir, r.locations, "dims", name, defver)
-	body, err := r.get(url, fmt.Sprintf("dim '%s'", name))
+	body, err := r.get(url, fmt.Sprintf("dim '%s' (defver %d)", name, defver))
 	if err != nil {
 		return nil, err
 	}
@@ -1040,11 +1169,11 @@ func (r *FabricRegistry) ensureDimsCached(owner string, refs []media.DimRef) err
 				return errf(ErrNotFound, "%s names dim '%s', which is not in manifest v%d",
 					owner, ref.Dim, manifestVersion)
 			}
+			// The dim's own failure, as it is: a refused fetch stays a
+			// refused fetch, and only the registry's 404 is ErrNotFound.
 			fetched, err := r.fetchDim(ref.Dim, defver)
 			if err != nil {
-				return &Error{Kind: ErrNotFound,
-					Message: fmt.Sprintf("%s names dim '%s', which could not be fetched", owner, ref.Dim),
-					Err:     err}
+				return err
 			}
 			dim = fetched
 		}
@@ -1254,7 +1383,13 @@ func (r *FabricRegistry) fetchCapAtomic(capURN string) (*cap.Cap, error) {
 	if err != nil {
 		return nil, err
 	}
+	c, err := r.fetchCapAndFootprint(capURN, normalized, defver)
+	r.note(fetchKey{"cap", normalized, defver}, err)
+	return c, err
+}
 
+// fetchCapAndFootprint is fetchCapAtomic's work for the cap at defver.
+func (r *FabricRegistry) fetchCapAndFootprint(capURN, normalized string, defver uint32) (*cap.Cap, error) {
 	c, err := r.fetchCapFromRegistry(capURN, defver)
 	if err != nil {
 		return nil, err
@@ -1324,9 +1459,15 @@ func (r *FabricRegistry) GetCap(urnOrAlias string) (*cap.Cap, error) {
 	r.mu.RLock()
 	cached, ok := r.cachedCaps[normalized]
 	offline := r.offline
+	_, defverErr := r.capDefver(normalized)
 	r.mu.RUnlock()
 	if ok {
 		return cached, nil
+	}
+	// The manifest answers first: a cap it does not name is absent, offline
+	// or not.
+	if defverErr != nil {
+		return nil, defverErr
 	}
 	if offline {
 		return nil, errf(ErrNetworkBlocked, "network access blocked while offline: cannot fetch cap '%s'", urnOrAlias)
@@ -1358,19 +1499,31 @@ func (r *FabricRegistry) GetCachedCaps() []*cap.Cap {
 	return out
 }
 
-// GetCachedCap is a synchronous in-memory probe that never touches the network.
-//
-// A malformed URN can never match a cache entry, so it degrades to the same
-// graceful miss rather than erroring on this latency-critical path.
-func (r *FabricRegistry) GetCachedCap(urnStr string) (*cap.Cap, bool) {
+// GetCachedCap is a synchronous in-memory lookup that never touches the
+// network: the cap, or why it is not at hand — ErrNotFound when the
+// registry's answer is that it has no such cap (the pinned manifest does not
+// name it, or its fetch was answered 404); ErrFetchFailed when its last fetch
+// was refused or got no answer, with the URL, the status and the manifest
+// version; ErrPending when it has not been fetched; and ErrParse when the URN
+// does not parse.
+func (r *FabricRegistry) GetCachedCap(urnStr string) (*cap.Cap, error) {
 	normalized, err := NormalizeCapURN(urnStr)
 	if err != nil {
-		return nil, false
+		return nil, err
 	}
 	r.mu.RLock()
-	defer r.mu.RUnlock()
 	c, ok := r.cachedCaps[normalized]
-	return c, ok
+	defver, defverErr := r.capDefver(normalized)
+	r.mu.RUnlock()
+	if ok {
+		return c, nil
+	}
+	if defverErr != nil {
+		return nil, defverErr
+	}
+	url, _ := definitionURLAndCachePath(r.cacheDir, r.locations, "caps", normalized, defver)
+	return nil, r.notAtHand(fetchKey{"cap", normalized, defver},
+		fmt.Sprintf("cap '%s' (defver %d)", normalized, defver), url)
 }
 
 // CapExists reports whether a cap resolves. A transport failure is not
@@ -1461,11 +1614,13 @@ func (r *FabricRegistry) GetMediaDef(urnOrAlias string) (*media.StoredMediaDef, 
 	if ok {
 		return &cached, nil
 	}
-	if offline {
-		return nil, errf(ErrNetworkBlocked, "network access blocked while offline: cannot fetch media def '%s'", urnOrAlias)
-	}
+	// The manifest answers first: a media def it does not name is absent,
+	// offline or not.
 	if defverErr != nil {
 		return nil, defverErr
+	}
+	if offline {
+		return nil, errf(ErrNetworkBlocked, "network access blocked while offline: cannot fetch media def '%s'", urnOrAlias)
 	}
 	return r.fetchAndCacheMediaDef(urnOrAlias, defver)
 }
@@ -1478,6 +1633,14 @@ func (r *FabricRegistry) fetchAndCacheMediaDef(mediaURN string, defver uint32) (
 	if err != nil {
 		return nil, err
 	}
+	spec, err := r.fetchMediaDefAndDims(mediaURN, normalized, defver)
+	r.note(fetchKey{"media", normalized, defver}, err)
+	return spec, err
+}
+
+// fetchMediaDefAndDims is fetchAndCacheMediaDef's work for the media def at
+// defver.
+func (r *FabricRegistry) fetchMediaDefAndDims(mediaURN, normalized string, defver uint32) (*media.StoredMediaDef, error) {
 	spec, err := r.fetchMediaDefFromRegistry(mediaURN, defver)
 	if err != nil {
 		return nil, err
@@ -1523,19 +1686,26 @@ func (r *FabricRegistry) GetCachedMediaDefs() []media.StoredMediaDef {
 	return out
 }
 
-// GetCachedMediaDef is a synchronous in-memory probe; see GetCachedCap.
-func (r *FabricRegistry) GetCachedMediaDef(urnStr string) *media.StoredMediaDef {
+// GetCachedMediaDef is a synchronous in-memory lookup that never touches the
+// network: the media def, or why it is not at hand, as GetCachedCap says.
+func (r *FabricRegistry) GetCachedMediaDef(urnStr string) (*media.StoredMediaDef, error) {
 	normalized, err := NormalizeMediaURN(urnStr)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	r.mu.RLock()
-	defer r.mu.RUnlock()
 	spec, ok := r.cachedSpecs[normalized]
-	if !ok {
-		return nil
+	defver, defverErr := r.mediaDefver(normalized)
+	r.mu.RUnlock()
+	if ok {
+		return &spec, nil
 	}
-	return &spec
+	if defverErr != nil {
+		return nil, defverErr
+	}
+	url, _ := definitionURLAndCachePath(r.cacheDir, r.locations, "media", normalized, defver)
+	return nil, r.notAtHand(fetchKey{"media", normalized, defver},
+		fmt.Sprintf("media def '%s' (defver %d)", normalized, defver), url)
 }
 
 // MediaDefExists reports whether a media def resolves.
@@ -1603,13 +1773,16 @@ func (r *FabricRegistry) GetAlias(name string) (*media.StoredAlias, error) {
 	if ok {
 		return &cached, nil
 	}
-	if offline {
-		return nil, errf(ErrNetworkBlocked, "network access blocked while offline: cannot fetch alias '%s'", name)
-	}
+	// The manifest answers first: an alias it does not name is absent,
+	// offline or not.
 	if defverErr != nil {
 		return nil, defverErr
 	}
+	if offline {
+		return nil, errf(ErrNetworkBlocked, "network access blocked while offline: cannot fetch alias '%s'", name)
+	}
 	alias, err := r.fetchAliasFromRegistry(normalized, defver)
+	r.note(fetchKey{"alias", normalized, defver}, err)
 	if err != nil {
 		return nil, err
 	}
@@ -1651,21 +1824,35 @@ func (r *FabricRegistry) ResolveAliasTyped(name string, expected media.AliasTarg
 	return alias.Target, nil
 }
 
-// ResolveAliasCached is synchronous, in-memory-only alias resolution. A
-// malformed name reads as "no resolution" rather than an error, so callers
-// treat "not a valid alias" and "not cached" uniformly.
-func (r *FabricRegistry) ResolveAliasCached(name string) (string, bool) {
+// ResolveAliasCached is synchronous, in-memory-only alias resolution.
+//
+// The target and true when the alias is in memory. False, with no error, when
+// the registry has no alias by this name: the pinned manifest does not name
+// it, or the name is not one an alias can have. An alias the manifest names
+// that is not in memory is an error: what its last fetch came to (a refusal
+// is reported as itself), or ErrPending when it has not been fetched — it
+// exists, so it is never reported as undefined.
+func (r *FabricRegistry) ResolveAliasCached(name string) (string, bool, error) {
 	normalized, err := media.NormalizeAliasName(name)
 	if err != nil {
-		return "", false
+		return "", false, nil
 	}
 	r.mu.RLock()
-	defer r.mu.RUnlock()
 	alias, ok := r.cachedAliases[normalized]
-	if !ok {
-		return "", false
+	defver, defverErr := r.aliasDefver(normalized)
+	r.mu.RUnlock()
+	if ok {
+		return alias.Target, true, nil
 	}
-	return alias.Target, true
+	if defverErr != nil {
+		if IsNotFound(defverErr) {
+			return "", false, nil
+		}
+		return "", false, defverErr
+	}
+	url, _ := definitionURLAndCachePath(r.cacheDir, r.locations, "aliases", normalized, defver)
+	return "", false, r.notAtHand(fetchKey{"alias", normalized, defver},
+		fmt.Sprintf("alias '%s' (defver %d)", normalized, defver), url)
 }
 
 // DisplayAliasForURN reverse-resolves a cap or media URN to its display alias.
@@ -1794,6 +1981,7 @@ func (r *FabricRegistry) ClearCache() error {
 	r.cachedAliases = make(map[string]media.StoredAlias)
 	r.cachedDims = make(map[string]media.StoredDim)
 	r.extIndex = make(map[string][]string)
+	r.fetchFailures = make(map[fetchKey]error)
 	r.mu.Unlock()
 
 	if err := os.RemoveAll(r.cacheDir); err != nil {
@@ -1906,6 +2094,7 @@ func NewForTestInDir(config Config, cacheDir string) *FabricRegistry {
 		extIndex:        make(map[string][]string),
 		manifestVersion: 1,
 		manifest:        media.EmptyManifest(1),
+		fetchFailures:   make(map[fetchKey]error),
 	}
 	r.EnsureIdentityCap()
 	return r
@@ -1951,6 +2140,26 @@ func (r *FabricRegistry) AddSpec(spec media.StoredMediaDef) {
 	if r.manifestVersion >= 1 {
 		r.manifest.Media[normalized] = spec.Version
 	}
+}
+
+// PinMediaDefForTest names a media def in the pinned manifest at defver
+// without caching it, so a lookup of it goes to the registry (test helper).
+func (r *FabricRegistry) PinMediaDefForTest(mediaURN string, defver uint32) {
+	normalized, err := NormalizeMediaURN(mediaURN)
+	if err != nil {
+		panic(fmt.Sprintf("a test media URN parses: %v", err))
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.manifest.Media[normalized] = defver
+}
+
+// PinAliasForTest names an alias in the pinned manifest at defver without
+// caching it, so a lookup of it goes to the registry (test helper).
+func (r *FabricRegistry) PinAliasForTest(name string, defver uint32) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.manifest.Aliases[name] = defver
 }
 
 // InsertCachedAliasForTest inserts one alias directly into the in-memory cache

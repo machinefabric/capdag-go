@@ -39,23 +39,19 @@ func (s *testMediaDefSource) AddSpec(spec media.StoredMediaDef) {
 }
 
 func (s *testMediaDefSource) GetMediaDef(urnOrAlias string) (*media.StoredMediaDef, error) {
-	spec := s.GetCachedMediaDef(urnOrAlias)
-	if spec == nil {
-		return nil, fmt.Errorf("media URN '%s' not found in the test source", urnOrAlias)
-	}
-	return spec, nil
+	return s.GetCachedMediaDef(urnOrAlias)
 }
 
-func (s *testMediaDefSource) GetCachedMediaDef(urnOrAlias string) *media.StoredMediaDef {
+func (s *testMediaDefSource) GetCachedMediaDef(urnOrAlias string) (*media.StoredMediaDef, error) {
 	normalized := urnOrAlias
 	if parsed, err := urn.NewMediaUrnFromString(urnOrAlias); err == nil {
 		normalized = parsed.String()
 	}
 	spec, ok := s.specs[normalized]
 	if !ok {
-		return nil
+		return nil, fmt.Errorf("media URN '%s' not found in the test source", urnOrAlias)
 	}
-	return &spec
+	return &spec, nil
 }
 
 func (s *testMediaDefSource) MediaUrnsForExtension(extension string) ([]string, error) {

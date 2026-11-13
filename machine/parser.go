@@ -298,7 +298,13 @@ func parseProgram(
 			continue
 		}
 		seenUnresolved[w.capAlias] = true
-		target, known := registry.ResolveAliasCached(w.capAlias)
+		// No alias by this name in the registry → Phase 4's undefined-alias
+		// error. An alias the registry has and that could not be fetched is
+		// reported as what kept it, never as undefined.
+		target, known, err := registry.ResolveAliasCached(w.capAlias)
+		if err != nil {
+			return nil, nil, abstractionParseError(definitionUnavailableError(w.capAlias, err))
+		}
 		if !known {
 			continue
 		}
@@ -759,9 +765,10 @@ func typeNodes(
 ) (map[string]*urn.MediaUrn, *MachineParseError) {
 	capOf := func(w *rawWiring) (*urn.CapUrn, *cap.Cap, *MachineParseError) {
 		capUrn := aliasMap[w.capAlias].capUrn
-		definition, cached := registry.GetCachedCap(capUrn.String())
-		if !cached {
-			return nil, nil, abstractionParseError(unknownCapError(capUrn.String()))
+		definition, err := registry.GetCachedCap(capUrn.String())
+		if err != nil {
+			return nil, nil, abstractionParseError(definitionLookupError(capUrn.String(), err,
+				func() *MachineAbstractionError { return unknownCapError(capUrn.String()) }))
 		}
 		return capUrn, definition, nil
 	}

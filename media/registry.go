@@ -170,10 +170,10 @@ func (s *StoredMediaDef) ToMediaDef() MediaDef {
 type MediaDefSource interface {
 	// GetMediaDef resolves a media URN or alias to its stored definition.
 	GetMediaDef(urnOrAlias string) (*StoredMediaDef, error)
-	// GetCachedMediaDef is the synchronous, in-memory-only probe. It never
-	// touches the network, and a malformed URN reads as a miss rather than an
-	// error — input resolution runs on every keystroke.
-	GetCachedMediaDef(urnOrAlias string) *StoredMediaDef
+	// GetCachedMediaDef is the synchronous, in-memory-only lookup. It never
+	// touches the network: it gives the definition, or the error that says why
+	// it is not at hand — absent, its fetch refused, or not fetched yet.
+	GetCachedMediaDef(urnOrAlias string) (*StoredMediaDef, error)
 	// MediaUrnsForExtension names the media URNs registered for a file
 	// extension. The index hydrates lazily, so an extension is only known once
 	// its owning spec has landed in cache.
