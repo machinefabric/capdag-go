@@ -152,7 +152,7 @@ func (c *BundledCartridge) UnmarshalJSON(data []byte) error {
 type BundleManifest struct {
 	Format string `json:"format"`
 	// Environment is the signing environment this bundle was built for.
-	Environment string `json:"environment"`
+	Environment string             `json:"environment"`
 	Cartridges  []BundledCartridge `json:"cartridges"`
 }
 

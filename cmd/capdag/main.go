@@ -323,17 +323,14 @@ func cmdInfo(args []string, g globals) error {
 	if len(names) == 0 {
 		return usage("info needs the capabilities to show", "capdag info disbind-pdf")
 	}
+	if noCache {
+		if _, err := clearFabricCache(); err != nil {
+			return err
+		}
+	}
 	r, err := registry()
 	if err != nil {
 		return err
-	}
-	if noCache {
-		if err := r.ClearCache(); err != nil {
-			return failed("the fabric cache could not be cleared", err.Error())
-		}
-		if r, err = registry(); err != nil {
-			return err
-		}
 	}
 	for index, name := range names {
 		definition, err := r.GetCap(name)
@@ -375,14 +372,27 @@ func cmdInfo(args []string, g globals) error {
 	return nil
 }
 
+// clearFabricCache clears the cache of the fabric this process reads, at the
+// manifest version it is built for, and answers the folder cleared. It opens
+// no registry on the cache: a cache holding a corrupt entry is one a registry
+// refuses to open, and clearing is what that refusal says to do.
+func clearFabricCache() (string, error) {
+	version, err := fabric.ManifestVersion()
+	if err != nil {
+		return "", failed("the fabric could not be opened", err.Error())
+	}
+	config := fabric.DefaultConfig()
+	dir, err := fabric.ClearCacheOf(config, version)
+	if err != nil {
+		return "", failed(fmt.Sprintf("the fabric cache of %s could not be cleared", config.Anchor), err.Error())
+	}
+	return dir, nil
+}
+
 func cmdCache(action string, g globals) error {
-	r, err := registry()
+	dir, err := clearFabricCache()
 	if err != nil {
 		return err
-	}
-	dir := r.CacheDir()
-	if err := r.ClearCache(); err != nil {
-		return failed(fmt.Sprintf("the fabric cache at %s could not be cleared", dir), err.Error())
 	}
 	var manifest any
 	if action == "refresh" {

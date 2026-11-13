@@ -247,15 +247,15 @@ func (v *VocabResponse) ToJSON() string {
 
 // ModelInfo is the response body for the model-info cap.
 type ModelInfo struct {
-	ModelSpec      string  `json:"model_spec"`
-	VocabSize      uint64  `json:"vocab_size"`
-	ContextLength  *uint64 `json:"context_length,omitempty"`
-	EmbeddingDim   *uint64 `json:"embedding_dim,omitempty"`
-	FileSizeBytes  *uint64 `json:"file_size_bytes,omitempty"`
-	HeadCount      *uint64 `json:"head_count,omitempty"`
-	LayerCount     *uint64 `json:"layer_count,omitempty"`
-	SupportsChat   *bool   `json:"supports_chat,omitempty"`
-	SupportsTools  *bool   `json:"supports_tools,omitempty"`
+	ModelSpec     string  `json:"model_spec"`
+	VocabSize     uint64  `json:"vocab_size"`
+	ContextLength *uint64 `json:"context_length,omitempty"`
+	EmbeddingDim  *uint64 `json:"embedding_dim,omitempty"`
+	FileSizeBytes *uint64 `json:"file_size_bytes,omitempty"`
+	HeadCount     *uint64 `json:"head_count,omitempty"`
+	LayerCount    *uint64 `json:"layer_count,omitempty"`
+	SupportsChat  *bool   `json:"supports_chat,omitempty"`
+	SupportsTools *bool   `json:"supports_tools,omitempty"`
 }
 
 // ToJSON serializes the response. Failure here is a logic bug.
