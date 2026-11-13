@@ -4,6 +4,30 @@
 // URLs for validating data against media def type definitions. Uses a two-level
 // cache: disk-based cached schemas and in-memory compiled schemas.
 //
+// The disk cache is shared: every capdag process on a machine reads and writes
+// it, and they run at once. It follows the fabric definition cache's rules:
+//
+//	<os cache>/capdag/profile_schemas/              the profile-schema cache
+//	  capdag-go-<version>/<sha256 of URL>.json      one schema, as this library at <version> keeps it
+//
+//   - One folder per library and version. The schemas are capdag's own,
+//     versioned with it, and each capdag library compiles them with its own
+//     JSON Schema validator. So this library at one version reads and writes
+//     only its own folder, and never an entry another library, or another
+//     version of it, wrote under other rules.
+//   - An entry is replaced whole (package cachefile): written to a temporary
+//     file in its folder and renamed over the entry, so a reader sees the old
+//     entry or the new one, never part of one.
+//   - A corrupt entry is an error. An entry that cannot be read, does not
+//     parse, holds another profile URL than its name is the hash of, or holds
+//     a schema that does not compile stops the registry from opening with an
+//     error that names the file. An entry past its time to live is removed
+//     and fetched again when it is next needed.
+//
+// Before this layout, every library and version kept its entries directly in
+// profile_schemas/, named by the first 16 hex digits of the URL's hash. This
+// library never reads those files; ClearCache removes them.
+//
 // This is a faithful port of the Rust ProfileSchemaRegistry
 // (capdag/src/media/profile.rs). Production callers rely on the on-demand HTTP
 // fetch path; tests seed schemas via InsertSchema with an isolated temp cache
@@ -13,8 +37,11 @@ package media
 import (
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -23,11 +50,18 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/machinefabric/capdag-go/internal/cachefile"
+	"github.com/machinefabric/capdag-go/internal/libversion"
 	"github.com/xeipuuv/gojsonschema"
 )
 
 // cacheDurationHours mirrors Rust's CACHE_DURATION_HOURS (1 week).
 const cacheDurationHours uint64 = 24 * 7
+
+// ProfileCacheLibraryFolder is the folder this library keeps its entries in,
+// in the profile-schema cache folder: the library and its version.
+// Matches Rust: PROFILE_CACHE_LIBRARY_FOLDER
+const ProfileCacheLibraryFolder = "capdag-go-" + libversion.Version
 
 // cacheEntry is the on-disk representation of a cached schema.
 type cacheEntry struct {
@@ -79,29 +113,40 @@ func networkBlockedError(format string, a ...interface{}) *ProfileSchemaError {
 // ProfileSchemaRegistry validates data against JSON Schema profiles, with a
 // disk-backed cache and an in-memory compiled-schema cache.
 type ProfileSchemaRegistry struct {
-	client      *http.Client
-	cacheDir    string
+	client *http.Client
+
+	// cacheRoot is the profile-schema cache folder,
+	// `<os cache>/capdag/profile_schemas`.
+	cacheRoot string
+
+	// cacheDir is this library's folder in it, ProfileCacheLibraryFolder.
+	cacheDir string
+
 	mu          sync.RWMutex
 	compiled    map[string]*compiledSchema
 	offlineFlag atomic.Bool
 }
 
-// NewProfileSchemaRegistry creates a registry using the standard cache directory.
-// Mirrors Rust's ProfileSchemaRegistry::new().
+// NewProfileSchemaRegistry creates a registry over the profile-schema cache
+// folder in the operating system's cache folder, loading the entries this
+// library keeps there. Mirrors Rust's ProfileSchemaRegistry::new().
 func NewProfileSchemaRegistry() (*ProfileSchemaRegistry, error) {
-	cacheDir, err := getProfileCacheDir()
+	cacheRoot, err := getProfileCacheRoot()
 	if err != nil {
 		return nil, err
 	}
-	return NewProfileSchemaRegistryWithCacheDir(cacheDir)
+	return NewProfileSchemaRegistryWithCacheDir(cacheRoot)
 }
 
-// NewProfileSchemaRegistryWithCacheDir creates a registry rooted at cacheDir.
-// Existing, unexpired cached schemas are loaded and compiled into memory.
+// NewProfileSchemaRegistryWithCacheDir creates a registry over the
+// profile-schema cache folder cacheRoot: its entries are kept in
+// cacheRoot/ProfileCacheLibraryFolder, and loaded from there now. A corrupt
+// entry is an error naming its file.
 // Mirrors Rust's ProfileSchemaRegistry::new_with_cache_dir().
-func NewProfileSchemaRegistryWithCacheDir(cacheDir string) (*ProfileSchemaRegistry, error) {
+func NewProfileSchemaRegistryWithCacheDir(cacheRoot string) (*ProfileSchemaRegistry, error) {
+	cacheDir := filepath.Join(cacheRoot, ProfileCacheLibraryFolder)
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
-		return nil, cacheError("Failed to create cache directory: %v", err)
+		return nil, cacheError("failed to create the profile-schema cache folder %s: %v", cacheDir, err)
 	}
 
 	compiled, err := loadAllCachedSchemas(cacheDir)
@@ -110,9 +155,10 @@ func NewProfileSchemaRegistryWithCacheDir(cacheDir string) (*ProfileSchemaRegist
 	}
 
 	r := &ProfileSchemaRegistry{
-		client:   &http.Client{Timeout: 30 * time.Second},
-		cacheDir: cacheDir,
-		compiled: compiled,
+		client:    &http.Client{Timeout: 30 * time.Second},
+		cacheRoot: cacheRoot,
+		cacheDir:  cacheDir,
+		compiled:  compiled,
 	}
 	return r, nil
 }
@@ -122,67 +168,84 @@ func (r *ProfileSchemaRegistry) SetOffline(offline bool) {
 	r.offlineFlag.Store(offline)
 }
 
-func getProfileCacheDir() (string, error) {
-	homeDir, err := os.UserHomeDir()
+// getProfileCacheRoot is the profile-schema cache folder,
+// `<os cache>/capdag/profile_schemas`, beside the fabric caches.
+func getProfileCacheRoot() (string, error) {
+	root, err := cachefile.CapdagRoot()
 	if err != nil {
-		return "", cacheError("Could not determine cache directory: %v", err)
+		return "", cacheError("%v", err)
 	}
-	var cacheBase string
-	if xdgCache := os.Getenv("XDG_CACHE_HOME"); xdgCache != "" {
-		cacheBase = xdgCache
-	} else {
-		cacheBase = filepath.Join(homeDir, ".cache")
-	}
-	return filepath.Join(cacheBase, "capdag", "profile_schemas"), nil
+	return filepath.Join(root, "profile_schemas"), nil
 }
 
-func cacheKey(profileURL string) string {
-	hasher := sha256.New()
-	hasher.Write([]byte(profileURL))
-	return fmt.Sprintf("%x", hasher.Sum(nil))
+// entryFileName is the name an entry for profileURL is kept under: the
+// SHA-256 of the URL, in hex, with `.json`.
+func entryFileName(profileURL string) string {
+	return fmt.Sprintf("%x.json", sha256.Sum256([]byte(profileURL)))
 }
 
 func (r *ProfileSchemaRegistry) cacheFilePath(profileURL string) string {
-	key := cacheKey(profileURL)
-	return filepath.Join(r.cacheDir, key[:16]+".json")
+	return filepath.Join(r.cacheDir, entryFileName(profileURL))
 }
 
+// corruptEntry is the error for an entry that is there and is not what its
+// name says.
+func corruptEntry(path, detail string) *ProfileSchemaError {
+	return cacheError("the cached profile schema %s is corrupt: %s; remove the file", path, detail)
+}
+
+// loadAllCachedSchemas is every entry in this library's folder, compiled, by
+// profile URL. A temporary file is not an entry and is passed over; an expired
+// entry is removed; anything else that is not a whole, valid entry is an error
+// naming its file.
 func loadAllCachedSchemas(cacheDir string) (map[string]*compiledSchema, error) {
 	schemas := make(map[string]*compiledSchema)
 
-	if _, err := os.Stat(cacheDir); os.IsNotExist(err) {
-		return schemas, nil
-	}
-
 	entries, err := os.ReadDir(cacheDir)
 	if err != nil {
-		return nil, cacheError("Failed to read cache directory: %v", err)
+		return nil, cacheError("failed to read the profile-schema cache folder %s: %v", cacheDir, err)
 	}
 
 	for _, dirEntry := range entries {
-		path := filepath.Join(cacheDir, dirEntry.Name())
-		if !strings.HasSuffix(dirEntry.Name(), ".json") {
+		name := dirEntry.Name()
+		path := filepath.Join(cacheDir, name)
+		if cachefile.IsTemporary(name) {
 			continue
+		}
+		if !strings.HasSuffix(name, ".json") || dirEntry.IsDir() {
+			return nil, corruptEntry(path,
+				"it is not an entry: the folder holds only `<sha256 of URL>.json` files")
 		}
 
 		content, err := os.ReadFile(path)
 		if err != nil {
-			return nil, cacheError("Failed to read cache file '%s': %v", path, err)
+			// A peer removed it (expired) between the listing and the read.
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			return nil, cacheError("the cached profile schema %s cannot be read: %v", path, err)
 		}
 
 		var entry cacheEntry
 		if err := json.Unmarshal(content, &entry); err != nil {
-			continue // Skip invalid cache files
+			return nil, corruptEntry(path, err.Error())
+		}
+		if entryFileName(entry.ProfileURL) != name {
+			return nil, corruptEntry(path, fmt.Sprintf("it holds the schema of %s, whose entry is %s",
+				entry.ProfileURL, entryFileName(entry.ProfileURL)))
 		}
 
 		if entry.isExpired() {
-			_ = os.Remove(path)
+			// A peer removed or replaced it first: not an error.
+			if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return nil, cacheError("failed to remove the expired cached profile schema %s: %v", path, err)
+			}
 			continue
 		}
 
 		compiled, err := compileSchema(entry.SchemaJSON)
 		if err != nil {
-			continue
+			return nil, corruptEntry(path, fmt.Sprintf("its schema does not compile: %v", err))
 		}
 		schemas[entry.ProfileURL] = &compiledSchema{compiled: compiled, source: entry.SchemaJSON}
 	}
@@ -195,6 +258,7 @@ func compileSchema(schemaJSON []byte) (*gojsonschema.Schema, error) {
 	return gojsonschema.NewSchema(loader)
 }
 
+// saveToCache puts the entry for profileURL in this library's folder, whole.
 func (r *ProfileSchemaRegistry) saveToCache(profileURL string, schemaJSON []byte) error {
 	entry := cacheEntry{
 		SchemaJSON: append(json.RawMessage(nil), schemaJSON...),
@@ -204,10 +268,10 @@ func (r *ProfileSchemaRegistry) saveToCache(profileURL string, schemaJSON []byte
 	}
 	content, err := json.MarshalIndent(&entry, "", "  ")
 	if err != nil {
-		return cacheError("Failed to serialize cache entry: %v", err)
+		return cacheError("failed to serialize the cached profile schema of %s: %v", profileURL, err)
 	}
-	if err := os.WriteFile(r.cacheFilePath(profileURL), content, 0o644); err != nil {
-		return cacheError("Failed to write cache file: %v", err)
+	if err := cachefile.WriteAtomically(r.cacheFilePath(profileURL), content); err != nil {
+		return cacheError("%v", err)
 	}
 	return nil
 }
@@ -229,7 +293,11 @@ func (r *ProfileSchemaRegistry) getSchema(profileURL string) *compiledSchema {
 	}
 
 	cs := &compiledSchema{compiled: compiled, source: schemaJSON}
-	_ = r.saveToCache(profileURL, schemaJSON)
+	// The schema is at hand either way; a cache that cannot be written is
+	// reported, not hidden.
+	if err := r.saveToCache(profileURL, schemaJSON); err != nil {
+		log.Printf("profile schema %s is not cached: %v", profileURL, err)
+	}
 
 	r.mu.Lock()
 	r.compiled[profileURL] = cs
@@ -358,8 +426,7 @@ func (r *ProfileSchemaRegistry) InsertSchema(profileURL string, schemaJSON []byt
 
 	// Persist to disk cache so subsequent process starts pick it up.
 	if err := r.saveToCache(profileURL, schemaJSON); err != nil {
-		// Rewrap to mirror Rust's distinct message wording.
-		return cacheError("Failed to write schema cache for %s: %v", profileURL, err)
+		return err
 	}
 
 	src := append(json.RawMessage(nil), schemaJSON...)
@@ -369,18 +436,39 @@ func (r *ProfileSchemaRegistry) InsertSchema(profileURL string, schemaJSON []byt
 	return nil
 }
 
-// ClearCache clears all caches (memory and disk).
+// ClearCache clears all caches: the in-memory one, this library's folder on
+// disk (emptied, not removed), and the files the older layout kept directly in
+// the profile-schema cache folder. Other libraries' and versions' folders are
+// left to them. Nothing is read first, so this clears a cache holding a
+// corrupt entry; a file a peer removed first is not an error.
+// Mirrors Rust's clear_cache().
 func (r *ProfileSchemaRegistry) ClearCache() error {
 	r.mu.Lock()
 	r.compiled = make(map[string]*compiledSchema)
 	r.mu.Unlock()
 
-	if _, err := os.Stat(r.cacheDir); err == nil {
-		if err := os.RemoveAll(r.cacheDir); err != nil {
-			return cacheError("Failed to clear cache: %v", err)
+	if err := removeFilesIn(r.cacheDir); err != nil {
+		return err
+	}
+	return removeFilesIn(r.cacheRoot)
+}
+
+// removeFilesIn removes every file directly in folder, leaving its folders.
+func removeFilesIn(folder string) error {
+	entries, err := os.ReadDir(folder)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
 		}
-		if err := os.MkdirAll(r.cacheDir, 0o755); err != nil {
-			return cacheError("Failed to recreate cache: %v", err)
+		return cacheError("failed to read the profile-schema cache folder %s: %v", folder, err)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		path := filepath.Join(folder, entry.Name())
+		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return cacheError("failed to remove %s: %v", path, err)
 		}
 	}
 	return nil

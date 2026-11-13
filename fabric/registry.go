@@ -39,7 +39,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -47,6 +46,7 @@ import (
 
 	"github.com/machinefabric/capdag-go/bifaci"
 	"github.com/machinefabric/capdag-go/cap"
+	"github.com/machinefabric/capdag-go/internal/cachefile"
 	"github.com/machinefabric/capdag-go/media"
 	"github.com/machinefabric/capdag-go/urn"
 )
@@ -673,20 +673,11 @@ func loadOrFetchManifest(cacheDir string, client *http.Client, locations Locatio
 // populated from one fabric can never satisfy lookups against another, which
 // serves DIFFERENT bytes for the same URN and version.
 func CapdagCacheRoot() (string, error) {
-	var base string
-	if runtime.GOOS == "windows" {
-		base = os.Getenv("LOCALAPPDATA")
-	} else {
-		base = os.Getenv("XDG_CACHE_HOME")
+	root, err := cachefile.CapdagRoot()
+	if err != nil {
+		return "", errf(ErrCache, "%v", err)
 	}
-	if base == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", errf(ErrCache, "cannot determine the home directory for the cache root: %v", err)
-		}
-		base = filepath.Join(home, ".cache")
-	}
-	return filepath.Join(base, "capdag"), nil
+	return root, nil
 }
 
 // ---------------------------------------------------------------------------

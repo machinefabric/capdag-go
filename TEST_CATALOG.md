@@ -2,7 +2,7 @@
 
 Generated from the test catalogue. Edit the tests, not this file.
 
-1368 tests: 1345 numbered, 23 unnumbered.
+1372 tests: 1349 numbered, 23 unnumbered.
 
 ## Numbered
 
@@ -526,27 +526,30 @@ Generated from the test catalogue. Edit the tests, not this file.
 | TEST601 | capdag/capdag-go | go | `Test601_get_content_type` | cap/response_test.go:307 | TEST601: get_content_type returns correct MIME type for each variant |
 | TEST602 | capdag/capdag-go | go | `Test602_as_type_binary_error` | cap/response_test.go:319 | TEST602: as_type on binary response returns error (cannot deserialize binary) |
 | TEST603 | capdag/capdag-go | go | `Test603_as_bool_edge_cases` | cap/response_test.go:328 | TEST603: as_bool handles all accepted truthy/falsy variants and rejects garbage |
+| TEST604 | capdag/capdag-go | go | `Test604_concurrent_readers_never_read_a_torn_entry` | media/profile_test.go:251 | TEST604: Processes loading the profile-schema cache while others replace the same entry never read part of an entry: every load succeeds and holds the schema whole, the old one or the new one. |
 | TEST605 | capdag/capdag-go | go | `Test605_all_coercion_paths_build_valid_urns` | standard/caps_test.go:109 | TEST605: all_coercion_paths each entry builds a valid parseable CapUrn |
 | TEST606 | capdag/capdag-go | go | `Test606_coercion_urn_specs` | standard/caps_test.go:126 | TEST606: coercion_urn in/out specs match the type's media URN constant |
 | TEST607 | capdag/capdag-go | go | `Test607_media_urns_for_extension_unknown` | fabric/registry_test.go:811 | TEST607: media_urns_for_extension returns error for unknown extension |
 | TEST608 | capdag/capdag-go | go | `Test608_media_urns_for_extension_populated` | fabric/registry_test.go:876 | TEST615 (deleted): exercised the on-disk cache-key hashing scheme — an internal persistence detail with no user-observable behavior. Rust and Python dropped this for the same reason; this deletion keeps the Go mirror in parity. |
 | TEST609 | capdag/capdag-go | go | `Test609_get_extension_mappings` | fabric/registry_test.go:820 | TEST609: get_extension_mappings returns all registered extension→URN pairs. |
 | TEST610 | capdag/capdag-go | go | `Test610_get_cached_spec` | fabric/registry_test.go:847 | TEST610: get_cached_media_def answers NotFound for a media def the manifest does not name, and the def for a known one |
-| TEST612 | capdag/capdag-go | go | `Test612_clear_cache` | media/profile_test.go:85 | TEST612: clear_cache empties the in-memory cache for seeded schemas. |
-| TEST613 | capdag/capdag-go | go | `Test613_validate_cached` | media/profile_test.go:93 | TEST613: validate_cached validates against cached standard schemas |
+| TEST611 | capdag/capdag-go | go | `Test611_corrupt_entry_is_an_error_naming_its_file` | media/profile_test.go:318 | TEST611: A cache entry that is there and does not parse is an error that names its file; the registry does not open over it as if it were absent. |
+| TEST612 | capdag/capdag-go | go | `Test612_clear_cache` | media/profile_test.go:94 | TEST612: clear_cache empties the in-memory cache for seeded schemas. |
+| TEST613 | capdag/capdag-go | go | `Test613_validate_cached` | media/profile_test.go:102 | TEST613: validate_cached validates against cached standard schemas |
 | TEST614 | capdag/capdag-go | go | `Test614_registry_creation` | fabric/registry_test.go:143 | TEST614: Verify registry creation succeeds and cache directory exists |
+| TEST615 | capdag/capdag-go | go | `Test615_entry_not_matching_its_file_is_an_error` | media/profile_test.go:336 | TEST615: A cache entry that parses but is not the schema its file names (it holds another profile URL, or a body that does not compile) is an error naming its file. |
 | TEST616 | capdag/capdag-go | go | `Test616_stored_media_def_to_media_def` | media/spec_test.go:514 | TEST616: StoredMediaDef converts to MediaDef preserving every field. |
 | TEST617 | capdag/capdag-go | go | `Test617_normalize_media_urn` | fabric/registry_test.go:908 | TEST617: Verify normalize_media_urn produces consistent non-empty results |
-| TEST618 | capdag/capdag-go | go | `Test618_registry_creation` | media/profile_test.go:114 | TEST618: Verify profile schema registry creation succeeds with temp cache. A freshly constructed registry over a temp cache dir is operational: the cache directory exists on disk and the registry is usable. Inserting then reopening a registry on the same directory must load the persisted schema — this genuinely exercises the disk-cache round-trip (Rust new_with_cache_dir + load_all_cached_schemas), not just the in-memory map. |
-| TEST619 | capdag/capdag-go | go | `Test619_fresh_registry_cache_is_empty` | media/profile_test.go:137 | TEST619: A freshly constructed registry has an empty cache. The well-known profile schemas are no longer bundled in the binary; callers must either fetch them on demand or seed via insert_schema. |
-| TEST620 | capdag/capdag-go | go | `Test620_string_validation` | media/profile_test.go:147 | TEST620: Verify string schema validates strings and rejects non-strings |
-| TEST621 | capdag/capdag-go | go | `Test621_integer_validation` | media/profile_test.go:154 | TEST621: Verify integer schema validates integers and rejects floats and strings |
-| TEST622 | capdag/capdag-go | go | `Test622_number_validation` | media/profile_test.go:162 | TEST622: Verify number schema validates integers and floats, rejects strings |
-| TEST623 | capdag/capdag-go | go | `Test623_boolean_validation` | media/profile_test.go:170 | TEST623: Verify boolean schema validates true/false and rejects string "true" |
-| TEST624 | capdag/capdag-go | go | `Test624_object_validation` | media/profile_test.go:178 | TEST624: Verify object schema validates objects and rejects arrays |
-| TEST625 | capdag/capdag-go | go | `Test625_string_array_validation` | media/profile_test.go:185 | TEST625: Verify string array schema validates string arrays and rejects mixed arrays |
-| TEST626 | capdag/capdag-go | go | `Test626_unknown_profile_skips_validation` | media/profile_test.go:193 | TEST626: Verify unknown profile URL skips validation and returns Ok |
-| TEST627 | capdag/capdag-go | go | `Test627_insert_schema_rejects_invalid_schema` | media/profile_test.go:199 | TEST627: insert_schema rejects malformed JSON Schemas instead of caching them. A registry that silently accepted invalid schemas would hide compilation problems until the first validation call. |
+| TEST618 | capdag/capdag-go | go | `Test618_registry_creation` | media/profile_test.go:123 | TEST618: Verify profile schema registry creation succeeds with temp cache. A freshly constructed registry over a temp cache dir is operational: the cache directory exists on disk and the registry is usable. Inserting then reopening a registry on the same directory must load the persisted schema — this genuinely exercises the disk-cache round-trip (Rust new_with_cache_dir + load_all_cached_schemas), not just the in-memory map. |
+| TEST619 | capdag/capdag-go | go | `Test619_fresh_registry_cache_is_empty` | media/profile_test.go:146 | TEST619: A freshly constructed registry has an empty cache. The well-known profile schemas are no longer bundled in the binary; callers must either fetch them on demand or seed via insert_schema. |
+| TEST620 | capdag/capdag-go | go | `Test620_string_validation` | media/profile_test.go:156 | TEST620: Verify string schema validates strings and rejects non-strings |
+| TEST621 | capdag/capdag-go | go | `Test621_integer_validation` | media/profile_test.go:163 | TEST621: Verify integer schema validates integers and rejects floats and strings |
+| TEST622 | capdag/capdag-go | go | `Test622_number_validation` | media/profile_test.go:171 | TEST622: Verify number schema validates integers and floats, rejects strings |
+| TEST623 | capdag/capdag-go | go | `Test623_boolean_validation` | media/profile_test.go:179 | TEST623: Verify boolean schema validates true/false and rejects string "true" |
+| TEST624 | capdag/capdag-go | go | `Test624_object_validation` | media/profile_test.go:187 | TEST624: Verify object schema validates objects and rejects arrays |
+| TEST625 | capdag/capdag-go | go | `Test625_string_array_validation` | media/profile_test.go:194 | TEST625: Verify string array schema validates string arrays and rejects mixed arrays |
+| TEST626 | capdag/capdag-go | go | `Test626_unknown_profile_skips_validation` | media/profile_test.go:202 | TEST626: Verify unknown profile URL skips validation and returns Ok |
+| TEST627 | capdag/capdag-go | go | `Test627_insert_schema_rejects_invalid_schema` | media/profile_test.go:208 | TEST627: insert_schema rejects malformed JSON Schemas instead of caching them. A registry that silently accepted invalid schemas would hide compilation problems until the first validation call. |
 | TEST628 | capdag/capdag-go | go | `Test628_media_urn_constants_format` | urn/media_urn_test.go:757 | TEST628: Verify media URN constants all start with "media:" prefix |
 | TEST629 | capdag/capdag-go | go | `Test629_profile_constants_format` | media/spec_test.go:651 | TEST629: Verify profile URL constants all start with capdag.com schema prefix |
 | TEST630 | capdag/capdag-go | go | `Test630_cartridge_repo_creation` | bifaci/cartridge_repo_test.go:820 | TEST630: CartridgeRepo creation starts with empty cartridge list. |
@@ -572,6 +575,7 @@ Generated from the test catalogue. Edit the tests, not this file.
 | TEST650 | capdag/capdag-go | go | `Test650_wildcard_012_preserve_other_tags` | urn/cap_urn_test.go:1633 | TEST650: cap:in=media:;out=media:;test preserves other tags |
 | TEST652 | capdag/capdag-go | go | `Test652_cap_identity_constant_works` | urn/cap_urn_test.go:1283 | TEST652: CAP_IDENTITY constant matches identity caps regardless of string form |
 | TEST653 | capdag/capdag-go | go | `Test653_effect_none_illegal_declaration_rejected` | urn/cap_urn_test.go:2109 | TEST653: invalid effect=none declarations fail at construction |
+| TEST654 | capdag/capdag-go | go | `Test654_entries_live_in_the_library_version_folder` | media/profile_test.go:387 | TEST654: A library keeps its entries in its own folder, `<cache>/<library>-<version>/`, and reads no other: neither another library's or version's folder nor the older layout's files directly in the cache folder. Clearing the cache empties its own folder and removes the older layout's files, and leaves other folders alone. |
 | TEST658 | capdag/capdag-go | go | `Test658_HeartbeatResponse` | bifaci/in_process_host_test.go:394 | TEST658: InProcessCartridgeHost handles heartbeat by echoing same ID |
 | TEST659 | capdag/capdag-go | go | `Test659_HandlerErrorReturnsErrFrame` | bifaci/in_process_host_test.go:450 | TEST659: InProcessCartridgeHost handler error returns ERR frame |
 | TEST660 | capdag/capdag-go | go | `Test660_ClosestSpecificityRouting` | bifaci/in_process_host_test.go:498 | TEST660: InProcessCartridgeHost closest-specificity routing prefers specific over identity |
@@ -1115,7 +1119,7 @@ Generated from the test catalogue. Edit the tests, not this file.
 | TEST6600 | capdag/capdag-go | go | `Test6600_parse_cap_groups_rejects_manifest_without_identity` | bifaci/host_multi_test.go:1266 | TEST6600: parse_cap_groups_from_manifest classifies failures by kind Manifest JSON that parses but lacks CAP_IDENTITY is `Incompatible` (schema-rejected). Manifest bytes that don't parse as CapManifest are `ManifestInvalid` (JSON-level failure). The split lets the host's attachment-error reporter surface the right kind to the UI. |
 | TEST6601 | capdag/capdag-go | go | `Test6601_attached_cartridge_identity_derived_from_manifest` | bifaci/host_multi_test.go:156 | TEST6601: An attached cartridge (raw-stream, no on-disk anchor) gets a resolvable install identity derived from its HELLO manifest. Advertisement is identity-gated, so without this the attached cartridge would be silently excluded from every RelayNotify and the engine could never route to it — the deadlock that hung the rust-rust-rust interop echo test. Mirrors the reference test6601. |
 | TEST6602 | capdag/capdag-go | go | `Test6602_codec_key_constants` | bifaci/frame_test.go:1588 | TEST6602: Codec key constants match protocol spec values |
-| TEST6605 | capdag/capdag-go | go | `Test6605_insert_schema_populates_cache` | media/profile_test.go:72 | TEST6605: InsertSchema seeds the cache so subsequent validation hits a real compiled schema rather than the skip-on-unknown path. A registry that silently dropped inserts would let validation calls return nil even for inputs that violate the schema. |
+| TEST6605 | capdag/capdag-go | go | `Test6605_insert_schema_populates_cache` | media/profile_test.go:81 | TEST6605: InsertSchema seeds the cache so subsequent validation hits a real compiled schema rather than the skip-on-unknown path. A registry that silently dropped inserts would let validation calls return nil even for inputs that violate the schema. |
 | TEST6609 | capdag/capdag-go | go | `Test6609_wildcard_empty_cap_defaults_to_media_wildcard` | urn/cap_urn_test.go:1224 | TEST6609: bare top cap is illegal; identity must be explicit effect=none |
 | TEST6610 | capdag/capdag-go | go | `Test6610_wildcard_002_in_only_defaults_out_to_media` | urn/cap_urn_test.go:1578 | TEST6610: cap:in without a non-vacuous axis/tag is illegal bare top |
 | TEST6611 | capdag/capdag-go | go | `Test6611_wildcard_003_out_only_defaults_in_to_media` | urn/cap_urn_test.go:1585 | TEST6611: cap:out without a non-vacuous axis/tag is illegal bare top |
