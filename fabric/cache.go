@@ -23,9 +23,9 @@ package fabric
 //
 //   - An entry is replaced whole. It is written to a temporary file in the
 //     folder it belongs in and renamed over the entry, so a reader sees the
-//     old entry or the new one, never part of one. A temporary file is named
-//     `.<entry>.<pid>-<n>.tmp`; one a killed writer left behind is never read,
-//     and `capdag cache clear` removes it.
+//     old entry or the new one, never part of one (package cachefile). A
+//     temporary file is named `.<entry>.<pid>-<n>.tmp`; one a killed writer
+//     left behind is never read, and `capdag cache clear` removes it.
 //
 // An entry that is there and cannot be read, or does not parse, or is not the
 // definition its path names, is corrupt: it is an error naming the file, never
@@ -47,9 +47,10 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/machinefabric/capdag-go/internal/cachefile"
 )
 
 // kindFolders are the folders a manifest version's definitions live in, one
@@ -82,46 +83,14 @@ func keyHash(key string) string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(key)))
 }
 
-// temporaryFiles tells apart the temporary files one process writes at once.
-var temporaryFiles atomic.Uint64
-
-// writeAtomically puts data at path whole: written to a temporary file beside
-// it, then renamed over it. A reader opening path meanwhile reads what was
-// there before, or data, never part of them. The folder is made when missing.
+// writeAtomically puts data at path whole (cachefile.WriteAtomically): a
+// reader opening path meanwhile reads what was there before, or data, never
+// part of them.
 func writeAtomically(path string, data []byte) error {
-	folder := filepath.Dir(path)
-	if err := os.MkdirAll(folder, 0o755); err != nil {
-		return errf(ErrCache, "failed to create the cache folder %s: %v", folder, err)
-	}
-	temporary := filepath.Join(folder, fmt.Sprintf(".%s.%d-%d.tmp",
-		filepath.Base(path), os.Getpid(), temporaryFiles.Add(1)-1))
-	if err := os.WriteFile(temporary, data, 0o644); err != nil {
-		_ = os.Remove(temporary)
-		return errf(ErrCache, "failed to write the cache file %s: %v", temporary, err)
-	}
-	if err := renameOver(temporary, path); err != nil {
-		_ = os.Remove(temporary)
-		return errf(ErrCache, "failed to put the cache file %s in place: %v", path, err)
+	if err := cachefile.WriteAtomically(path, data); err != nil {
+		return errf(ErrCache, "%v", err)
 	}
 	return nil
-}
-
-// renameOver renames from over to, replacing it.
-//
-// Unix replaces the name in one step whatever else has it open. Windows
-// refuses the replacement with "access denied" while another process is
-// replacing the same entry at that moment; that is a peer writing the same
-// definition, so the rename is asked again for a short bound, after which the
-// refusal is reported as it stands.
-func renameOver(from, to string) error {
-	for attempts := 0; ; attempts++ {
-		err := os.Rename(from, to)
-		if err != nil && runtime.GOOS == "windows" && errors.Is(err, fs.ErrPermission) && attempts < 50 {
-			time.Sleep(10 * time.Millisecond)
-			continue
-		}
-		return err
-	}
 }
 
 // storeEntry serializes entry and puts it at path whole (writeAtomically).
