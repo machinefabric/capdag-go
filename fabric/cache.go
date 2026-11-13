@@ -12,6 +12,8 @@ package fabric
 //
 //     <os cache>/capdag/<charter slug>/        the registry's folder; its charter
 //     v<N>/manifest.json                     manifest N, as the registry served it
+//     v<N>/file_types.json                   which of manifest N's media are file types,
+//                                            worked out once from manifest.json (and its hash)
 //     v<N>/caps/<sha256 of URN>/<defver>.json
 //     v<N>/media/<sha256 of URN>/<defver>.json
 //     v<N>/aliases/<sha256 of name>/<defver>.json
@@ -60,6 +62,11 @@ var kindFolders = []string{"caps", "media", "aliases", "dims"}
 // manifestFile is the file a manifest version's manifest is kept in, in its
 // folder.
 const manifestFile = "manifest.json"
+
+// fileTypesFile is the file the file types a manifest version's manifest names
+// are kept in, in its folder: which of its media definitions carry the `ext=`
+// tag, with the hash of the manifest file they were worked out from.
+const fileTypesFile = "file_types.json"
 
 // legacyFolders are the folders the shared layout before this one kept in a
 // registry's folder. Nothing reads them; clearing the cache removes them.

@@ -154,15 +154,24 @@ const (
 	InputErrEmptyInput       InputResolverErrorKind = iota
 	InputErrNoFilesResolved  InputResolverErrorKind = iota
 	InputErrSymlinkCycle     InputResolverErrorKind = iota
+	// InputErrNoExtension: the file has no extension to tell its type from.
+	InputErrNoExtension InputResolverErrorKind = iota
+	// InputErrUnknownExtension: the fabric declares no file media type for
+	// the file's extension.
+	InputErrUnknownExtension InputResolverErrorKind = iota
+	// InputErrFabricUnavailable: the fabric's file media types could not be
+	// loaded.
+	InputErrFabricUnavailable InputResolverErrorKind = iota
 )
 
 // InputResolverError is an error that can occur during input resolution.
 type InputResolverError struct {
-	Kind    InputResolverErrorKind
-	Path    string // for NotFound, PermissionDenied, IoError, InspectionFailed, SymlinkCycle
-	Pattern string // for InvalidGlob
-	Reason  string // for InvalidGlob and InspectionFailed
-	Cause   error  // for IoError — the underlying OS error
+	Kind      InputResolverErrorKind
+	Path      string // for NotFound, PermissionDenied, IoError, InspectionFailed, SymlinkCycle, NoExtension, UnknownExtension, FabricUnavailable
+	Pattern   string // for InvalidGlob
+	Reason    string // for InvalidGlob, InspectionFailed and FabricUnavailable
+	Extension string // for UnknownExtension
+	Cause     error  // for IoError — the underlying OS error
 }
 
 // Error implements the error interface.
@@ -184,6 +193,12 @@ func (e *InputResolverError) Error() string {
 		return "No files found after resolving all inputs"
 	case InputErrSymlinkCycle:
 		return fmt.Sprintf("Symlink cycle detected at: %s", e.Path)
+	case InputErrNoExtension:
+		return fmt.Sprintf("%s has no extension to tell its type from", e.Path)
+	case InputErrUnknownExtension:
+		return fmt.Sprintf("the fabric declares no file type for the extension .%s of %s", e.Extension, e.Path)
+	case InputErrFabricUnavailable:
+		return fmt.Sprintf("the type of %s cannot be told: %s", e.Path, e.Reason)
 	default:
 		return fmt.Sprintf("InputResolverError(%d)", int(e.Kind))
 	}
@@ -235,6 +250,21 @@ func NoFilesResolvedError() *InputResolverError {
 // SymlinkCycleError creates a SymlinkCycle InputResolverError.
 func SymlinkCycleError(path string) *InputResolverError {
 	return &InputResolverError{Kind: InputErrSymlinkCycle, Path: path}
+}
+
+// NoExtensionError creates a NoExtension InputResolverError.
+func NoExtensionError(path string) *InputResolverError {
+	return &InputResolverError{Kind: InputErrNoExtension, Path: path}
+}
+
+// UnknownExtensionError creates an UnknownExtension InputResolverError.
+func UnknownExtensionError(path, extension string) *InputResolverError {
+	return &InputResolverError{Kind: InputErrUnknownExtension, Path: path, Extension: extension}
+}
+
+// FabricUnavailableError creates a FabricUnavailable InputResolverError.
+func FabricUnavailableError(path, reason string) *InputResolverError {
+	return &InputResolverError{Kind: InputErrFabricUnavailable, Path: path, Reason: reason}
 }
 
 // Source returns the underlying cause error (nil unless IoError).

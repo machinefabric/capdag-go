@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/machinefabric/capdag-go/media"
+	"github.com/machinefabric/capdag-go/fabric"
 	"github.com/machinefabric/capdag-go/urn"
 )
 
@@ -54,20 +54,21 @@ type registeredAdapter struct {
 //  3. Maps file extensions to cartridges that can inspect them.
 type MediaAdapterRegistry struct {
 	registeredAdapters []registeredAdapter
-	fabricRegistry     media.MediaDefSource
+	fabricRegistry     *fabric.FabricRegistry
 }
 
 // NewMediaAdapterRegistry creates a new empty registry with the given FabricRegistry.
 // No adapters are registered by default — cartridges register them via RegisterCapGroup.
-func NewMediaAdapterRegistry(fabricRegistry media.MediaDefSource) *MediaAdapterRegistry {
+func NewMediaAdapterRegistry(fabricRegistry *fabric.FabricRegistry) *MediaAdapterRegistry {
 	return &MediaAdapterRegistry{
 		registeredAdapters: nil,
 		fabricRegistry:     fabricRegistry,
 	}
 }
 
-// FabricRegistry returns the media URN registry.
-func (r *MediaAdapterRegistry) FabricRegistry() media.MediaDefSource {
+// FabricRegistry returns the fabric registry whose file media types the
+// adapters are matched against.
+func (r *MediaAdapterRegistry) FabricRegistry() *fabric.FabricRegistry {
 	return r.fabricRegistry
 }
 
@@ -188,33 +189,56 @@ func (r *MediaAdapterRegistry) RegisterCapGroup(groupName string, adapterUrnStrs
 	return nil
 }
 
-// adapterMatch is a (cartridgeID, adapterMediaUrn) pair.
-type adapterMatch struct {
+// AdapterMatch is one registered content-inspection adapter: the cartridge
+// that registered it and its adapter media URN.
+type AdapterMatch struct {
 	CartridgeID string
 	MediaUrn    *urn.MediaUrn
+}
+
+// extensionCandidates is the file media types the fabric declares for an
+// extension, parsed.
+func (r *MediaAdapterRegistry) extensionCandidates(ext string) ([]*urn.MediaUrn, error) {
+	defs, err := r.fabricRegistry.FileMediaForExtension(ext)
+	if err != nil {
+		return nil, err
+	}
+	candidates := make([]*urn.MediaUrn, 0, len(defs))
+	for _, def := range defs {
+		u, err := urn.NewMediaUrnFromString(def.Urn)
+		if err != nil {
+			return nil, &fabric.Error{
+				Kind:    fabric.ErrParse,
+				Message: fmt.Sprintf("the fabric's media definition '%s' has no valid URN", def.Urn),
+				Err:     err,
+			}
+		}
+		candidates = append(candidates, u)
+	}
+	return candidates, nil
 }
 
 // FindAdaptersForExtension finds adapters that can handle candidate URNs for a
 // given file extension.
 //
-//  1. Queries FabricRegistry for candidate URNs via extension.
+//  1. Queries the FabricRegistry for the extension's file media types.
 //  2. For each candidate, finds registered adapters where the candidate
 //     ConformsTo the registered adapter URN.
-//  3. Returns (cartridgeID, adapterMediaUrn) pairs.
-func (r *MediaAdapterRegistry) FindAdaptersForExtension(ext string) []adapterMatch {
-	candidateStrings, err := r.fabricRegistry.MediaUrnsForExtension(ext)
-	if err != nil || len(candidateStrings) == 0 {
-		return nil
+//  3. Returns one match per cartridge.
+//
+// The fabric's file media types that cannot be loaded are an error.
+func (r *MediaAdapterRegistry) FindAdaptersForExtension(ext string) ([]AdapterMatch, error) {
+	candidates, err := r.extensionCandidates(ext)
+	if err != nil {
+		return nil, err
 	}
+	return r.AdaptersForCandidates(candidates), nil
+}
 
-	var candidates []*urn.MediaUrn
-	for _, s := range candidateStrings {
-		if u, err := urn.NewMediaUrnFromString(s); err == nil {
-			candidates = append(candidates, u)
-		}
-	}
-
-	var results []adapterMatch
+// AdaptersForCandidates is the registered adapters some of these candidates
+// conform to, one per cartridge.
+func (r *MediaAdapterRegistry) AdaptersForCandidates(candidates []*urn.MediaUrn) []AdapterMatch {
+	var results []AdapterMatch
 	seenCartridges := make(map[string]bool)
 
 	for i := range r.registeredAdapters {
@@ -228,7 +252,7 @@ func (r *MediaAdapterRegistry) FindAdaptersForExtension(ext string) []adapterMat
 		}
 		if matches && !seenCartridges[registered.cartridgeID] {
 			seenCartridges[registered.cartridgeID] = true
-			results = append(results, adapterMatch{
+			results = append(results, AdapterMatch{
 				CartridgeID: registered.cartridgeID,
 				MediaUrn:    registered.mediaUrn,
 			})
@@ -238,28 +262,27 @@ func (r *MediaAdapterRegistry) FindAdaptersForExtension(ext string) []adapterMat
 	return results
 }
 
+// AdaptersFor is the cartridges to consult for a file whose candidates these
+// are (AdapterSource): AdaptersForCandidates.
+func (r *MediaAdapterRegistry) AdaptersFor(candidates []*urn.MediaUrn) []AdapterMatch {
+	return r.AdaptersForCandidates(candidates)
+}
+
 // HasAdapterForExtension is a quick check for UI queries — returns true if any
-// registered adapter handles candidate URNs for this extension.
-func (r *MediaAdapterRegistry) HasAdapterForExtension(ext string) bool {
-	candidateStrings, err := r.fabricRegistry.MediaUrnsForExtension(ext)
-	if err != nil || len(candidateStrings) == 0 {
-		return false
+// registered adapter handles candidate URNs for this extension. The fabric's
+// file media types that cannot be loaded are an error.
+func (r *MediaAdapterRegistry) HasAdapterForExtension(ext string) (bool, error) {
+	candidates, err := r.extensionCandidates(ext)
+	if err != nil {
+		return false, err
 	}
-
-	var candidates []*urn.MediaUrn
-	for _, s := range candidateStrings {
-		if u, err := urn.NewMediaUrnFromString(s); err == nil {
-			candidates = append(candidates, u)
-		}
-	}
-
 	for i := range r.registeredAdapters {
 		registered := &r.registeredAdapters[i]
 		for _, c := range candidates {
 			if c.ConformsTo(registered.mediaUrn) {
-				return true
+				return true, nil
 			}
 		}
 	}
-	return false
+	return false, nil
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/machinefabric/capdag-go/standard"
 	taggedurn "github.com/machinefabric/tagged-urn-go"
+	taggedformal "github.com/machinefabric/tagged-urn-go/formal"
 )
 
 // MediaUrn represents a media type URN with semantic tags
@@ -298,6 +299,12 @@ func (m *MediaUrn) Specificity() int {
 		return 0
 	}
 	return m.inner.Specificity()
+}
+
+// Formal is this URN on the proved model's side: what a function of the
+// model's generated package (package formal) takes for a media URN.
+func (m *MediaUrn) Formal() taggedformal.Wf {
+	return m.inner.Formal()
 }
 
 // TagCount returns the raw number of tags (not weighted by type).
