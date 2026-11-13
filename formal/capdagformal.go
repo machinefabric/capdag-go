@@ -2272,6 +2272,72 @@ func (t writeDescriptor) Decode(r *lungo.Reader) (Write, error) {
 	return nil, lungo.Malformed("constructor index %d of CapDAG.Bifaci.Request.Write", c)
 }
 
+type extWfDescriptor struct{}
+
+// extWfType describes Lean's TaggedUrn.Exec.Wf, provided by github.com/machinefabric/tagged-urn-go/formal.
+func extWfType() lungo.Type[formal.Wf] {
+	return extWfDescriptor{}
+}
+
+func (t extWfDescriptor) Expr() []byte { return lungo.InductiveExpr(24) }
+func (t extWfDescriptor) Encode(w *lungo.Writer, v formal.Wf) error {
+	return formal.WfType().Encode(w, v)
+}
+func (t extWfDescriptor) Decode(r *lungo.Reader) (formal.Wf, error) {
+	return formal.WfType().Decode(r)
+}
+
+// Candidate is Lean's CapDAG.Detect.Candidate.
+type Candidate struct {
+	Urn   formal.Wf
+	Rules Rules
+}
+
+// CandidateFingerprint is the layout fingerprint of Lean's CapDAG.Detect.Candidate: a package using Candidate from this one checks it.
+const CandidateFingerprint = "44b0af3c53fe735247dd93bf66fcba31fe6e73818339bcb1d382fdb21b3cc65e"
+
+type candidateDescriptor struct{}
+
+// CandidateType describes CapDAG.Detect.Candidate for polymorphic functions.
+func CandidateType() lungo.Type[Candidate] {
+	return candidateDescriptor{}
+}
+
+func (t candidateDescriptor) Expr() []byte { return lungo.InductiveExpr(25) }
+
+func (t candidateDescriptor) Encode(w *lungo.Writer, v Candidate) error {
+	w.U32(0)
+	if err := extWfType().Encode(w, v.Urn); err != nil {
+		return err
+	}
+	if err := RulesType().Encode(w, v.Rules); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (t candidateDescriptor) Decode(r *lungo.Reader) (Candidate, error) {
+	var v Candidate
+	c, err := r.U32()
+	if err != nil {
+		return v, err
+	}
+	if c != 0 {
+		return v, lungo.Malformed("constructor index %d of CapDAG.Detect.Candidate", c)
+	}
+	f0, err := extWfType().Decode(r)
+	if err != nil {
+		return v, err
+	}
+	v.Urn = f0
+	f1, err := RulesType().Decode(r)
+	if err != nil {
+		return v, err
+	}
+	v.Rules = f1
+	return v, nil
+}
+
 // WfCap is Lean's CapDAG.Exec.WfCap.
 type WfCap struct {
 	Input  formal.Wf
@@ -2290,7 +2356,7 @@ func WfCapType() lungo.Type[WfCap] {
 	return wfCapDescriptor{}
 }
 
-func (t wfCapDescriptor) Expr() []byte { return lungo.InductiveExpr(24) }
+func (t wfCapDescriptor) Expr() []byte { return lungo.InductiveExpr(26) }
 
 func (t wfCapDescriptor) Encode(w *lungo.Writer, v WfCap) error {
 	w.U32(0)
@@ -2374,7 +2440,7 @@ func EffectType() lungo.Type[Effect] {
 	return effectDescriptor{}
 }
 
-func (t effectDescriptor) Expr() []byte { return lungo.InductiveExpr(25) }
+func (t effectDescriptor) Expr() []byte { return lungo.InductiveExpr(27) }
 
 func (t effectDescriptor) Encode(w *lungo.Writer, v Effect) error {
 	switch x := v.(type) {
@@ -2454,7 +2520,7 @@ func WfQueryType() lungo.Type[WfQuery] {
 	return wfQueryDescriptor{}
 }
 
-func (t wfQueryDescriptor) Expr() []byte { return lungo.InductiveExpr(26) }
+func (t wfQueryDescriptor) Expr() []byte { return lungo.InductiveExpr(28) }
 
 func (t wfQueryDescriptor) Encode(w *lungo.Writer, v WfQuery) error {
 	w.U32(0)
@@ -2505,21 +2571,6 @@ func (t wfQueryDescriptor) Decode(r *lungo.Reader) (WfQuery, error) {
 	return v, nil
 }
 
-type extWfDescriptor struct{}
-
-// extWfType describes Lean's TaggedUrn.Exec.Wf, provided by github.com/machinefabric/tagged-urn-go/formal.
-func extWfType() lungo.Type[formal.Wf] {
-	return extWfDescriptor{}
-}
-
-func (t extWfDescriptor) Expr() []byte { return lungo.InductiveExpr(27) }
-func (t extWfDescriptor) Encode(w *lungo.Writer, v formal.Wf) error {
-	return formal.WfType().Encode(w, v)
-}
-func (t extWfDescriptor) Decode(r *lungo.Reader) (formal.Wf, error) {
-	return formal.WfType().Decode(r)
-}
-
 // Grade is Lean's CapDAG.Grade: one of GradeExact, GradeGuaranteed, GradePossible, GradeNone.
 type Grade interface{ isGrade() }
 
@@ -2553,7 +2604,7 @@ func GradeType() lungo.Type[Grade] {
 	return gradeDescriptor{}
 }
 
-func (t gradeDescriptor) Expr() []byte { return lungo.InductiveExpr(28) }
+func (t gradeDescriptor) Expr() []byte { return lungo.InductiveExpr(29) }
 
 func (t gradeDescriptor) Encode(w *lungo.Writer, v Grade) error {
 	switch x := v.(type) {
@@ -2648,7 +2699,7 @@ func RunPhaseType() lungo.Type[RunPhase] {
 	return runPhaseDescriptor{}
 }
 
-func (t runPhaseDescriptor) Expr() []byte { return lungo.InductiveExpr(29) }
+func (t runPhaseDescriptor) Expr() []byte { return lungo.InductiveExpr(30) }
 
 func (t runPhaseDescriptor) Encode(w *lungo.Writer, v RunPhase) error {
 	switch x := v.(type) {
@@ -2748,7 +2799,7 @@ func RunOutcomeType() lungo.Type[RunOutcome] {
 	return runOutcomeDescriptor{}
 }
 
-func (t runOutcomeDescriptor) Expr() []byte { return lungo.InductiveExpr(30) }
+func (t runOutcomeDescriptor) Expr() []byte { return lungo.InductiveExpr(31) }
 
 func (t runOutcomeDescriptor) Encode(w *lungo.Writer, v RunOutcome) error {
 	switch x := v.(type) {
@@ -2859,7 +2910,7 @@ func RunAskType() lungo.Type[RunAsk] {
 	return runAskDescriptor{}
 }
 
-func (t runAskDescriptor) Expr() []byte { return lungo.InductiveExpr(31) }
+func (t runAskDescriptor) Expr() []byte { return lungo.InductiveExpr(32) }
 
 func (t runAskDescriptor) Encode(w *lungo.Writer, v RunAsk) error {
 	switch x := v.(type) {
@@ -2948,7 +2999,7 @@ func RunNextType() lungo.Type[RunNext] {
 	return runNextDescriptor{}
 }
 
-func (t runNextDescriptor) Expr() []byte { return lungo.InductiveExpr(32) }
+func (t runNextDescriptor) Expr() []byte { return lungo.InductiveExpr(33) }
 
 func (t runNextDescriptor) Encode(w *lungo.Writer, v RunNext) error {
 	w.U32(0)
@@ -3036,7 +3087,7 @@ func StepStateType() lungo.Type[StepState] {
 	return stepStateDescriptor{}
 }
 
-func (t stepStateDescriptor) Expr() []byte { return lungo.InductiveExpr(33) }
+func (t stepStateDescriptor) Expr() []byte { return lungo.InductiveExpr(34) }
 
 func (t stepStateDescriptor) Encode(w *lungo.Writer, v StepState) error {
 	switch x := v.(type) {
@@ -3185,7 +3236,7 @@ func StepReportType() lungo.Type[StepReport] {
 	return stepReportDescriptor{}
 }
 
-func (t stepReportDescriptor) Expr() []byte { return lungo.InductiveExpr(34) }
+func (t stepReportDescriptor) Expr() []byte { return lungo.InductiveExpr(35) }
 
 func (t stepReportDescriptor) Encode(w *lungo.Writer, v StepReport) error {
 	switch x := v.(type) {
@@ -3336,7 +3387,7 @@ func ConstraintType() lungo.Type[Constraint] {
 	return constraintDescriptor{}
 }
 
-func (t constraintDescriptor) Expr() []byte { return lungo.InductiveExpr(35) }
+func (t constraintDescriptor) Expr() []byte { return lungo.InductiveExpr(36) }
 
 func (t constraintDescriptor) Encode(w *lungo.Writer, v Constraint) error {
 	switch x := v.(type) {
@@ -3472,7 +3523,7 @@ func PoolType() lungo.Type[Pool] {
 	return poolDescriptor{}
 }
 
-func (t poolDescriptor) Expr() []byte { return lungo.InductiveExpr(36) }
+func (t poolDescriptor) Expr() []byte { return lungo.InductiveExpr(37) }
 
 func (t poolDescriptor) Encode(w *lungo.Writer, v Pool) error {
 	w.U32(0)
@@ -3515,6 +3566,85 @@ func (t poolDescriptor) Decode(r *lungo.Reader) (Pool, error) {
 	return v, nil
 }
 
+// Rules is Lean's CapDAG.Detect.Rules: one of RulesUnruled, RulesMet, RulesUnmet.
+type Rules interface{ isRules() }
+
+// RulesUnruled is Lean's CapDAG.Detect.Rules.unruled.
+type RulesUnruled struct{}
+
+func (RulesUnruled) isRules() {}
+
+// RulesMet is Lean's CapDAG.Detect.Rules.met.
+type RulesMet struct{}
+
+func (RulesMet) isRules() {}
+
+// RulesUnmet is Lean's CapDAG.Detect.Rules.unmet.
+type RulesUnmet struct{}
+
+func (RulesUnmet) isRules() {}
+
+// RulesFingerprint is the layout fingerprint of Lean's CapDAG.Detect.Rules: a package using Rules from this one checks it.
+const RulesFingerprint = "b29b984315894498d060c0db21d0688a1c4494edb9982b616acb8b1d9f2d41b4"
+
+type rulesDescriptor struct{}
+
+// RulesType describes CapDAG.Detect.Rules for polymorphic functions.
+func RulesType() lungo.Type[Rules] {
+	return rulesDescriptor{}
+}
+
+func (t rulesDescriptor) Expr() []byte { return lungo.InductiveExpr(38) }
+
+func (t rulesDescriptor) Encode(w *lungo.Writer, v Rules) error {
+	switch x := v.(type) {
+	case RulesUnruled:
+		w.U32(0)
+		return nil
+	case *RulesUnruled:
+		if x == nil {
+			return lungo.Malformed("a nil *RulesUnruled")
+		}
+		return t.Encode(w, *x)
+	case RulesMet:
+		w.U32(1)
+		return nil
+	case *RulesMet:
+		if x == nil {
+			return lungo.Malformed("a nil *RulesMet")
+		}
+		return t.Encode(w, *x)
+	case RulesUnmet:
+		w.U32(2)
+		return nil
+	case *RulesUnmet:
+		if x == nil {
+			return lungo.Malformed("a nil *RulesUnmet")
+		}
+		return t.Encode(w, *x)
+	}
+	return lungo.Malformed("a nil Rules")
+}
+
+func (t rulesDescriptor) Decode(r *lungo.Reader) (Rules, error) {
+	c, err := r.U32()
+	if err != nil {
+		return nil, err
+	}
+	switch c {
+	case 0:
+		var v RulesUnruled
+		return v, nil
+	case 1:
+		var v RulesMet
+		return v, nil
+	case 2:
+		var v RulesUnmet
+		return v, nil
+	}
+	return nil, lungo.Malformed("constructor index %d of CapDAG.Detect.Rules", c)
+}
+
 // WfAsk is Lean's CapDAG.Exec.WfAsk: one of WfAskUnknown, WfAskWithin, WfAskCovers, WfAskSame.
 type WfAsk interface{ isWfAsk() }
 
@@ -3554,7 +3684,7 @@ func WfAskType() lungo.Type[WfAsk] {
 	return wfAskDescriptor{}
 }
 
-func (t wfAskDescriptor) Expr() []byte { return lungo.InductiveExpr(37) }
+func (t wfAskDescriptor) Expr() []byte { return lungo.InductiveExpr(39) }
 
 func (t wfAskDescriptor) Encode(w *lungo.Writer, v WfAsk) error {
 	switch x := v.(type) {
@@ -3678,7 +3808,7 @@ func RunActType() lungo.Type[RunAct] {
 	return runActDescriptor{}
 }
 
-func (t runActDescriptor) Expr() []byte { return lungo.InductiveExpr(38) }
+func (t runActDescriptor) Expr() []byte { return lungo.InductiveExpr(40) }
 
 func (t runActDescriptor) Encode(w *lungo.Writer, v RunAct) error {
 	switch x := v.(type) {
@@ -4298,6 +4428,51 @@ func RequestWrite(over bool, frame FrameType) (result Write, err error) {
 	}
 	status, out := call(C.lungo_entry(C.capdagFormal__call_l_CapDAG_dBifaci_dRequest_dwrite), w.Bytes())
 	return lungo.DecodeValue(program(), status, out, WriteType())
+}
+
+// MostSpecific is Lean's CapDAG.Detect.mostSpecific : List TaggedUrn.Exec.Wf → TaggedUrn.Exec.Wf → Bool
+func MostSpecific(us []formal.Wf, u formal.Wf) (result bool, err error) {
+	w := lungo.NewCall(program())
+	defer w.Release()
+	if err = lungo.ListType(extWfType()).Encode(w, us); err != nil {
+		return
+	}
+	if err = extWfType().Encode(w, u); err != nil {
+		return
+	}
+	status, out := call(C.lungo_entry(C.capdagFormal__call_l_CapDAG_dDetect_dmostSpecific), w.Bytes())
+	return lungo.DecodeValue(program(), status, out, lungo.BoolType)
+}
+
+// Primary is Lean's CapDAG.Detect.primary : List TaggedUrn.Exec.Wf → Option Nat
+func Primary(us []formal.Wf) (result lungo.Option[*big.Int], err error) {
+	w := lungo.NewCall(program())
+	defer w.Release()
+	if err = lungo.ListType(extWfType()).Encode(w, us); err != nil {
+		return
+	}
+	status, out := call(C.lungo_entry(C.capdagFormal__call_l_CapDAG_dDetect_dprimary), w.Bytes())
+	return lungo.DecodeValue(program(), status, out, lungo.OptionType(lungo.NatType))
+}
+
+// Stands is Lean's CapDAG.Detect.stands : List CapDAG.Detect.Candidate → List TaggedUrn.Exec.Wf → List TaggedUrn.Exec.Wf → CapDAG.Detect.Candidate → Bool
+func Stands(cs []Candidate, owners []formal.Wf, claims []formal.Wf, c_ Candidate) (result bool, err error) {
+	w := lungo.NewCall(program())
+	defer w.Release()
+	if err = lungo.ListType(CandidateType()).Encode(w, cs); err != nil {
+		return
+	}
+	if err = lungo.ListType(extWfType()).Encode(w, owners); err != nil {
+		return
+	}
+	if err = lungo.ListType(extWfType()).Encode(w, claims); err != nil {
+		return
+	}
+	if err = CandidateType().Encode(w, c_); err != nil {
+		return
+	}
+	status, out := call(C.lungo_entry(C.capdagFormal__call_l_CapDAG_dDetect_dstands), w.Bytes())
+	return lungo.DecodeValue(program(), status, out, lungo.BoolType)
 }
 
 // Accepts is Lean's CapDAG.Exec.accepts : CapDAG.Exec.WfCap → CapDAG.Exec.WfCap → Bool
