@@ -143,8 +143,8 @@ func Test614_registry_creation(t *testing.T) {
 	assert.DirExists(t, registry.CacheDir())
 	// The identity cap is mandatory in every capability set, so a freshly
 	// constructed registry already answers for it.
-	_, ok := registry.GetCachedCap("cap:effect=none")
-	assert.True(t, ok, "a new registry must carry the mandatory identity cap")
+	_, err := registry.GetCachedCap("cap:effect=none")
+	assert.NoError(t, err, "a new registry must carry the mandatory identity cap")
 }
 
 // TEST136 (deleted): exercised the private `cacheKey` method on
@@ -294,10 +294,14 @@ func Test1892_UnknownAliasIsNotFound(t *testing.T) {
 	assert.Error(t, err)
 	_, err = reg.AliasDefverFor("nosuchalias")
 	assert.Error(t, err)
-	_, ok := reg.ResolveAliasCached("nosuchalias")
+	// ResolveAliasCached answers no alias for an unknown name (and for a
+	// malformed one): the manifest names neither.
+	_, ok, err := reg.ResolveAliasCached("nosuchalias")
 	assert.False(t, ok)
-	_, ok = reg.ResolveAliasCached("bad:name")
+	assert.NoError(t, err)
+	_, ok, err = reg.ResolveAliasCached("bad:name")
 	assert.False(t, ok)
+	assert.NoError(t, err)
 }
 
 // TEST0123: Cap exists
@@ -591,16 +595,18 @@ func Test6329_CacheOperations(t *testing.T) {
 	registry := NewForTest()
 	registry.AddSpec(media.StoredMediaDef{
 		Urn: "media:enc=utf8;fmt=json;record", MediaType: "application/json", Title: "JSON"})
-	require.NotNil(t, registry.GetCachedMediaDef("media:enc=utf8;fmt=json;record"))
+	_, err := registry.GetCachedMediaDef("media:enc=utf8;fmt=json;record")
+	require.NoError(t, err)
 
 	require.NoError(t, registry.ClearCache())
 
 	// Clearing drops what was cached and leaves the cache root usable — and the
 	// mandatory identity cap survives, because it is not cached content.
-	assert.Nil(t, registry.GetCachedMediaDef("media:enc=utf8;fmt=json;record"))
+	_, err = registry.GetCachedMediaDef("media:enc=utf8;fmt=json;record")
+	assert.Error(t, err, "a cleared media def is not at hand")
 	assert.DirExists(t, registry.CacheDir())
-	_, ok := registry.GetCachedCap("cap:effect=none")
-	assert.True(t, ok, "identity must survive a cache clear")
+	_, err = registry.GetCachedCap("cap:effect=none")
+	assert.NoError(t, err, "identity must survive a cache clear")
 }
 
 // TEST6382: Test parsing registry JSON without stdin args verifies cap structure
@@ -708,9 +714,9 @@ func Test6396_MalformedCapUrnFailsHard(t *testing.T) {
 	assert.NotContains(t, gerr.Error(), "manifest",
 		"the malformed-URN error must not be reported as a manifest miss")
 
-	// Lookup contract (value, found): a malformed URN is a graceful miss, no panic.
-	got, ok := registry.GetCachedCap(malformed)
-	assert.False(t, ok, "GetCachedCap on a malformed URN must report not-found")
+	// The synchronous lookup reports a malformed URN as malformed, no panic.
+	got, cerr := registry.GetCachedCap(malformed)
+	assert.Equal(t, ErrParse, kindOf(cerr), "GetCachedCap on a malformed URN must be a parse error")
 	assert.Nil(t, got, "GetCachedCap on a malformed URN must return nil")
 }
 
@@ -833,13 +839,14 @@ func Test609_get_extension_mappings(t *testing.T) {
 	assert.True(t, extNames["epub"], "Should contain epub")
 }
 
-// TEST610: get_cached_spec returns None for unknown and Some for known
-// TEST610: get_cached_spec returns None for unknown and Some for known
+// TEST610: get_cached_media_def answers NotFound for a media def the manifest
+// does not name, and the def for a known one
 func Test610_get_cached_spec(t *testing.T) {
 	registry := NewForTest()
 
 	// Unknown spec
-	assert.Nil(t, registry.GetCachedMediaDef("media:nonexistent;xyzzy"))
+	_, err := registry.GetCachedMediaDef("media:nonexistent;xyzzy")
+	assert.True(t, IsNotFound(err), "an unknown media def is not found: %v", err)
 
 	// Add a spec and verify retrieval
 	registry.AddSpec(media.StoredMediaDef{
@@ -848,8 +855,8 @@ func Test610_get_cached_spec(t *testing.T) {
 		Title:     "Test Spec",
 	})
 
-	retrieved := registry.GetCachedMediaDef("media:enc=utf8;test;spec")
-	require.NotNil(t, retrieved, "Should find spec by URN")
+	retrieved, err := registry.GetCachedMediaDef("media:enc=utf8;test;spec")
+	require.NoError(t, err, "Should find spec by URN")
 	assert.Equal(t, "Test Spec", retrieved.Title)
 }
 
@@ -983,10 +990,10 @@ func Test12715_a_cached_definition_that_breaks_a_rule_is_dropped(t *testing.T) {
 	}
 
 	r.loadAllCachedCaps()
-	_, hasKept := r.GetCachedCap(kept.Urn.String())
-	assert.True(t, hasKept, "the valid definition is loaded")
-	_, hasStale := r.GetCachedCap(stale.Urn.String())
-	assert.False(t, hasStale, "the definition that breaks a rule is not")
+	_, keptErr := r.GetCachedCap(kept.Urn.String())
+	assert.NoError(t, keptErr, "the valid definition is loaded")
+	_, staleErr := r.GetCachedCap(stale.Urn.String())
+	assert.Error(t, staleErr, "the definition that breaks a rule is not")
 	_, err := os.Stat(keptFile)
 	assert.NoError(t, err)
 	_, err = os.Stat(staleFile)

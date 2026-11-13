@@ -87,9 +87,10 @@ type preInternedWiring struct {
 // wiring takes it by its name, a label that is unique per cap. The main output
 // is not another output.
 func strandOutputName(registry *fabric.FabricRegistry, capUrn *urn.CapUrn, outputUrn *urn.MediaUrn, strandIndex int) (string, *MachineAbstractionError) {
-	definition, cached := registry.GetCachedCap(capUrn.String())
-	if !cached {
-		return "", unknownCapError(capUrn.String())
+	definition, err := registry.GetCachedCap(capUrn.String())
+	if err != nil {
+		return "", definitionLookupError(capUrn.String(), err,
+			func() *MachineAbstractionError { return unknownCapError(capUrn.String()) })
 	}
 	main := definition.MainOutput()
 	isMain := func(output *cap.CapOutput) bool { return main != nil && main.MediaUrn == output.MediaUrn }
@@ -263,9 +264,10 @@ func resolveWirings(
 	wiringOutputs := make([][]EdgeOutput, len(wirings))
 	for index, wiring := range wirings {
 		capUrn := wiring.capUrn.String()
-		definition, cached := registry.GetCachedCap(capUrn)
-		if !cached {
-			return nil, unknownCapError(capUrn)
+		definition, err := registry.GetCachedCap(capUrn)
+		if err != nil {
+			return nil, definitionLookupError(capUrn, err,
+				func() *MachineAbstractionError { return unknownCapError(capUrn) })
 		}
 		definitions[index] = definition
 		outputs := make([]EdgeOutput, 0, len(wiring.targets))
@@ -589,11 +591,15 @@ func checkConstant(
 		return constantFailsValidationError(strandIndex, capUrn, arg.Name, constantText(value), reason)
 	}
 	// Without the definition there is nothing to hold the constant to, and a
-	// constant nobody checked is not bound.
-	definition := registry.GetCachedMediaDef(arg.MediaUrn)
-	if definition == nil {
-		return refused(fmt.Sprintf(
-			"the media definition of '%s' is not available, so the constant cannot be validated", arg.MediaUrn))
+	// constant nobody checked is not bound. The constant is refused only when
+	// the registry holds no such definition; one that could not be fetched is
+	// reported as what kept it.
+	definition, err := registry.GetCachedMediaDef(arg.MediaUrn)
+	if err != nil {
+		return definitionLookupError(arg.MediaUrn, err, func() *MachineAbstractionError {
+			return refused(fmt.Sprintf(
+				"the media definition of '%s' is not available, so the constant cannot be validated", arg.MediaUrn))
+		})
 	}
 	if definition.Validation != nil {
 		rule, err := definition.Validation.Violation(value)

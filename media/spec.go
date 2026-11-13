@@ -348,16 +348,22 @@ func (r *ResolvedMediaDef) String() string {
 // MediaDefError represents an error in media def operations
 type MediaDefError struct {
 	Message string
+	// Err is the registry's own account, when it gave none: absent, or a
+	// fetch it refused or did not answer — the caller tells which from it.
+	Err error
 }
 
 func (e *MediaDefError) Error() string {
 	return e.Message
 }
 
+// Unwrap is the registry's account of why it gave no definition.
+func (e *MediaDefError) Unwrap() error { return e.Err }
+
 var (
-	ErrUnresolvableMediaUrn = &MediaDefError{"media URN cannot be resolved"}
-	ErrInvalidMediaUrn      = &MediaDefError{"invalid media URN - must start with 'media:'"}
-	ErrDuplicateMediaUrn    = &MediaDefError{"duplicate media URN in media_defs array"}
+	ErrUnresolvableMediaUrn = &MediaDefError{Message: "media URN cannot be resolved"}
+	ErrInvalidMediaUrn      = &MediaDefError{Message: "invalid media URN - must start with 'media:'"}
+	ErrDuplicateMediaUrn    = &MediaDefError{Message: "duplicate media URN in media_defs array"}
 )
 
 // NewUnresolvableMediaUrnError creates an error for unresolvable media URNs
@@ -408,10 +414,14 @@ func ResolveMediaUrn(mediaUrn string, registry MediaDefSource) (*ResolvedMediaDe
 		}
 	}
 
+	// The registry's own error says whether it holds no such definition or
+	// could not be asked (a refused fetch, one that got no answer); it is
+	// carried as it is, never read as "not found".
 	storedSpec, err := registry.GetMediaDef(mediaUrn)
 	if err != nil {
 		return nil, &MediaDefError{
-			Message: fmt.Sprintf("cannot resolve media URN '%s' - not found in registry: %v", mediaUrn, err),
+			Message: fmt.Sprintf("cannot resolve media URN '%s' via the registry: %v", mediaUrn, err),
+			Err:     err,
 		}
 	}
 	return &ResolvedMediaDef{

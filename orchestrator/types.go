@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/machinefabric/capdag-go/cap"
+	"github.com/machinefabric/capdag-go/fabric"
 	"github.com/machinefabric/capdag-go/planner"
 )
 
@@ -21,6 +22,10 @@ const (
 	ErrCapNotFound ParseOrchestrationErrorKind = iota
 	// ErrInvalidGraph — the plan or graph is not one that can be run as asked.
 	ErrInvalidGraph
+	// ErrDefinitionUnavailable — a definition the plan needs is in the
+	// registry and could not be had from it: its fetch was refused or got no
+	// answer, or it is not fetched yet. Err says which.
+	ErrDefinitionUnavailable
 )
 
 // ParseOrchestrationError represents any error during orchestration.
@@ -28,7 +33,12 @@ type ParseOrchestrationError struct {
 	Kind    ParseOrchestrationErrorKind
 	Message string
 	CapUrn  string
+	// Err is the registry's account, for ErrDefinitionUnavailable.
+	Err error
 }
+
+// Unwrap is the registry's account, for ErrDefinitionUnavailable.
+func (e *ParseOrchestrationError) Unwrap() error { return e.Err }
 
 func (e *ParseOrchestrationError) Error() string {
 	switch e.Kind {
@@ -36,6 +46,8 @@ func (e *ParseOrchestrationError) Error() string {
 		return fmt.Sprintf("Cap URN '%s' not found in registry", e.CapUrn)
 	case ErrInvalidGraph:
 		return fmt.Sprintf("Invalid graph: %s", e.Message)
+	case ErrDefinitionUnavailable:
+		return fmt.Sprintf("the definition of '%s' could not be had from the registry: %v", e.CapUrn, e.Err)
 	default:
 		return e.Message
 	}
@@ -45,6 +57,16 @@ func (e *ParseOrchestrationError) Error() string {
 
 func capNotFoundError(capUrn string) *ParseOrchestrationError {
 	return &ParseOrchestrationError{Kind: ErrCapNotFound, CapUrn: capUrn}
+}
+
+// capLookupError is what a registry lookup of the cap capUrn that came back
+// empty-handed means for a plan: ErrCapNotFound when the registry holds no
+// such cap, else ErrDefinitionUnavailable carrying what kept it.
+func capLookupError(capUrn string, err error) *ParseOrchestrationError {
+	if fabric.IsNotFound(err) {
+		return capNotFoundError(capUrn)
+	}
+	return &ParseOrchestrationError{Kind: ErrDefinitionUnavailable, CapUrn: capUrn, Err: err}
 }
 
 func invalidGraphError(message string) *ParseOrchestrationError {

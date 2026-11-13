@@ -41,9 +41,11 @@ func DiscriminateCandidatesByValidation(content []byte, candidateUrns []string, 
 
 	var survivors []string
 	for _, u := range candidateUrns {
-		spec := fabricRegistry.GetCachedMediaDef(u)
-		if spec == nil {
-			// No spec in cache → cannot eliminate.
+		// A candidate is eliminated only by the rules its spec states; with no
+		// spec at hand (absent, refused or not fetched yet) there is nothing to
+		// eliminate it by, so it stays a candidate.
+		spec, err := fabricRegistry.GetCachedMediaDef(u)
+		if err != nil {
 			survivors = append(survivors, u)
 			continue
 		}

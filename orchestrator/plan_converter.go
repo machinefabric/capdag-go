@@ -108,9 +108,9 @@ func StepsToResolvedGraph(plan *planner.MachinePlan, stepIDs []string, registry 
 			return nil, invalidGraphError(fmt.Sprintf("'%s' is not a step of plan '%s'", stepID, plan.Name))
 		}
 		capUrn := node.NodeType.CapUrn
-		capDef, ok := registry.GetCachedCap(capUrn)
-		if !ok {
-			return nil, capNotFoundError(capUrn)
+		capDef, err := registry.GetCachedCap(capUrn)
+		if err != nil {
+			return nil, capLookupError(capUrn, err)
 		}
 
 		// The streams the step is sent, in the order the plan wires them.
@@ -198,9 +198,9 @@ func StepsToResolvedGraph(plan *planner.MachinePlan, stepIDs []string, registry 
 			case planner.NodeKindCapOutput:
 				nodes[source] = from.NodeType.OutputMediaUrn
 			case planner.NodeKindCap:
-				capDef, ok := registry.GetCachedCap(from.NodeType.CapUrn)
-				if !ok {
-					return nil, capNotFoundError(from.NodeType.CapUrn)
+				capDef, err := registry.GetCachedCap(from.NodeType.CapUrn)
+				if err != nil {
+					return nil, capLookupError(from.NodeType.CapUrn, err)
 				}
 				nodes[source] = capDef.Urn.OutSpec()
 			default:
