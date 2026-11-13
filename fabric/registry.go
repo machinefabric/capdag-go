@@ -5,7 +5,8 @@
 // its charter's `definition` location says — share the same caching policy,
 // the same manifest pin, and the same offline / clear-cache surface. They differ only in wire payload shape (`cap.Cap`,
 // `media.StoredMediaDef`, `media.StoredAlias`, `media.StoredDim`) and in
-// disk-cache subdirectory (`caps/`, `media/`, `aliases/`, `dims/`).
+// disk-cache subdirectory (`caps/`, `media/`, `aliases/`, `dims/`). Where the
+// cache is on disk, and how an entry is written and read there, is cache.go.
 //
 // On miss, `GetCap` atomically fetches the cap AND every media URN it
 // references; if any of those media defs cannot be fetched the cap is NOT
@@ -30,7 +31,6 @@
 package fabric
 
 import (
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -300,10 +300,6 @@ type dimCacheEntry struct {
 	TTLHours int             `json:"ttl_hours"`
 }
 
-// cacheSubdirs are the directories of a cache root, the root itself first.
-// Construction, the test constructors and ClearCache all create exactly these.
-var cacheSubdirs = []string{"", "caps", "media", "aliases", "dims", "manifests"}
-
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
@@ -402,9 +398,7 @@ func PublisherLayoutCharter(anchor string) *bifaci.Charter {
 // drift apart. `key` is what the kind hashes: the normalized URN for caps and
 // media, the name for aliases and dims.
 func definitionURLAndCachePath(cacheDir string, locations Locations, kind, key string, defver uint32) (string, string) {
-	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(key)))
-	return locations.Definition(kind, digest, defver),
-		filepath.Join(cacheDir, kind, digest, fmt.Sprintf("%d.json", defver))
+	return locations.Definition(kind, keyHash(key), defver), entryPath(cacheDir, kind, key, defver)
 }
 
 // BakedManifestVersion is the workspace-pinned fabric manifest version.
@@ -449,15 +443,15 @@ type FabricRegistry struct {
 	mu     sync.RWMutex
 	client *http.Client
 
-	cacheDir        string
-	capsCacheDir    string
-	mediaCacheDir   string
-	aliasesCacheDir string
-	dimsCacheDir    string
+	// cacheDir is the cache folder of the manifest version this registry is
+	// pinned at, `<os cache>/capdag/<charter slug>/v<N>`. Definitions live at
+	// `<kind>/<sha>/<defver>.json` and the manifest at `manifest.json`
+	// (cache.go).
+	cacheDir string
 
 	config Config
-	// charter is the registry's charter: its slug names cacheDir, and its
-	// locations are where every object is fetched from.
+	// charter is the registry's charter: its slug names the folder cacheDir is
+	// in, and its locations are where every object is fetched from.
 	charter   *bifaci.Charter
 	locations Locations
 
@@ -539,10 +533,11 @@ func WithConfig(config Config) (*FabricRegistry, error) {
 //
 // The registry's charter is resolved first — the one stored in the cache when
 // one is stored for this anchor, else fetched from the anchor — and everything
-// after it is read from the charter: the cache folder is its slug, and the
-// manifest is fetched from its location. The constructor blocks on the
-// network when either is not cached. A version below 1 names no manifest and
-// is refused.
+// after it is read from the charter: the cache folder is the manifest
+// version's folder in the folder its slug names, and the manifest is fetched
+// from its location. The constructor blocks on the network when either is not
+// cached. A version below 1 names no manifest and is refused. A cached entry
+// that is corrupt (cache.go) fails construction with an error naming its file.
 func WithConfigAndManifestVersion(config Config, manifestVersion uint32) (*FabricRegistry, error) {
 	if manifestVersion == 0 {
 		return nil, errf(ErrValidation,
@@ -561,49 +556,44 @@ func WithConfigAndManifestVersion(config Config, manifestVersion uint32) (*Fabri
 	if err != nil {
 		return nil, err
 	}
-	cacheDir := filepath.Join(capdagCache, charter.Slug)
-	for _, sub := range cacheSubdirs {
-		if err := os.MkdirAll(filepath.Join(cacheDir, sub), 0o755); err != nil {
-			return nil, errf(ErrCache, "creating cache dir %s: %v", filepath.Join(cacheDir, sub), err)
+	cacheDir := versionDir(filepath.Join(capdagCache, charter.Slug), manifestVersion)
+	for _, kind := range kindFolders {
+		if err := os.MkdirAll(filepath.Join(cacheDir, kind), 0o755); err != nil {
+			return nil, errf(ErrCache, "creating cache dir %s: %v", filepath.Join(cacheDir, kind), err)
 		}
 	}
 
-	manifest, err := loadOrFetchManifest(filepath.Join(cacheDir, "manifests"), client, locations, manifestVersion)
+	manifest, err := loadOrFetchManifest(cacheDir, client, locations, manifestVersion)
 	if err != nil {
 		return nil, err
 	}
 
+	// Hydrate from the cache only what the manifest pins, each from the one
+	// file its key and defver name, so nothing at another defver, and nothing
+	// another manifest version cached, is ever read.
+	pinned, err := loadPinnedEntries(cacheDir, manifest)
+	if err != nil {
+		return nil, err
+	}
+	// Keep a definition only when every dim it names survives with it.
+	retainPinned(manifest, manifestVersion, pinned.caps, pinned.media, pinned.aliases, pinned.dims)
+
 	r := &FabricRegistry{
 		client:          client,
 		cacheDir:        cacheDir,
-		capsCacheDir:    filepath.Join(cacheDir, "caps"),
-		mediaCacheDir:   filepath.Join(cacheDir, "media"),
-		aliasesCacheDir: filepath.Join(cacheDir, "aliases"),
-		dimsCacheDir:    filepath.Join(cacheDir, "dims"),
 		config:          config,
 		charter:         charter,
 		locations:       locations,
-		cachedCaps:      make(map[string]*cap.Cap),
-		cachedSpecs:     make(map[string]media.StoredMediaDef),
-		cachedAliases:   make(map[string]media.StoredAlias),
-		cachedDims:      make(map[string]media.StoredDim),
+		cachedCaps:      pinned.caps,
+		cachedSpecs:     pinned.media,
+		cachedAliases:   pinned.aliases,
+		cachedDims:      pinned.dims,
 		extIndex:        make(map[string][]string),
 		manifestVersion: manifestVersion,
 		manifest:        manifest,
 		fetchFailures:   make(map[fetchKey]error),
 	}
-
-	r.loadAllCachedCaps()
-	r.loadAllCachedSpecs()
-	r.loadAllCachedAliases()
-	r.loadAllCachedDims()
-
-	// Filter the hydrated caches to the pinned manifest's defvers. A cache
-	// populated under an older manifest holds definitions this build must not
-	// serve — same URN, different bytes.
 	r.mu.Lock()
-	retainPinned(manifest, manifestVersion, r.cachedCaps, r.cachedSpecs, r.cachedAliases, r.cachedDims)
-	r.extIndex = make(map[string][]string)
 	for _, spec := range r.cachedSpecs {
 		r.updateExtensionIndexLocked(spec)
 	}
@@ -639,21 +629,24 @@ func resolveCharter(client *http.Client, capdagCache, anchor string) (*bifaci.Ch
 	return fetched.Charter, nil
 }
 
-func loadOrFetchManifest(manifestsDir string, client *http.Client, locations Locations, version uint32) (*media.Manifest, error) {
-	cacheFile := filepath.Join(manifestsDir, fmt.Sprintf("%d.json", version))
-	if raw, err := os.ReadFile(cacheFile); err == nil {
-		var m media.Manifest
-		if jsonErr := json.Unmarshal(raw, &m); jsonErr == nil {
-			if m.Version != version {
-				return nil, errf(ErrParse,
-					"cached manifest at %s reports version %d but the file is %d.json",
-					cacheFile, m.Version, version)
-			}
-			return &m, nil
+// loadOrFetchManifest is the manifest bootstrap, in the cache folder cacheDir
+// of manifest version. It tries the cached manifest first, then a blocking
+// network GET; if neither produces a manifest it is an error — there is no v0
+// fallback. A cached manifest that does not parse, or is another version's, is
+// corrupt: an error naming its file, never a silent refetch. The fetched bytes
+// are written whole (writeAtomically). Matches Rust: fn load_or_fetch_manifest
+func loadOrFetchManifest(cacheDir string, client *http.Client, locations Locations, version uint32) (*media.Manifest, error) {
+	cacheFile := filepath.Join(cacheDir, manifestFile)
+	cached, err := readEntry[media.Manifest](cacheFile, "manifest")
+	if err != nil {
+		return nil, err
+	}
+	if cached != nil {
+		if cached.Version != version {
+			return nil, corrupt(cacheFile, "manifest",
+				fmt.Sprintf("it is manifest %d, in the folder of manifest %d", cached.Version, version))
 		}
-		// A corrupt cache file is removed rather than read around: leaving it
-		// would fail every construction until someone cleared it by hand.
-		_ = os.Remove(cacheFile)
+		return cached, nil
 	}
 
 	url := locations.Manifest(version)
@@ -668,8 +661,8 @@ func loadOrFetchManifest(manifestsDir string, client *http.Client, locations Loc
 	if m.Version != version {
 		return nil, errf(ErrParse, "manifest fetched as v%d reports version %d", version, m.Version)
 	}
-	if err := os.WriteFile(cacheFile, body, 0o644); err != nil {
-		return nil, errf(ErrCache, "writing manifest cache to %s: %v", cacheFile, err)
+	if err := writeAtomically(cacheFile, body); err != nil {
+		return nil, err
 	}
 	return &m, nil
 }
@@ -700,130 +693,131 @@ func CapdagCacheRoot() (string, error) {
 // Disk-cache hydration
 // ---------------------------------------------------------------------------
 
-func walkJSONFiles(root string, visit func(path string, raw []byte)) {
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		// A missing cache dir is not an error — nothing has been cached yet.
-		return
-	}
-	for _, entry := range entries {
-		path := filepath.Join(root, entry.Name())
-		if entry.IsDir() {
-			walkJSONFiles(path, visit)
-			continue
-		}
-		if !strings.HasSuffix(entry.Name(), ".json") {
-			continue
-		}
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "[WARN] failed to read cache file %s: %v\n", path, err)
-			continue
-		}
-		visit(path, raw)
-	}
+// pinnedEntries are the definitions a manifest version's cache folder holds at
+// the versions its manifest pins, keyed as the registry keys them in memory.
+type pinnedEntries struct {
+	caps    map[string]*cap.Cap
+	media   map[string]media.StoredMediaDef
+	aliases map[string]media.StoredAlias
+	dims    map[string]media.StoredDim
 }
 
-func (r *FabricRegistry) loadAllCachedCaps() {
-	walkJSONFiles(r.capsCacheDir, func(path string, raw []byte) {
-		var entry capCacheEntry
-		if err := json.Unmarshal(raw, &entry); err != nil {
-			fmt.Fprintf(os.Stderr, "[WARN] failed to load cap cache file %s: %v\n", path, err)
-			_ = os.Remove(path)
-			return
+// loadPinnedEntries reads, from the cache folder cacheDir of manifest, every
+// definition the manifest pins that is cached: each from the one file its key
+// and pinned defver name, so nothing at another defver, and nothing another
+// manifest version cached, is ever read.
+//
+// An entry that is not there is not cached. One that is there and cannot be
+// read, does not parse, or is not the definition and defver its path names is
+// corrupt, and an error naming the file. Two rules drop an entry and leave it
+// to be fetched anew, naming its file in the log:
+//   - a defver-0 cap or media def older than its time to live (defver 0 is the
+//     flat, mutable regime);
+//   - a cap or dim that breaks the definition rules was written by a capdag
+//     with other rules (capdag/docs/10-validation-rules.md); its file is
+//     removed.
+//
+// Matches Rust: fn load_pinned_entries
+func loadPinnedEntries(cacheDir string, manifest *media.Manifest) (pinnedEntries, error) {
+	entries := pinnedEntries{
+		caps:    make(map[string]*cap.Cap),
+		media:   make(map[string]media.StoredMediaDef),
+		aliases: make(map[string]media.StoredAlias),
+		dims:    make(map[string]media.StoredDim),
+	}
+	for key, defver := range manifest.Caps {
+		path := entryPath(cacheDir, "caps", key, defver)
+		entry, err := readEntry[capCacheEntry](path, "cap")
+		if err != nil {
+			return pinnedEntries{}, err
+		}
+		if entry == nil {
+			continue
 		}
 		var c cap.Cap
 		if err := json.Unmarshal(entry.Definition, &c); err != nil {
-			fmt.Fprintf(os.Stderr, "[WARN] failed to load cap cache file %s: %v\n", path, err)
-			_ = os.Remove(path)
-			return
+			return pinnedEntries{}, corrupt(path, "cap", err.Error())
 		}
-		// TTL applies only to v0 entries; versioned definitions are immutable.
-		if c.Version == 0 && entry.isExpired() {
-			_ = os.Remove(path)
-			return
+		cachedURN, err := NormalizeCapURN(c.Urn.String())
+		if err != nil {
+			return pinnedEntries{}, corrupt(path, "cap", err.Error())
 		}
-		// Only a checked definition is written to the cache, so one that
-		// fails the rules was written by a capdag with other rules: it is
-		// dropped like an unparseable one and fetched anew.
+		if cachedURN != key || c.Version != defver {
+			return pinnedEntries{}, corrupt(path, "cap", fmt.Sprintf(
+				"it holds '%s' at defver %d, where '%s' at defver %d belongs",
+				cachedURN, c.Version, key, defver))
+		}
+		if defver == 0 && entry.isExpired() {
+			fmt.Fprintf(os.Stderr, "[INFO] the cached cap %s is past its time to live\n", path)
+			continue
+		}
 		if err := cap.ValidateCapDefinition(&c); err != nil {
-			fmt.Fprintf(os.Stderr, "[WARN] dropping cap cache file %s: %v\n", path, err)
+			fmt.Fprintf(os.Stderr, "[WARN] dropping the cached cap %s: %v\n", path, err)
 			_ = os.Remove(path)
-			return
+			continue
 		}
-		normalized, err := NormalizeCapURN(c.Urn.String())
+		entries.caps[cachedURN] = &c
+	}
+	for key, defver := range manifest.Media {
+		path := entryPath(cacheDir, "media", key, defver)
+		entry, err := readEntry[mediaCacheEntry](path, "media def")
 		if err != nil {
-			// Hydration with a malformed URN is a graceful no-op: never cache
-			// under a raw key, never crash the whole load.
-			fmt.Fprintf(os.Stderr, "[WARN] skipping cap cache file %s: %v\n", path, err)
-			return
+			return pinnedEntries{}, err
 		}
-		r.mu.Lock()
-		r.cachedCaps[normalized] = &c
-		r.mu.Unlock()
-	})
-}
-
-func (r *FabricRegistry) loadAllCachedSpecs() {
-	walkJSONFiles(r.mediaCacheDir, func(path string, raw []byte) {
-		var entry mediaCacheEntry
-		if err := json.Unmarshal(raw, &entry); err != nil {
-			fmt.Fprintf(os.Stderr, "[WARN] failed to load media cache file %s: %v\n", path, err)
-			_ = os.Remove(path)
-			return
+		if entry == nil {
+			continue
 		}
-		if entry.Spec.Version == 0 && entry.isExpired() {
-			_ = os.Remove(path)
-			return
-		}
-		normalized, err := NormalizeMediaURN(entry.Spec.Urn)
+		cachedURN, err := NormalizeMediaURN(entry.Spec.Urn)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "[WARN] skipping media cache file %s: %v\n", path, err)
-			return
+			return pinnedEntries{}, corrupt(path, "media def", err.Error())
 		}
-		r.mu.Lock()
-		r.cachedSpecs[normalized] = entry.Spec
-		r.updateExtensionIndexLocked(entry.Spec)
-		r.mu.Unlock()
-	})
-}
-
-func (r *FabricRegistry) loadAllCachedAliases() {
-	walkJSONFiles(r.aliasesCacheDir, func(path string, raw []byte) {
-		var entry aliasCacheEntry
-		if err := json.Unmarshal(raw, &entry); err != nil {
-			fmt.Fprintf(os.Stderr, "[WARN] failed to load alias cache file %s: %v\n", path, err)
-			_ = os.Remove(path)
-			return
+		if cachedURN != key || entry.Spec.Version != defver {
+			return pinnedEntries{}, corrupt(path, "media def", fmt.Sprintf(
+				"it holds '%s' at defver %d, where '%s' at defver %d belongs",
+				cachedURN, entry.Spec.Version, key, defver))
 		}
-		r.mu.Lock()
-		r.cachedAliases[entry.Alias.Name] = entry.Alias
-		r.mu.Unlock()
-	})
-}
-
-// loadAllCachedDims walks the dim cache directory (dims/<sha>/<defver>.json)
-// and loads every cached StoredDim keyed by its name. Dims are versioned-only —
-// there is no v0 flat path and no TTL expiry (a published defver is
-// immutable). A cached body this library cannot hold is dropped like an
-// unparseable one, and fetched anew. Matches Rust: load_all_cached_dims
-func (r *FabricRegistry) loadAllCachedDims() {
-	walkJSONFiles(r.dimsCacheDir, func(path string, raw []byte) {
-		var entry dimCacheEntry
-		if err := json.Unmarshal(raw, &entry); err != nil {
-			fmt.Fprintf(os.Stderr, "[WARN] failed to load dim cache file %s: %v\n", path, err)
-			_ = os.Remove(path)
-			return
+		if defver == 0 && entry.isExpired() {
+			fmt.Fprintf(os.Stderr, "[INFO] the cached media def %s is past its time to live\n", path)
+			continue
+		}
+		entries.media[cachedURN] = entry.Spec
+	}
+	for name, defver := range manifest.Aliases {
+		path := entryPath(cacheDir, "aliases", name, defver)
+		entry, err := readEntry[aliasCacheEntry](path, "alias")
+		if err != nil {
+			return pinnedEntries{}, err
+		}
+		if entry == nil {
+			continue
+		}
+		if err := validateFetchedAlias(&entry.Alias, name, defver); err != nil {
+			return pinnedEntries{}, corrupt(path, "alias", err.Error())
+		}
+		entries.aliases[entry.Alias.Name] = entry.Alias
+	}
+	for name, defver := range manifest.Dims {
+		path := entryPath(cacheDir, "dims", name, defver)
+		entry, err := readEntry[dimCacheEntry](path, "dim")
+		if err != nil {
+			return pinnedEntries{}, err
+		}
+		if entry == nil {
+			continue
+		}
+		if entry.Dim.Name != name || entry.Dim.Version != defver {
+			return pinnedEntries{}, corrupt(path, "dim", fmt.Sprintf(
+				"it holds '%s' at defver %d, where '%s' at defver %d belongs",
+				entry.Dim.Name, entry.Dim.Version, name, defver))
 		}
 		if err := entry.Dim.Validate(); err != nil {
-			fmt.Fprintf(os.Stderr, "[WARN] dropping dim cache file %s: %v\n", path, err)
+			fmt.Fprintf(os.Stderr, "[WARN] dropping the cached dim %s: %v\n", path, err)
 			_ = os.Remove(path)
-			return
+			continue
 		}
-		r.mu.Lock()
-		r.cachedDims[entry.Dim.Name] = entry.Dim
-		r.mu.Unlock()
-	})
+		entries.dims[entry.Dim.Name] = entry.Dim
+	}
+	return entries, nil
 }
 
 // retainPinned keeps, of what was loaded from the disk cache, only what the
@@ -919,20 +913,6 @@ func (r *FabricRegistry) aliasCacheFilePath(normalizedName string, defver uint32
 	return path
 }
 
-func writeCacheFile(path string, payload any) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return errf(ErrCache, "creating %s: %v", filepath.Dir(path), err)
-	}
-	data, err := json.MarshalIndent(payload, "", "  ")
-	if err != nil {
-		return errf(ErrCache, "serializing the cache entry for %s: %v", path, err)
-	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
-		return errf(ErrCache, "writing %s: %v", path, err)
-	}
-	return nil
-}
-
 func (r *FabricRegistry) saveCapToCache(c *cap.Cap) error {
 	path, err := r.capCacheFilePath(c.Urn.String(), c.Version)
 	if err != nil {
@@ -942,11 +922,11 @@ func (r *FabricRegistry) saveCapToCache(c *cap.Cap) error {
 	if err != nil {
 		return errf(ErrCache, "serializing cap %s: %v", c.Urn.String(), err)
 	}
-	return writeCacheFile(path, capCacheEntry{
+	return storeEntry(path, capCacheEntry{
 		Definition: definition,
 		CachedAt:   time.Now().Unix(),
 		TTLHours:   CacheDurationHours,
-	})
+	}, "cap")
 }
 
 func (r *FabricRegistry) saveMediaDefToCache(spec media.StoredMediaDef) error {
@@ -954,28 +934,28 @@ func (r *FabricRegistry) saveMediaDefToCache(spec media.StoredMediaDef) error {
 	if err != nil {
 		return err
 	}
-	return writeCacheFile(path, mediaCacheEntry{
+	return storeEntry(path, mediaCacheEntry{
 		Spec:     spec,
 		CachedAt: time.Now().Unix(),
 		TTLHours: CacheDurationHours,
-	})
+	}, "media def")
 }
 
 func (r *FabricRegistry) saveAliasToCache(alias media.StoredAlias) error {
-	return writeCacheFile(r.aliasCacheFilePath(alias.Name, alias.Version), aliasCacheEntry{
+	return storeEntry(r.aliasCacheFilePath(alias.Name, alias.Version), aliasCacheEntry{
 		Alias:    alias,
 		CachedAt: time.Now().Unix(),
 		TTLHours: CacheDurationHours,
-	})
+	}, "alias")
 }
 
 func (r *FabricRegistry) saveDimToCache(dim media.StoredDim) error {
 	_, path := definitionURLAndCachePath(r.cacheDir, r.locations, "dims", dim.Name, dim.Version)
-	return writeCacheFile(path, dimCacheEntry{
+	return storeEntry(path, dimCacheEntry{
 		Dim:      dim,
 		CachedAt: time.Now().Unix(),
 		TTLHours: CacheDurationHours,
-	})
+	}, "dim")
 }
 
 // ---------------------------------------------------------------------------
@@ -1078,21 +1058,30 @@ func (r *FabricRegistry) fetchAliasFromRegistry(normalizedName string, defver ui
 	if err := json.Unmarshal(body, &alias); err != nil {
 		return nil, &Error{Kind: ErrParse, Message: fmt.Sprintf("parsing alias '%s'", normalizedName), Err: err}
 	}
-	// The fetched body must match what was requested; a mismatched object means
-	// the registry served a different definition than the manifest pinned.
-	if alias.Name != normalizedName {
-		return nil, errf(ErrParse, "alias object name '%s' does not match the requested name '%s'",
-			alias.Name, normalizedName)
-	}
-	if alias.Version != defver {
-		return nil, errf(ErrParse, "alias '%s' object reports version %d but the manifest pins defver %d",
-			alias.Name, alias.Version, defver)
-	}
-	if _, ok := media.ClassifyAliasTarget(alias.Target); !ok {
-		return nil, errf(ErrValidation, "alias '%s' target '%s' is neither a cap nor a media URN",
-			alias.Name, alias.Target)
+	if err := validateFetchedAlias(&alias, normalizedName, defver); err != nil {
+		return nil, err
 	}
 	return &alias, nil
+}
+
+// validateFetchedAlias holds an alias body to what was asked for: the name and
+// defver the manifest pins, and a target that is a cap or a media URN. A
+// mismatched object means the registry (or the cache) holds a different
+// definition than the manifest pinned. Matches Rust: fn validate_fetched_alias
+func validateFetchedAlias(alias *media.StoredAlias, expectedName string, expectedDefver uint32) error {
+	if alias.Name != expectedName {
+		return errf(ErrParse, "alias object name '%s' does not match the requested name '%s'",
+			alias.Name, expectedName)
+	}
+	if alias.Version != expectedDefver {
+		return errf(ErrParse, "alias '%s' object reports version %d but the manifest pins defver %d",
+			alias.Name, alias.Version, expectedDefver)
+	}
+	if _, ok := media.ClassifyAliasTarget(alias.Target); !ok {
+		return errf(ErrValidation, "alias '%s' target '%s' is neither a cap nor a media URN",
+			alias.Name, alias.Target)
+	}
+	return nil
 }
 
 // fetchDim fetches a single dim body at its pinned defver, checks it, and
@@ -1973,7 +1962,11 @@ func (r *FabricRegistry) SetOffline(offline bool) {
 	r.offline = offline
 }
 
-// ClearCache drops both the in-memory and the on-disk caches.
+// ClearCache invalidates every cache of this registry's manifest version: the
+// in-memory maps and its whole folder on disk, INCLUDING the manifest. After
+// this the next lookup (or a freshly constructed registry) fetches the
+// manifest and every body from the network again. The folders of the layout
+// before per-version folders are removed with it (clearCacheFolder).
 func (r *FabricRegistry) ClearCache() error {
 	r.mu.Lock()
 	r.cachedCaps = make(map[string]*cap.Cap)
@@ -1983,22 +1976,38 @@ func (r *FabricRegistry) ClearCache() error {
 	r.extIndex = make(map[string][]string)
 	r.fetchFailures = make(map[fetchKey]error)
 	r.mu.Unlock()
-
-	if err := os.RemoveAll(r.cacheDir); err != nil {
-		return errf(ErrCache, "clearing the cache directory %s: %v", r.cacheDir, err)
-	}
-	for _, sub := range cacheSubdirs {
-		if err := os.MkdirAll(filepath.Join(r.cacheDir, sub), 0o755); err != nil {
-			return errf(ErrCache, "recreating %s: %v", filepath.Join(r.cacheDir, sub), err)
-		}
-	}
 	// The identity cap is mandatory in every capability set; a cleared cache
 	// still has it.
 	r.EnsureIdentityCap()
-	return nil
+
+	return clearCacheFolder(r.cacheDir)
 }
 
-// CacheDir is the on-disk root this registry reads and writes.
+// ClearCacheOf clears the disk cache of manifest manifestVersion of the
+// registry config names, without opening a registry on it — so a cache holding
+// a corrupt entry, which a registry refuses to open, can still be cleared. The
+// registry's charter is the stored one, else fetched, as a registry finds it.
+// It answers the folder cleared. Matches Rust: FabricRegistry::clear_cache_of
+func ClearCacheOf(config Config, manifestVersion uint32) (string, error) {
+	client := &http.Client{Timeout: httpTimeout}
+	capdagCache, err := CapdagCacheRoot()
+	if err != nil {
+		return "", err
+	}
+	charter, err := resolveCharter(client, capdagCache, config.Anchor)
+	if err != nil {
+		return "", err
+	}
+	cacheDir := versionDir(filepath.Join(capdagCache, charter.Slug), manifestVersion)
+	if err := clearCacheFolder(cacheDir); err != nil {
+		return "", err
+	}
+	return cacheDir, nil
+}
+
+// CacheDir is the cache folder of the manifest version this registry is
+// pinned at, `<os cache>/capdag/<charter slug>/v<N>`: the folder it reads,
+// writes and clears.
 func (r *FabricRegistry) CacheDir() string { return r.cacheDir }
 
 // ---------------------------------------------------------------------------
@@ -2057,33 +2066,37 @@ func NewForTest() *FabricRegistry {
 // NewForTestWithConfig is NewForTest against a chosen anchor, laid out the way
 // the publisher lays a fabric out.
 func NewForTestWithConfig(config Config) *FabricRegistry {
-	cacheDir, err := os.MkdirTemp("", "capdag-fabric-test-")
+	registryDir, err := os.MkdirTemp("", "capdag-fabric-test-")
 	if err != nil {
 		panic(fmt.Sprintf("cannot create a test cache dir: %v", err))
 	}
-	return NewForTestInDir(config, cacheDir)
+	return NewForTestInDir(config, registryDir)
 }
 
-// NewForTestInDir is NewForTestWithConfig over a caller-chosen cache root, for
-// tests that assert on the on-disk layout.
-func NewForTestInDir(config Config, cacheDir string) *FabricRegistry {
+// NewForTestInDir is NewForTestWithConfig over a caller-chosen registry
+// folder, for tests that assert on the on-disk layout. The registry is pinned
+// at manifest 1, so its cache folder is registryDir's v1 folder (CacheDir).
+func NewForTestInDir(config Config, registryDir string) *FabricRegistry {
+	return newForTestInDirAt(config, registryDir, 1)
+}
+
+// newForTestInDirAt is NewForTestInDir pinned at manifestVersion, with an
+// empty manifest; its cache folder is that version's folder in registryDir.
+func newForTestInDirAt(config Config, registryDir string, manifestVersion uint32) *FabricRegistry {
 	charter := PublisherLayoutCharter(config.Anchor)
 	locations, err := LocationsFromCharter(charter)
 	if err != nil {
 		panic(fmt.Sprintf("the publisher-layout charter is a fabric charter: %v", err))
 	}
-	for _, sub := range cacheSubdirs {
-		if err := os.MkdirAll(filepath.Join(cacheDir, sub), 0o755); err != nil {
-			panic(fmt.Sprintf("cannot create the test cache dir %s: %v", filepath.Join(cacheDir, sub), err))
+	cacheDir := versionDir(registryDir, manifestVersion)
+	for _, kind := range kindFolders {
+		if err := os.MkdirAll(filepath.Join(cacheDir, kind), 0o755); err != nil {
+			panic(fmt.Sprintf("cannot create the test cache dir %s: %v", filepath.Join(cacheDir, kind), err))
 		}
 	}
 	r := &FabricRegistry{
 		client:          &http.Client{Timeout: httpTimeout},
 		cacheDir:        cacheDir,
-		capsCacheDir:    filepath.Join(cacheDir, "caps"),
-		mediaCacheDir:   filepath.Join(cacheDir, "media"),
-		aliasesCacheDir: filepath.Join(cacheDir, "aliases"),
-		dimsCacheDir:    filepath.Join(cacheDir, "dims"),
 		config:          config,
 		charter:         charter,
 		locations:       locations,
@@ -2092,8 +2105,8 @@ func NewForTestInDir(config Config, cacheDir string) *FabricRegistry {
 		cachedAliases:   make(map[string]media.StoredAlias),
 		cachedDims:      make(map[string]media.StoredDim),
 		extIndex:        make(map[string][]string),
-		manifestVersion: 1,
-		manifest:        media.EmptyManifest(1),
+		manifestVersion: manifestVersion,
+		manifest:        media.EmptyManifest(manifestVersion),
 		fetchFailures:   make(map[fetchKey]error),
 	}
 	r.EnsureIdentityCap()
