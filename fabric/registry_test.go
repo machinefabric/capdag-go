@@ -807,39 +807,68 @@ func regTestUrn(tags string) string {
 // the manifest-driven defver resolution. Mirrors the Rust reference's
 // test0144_media_def_resolves_to_versioned_object_path_under_manifest.
 
-// TEST607: media_urns_for_extension returns error for unknown extension
-func Test607_media_urns_for_extension_unknown(t *testing.T) {
-	registry := NewForTest()
-
-	_, err := registry.MediaUrnsForExtension("zzzzunknown")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "zzzzunknown")
+// fileMediaURNs is the URNs of the file media types FileMediaForExtension
+// answers for extension.
+func fileMediaURNs(t *testing.T, registry *FabricRegistry, extension string) []string {
+	t.Helper()
+	defs, err := registry.FileMediaForExtension(extension)
+	require.NoError(t, err, ".%s", extension)
+	urns := make([]string, 0, len(defs))
+	for _, def := range defs {
+		urns = append(urns, def.Urn)
+	}
+	return urns
 }
 
-// TEST609: get_extension_mappings returns all registered extension→URN pairs.
-func Test609_get_extension_mappings(t *testing.T) {
+// TEST607: file_media_for_extension answers no file type for an extension no
+// definition of the manifest declares
+func Test607_file_media_for_an_unknown_extension_is_none(t *testing.T) {
 	registry := NewForTest()
-
 	registry.AddSpec(media.StoredMediaDef{
 		Urn:        "media:document;ext=pdf",
-		MediaType:  "application/octet-stream",
-		Title:      "Test",
+		MediaType:  "application/pdf",
+		Title:      "PDF Document",
 		Extensions: []string{"pdf"},
 	})
+
+	assert.Empty(t, fileMediaURNs(t, registry, "zzzzunknown"), "no definition declares .zzzzunknown")
+}
+
+// TEST608: file_media_for_extension answers the file media definitions that
+// list the extension, whatever its case
+func Test608_file_media_for_extension_lists_the_declaring_definitions(t *testing.T) {
+	registry := NewForTest()
 	registry.AddSpec(media.StoredMediaDef{
-		Urn:        "media:document;ext=epub",
-		MediaType:  "application/octet-stream",
-		Title:      "Test",
-		Extensions: []string{"epub"},
+		Urn:        "media:document;ext=pdf",
+		MediaType:  "application/pdf",
+		Title:      "PDF Document",
+		Extensions: []string{"pdf"},
 	})
 
-	mappings := registry.GetExtensionMappings()
-	extNames := make(map[string]bool)
-	for _, m := range mappings {
-		extNames[m.Extension] = true
-	}
-	assert.True(t, extNames["pdf"], "Should contain pdf")
-	assert.True(t, extNames["epub"], "Should contain epub")
+	lower := fileMediaURNs(t, registry, "pdf")
+	assert.Equal(t, []string{"media:document;ext=pdf"}, lower)
+	assert.Equal(t, lower, fileMediaURNs(t, registry, "PDF"))
+}
+
+// TEST609: a definition that lists an extension but carries no `ext=`
+// file-type tag is content, not a file type: it is never a file type of the
+// extension, even when it is cached
+func Test609_content_types_that_list_an_extension_are_no_file_types(t *testing.T) {
+	registry := NewForTest()
+	registry.AddSpec(media.StoredMediaDef{
+		Urn:        "media:download-result;enc=utf8;fmt=json;record",
+		MediaType:  "application/json",
+		Title:      "Model Download Result",
+		Extensions: []string{"json"},
+	})
+	registry.AddSpec(media.StoredMediaDef{
+		Urn:        "media:enc=utf8;ext=json;fmt=json",
+		MediaType:  "application/json",
+		Title:      "JSON File",
+		Extensions: []string{"json"},
+	})
+
+	assert.Equal(t, []string{"media:enc=utf8;ext=json;fmt=json"}, fileMediaURNs(t, registry, "json"))
 }
 
 // TEST610: get_cached_media_def answers NotFound for a media def the manifest
@@ -872,35 +901,6 @@ func Test610_get_cached_spec(t *testing.T) {
 // scheme — an internal persistence detail with no user-observable
 // behavior. Rust and Python dropped this for the same reason; this
 // deletion keeps the Go mirror in parity.
-
-func Test608_media_urns_for_extension_populated(t *testing.T) {
-	registry := NewForTest()
-
-	registry.AddSpec(media.StoredMediaDef{
-		Urn:        "media:document;ext=pdf",
-		MediaType:  "application/pdf",
-		Title:      "PDF Document",
-		Extensions: []string{"pdf"},
-	})
-
-	urns, err := registry.MediaUrnsForExtension("pdf")
-	require.NoError(t, err)
-	assert.NotEmpty(t, urns, "Should have at least one URN for pdf")
-
-	found := false
-	for _, u := range urns {
-		if strings.Contains(u, "pdf") {
-			found = true
-			break
-		}
-	}
-	assert.True(t, found, "URNs should contain pdf: %v", urns)
-
-	// Case-insensitive
-	urnsUpper, err := registry.MediaUrnsForExtension("PDF")
-	require.NoError(t, err)
-	assert.Equal(t, urns, urnsUpper)
-}
 
 // TEST616: StoredMediaDef converts to MediaDef preserving every field.
 
@@ -1519,4 +1519,81 @@ func Test1993_clearing_empties_one_version_and_removes_the_old_shared_folders(t 
 	require.NoError(t, err)
 	assert.Len(t, pinned.caps, 1, "manifest 10's cache stays")
 	assert.FileExists(t, filepath.Join(registryDir, "charter.json"), "the charter stays")
+}
+
+// keptManifest is a manifest at 13 naming a file type and a content-only JSON
+// record, kept in cacheDir as a fetched manifest is, and the file it is kept
+// in.
+func keptManifest(t *testing.T, cacheDir string) (*media.Manifest, string) {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(cacheDir, 0o755))
+	manifest := media.EmptyManifest(13)
+	manifest.Media["media:enc=utf8;ext=csv;fmt=csv;list;record"] = 2
+	manifest.Media["media:download-result;enc=utf8;fmt=json;record"] = 1
+	file := filepath.Join(cacheDir, manifestFile)
+	body, err := json.Marshal(manifest)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(file, body, 0o644))
+	return manifest, file
+}
+
+// TEST7186: the file types a manifest names are worked out once and kept
+// beside it, in its version's folder; read back while that manifest file is
+// unchanged, its media URNs are not parsed again; a manifest file that changed
+// (fetched again) is read afresh; a manifest made in memory, with no file,
+// leaves nothing behind
+func Test7186_file_types_are_kept_beside_the_manifest_they_were_read_from(t *testing.T) {
+	cacheDir := versionDir(t.TempDir(), 13)
+	manifest, file := keptManifest(t, cacheDir)
+	indexFile := filepath.Join(cacheDir, fileTypesFile)
+	csv := []fileType{{urn: "media:enc=utf8;ext=csv;fmt=csv;list;record", defver: 2}}
+
+	got, err := fileTypesOf(cacheDir, file, manifest)
+	require.NoError(t, err)
+	assert.Equal(t, csv, got)
+	assert.FileExists(t, indexFile, "the file types are kept beside the manifest")
+
+	// The same manifest file, with an entry that is no media URN in the
+	// manifest held in memory: the kept answer is given, so no URN of the
+	// manifest was parsed.
+	unparsable := media.EmptyManifest(13)
+	for entry, defver := range manifest.Media {
+		unparsable.Media[entry] = defver
+	}
+	unparsable.Media["not a media urn"] = 1
+	got, err = fileTypesOf(cacheDir, file, unparsable)
+	require.NoError(t, err)
+	assert.Equal(t, csv, got)
+
+	// The manifest file changed: the kept file types are not its own.
+	body, err := json.Marshal(unparsable)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(file, body, 0o644))
+	_, err = fileTypesOf(cacheDir, file, unparsable)
+	require.Error(t, err, "a manifest file that changed is read afresh")
+	assert.Equal(t, ErrFileTypes, kindOf(err), "%v", err)
+	assert.Contains(t, err.Error(), "'not a media urn'")
+
+	memoryDir := versionDir(t.TempDir(), 13)
+	require.NoError(t, os.MkdirAll(memoryDir, 0o755))
+	got, err = fileTypesOf(memoryDir, "", manifest)
+	require.NoError(t, err)
+	assert.Equal(t, csv, got)
+	assert.NoFileExists(t, filepath.Join(memoryDir, fileTypesFile), "nothing is kept for a manifest with no file")
+}
+
+// TEST7187: kept file types that cannot be read are an error naming their
+// file, never worked out again in silence
+func Test7187_corrupt_kept_file_types_are_an_error_naming_the_file(t *testing.T) {
+	cacheDir := versionDir(t.TempDir(), 13)
+	manifest, file := keptManifest(t, cacheDir)
+	indexFile := filepath.Join(cacheDir, fileTypesFile)
+	require.NoError(t, os.WriteFile(indexFile, []byte(`{"manifest_sha256": "ab`), 0o644))
+
+	_, err := fileTypesOf(cacheDir, file, manifest)
+	require.Error(t, err, "a corrupt file is an error")
+	assert.Equal(t, ErrCache, kindOf(err), "%v", err)
+	assert.Contains(t, err.Error(), indexFile, "names the file")
+	assert.Contains(t, err.Error(), "corrupt")
+	assert.FileExists(t, indexFile, "the file is left for whoever reads the error")
 }

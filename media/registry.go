@@ -174,10 +174,6 @@ type MediaDefSource interface {
 	// touches the network: it gives the definition, or the error that says why
 	// it is not at hand — absent, its fetch refused, or not fetched yet.
 	GetCachedMediaDef(urnOrAlias string) (*StoredMediaDef, error)
-	// MediaUrnsForExtension names the media URNs registered for a file
-	// extension. The index hydrates lazily, so an extension is only known once
-	// its owning spec has landed in cache.
-	MediaUrnsForExtension(extension string) ([]string, error)
 }
 
 // =============================================================================

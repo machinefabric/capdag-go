@@ -31,14 +31,17 @@
 package fabric
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -90,7 +93,11 @@ const (
 	ErrParse      ErrorKind = "parse"
 	ErrCache      ErrorKind = "cache"
 	ErrValidation ErrorKind = "validation"
-	ErrExtension  ErrorKind = "extension_not_found"
+	// ErrFileTypes: the fabric's file media types could not all be had —
+	// a definition the manifest names as one could not be loaded, or a
+	// manifest entry is no media URN — so no file's type can be told from its
+	// extension.
+	ErrFileTypes ErrorKind = "file_types"
 	// ErrCharter: the registry's charter could not be had, or was refused.
 	// Nothing the registry serves is used without it.
 	ErrCharter ErrorKind = "charter"
@@ -461,12 +468,24 @@ type FabricRegistry struct {
 	// cachedDims maps a dim name to its body, filtered to the pinned
 	// manifest's defvers.
 	cachedDims map[string]media.StoredDim
-	extIndex   map[string][]string
+
+	// fileMedia maps a lower-case extension to the file media definitions that
+	// list it, loaded from the whole manifest when a file's type is first
+	// asked (FileMediaForExtension); nil until then.
+	fileMedia map[string][]media.StoredMediaDef
+	// fileMediaLoading is held while the file media index loads, so it loads
+	// once.
+	fileMediaLoading sync.Mutex
 
 	// manifestVersion is >= 1: every URN lookup resolves to a (urn, defver)
 	// pair via the manifest before fetching.
 	manifestVersion uint32
 	manifest        *media.Manifest
+	// manifestPath is the cached manifest file manifest was read from: the
+	// file types it names are kept beside it (fileTypesOf). Empty for a
+	// manifest made in memory, and once a test helper has changed manifest's
+	// media.
+	manifestPath string
 
 	// fetchFailures keeps what the last failed fetch of each definition came
 	// to, until a fetch of it succeeds. A synchronous lookup says this rather
@@ -588,16 +607,11 @@ func WithConfigAndManifestVersion(config Config, manifestVersion uint32) (*Fabri
 		cachedSpecs:     pinned.media,
 		cachedAliases:   pinned.aliases,
 		cachedDims:      pinned.dims,
-		extIndex:        make(map[string][]string),
 		manifestVersion: manifestVersion,
 		manifest:        manifest,
+		manifestPath:    filepath.Join(cacheDir, manifestFile),
 		fetchFailures:   make(map[fetchKey]error),
 	}
-	r.mu.Lock()
-	for _, spec := range r.cachedSpecs {
-		r.updateExtensionIndexLocked(spec)
-	}
-	r.mu.Unlock()
 
 	r.EnsureIdentityCap()
 	return r, nil
@@ -947,27 +961,6 @@ func (r *FabricRegistry) saveDimToCache(dim media.StoredDim) error {
 		CachedAt: time.Now().Unix(),
 		TTLHours: CacheDurationHours,
 	}, "dim")
-}
-
-// ---------------------------------------------------------------------------
-// Extension index
-// ---------------------------------------------------------------------------
-
-func (r *FabricRegistry) updateExtensionIndexLocked(spec media.StoredMediaDef) {
-	for _, ext := range spec.Extensions {
-		lower := strings.ToLower(ext)
-		urns := r.extIndex[lower]
-		found := false
-		for _, existing := range urns {
-			if existing == spec.Urn {
-				found = true
-				break
-			}
-		}
-		if !found {
-			r.extIndex[lower] = append(urns, spec.Urn)
-		}
-	}
 }
 
 // ---------------------------------------------------------------------------
@@ -1637,7 +1630,6 @@ func (r *FabricRegistry) fetchMediaDefAndDims(mediaURN, normalized string, defve
 	}
 	r.mu.Lock()
 	r.cachedSpecs[specNormalized] = *spec
-	r.updateExtensionIndexLocked(*spec)
 	r.mu.Unlock()
 	return spec, nil
 }
@@ -1702,37 +1694,248 @@ func (r *FabricRegistry) MediaDefExists(urnStr string) (bool, error) {
 	}
 }
 
-// MediaUrnsForExtension looks up the media URNs registered for a file
-// extension. The registry hydrates lazily, so an extension only becomes known
-// once its owning spec has landed in cache.
-func (r *FabricRegistry) MediaUrnsForExtension(extension string) ([]string, error) {
-	lower := strings.ToLower(extension)
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	urns, ok := r.extIndex[lower]
-	if !ok {
-		return nil, errf(ErrExtension,
-			"no media def registered for extension '%s'. Ensure the media def declares an 'extension' field.",
-			extension)
+// FileMediaForExtension is the file media types a file with this extension
+// can be: every definition in the pinned manifest whose URN carries the `ext=`
+// file-type tag and whose `extensions` list the extension (any case), in URN
+// order. Empty when the fabric declares no file type for it.
+//
+// The first call loads every file media definition the manifest names (those
+// not cached yet are fetched, fileMediaFetchesAtOnce at a time, and kept in
+// this manifest version's cache); later calls answer from memory. A
+// definition that cannot be had fails the call, naming each one and why: an
+// answer from part of the fabric's file types would be a wrong answer.
+// Matches Rust: FabricRegistry::file_media_for_extension
+func (r *FabricRegistry) FileMediaForExtension(extension string) ([]media.StoredMediaDef, error) {
+	index, err := r.fileMediaIndex()
+	if err != nil {
+		return nil, err
 	}
-	return append([]string(nil), urns...), nil
+	defs := index[strings.ToLower(extension)]
+	out := make([]media.StoredMediaDef, len(defs))
+	copy(out, defs)
+	return out, nil
 }
 
-// ExtensionMapping pairs a lowercase extension with the media URNs claiming it.
-type ExtensionMapping struct {
-	Extension string
-	Urns      []string
-}
+// fileMediaFetchesAtOnce is how many file media definitions are fetched at
+// once when the file media index loads on a cold cache.
+const fileMediaFetchesAtOnce = 16
 
-// GetExtensionMappings returns the whole extension index.
-func (r *FabricRegistry) GetExtensionMappings() []ExtensionMapping {
+// loadedFileMedia is the file media index, or nil when it has not loaded.
+func (r *FabricRegistry) loadedFileMedia() map[string][]media.StoredMediaDef {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	out := make([]ExtensionMapping, 0, len(r.extIndex))
-	for ext, urns := range r.extIndex {
-		out = append(out, ExtensionMapping{Extension: ext, Urns: append([]string(nil), urns...)})
+	return r.fileMedia
+}
+
+// fileMediaIndex is the file media index, loaded once (FileMediaForExtension).
+func (r *FabricRegistry) fileMediaIndex() (map[string][]media.StoredMediaDef, error) {
+	if index := r.loadedFileMedia(); index != nil {
+		return index, nil
 	}
-	return out
+	r.fileMediaLoading.Lock()
+	defer r.fileMediaLoading.Unlock()
+	if index := r.loadedFileMedia(); index != nil {
+		return index, nil
+	}
+
+	// What the manifest names, taken as it stands now: the file types are
+	// worked out (or read back) without holding the registry.
+	r.mu.RLock()
+	cacheDir := r.cacheDir
+	manifestPath := r.manifestPath
+	manifestVersion := r.manifestVersion
+	snapshot := &media.Manifest{Version: r.manifest.Version, Media: maps.Clone(r.manifest.Media)}
+	r.mu.RUnlock()
+
+	fileTypes, err := fileTypesOf(cacheDir, manifestPath, snapshot)
+	if err != nil {
+		return nil, err
+	}
+
+	defs := make([]media.StoredMediaDef, 0, len(fileTypes))
+	var missing []fileType
+	r.mu.RLock()
+	for _, ft := range fileTypes {
+		if def, ok := r.cachedSpecs[ft.urn]; ok {
+			defs = append(defs, def)
+		} else {
+			missing = append(missing, ft)
+		}
+	}
+	r.mu.RUnlock()
+
+	type fetched struct {
+		urn string
+		def *media.StoredMediaDef
+		err error
+	}
+	results := make(chan fetched, len(missing))
+	gate := make(chan struct{}, fileMediaFetchesAtOnce)
+	var fetches sync.WaitGroup
+	for _, ft := range missing {
+		fetches.Add(1)
+		go func(ft fileType) {
+			defer fetches.Done()
+			gate <- struct{}{}
+			defer func() { <-gate }()
+			def, err := r.fetchAndCacheMediaDef(ft.urn, ft.defver)
+			results <- fetched{urn: ft.urn, def: def, err: err}
+		}(ft)
+	}
+	fetches.Wait()
+	close(results)
+
+	var failures []string
+	for result := range results {
+		if result.err != nil {
+			failures = append(failures, fmt.Sprintf("%s: %v", result.urn, result.err))
+			continue
+		}
+		defs = append(defs, *result.def)
+	}
+	if len(failures) > 0 {
+		sort.Strings(failures)
+		return nil, errf(ErrFileTypes,
+			"%d of the %d file media types of manifest v%d could not be loaded, so no file's "+
+				"type can be told from its extension: %s",
+			len(failures), len(failures)+len(defs), manifestVersion, strings.Join(failures, "; "))
+	}
+
+	index := make(map[string][]media.StoredMediaDef)
+	for _, def := range defs {
+		for _, ext := range def.Extensions {
+			lower := strings.ToLower(ext)
+			index[lower] = append(index[lower], def)
+		}
+	}
+	for ext, listed := range index {
+		sort.SliceStable(listed, func(i, j int) bool { return listed[i].Urn < listed[j].Urn })
+		kept := make([]media.StoredMediaDef, 0, len(listed))
+		for _, def := range listed {
+			if len(kept) > 0 && kept[len(kept)-1].Urn == def.Urn {
+				continue
+			}
+			kept = append(kept, def)
+		}
+		index[ext] = kept
+	}
+
+	r.mu.Lock()
+	r.fileMedia = index
+	r.mu.Unlock()
+	return index, nil
+}
+
+// fileType is one media definition of a manifest that is a file type: its
+// URN, as the manifest names it, and its pinned defver. Kept on disk as the
+// pair `[urn, defver]`.
+type fileType struct {
+	urn    string
+	defver uint32
+}
+
+// MarshalJSON writes a file type as the pair `[urn, defver]`.
+func (f fileType) MarshalJSON() ([]byte, error) {
+	return json.Marshal([]any{f.urn, f.defver})
+}
+
+// UnmarshalJSON reads a file type from the pair `[urn, defver]`; anything else
+// is an error saying what it is not.
+func (f *fileType) UnmarshalJSON(data []byte) error {
+	var pair []json.RawMessage
+	if err := json.Unmarshal(data, &pair); err != nil {
+		return fmt.Errorf("a file type is a [urn, defver] pair: %w", err)
+	}
+	if len(pair) != 2 {
+		return fmt.Errorf("a file type is a [urn, defver] pair, and this one has %d members", len(pair))
+	}
+	if err := json.Unmarshal(pair[0], &f.urn); err != nil {
+		return fmt.Errorf("a file type's urn is a string: %w", err)
+	}
+	if err := json.Unmarshal(pair[1], &f.defver); err != nil {
+		return fmt.Errorf("the file type '%s' has no valid defver: %w", f.urn, err)
+	}
+	return nil
+}
+
+// deriveFileTypes is the media definitions of manifest that are file types:
+// those whose URN carries the `ext=` file-type tag, each with its pinned
+// defver, in URN order. A manifest entry that is no media URN is an error
+// naming it. Matches Rust: fn derive_file_types
+func deriveFileTypes(manifest *media.Manifest) ([]fileType, error) {
+	fileTypes := make([]fileType, 0)
+	for entry, defver := range manifest.Media {
+		parsed, err := urn.NewMediaUrnFromString(entry)
+		if err != nil {
+			return nil, errf(ErrFileTypes,
+				"manifest v%d names '%s' as a media definition, and it is no media URN: %v",
+				manifest.Version, entry, err)
+		}
+		if parsed.HasTag("ext") {
+			fileTypes = append(fileTypes, fileType{urn: entry, defver: defver})
+		}
+	}
+	sort.Slice(fileTypes, func(i, j int) bool {
+		if fileTypes[i].urn != fileTypes[j].urn {
+			return fileTypes[i].urn < fileTypes[j].urn
+		}
+		return fileTypes[i].defver < fileTypes[j].defver
+	})
+	return fileTypes, nil
+}
+
+// keptFileTypes is the file types a manifest names, as they are kept beside
+// it (fileTypesFile): worked out from the manifest file whose bytes hash to
+// ManifestSha256. Matches Rust: struct KeptFileTypes
+type keptFileTypes struct {
+	ManifestSha256 string     `json:"manifest_sha256"`
+	FileTypes      []fileType `json:"file_types"`
+}
+
+// fileTypesOf is the file types of manifest, in the cache folder cacheDir of
+// its version. manifestPath is the cached manifest file manifest was read
+// from, empty for a manifest made in memory.
+//
+// Working them out parses every media URN the manifest names (32,890 in
+// manifest 13), which a command that reads a file would otherwise pay on every
+// run. So they are kept beside the manifest file, with the hash of its bytes,
+// and read back while that file is unchanged; a manifest fetched again has
+// other bytes and its file types are worked out afresh. Kept file types that
+// cannot be read are an error naming their file. A manifest with no file keeps
+// nothing. Matches Rust: fn file_types_of
+func fileTypesOf(cacheDir, manifestPath string, manifest *media.Manifest) ([]fileType, error) {
+	if manifestPath == "" {
+		return deriveFileTypes(manifest)
+	}
+	bytes, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return nil, errf(ErrCache, "the cached manifest %s cannot be read: %v", manifestPath, err)
+	}
+	manifestSha256 := fmt.Sprintf("%x", sha256.Sum256(bytes))
+	keptPath := filepath.Join(cacheDir, fileTypesFile)
+	kept, err := readEntry[keptFileTypes](keptPath, "file types")
+	if err != nil {
+		return nil, err
+	}
+	if kept != nil {
+		if kept.ManifestSha256 == "" {
+			return nil, corrupt(keptPath, "file types", "it names no manifest_sha256")
+		}
+		if kept.FileTypes == nil {
+			return nil, corrupt(keptPath, "file types", "it lists no file_types")
+		}
+		if kept.ManifestSha256 == manifestSha256 {
+			return kept.FileTypes, nil
+		}
+	}
+	fileTypes, err := deriveFileTypes(manifest)
+	if err != nil {
+		return nil, err
+	}
+	if err := storeEntry(keptPath, keptFileTypes{ManifestSha256: manifestSha256, FileTypes: fileTypes}, "file types"); err != nil {
+		return nil, err
+	}
+	return fileTypes, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -1964,7 +2167,7 @@ func (r *FabricRegistry) ClearCache() error {
 	r.cachedSpecs = make(map[string]media.StoredMediaDef)
 	r.cachedAliases = make(map[string]media.StoredAlias)
 	r.cachedDims = make(map[string]media.StoredDim)
-	r.extIndex = make(map[string][]string)
+	r.fileMedia = nil
 	r.fetchFailures = make(map[fetchKey]error)
 	r.mu.Unlock()
 	// The identity cap is mandatory in every capability set; a cleared cache
@@ -2064,6 +2267,16 @@ func NewForTestWithConfig(config Config) *FabricRegistry {
 	return NewForTestInDir(config, registryDir)
 }
 
+// NewForTestWithConfigAndVersion is NewForTestWithConfig pinned at
+// manifestVersion, with an empty manifest.
+func NewForTestWithConfigAndVersion(config Config, manifestVersion uint32) *FabricRegistry {
+	registryDir, err := os.MkdirTemp("", "capdag-fabric-test-")
+	if err != nil {
+		panic(fmt.Sprintf("cannot create a test cache dir: %v", err))
+	}
+	return newForTestInDirAt(config, registryDir, manifestVersion)
+}
+
 // NewForTestInDir is NewForTestWithConfig over a caller-chosen registry
 // folder, for tests that assert on the on-disk layout. The registry is pinned
 // at manifest 1, so its cache folder is registryDir's v1 folder (CacheDir).
@@ -2095,7 +2308,6 @@ func newForTestInDirAt(config Config, registryDir string, manifestVersion uint32
 		cachedSpecs:     make(map[string]media.StoredMediaDef),
 		cachedAliases:   make(map[string]media.StoredAlias),
 		cachedDims:      make(map[string]media.StoredDim),
-		extIndex:        make(map[string][]string),
 		manifestVersion: manifestVersion,
 		manifest:        media.EmptyManifest(manifestVersion),
 		fetchFailures:   make(map[fetchKey]error),
@@ -2126,8 +2338,8 @@ func (r *FabricRegistry) AddCapsToCache(caps []*cap.Cap) {
 	}
 }
 
-// AddSpec inserts a media def directly into the in-memory cache, updating the
-// extension index and recording it in the manifest.
+// AddSpec inserts a media def directly into the in-memory cache and records it
+// in the manifest, which is then no longer the file it was read from.
 func (r *FabricRegistry) AddSpec(spec media.StoredMediaDef) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -2140,14 +2352,15 @@ func (r *FabricRegistry) AddSpec(spec media.StoredMediaDef) {
 		return
 	}
 	r.cachedSpecs[normalized] = spec
-	r.updateExtensionIndexLocked(spec)
 	if r.manifestVersion >= 1 {
 		r.manifest.Media[normalized] = spec.Version
 	}
+	r.manifestPath = ""
 }
 
 // PinMediaDefForTest names a media def in the pinned manifest at defver
 // without caching it, so a lookup of it goes to the registry (test helper).
+// The manifest is then no longer the file it was read from.
 func (r *FabricRegistry) PinMediaDefForTest(mediaURN string, defver uint32) {
 	normalized, err := NormalizeMediaURN(mediaURN)
 	if err != nil {
@@ -2156,6 +2369,7 @@ func (r *FabricRegistry) PinMediaDefForTest(mediaURN string, defver uint32) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.manifest.Media[normalized] = defver
+	r.manifestPath = ""
 }
 
 // PinAliasForTest names an alias in the pinned manifest at defver without

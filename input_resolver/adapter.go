@@ -12,15 +12,6 @@ import "context"
 // the same prefix.
 const MaxContentInspectionBytes = 100 * 1024
 
-// AdapterResult is the result of adapter detection — a selected media URN and
-// its structure.
-type AdapterResult struct {
-	// MediaUrn is the selected media URN.
-	MediaUrn string
-	// ContentStructure is the detected content structure.
-	ContentStructure ContentStructure
-}
-
 // CartridgeAdapterInvoker invokes the adapter-selection cap on a specific cartridge.
 //
 // The implementation lives on the host side where it has access to the cartridge

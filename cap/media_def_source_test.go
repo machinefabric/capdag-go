@@ -2,7 +2,6 @@ package cap
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/machinefabric/capdag-go/media"
 	"github.com/machinefabric/capdag-go/urn"
@@ -16,13 +15,11 @@ import (
 // the whole contract this package needs.
 type testMediaDefSource struct {
 	specs map[string]media.StoredMediaDef
-	byExt map[string][]string
 }
 
 func newTestMediaDefSource() *testMediaDefSource {
 	return &testMediaDefSource{
 		specs: make(map[string]media.StoredMediaDef),
-		byExt: make(map[string][]string),
 	}
 }
 
@@ -32,10 +29,6 @@ func (s *testMediaDefSource) AddSpec(spec media.StoredMediaDef) {
 		normalized = parsed.String()
 	}
 	s.specs[normalized] = spec
-	for _, ext := range spec.Extensions {
-		lower := strings.ToLower(ext)
-		s.byExt[lower] = append(s.byExt[lower], spec.Urn)
-	}
 }
 
 func (s *testMediaDefSource) GetMediaDef(urnOrAlias string) (*media.StoredMediaDef, error) {
@@ -52,12 +45,4 @@ func (s *testMediaDefSource) GetCachedMediaDef(urnOrAlias string) (*media.Stored
 		return nil, fmt.Errorf("media URN '%s' not found in the test source", urnOrAlias)
 	}
 	return &spec, nil
-}
-
-func (s *testMediaDefSource) MediaUrnsForExtension(extension string) ([]string, error) {
-	urns, ok := s.byExt[strings.ToLower(extension)]
-	if !ok {
-		return nil, fmt.Errorf("no media def registered for extension '%s'", extension)
-	}
-	return append([]string(nil), urns...), nil
 }

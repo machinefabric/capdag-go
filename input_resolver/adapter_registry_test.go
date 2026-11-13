@@ -4,18 +4,17 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/machinefabric/capdag-go/fabric"
 	"github.com/machinefabric/capdag-go/media"
 )
 
-// createTestRegistry builds a FabricRegistry pre-seeded with a JSON media def
-// (the only extension these tests reference). The registry hydrates extensions
-// from spec arrival; tests must seed explicitly.
-func createTestRegistry(t *testing.T) *testMediaDefSource {
+// createTestRegistry builds a FabricRegistry whose manifest names one file
+// media type, a JSON file (the only extension these tests reference), cached.
+func createTestRegistry(t *testing.T) *fabric.FabricRegistry {
 	t.Helper()
-	registry := newTestMediaDefSource()
+	registry := fabric.NewForTest()
 	registry.AddSpec(media.StoredMediaDef{
-		Version:    0,
-		Urn:        "media:enc=utf8;fmt=json;record",
+		Urn:        "media:enc=utf8;ext=json;fmt=json;record",
 		MediaType:  "application/json",
 		Title:      "JSON",
 		Extensions: []string{"json"},
@@ -154,7 +153,10 @@ func Test1280_FindAdaptersForExtension(t *testing.T) {
 		t.Fatalf("registration failed: %v", err)
 	}
 
-	results := registry.FindAdaptersForExtension("json")
+	results, err := registry.FindAdaptersForExtension("json")
+	if err != nil {
+		t.Fatalf("the fabric's file media types load: %v", err)
+	}
 	if len(results) == 0 {
 		t.Fatalf("Must find adapter for json extension (found: %v)", results)
 	}
@@ -167,7 +169,11 @@ func Test1280_FindAdaptersForExtension(t *testing.T) {
 func Test1281_NoAdapterForUnknown(t *testing.T) {
 	registry := NewMediaAdapterRegistry(createTestRegistry(t))
 
-	if registry.HasAdapterForExtension("xyz_unknown") {
+	has, err := registry.HasAdapterForExtension("xyz_unknown")
+	if err != nil {
+		t.Fatalf("the fabric's file media types load: %v", err)
+	}
+	if has {
 		t.Fatal("Unknown extension must return false")
 	}
 }
