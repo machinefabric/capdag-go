@@ -8,6 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/machinefabric/capdag-go/cap"
+	"github.com/machinefabric/capdag-go/standard"
+	"github.com/machinefabric/capdag-go/urn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -166,12 +169,12 @@ func Test1908_a_manifest_refusal_names_both_manifests_and_the_remedy(t *testing.
 		}
 	}
 	source := func(s CartridgeInstallSource) *CartridgeInstallSource { return &s }
-	dir := filepath.Join("imagecartridge", "1.174.414")
-
-	assert.Nil(t, CartridgeRefusal(stamped(source(CartridgeInstallSourceRegistry), &anchor, 13), dir, terms))
+	recorded, refusal := CartridgeAdmission(stamped(source(CartridgeInstallSourceRegistry), &anchor, 13), terms)
+	assert.Nil(t, refusal)
+	assert.Nil(t, recorded, "a registry install is probed, not admitted from a record")
 
 	refused := func(from *CartridgeInstallSource, registry *string) *Refusal {
-		r := CartridgeRefusal(stamped(from, registry, 12), dir, terms)
+		_, r := CartridgeAdmission(stamped(from, registry, 12), terms)
 		require.NotNil(t, r, "stamped for 12, refused by a host at 13")
 		return r
 	}
@@ -325,49 +328,109 @@ func Test1878_a_bundled_cartridge_is_refused_where_nothing_proves_it(t *testing.
 		"message should name the bundled-integrity failure: %s", out[0].Error.Message)
 }
 
-// TEST1928: a bundled cartridge the manifest records passes, and one it records
-// differently does not.
+// recordedCapGroups are the cap groups a build recorded for the fixture
+// cartridge: one cap, which discovery must hand back as recorded.
+func recordedCapGroups(t *testing.T) []CapGroup {
+	t.Helper()
+	identity, err := urn.NewCapUrnFromString(standard.CapIdentity)
+	require.NoError(t, err)
+	return []CapGroup{{
+		Name: "cart",
+		Caps: []cap.Cap{*cap.NewCap(identity, "Identity", []string{"identity"})},
+	}}
+}
+
+// recordedManifest is a manifest recording the fixture cartridge at sha256,
+// built for fabric manifest version fabricManifestVersion, advertising
+// capGroups.
+func recordedManifest(sha256 string, fabricManifestVersion uint32, capGroups []CapGroup) BundleManifest {
+	return NewBundleManifest("dev", []BundledCartridge{{
+		Name:                  "cart",
+		Version:               "1.0.0",
+		Channel:               "nightly",
+		SHA256:                sha256,
+		FabricManifestVersion: fabricManifestVersion,
+		CapGroups:             capGroups,
+	}})
+}
+
+// installUnstartableBundled lays down the bundled fixture cartridge with an
+// entry point that cannot be started on any platform: marked executable, as an
+// installed entry point must be, and not a program. A discovery that started it
+// would end at HandshakeFailed.
+func installUnstartableBundled(t *testing.T, root string) string {
+	t.Helper()
+	dir := filepath.Join(root, "dev", fmt.Sprintf("v%d", CartridgeRegistryVersion), "nightly", "cart", "1.0.0")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "cartridge.json"), []byte(bundledCartridgeJSON()), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "cart"), []byte("not a program"), 0o755))
+	return dir
+}
+
+// TEST1928: a bundled cartridge is admitted exactly when the manifest records
+// it, and refused, before anything runs, when it does not.
 //
 // The other half of TEST1878, and the one that proves the gate is a real check
 // rather than a refusal of everything: the same tree, the same cartridge, and
-// the only difference is what the build recorded about it. A gate that always
-// said no would pass TEST1878 alone.
+// the only difference is what the build recorded about it.
 func Test1928_a_bundled_cartridge_passes_exactly_when_the_manifest_records_it(t *testing.T) {
 	root := t.TempDir()
-	json := bundledCartridgeJSON()
-	installFixture(t, root, "dev", "nightly", "cart", "1.0.0", &json, "cart")
+	installUnstartableBundled(t, root)
 
-	versionDir := filepath.Join(
-		root, "dev", fmt.Sprintf("v%d", CartridgeRegistryVersion), "nightly", "cart", "1.0.0",
-	)
-	recorded, err := HashCartridgeDirectory(versionDir)
-	require.NoError(t, err)
-
-	listed := func(sha256 string) *DiscoveryIdentity {
-		return bundledIdentity(NewBundleManifest("dev", []BundledCartridge{{
-			Name:    "cart",
-			Version: "1.0.0",
-			Channel: "nightly",
-			SHA256:  sha256,
-		}}))
-	}
-
-	// Recorded as it is on disk: past the gate. It still ends at the HELLO
-	// probe, because the fixture's entry point is not a cartridge — what
-	// matters is that the failure is no longer the integrity one.
-	out, err := DiscoverCartridges(root, listed(recorded))
+	out, err := DiscoverCartridges(root, bundledIdentity(recordedManifest(strings.Repeat("a", 64), 1, recordedCapGroups(t))))
 	require.NoError(t, err)
 	require.Len(t, out, 1)
-	require.NotNil(t, out[0].Error)
-	assert.NotContains(t, out[0].Error.Message, "bundled cartridge integrity",
-		"a cartridge the manifest records must get past the integrity gate: %s", out[0].Error.Message)
+	assert.Equal(t, DiscoveredCartridgeDirectory, out[0].Kind,
+		"a recorded bundled cartridge must be admitted: %+v", out[0])
 
-	// Recorded as something else — the cartridge was changed after the build
-	// recorded it.
-	out, err = DiscoverCartridges(root, listed(strings.Repeat("f", 64)))
+	// Recorded under another name: this build ships a cartridge it did not
+	// record.
+	other := recordedManifest(strings.Repeat("a", 64), 1, recordedCapGroups(t))
+	other.Cartridges[0].Name = "other"
+	out, err = DiscoverCartridges(root, bundledIdentity(other))
 	require.NoError(t, err)
 	expectIncompatible(t, out, CartridgeAttachmentErrorKindMisplaced)
-	require.NotNil(t, out[0].Error)
 	assert.Contains(t, out[0].Error.Message, "bundled cartridge integrity",
-		"a cartridge that differs from the manifest must be refused: %s", out[0].Error.Message)
+		"a cartridge the manifest does not record must be refused: %s", out[0].Error.Message)
+}
+
+// TEST1931: discovering a bundle neither starts nor hashes a cartridge: its
+// caps and its content hash are the ones the signed manifest records.
+//
+// The entry point cannot be started, so a discovery that probed it would
+// report HandshakeFailed; and the recorded hash is not the directory's, so a
+// discovery that hashed it would refuse it. The hash is held to the directory
+// when a host starts the cartridge (TEST1962's half).
+func Test1931_bundled_discovery_reads_the_manifest_and_starts_nothing(t *testing.T) {
+	root := t.TempDir()
+	dir := installUnstartableBundled(t, root)
+	recorded := recordedCapGroups(t)
+
+	out, err := DiscoverCartridges(root, bundledIdentity(recordedManifest(strings.Repeat("f", 64), 1, recorded)))
+	require.NoError(t, err)
+	require.Len(t, out, 1)
+	require.Equal(t, DiscoveredCartridgeDirectory, out[0].Kind,
+		"expected the bundled cartridge admitted from its manifest, got %+v", out[0])
+	assert.Equal(t, recorded, out[0].CapGroups, "the caps must be the recorded ones")
+	require.NotNil(t, out[0].BundleSHA256, "a bundled cartridge carries the hash its build recorded")
+	assert.Equal(t, strings.Repeat("f", 64), *out[0].BundleSHA256)
+	assert.Equal(t, dir, out[0].VersionDir)
+	assert.Equal(t, filepath.Join(dir, "cart"), out[0].EntryPoint)
+	assert.Nil(t, out[0].Error)
+}
+
+// TEST1932: a bundled cartridge whose build recorded another fabric manifest
+// version is refused as built for another fabric, without being started.
+//
+// Its cartridge.json says the host's version; the signed record says
+// otherwise, and the signed record is what discovery believes, since
+// cartridge.json is outside the hash.
+func Test1932_a_bundled_cartridge_built_for_another_fabric_is_refused_unstarted(t *testing.T) {
+	root := t.TempDir()
+	installUnstartableBundled(t, root)
+
+	out, err := DiscoverCartridges(root, bundledIdentity(recordedManifest(strings.Repeat("a", 64), 2, recordedCapGroups(t))))
+	require.NoError(t, err)
+	expectIncompatible(t, out, CartridgeAttachmentErrorKindFabricManifestVersionMismatch)
+	assert.Contains(t, out[0].Error.Message, "was built for fabric manifest 2, as its build's signed bundle manifest records", out[0].Error.Message)
 }
