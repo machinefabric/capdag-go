@@ -411,7 +411,11 @@ type RelaySwitch struct {
 	capabilities                 []byte
 	aggregateInstalledCartridges []InstalledCartridgeRecord
 	negotiatedLimits             Limits
-	frameRx                      chan MasterFrame
+	// frameRx is the switch's inbound stream: frames from the master reader
+	// goroutines, and the end of bringing a held peer request's provider —
+	// one stream, handled in order, so a held request's replay is ordered
+	// with every frame its caller sends after.
+	frameRx chan inbound
 	// expectedMasterCount is the number of cardinality slots the
 	// engine intends to wire up. Set once via SetExpectedMasterCount
 	// shortly after construction (the engine knows the count only
@@ -456,6 +460,31 @@ type RelaySwitch struct {
 	// to every master on each change (SetPolicy). Guarded by addMasterMu, so
 	// a change cannot fall between a new master's send and its joining.
 	policy HostPolicy
+	// peerProviding is what brings a provider for a peer request no master
+	// serves, and the requests held while it does (SetPeerProvider). Nil: such
+	// a request is refused with NO_HANDLER. Guarded by mu.
+	peerProviding *peerProviding
+}
+
+// peerProviding is a switch's PeerProvider and the requests held while it
+// brings one.
+type peerProviding struct {
+	provider PeerProvider
+	holds    *peerHoldTable
+}
+
+// inbound is one item of the switch's inbound stream: a master's frame or
+// the end of its connection, or the end of bringing the provider of held
+// peer request rid.
+type inbound struct {
+	master  *MasterFrame
+	settled *settledHold
+}
+
+// settledHold is how bringing held request rid's provider ended.
+type settledHold struct {
+	rid        MessageId
+	settlement peerSettlement
 }
 
 type CapTableEntry struct {
@@ -558,7 +587,7 @@ func NewRelaySwitch(sockets []SocketPair, policy HostPolicy) (*RelaySwitch, erro
 		seen[sp.ID] = true
 	}
 
-	frameRx := make(chan MasterFrame, 100)
+	frameRx := make(chan inbound, 100)
 	var masters []*MasterConnection
 
 	// pendingReader carries a verified master's reader to phase 2 so
@@ -1616,22 +1645,33 @@ func (sw *RelaySwitch) readMaster(idx int, socketReader *FrameReader) {
 		f, err := socketReader.ReadFrame()
 		if err != nil {
 			detach()
-			sw.frameRx <- MasterFrame{MasterIdx: idx, Frame: nil, Err: err}
+			sw.frameRx <- inbound{master: &MasterFrame{MasterIdx: idx, Frame: nil, Err: err}}
 			return
 		}
 		if f == nil {
 			detach()
-			sw.frameRx <- MasterFrame{MasterIdx: idx, Frame: nil, Err: fmt.Errorf("EOF")}
+			sw.frameRx <- inbound{master: &MasterFrame{MasterIdx: idx, Frame: nil, Err: fmt.Errorf("EOF")}}
 			return
 		}
-		sw.frameRx <- MasterFrame{MasterIdx: idx, Frame: f, Err: nil}
+		sw.frameRx <- inbound{master: &MasterFrame{MasterIdx: idx, Frame: f, Err: nil}}
 	}
 }
 
 // ReadFromMasters blocks until a frame is available from any master
 func (sw *RelaySwitch) ReadFromMasters() (*Frame, error) {
 	for {
-		masterFrame := <-sw.frameRx
+		item := <-sw.frameRx
+
+		if item.settled != nil {
+			sw.mu.Lock()
+			err := sw.releaseHeldRequestLocked(item.settled.rid, item.settled.settlement)
+			sw.mu.Unlock()
+			if err != nil {
+				return nil, err
+			}
+			continue
+		}
+		masterFrame := *item.master
 
 		if masterFrame.Err != nil {
 			sw.mu.Lock()
@@ -2056,7 +2096,6 @@ func (sw *RelaySwitch) findMasterForCap(capURN string, preferredCap *string) (in
 	return matches[0].masterIdx, nil
 }
 
-// handleMasterFrame handles a frame from a master
 // parentRidFromMeta extracts the "parent_rid" cancel-cascade link from a
 // peer REQ frame's meta, if present. Mirrors Rust's parent_rid parsing in
 // handle_master_frame: a 16-byte UUID or an unsigned integer RID.
@@ -2079,7 +2118,167 @@ func parentRidFromMeta(frame *Frame) (MessageId, bool) {
 	return MessageId{}, false
 }
 
+// SetPeerProvider has the switch bring a provider for the peer requests no
+// master serves, holding each while it does, within bound (14.2 §Peer
+// requests no master serves). Set once, before the switch routes anything
+// that may need it; a second provider is refused.
+func (sw *RelaySwitch) SetPeerProvider(provider PeerProvider, bound PeerHoldBound) error {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	if sw.peerProviding != nil {
+		return &RelaySwitchError{
+			Type:    RelaySwitchErrorTypeProtocol,
+			Message: "this switch already has a peer provider",
+		}
+	}
+	sw.peerProviding = &peerProviding{provider: provider, holds: newPeerHoldTable(bound)}
+	return nil
+}
+
+// holdPeerRequestLocked holds peer REQ frame and starts bringing the
+// provider of its cap. The end of bringing it arrives on the inbound stream,
+// in order with every frame the caller sends. Called with sw.mu held.
+func (sw *RelaySwitch) holdPeerRequestLocked(sourceIdx int, frame *Frame) (*Frame, error) {
+	providing := sw.peerProviding
+	if errFrame := providing.holds.hold(sourceIdx, frame); errFrame != nil {
+		// The REQ alone is more than a hold keeps.
+		_ = sw.masters[sourceIdx].socketWriter.WriteFrame(errFrame)
+		return nil, nil
+	}
+	rid := frame.Id
+	capURN := *frame.Cap
+	provider := providing.provider
+	deadline := providing.holds.bound.Deadline
+	go func() {
+		settlement := sw.bringProvider(provider, capURN, deadline)
+		sw.frameRx <- inbound{settled: &settledHold{rid: rid, settlement: settlement}}
+	}()
+	return nil, nil
+}
+
+// arriveForHeldRequestLocked takes a frame from master sourceIdx for one of
+// the requests it made that is held: kept, or the end of the request. It
+// reports whether the frame was the hold's. Called with sw.mu held.
+func (sw *RelaySwitch) arriveForHeldRequestLocked(sourceIdx int, frame *Frame) bool {
+	providing := sw.peerProviding
+	if providing == nil || !providing.holds.isHeld(sourceIdx, frame.Id) {
+		return false
+	}
+	if errFrame := providing.holds.arrive(frame); errFrame != nil {
+		_ = sw.masters[sourceIdx].socketWriter.WriteFrame(errFrame)
+	}
+	return true
+}
+
+// releaseHeldRequestLocked is bringing held request rid's provider ended:
+// its frames are replayed, in the order they came, or its caller is answered
+// with why not. Called with sw.mu held.
+func (sw *RelaySwitch) releaseHeldRequestLocked(rid MessageId, settlement peerSettlement) error {
+	request, errFrame := sw.peerProviding.holds.settle(rid, settlement)
+	if request == nil {
+		// Cancelled, overflowed, or its caller's master died meanwhile.
+		return nil
+	}
+	if errFrame != nil {
+		_ = sw.masters[request.sourceIdx].socketWriter.WriteFrame(errFrame)
+		return nil
+	}
+	if _, err := sw.routePeerRequestLocked(request.sourceIdx, request.frames[0], true); err != nil {
+		return err
+	}
+	for _, frame := range request.frames[1:] {
+		// A peer request's own frames are routed internally; none is ever
+		// handed to the engine.
+		if _, err := sw.handleMasterFrame(request.sourceIdx, frame); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// routePeerRequestLocked routes peer REQ frame from master sourceIdx,
+// already given its routing id: to the master that serves its cap; or, when
+// none does, held while the switch's PeerProvider brings one, or refused
+// with NO_HANDLER — as the model decides (formal/CapDAG/Bifaci/Hold.lean).
+// replayed is a REQ that was held before: it is never held again. Called
+// with sw.mu held.
+func (sw *RelaySwitch) routePeerRequestLocked(sourceIdx int, frame *Frame, replayed bool) (*Frame, error) {
+	xid := *frame.RoutingId
+
+	// Find destination master (no preference for peer requests).
+	destIdx, err := sw.findMasterForCap(*frame.Cap, nil)
+	if err != nil {
+		if peerHolds(sw.peerProviding != nil, replayed) {
+			return sw.holdPeerRequestLocked(sourceIdx, frame)
+		}
+		// No handler registered for this cap. Rather than erroring —
+		// which would abort the pump and leave the caller hanging
+		// until its own activity timeout — send an ERR frame straight
+		// back to the source master so the peer call fails fast with a
+		// clear error. Stamp the synthetic XID assigned above so the
+		// receiving cartridge host runtime accepts it (path-C
+		// invariant). Mirrors Rust's route_peer_request NO_HANDLER
+		// branch (Ok(None) + ERR to caller).
+		// A dispatched cap no master handles is a deployment/manifest
+		// mismatch — Environment.
+		message := fmt.Sprintf("No handler found for cap: %s", *frame.Cap)
+		if replayed {
+			message = fmt.Sprintf("No handler found for cap: %s — its provider was brought, and no master serves it even so", *frame.Cap)
+		}
+		errFrame := NewErr(frame.Id, "NO_HANDLER", AttributionClassEnvironment, message, nil)
+		errFrame.RoutingId = &xid
+		_ = sw.masters[sourceIdx].socketWriter.WriteFrame(errFrame)
+		return nil, nil
+	}
+
+	rid := frame.Id
+	key := RequestKey{Xid: xid, Rid: rid}
+	srcIdx := sourceIdx
+	state := NewRequestState(
+		RequestRoutingEntry{SourceMasterIdx: &srcIdx, DestinationMasterIdx: destIdx},
+		&srcIdx,
+		nil,
+		true,
+		sw.masterInitialCreditLocked(destIdx),
+	).WithCapUrn(frame.Cap)
+	if regErr := sw.requests.Register(key, state); regErr != nil {
+		return nil, &RelaySwitchError{Type: RelaySwitchErrorTypeProtocol, Message: regErr.Error()}
+	}
+
+	// Track parent→child for the cancel cascade.
+	if parentRid, ok := parentRidFromMeta(frame); ok {
+		if parentXid, ok := sw.requests.XidForRid(parentRid); ok {
+			sw.requests.LinkChild(RequestKey{Xid: parentXid, Rid: parentRid}, key)
+		}
+	}
+
+	// Forward to destination with XID.
+	if err := sw.masters[destIdx].socketWriter.WriteFrame(frame); err != nil {
+		return nil, err
+	}
+
+	return nil, nil // Internal routing — do not return to engine.
+}
+
+// handleMasterFrame handles a frame from a master (cartridge → engine
+// direction). It returns the frame when it is to be handed to the engine,
+// nil when the switch handled it (a peer request's).
 func (sw *RelaySwitch) handleMasterFrame(sourceIdx int, frame *Frame) (*Frame, error) {
+	// A frame a cartridge sends for its own peer request that is held (its
+	// argument streams, its grants, its cancel) is the hold's: kept to be
+	// replayed after the REQ, or the request's end.
+	forOwnRequest := false
+	switch frame.FrameType {
+	case FrameTypeStreamStart, FrameTypeChunk, FrameTypeStreamEnd,
+		FrameTypeEnd, FrameTypeErr, FrameTypeLog, FrameTypeCredit:
+		forOwnRequest = frame.RoutingId == nil
+	case FrameTypeCancel, FrameTypeCloseStream:
+		forOwnRequest = true
+	}
+	if forOwnRequest && sw.arriveForHeldRequestLocked(sourceIdx, frame) {
+		return nil, nil
+	}
+
 	switch frame.FrameType {
 	case FrameTypeReq:
 		// Peer request (cartridge → cartridge via switch).
@@ -2103,52 +2302,7 @@ func (sw *RelaySwitch) handleMasterFrame(sourceIdx int, frame *Frame) (*Frame, e
 		xid := NewMessageIdFromUint(atomic.AddUint64(&sw.xidCounter, 1))
 		frame.RoutingId = &xid
 
-		// Find destination master (no preference for peer requests).
-		destIdx, err := sw.findMasterForCap(*frame.Cap, nil)
-		if err != nil {
-			// No handler registered for this cap. Rather than erroring —
-			// which would abort the pump and leave the caller hanging
-			// until its own activity timeout — send an ERR frame straight
-			// back to the source master so the peer call fails fast with a
-			// clear error. Stamp the synthetic XID assigned above so the
-			// receiving cartridge host runtime accepts it (path-C
-			// invariant). Mirrors Rust's handle_master_frame NO_HANDLER
-			// branch (Ok(None) + ERR to caller).
-			// A dispatched cap no master handles is a deployment/manifest
-			// mismatch — Environment.
-			errFrame := NewErr(frame.Id, "NO_HANDLER", AttributionClassEnvironment, fmt.Sprintf("No handler found for cap: %s", *frame.Cap), nil)
-			errFrame.RoutingId = &xid
-			_ = sw.masters[sourceIdx].socketWriter.WriteFrame(errFrame)
-			return nil, nil
-		}
-
-		rid := frame.Id
-		key := RequestKey{Xid: xid, Rid: rid}
-		srcIdx := sourceIdx
-		state := NewRequestState(
-			RequestRoutingEntry{SourceMasterIdx: &srcIdx, DestinationMasterIdx: destIdx},
-			&srcIdx,
-			nil,
-			true,
-			sw.masterInitialCreditLocked(destIdx),
-		).WithCapUrn(frame.Cap)
-		if regErr := sw.requests.Register(key, state); regErr != nil {
-			return nil, &RelaySwitchError{Type: RelaySwitchErrorTypeProtocol, Message: regErr.Error()}
-		}
-
-		// Track parent→child for the cancel cascade.
-		if parentRid, ok := parentRidFromMeta(frame); ok {
-			if parentXid, ok := sw.requests.XidForRid(parentRid); ok {
-				sw.requests.LinkChild(RequestKey{Xid: parentXid, Rid: parentRid}, key)
-			}
-		}
-
-		// Forward to destination with XID.
-		if err := sw.masters[destIdx].socketWriter.WriteFrame(frame); err != nil {
-			return nil, err
-		}
-
-		return nil, nil // Internal routing — do not return to engine.
+		return sw.routePeerRequestLocked(sourceIdx, frame, false)
 
 	case FrameTypeStreamStart, FrameTypeChunk, FrameTypeStreamEnd,
 		FrameTypeEnd, FrameTypeErr, FrameTypeLog, FrameTypeCredit:
@@ -2375,6 +2529,11 @@ func (sw *RelaySwitch) handleMasterDeath(masterIdx int) {
 	// pending) whose socket then closes must detach too, or the host
 	// could never reconnect to it.
 	sw.masters[masterIdx].detached = true
+
+	// The requests held for its cartridges have nobody left to answer.
+	if sw.peerProviding != nil {
+		sw.peerProviding.holds.forgetSource(masterIdx)
+	}
 
 	if !sw.masters[masterIdx].healthy {
 		return
