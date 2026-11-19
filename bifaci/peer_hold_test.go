@@ -84,7 +84,14 @@ func startPeerCaller(t *testing.T) (*peerCaller, SocketPair) {
 				caller.answers <- "ok:" + answer
 			case FrameTypeErr:
 				delete(answers, rid)
-				caller.answers <- fmt.Sprintf("err:%s:%s", f.ErrorCode(), f.ErrorMessage())
+				answer := fmt.Sprintf("err:%s:%s", f.ErrorCode(), f.ErrorMessage())
+				hint, err := f.ErrorHint()
+				if err != nil {
+					answer = "malformed:" + err.Error()
+				} else if hint != nil {
+					answer += "|hint:" + *hint
+				}
+				caller.answers <- answer
 			}
 		}
 	}()
@@ -190,11 +197,22 @@ type testPeerProvider struct {
 }
 
 func peerTestExpiry() PeerRefusal {
+	hint := "capdag cartridge install testcartridge, then run the command again"
 	return PeerRefusal{
 		Code:    "TEST_PROVIDER_TIMEOUT",
 		Class:   AttributionClassEnvironment,
 		Message: "testcartridge, which provides peer-provided, was not started in time",
+		Hint:    &hint,
 	}
+}
+
+// peerAnsweredWith is what the caller answers when its peer call ends with
+// refusal's ERR.
+func peerAnsweredWith(refusal PeerRefusal) string {
+	if refusal.Hint != nil {
+		return fmt.Sprintf("err:%s:%s|hint:%s", refusal.Code, refusal.Message, *refusal.Hint)
+	}
+	return fmt.Sprintf("err:%s:%s", refusal.Code, refusal.Message)
 }
 
 func (p *testPeerProvider) Provision(capURN string) (*PeerProvision, *PeerRefusal) {
@@ -264,20 +282,22 @@ func Test463_held_peer_call_is_answered_once_its_provider_is_brought(t *testing.
 }
 
 // TEST464: A provider that cannot bring what serves the cap ends the held
-// call with its own ERR — its code and its message, which name what is
-// missing and what to do.
+// call with its own ERR — its code, its message naming what is missing, and
+// its hint, the command that brings it, as the ERR's own hint.
 func Test464_refused_provision_ends_the_call_with_the_providers_err(t *testing.T) {
+	hint := "capdag cartridge install testcartridge"
 	refusal := PeerRefusal{
-		Code:  "CARTRIDGE_INSTALL_FAILED",
-		Class: AttributionClassEnvironment,
-		Message: "testcartridge provides peer-provided and is not installed; " +
-			"install it with: capdag cartridge install testcartridge",
+		Code:    "CARTRIDGE_INSTALL_FAILED",
+		Class:   AttributionClassEnvironment,
+		Message: "testcartridge provides peer-provided and is not installed",
+		Hint:    &hint,
 	}
 	provider := &testPeerProvider{refusal: &refusal}
 	_, caller := peerSwitch(t, provider, peerRoomy)
 
 	caller.call(t, peerCall{argument: []byte("hello")})
-	want := fmt.Sprintf("err:%s:%s", refusal.Code, refusal.Message)
+	want := "err:CARTRIDGE_INSTALL_FAILED:testcartridge provides peer-provided and is not installed" +
+		"|hint:capdag cartridge install testcartridge"
 	if got := caller.answer(t); got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}
@@ -295,7 +315,7 @@ func Test465_held_call_ends_at_its_deadline_and_the_late_provider_serves_the_nex
 	started := time.Now()
 	caller.call(t, peerCall{argument: []byte("hello")})
 	expired := peerTestExpiry()
-	if got := caller.answer(t); got != fmt.Sprintf("err:%s:%s", expired.Code, expired.Message) {
+	if got := caller.answer(t); got != peerAnsweredWith(expired) {
 		t.Fatalf("the call ends with the provider's expiry ERR: got %q", got)
 	}
 	if time.Since(started) >= 1500*time.Millisecond {
@@ -386,7 +406,7 @@ func Test469_provider_that_serves_something_else_ends_the_call_at_its_deadline(t
 
 	caller.call(t, peerCall{argument: []byte("hello")})
 	expired := peerTestExpiry()
-	if got := caller.answer(t); got != fmt.Sprintf("err:%s:%s", expired.Code, expired.Message) {
+	if got := caller.answer(t); got != peerAnsweredWith(expired) {
 		t.Fatalf("got %q", got)
 	}
 	if provider.asked.Load() != 1 {

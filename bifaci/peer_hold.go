@@ -40,17 +40,22 @@ const PeerProviderFailed = "PEER_PROVIDER_FAILED"
 // PeerRefusal is why a held request ends without its provider: the ERR its
 // caller is answered with, in the vocabulary of every ERR
 // (docs/failure-taxonomy.md). The message is for the person who reads the
-// run's failure: it names what is missing and the command that brings it.
+// run's failure: it names what is missing; Hint, when there is something to
+// do, is the command that brings it, and rides the ERR's own hint.
 type PeerRefusal struct {
 	Code    string
 	Class   AttributionClass
 	Message string
+	Hint    *string
 }
 
 // errFrame is the ERR answering request rid (routing id xid) with this
 // refusal.
 func (r PeerRefusal) errFrame(rid MessageId, xid MessageId) *Frame {
 	frame := NewErr(rid, r.Code, r.Class, r.Message, nil)
+	if r.Hint != nil {
+		frame.WithHint(*r.Hint)
+	}
 	frame.RoutingId = &xid
 	return frame
 }

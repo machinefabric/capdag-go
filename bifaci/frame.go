@@ -851,6 +851,25 @@ func NewErr(id MessageId, code string, class AttributionClass, message string, a
 	return frame
 }
 
+// WithHint sets an ERR frame's hint: the next thing a person does about the
+// failure, such as the command that installs what is missing. A hint is
+// advice, not identity: it changes neither the code nor the class. The key is
+// ABSENT when the emitter has none, never an empty string.
+// (matches Rust Frame::with_hint)
+func (f *Frame) WithHint(hint string) *Frame {
+	if f.FrameType != FrameTypeErr {
+		panic("only an ERR frame carries a hint")
+	}
+	if strings.TrimSpace(hint) == "" {
+		panic("ERR hint must be non-empty when present")
+	}
+	if f.Meta == nil {
+		f.Meta = map[string]interface{}{}
+	}
+	f.Meta["hint"] = hint
+	return f
+}
+
 // NewLog creates a LOG frame (matches Rust Frame::log)
 // level and message are stored in the Meta map
 func NewLog(id MessageId, level string, class AttributionClass, message string, argUrn *string) *Frame {
@@ -1047,6 +1066,31 @@ func (f *Frame) AttributionArgUrn() (*string, error) {
 		return nil, errors.New("diagnostic arg_urn must not be empty")
 	}
 	return &urn, nil
+}
+
+// ErrorHint gets the emitter's hint on an ERR frame: what a person does next.
+// nil when the emitter gave none; a hint that is not text, or is empty, is a
+// protocol violation by the emitter, never read as no hint.
+// (matches Rust Frame::error_hint)
+func (f *Frame) ErrorHint() (*string, error) {
+	if f.FrameType != FrameTypeErr {
+		return nil, fmt.Errorf("%s frames do not carry a hint", f.FrameType)
+	}
+	if f.Meta == nil {
+		return nil, nil
+	}
+	value, present := f.Meta["hint"]
+	if !present {
+		return nil, nil
+	}
+	hint, ok := value.(string)
+	if !ok {
+		return nil, errors.New("ERR hint must be text when present")
+	}
+	if strings.TrimSpace(hint) == "" {
+		return nil, errors.New("ERR hint must not be empty")
+	}
+	return &hint, nil
 }
 
 // ErrorMessage gets error message from ERR frame meta

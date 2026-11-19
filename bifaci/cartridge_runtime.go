@@ -1364,13 +1364,7 @@ func runLiveHandler(qr *liveHandlerRequest, manifest *CapManifest, writer *syncF
 		return
 	}
 	if err != nil {
-		// The ERR frame carries the failure's DECLARED identity
-		// (docs/failure-taxonomy.md): the code, class, and argument
-		// attribution from the emit source when the error chain is
-		// classified, HANDLER_ERROR/Internal when the handler never declared
-		// one.
-		code, class, message, argUrn := classifyHandlerError(err)
-		errFrame := NewErr(requestID, code, class, message, argUrn)
+		errFrame := handlerErrFrame(requestID, err)
 		errFrame.RoutingId = qr.routingId
 		if writeErr := writer.WriteFrame(errFrame); writeErr != nil {
 			fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", writeErr)
@@ -2450,7 +2444,7 @@ func (pr *CartridgeRuntime) dispatchCliPayload(capDef *cap.Cap, handler HandlerF
 		// CLI mode still owes the caller the real failure identity
 		// (docs/failure-taxonomy.md): the declared code/attribution when the error
 		// chain is classified, HANDLER_ERROR/internal otherwise.
-		code, class, message, argUrn := classifyHandlerError(err)
+		code, class, message, argUrn, hint := classifyHandlerError(err)
 		errorFields := map[string]string{
 			"error":             message,
 			"code":              code,
@@ -2458,6 +2452,9 @@ func (pr *CartridgeRuntime) dispatchCliPayload(capDef *cap.Cap, handler HandlerF
 		}
 		if argUrn != nil {
 			errorFields["arg_urn"] = *argUrn
+		}
+		if hint != nil {
+			errorFields["hint"] = *hint
 		}
 		errorJSON, _ := json.Marshal(errorFields)
 		fmt.Fprintln(os.Stderr, string(errorJSON))

@@ -2384,6 +2384,49 @@ func Test7105_err_frame_arg_urn_roundtrip(t *testing.T) {
 	assert.Equal(t, "prompt exceeds context window", decoded.ErrorMessage())
 }
 
+// TEST7188: an ERR frame's hint — what a person does next — crosses the wire
+// codec verbatim beside code, class and message; an ERR without one carries
+// no "hint" key; a hint that is empty or not text is the emitter's protocol
+// violation, never read as no hint. (mirrors Rust TEST7188)
+func Test7188_err_frame_hint_roundtrip(t *testing.T) {
+	frame := NewErr(NewMessageIdRandom(), "CARTRIDGE_INSTALL_FAILED", AttributionClassEnvironment,
+		"ggufcartridge is not installed, and installing it failed", nil).
+		WithHint("capdag cartridge install ggufcartridge")
+	decoded, err := DecodeFrame(mustEncode(t, frame))
+	require.NoError(t, err)
+	assert.Equal(t, "capdag cartridge install ggufcartridge", decoded.Meta["hint"],
+		"the wire meta map carries the hint key verbatim")
+	hint, err := decoded.ErrorHint()
+	require.NoError(t, err)
+	if assert.NotNil(t, hint) {
+		assert.Equal(t, "capdag cartridge install ggufcartridge", *hint)
+	}
+	assert.Equal(t, "CARTRIDGE_INSTALL_FAILED", decoded.ErrorCode())
+	class, err := decoded.AttributionClass()
+	require.NoError(t, err)
+	assert.Equal(t, AttributionClassEnvironment, class)
+	assert.Equal(t, "ggufcartridge is not installed, and installing it failed", decoded.ErrorMessage())
+
+	plain, err := DecodeFrame(mustEncode(t, NewErr(NewMessageIdRandom(), "X", AttributionClassInternal, "m", nil)))
+	require.NoError(t, err)
+	_, present := plain.Meta["hint"]
+	assert.False(t, present, "no hint, no key")
+	none, err := plain.ErrorHint()
+	require.NoError(t, err)
+	assert.Nil(t, none)
+
+	plain.Meta["hint"] = " "
+	_, err = plain.ErrorHint()
+	assert.Error(t, err, "an empty hint is a violation")
+	plain.Meta["hint"] = 1
+	_, err = plain.ErrorHint()
+	assert.Error(t, err, "a hint that is not text is a violation")
+
+	log := NewLog(NewMessageIdRandom(), "warn", AttributionClassInternal, "m", nil)
+	_, err = log.ErrorHint()
+	assert.Error(t, err, "only an ERR carries a hint")
+}
+
 // TEST7117: non-progress LOG carries the same source attribution tuple as ERR,
 // including an optional argument URN, through the actual wire codec.
 func Test7117_log_frame_arg_urn_roundtrip(t *testing.T) {

@@ -97,13 +97,16 @@ func (c AttributionClass) IsPermanent() bool {
 // Failures that stay a plain error classify as Internal at the frame
 // boundary. ArgUrn is the media URN of the argument the failure is
 // attributed to, declared at the emit source alongside the class
-// (docs/failure-taxonomy.md); nil when the failure has no attribution.
+// (docs/failure-taxonomy.md); nil when the failure has no attribution. Hint is
+// what a person does next — the command that brings what is missing — when
+// the emit source can say; it rides the ERR frame's hint.
 // (matches Rust RuntimeError::Classified)
 type ClassifiedError struct {
 	Code    string
 	Class   AttributionClass
 	Message string
 	ArgUrn  *string
+	Hint    *string
 }
 
 func (e *ClassifiedError) Error() string {
@@ -120,13 +123,16 @@ func (e *ClassifiedError) FailureArgUrn() *string {
 // code, the failure class the peer's frame declared
 // (docs/failure-taxonomy.md), its message — never folded into prose — and
 // the media URN of the argument the peer's frame attributed the failure to
-// (nil when the frame carried no attribution).
+// (nil when the frame carried no attribution), and its hint (nil when it gave
+// none). A handler that cannot go on without the peer's answer returns this
+// error as it came, so its own ERR is the peer's.
 // (matches Rust StreamError::RemoteError)
 type RemoteError struct {
 	Code    string
 	Class   AttributionClass
 	Message string
 	ArgUrn  *string
+	Hint    *string
 }
 
 func (e *RemoteError) Error() string {
@@ -159,26 +165,42 @@ func errorFromErrFrame(f *Frame) error {
 	if err != nil {
 		return fmt.Errorf("invalid ERR frame: %w", err)
 	}
-	return &RemoteError{Code: code, Class: class, Message: message, ArgUrn: argUrn}
+	hint, err := f.ErrorHint()
+	if err != nil {
+		return fmt.Errorf("invalid ERR frame: %w", err)
+	}
+	return &RemoteError{Code: code, Class: class, Message: message, ArgUrn: argUrn, Hint: hint}
 }
 
 // classifyHandlerError resolves the identity a failed handler's terminal ERR
-// frame declares (docs/failure-taxonomy.md): the code, class, and argument
-// attribution from the emit source when the error chain carries a
+// frame declares (docs/failure-taxonomy.md): the code, class, argument
+// attribution and hint from the emit source when the error chain carries a
 // ClassifiedError (or a peer's RemoteError propagated as-is),
-// HANDLER_ERROR/Internal without attribution when the handler never declared
-// one. (matches Rust RuntimeError's failure_code()/attribution_class()/
-// failure_reason()/failure_arg_urn() at the frame-emit boundary)
-func classifyHandlerError(err error) (code string, class AttributionClass, message string, argUrn *string) {
+// HANDLER_ERROR/Internal without attribution or hint when the handler never
+// declared one. (matches Rust RuntimeError's failure_code()/
+// attribution_class()/failure_reason()/failure_arg_urn()/failure_hint() at
+// the frame-emit boundary)
+func classifyHandlerError(err error) (code string, class AttributionClass, message string, argUrn *string, hint *string) {
 	var classified *ClassifiedError
 	if errors.As(err, &classified) {
-		return classified.Code, classified.Class, classified.Message, classified.ArgUrn
+		return classified.Code, classified.Class, classified.Message, classified.ArgUrn, classified.Hint
 	}
 	var remote *RemoteError
 	if errors.As(err, &remote) {
-		return remote.Code, remote.Class, remote.Message, remote.ArgUrn
+		return remote.Code, remote.Class, remote.Message, remote.ArgUrn, remote.Hint
 	}
-	return "HANDLER_ERROR", AttributionClassInternal, err.Error(), nil
+	return "HANDLER_ERROR", AttributionClassInternal, err.Error(), nil, nil
+}
+
+// handlerErrFrame is the ERR frame a failed handler ends request requestID
+// with: its classified identity and its hint. (matches Rust handler_err_frame)
+func handlerErrFrame(requestID MessageId, err error) *Frame {
+	code, class, message, argUrn, hint := classifyHandlerError(err)
+	frame := NewErr(requestID, code, class, message, argUrn)
+	if hint != nil {
+		frame.WithHint(*hint)
+	}
+	return frame
 }
 
 // MarshalJSON serializes an AttributionClass as its wire token — the snapshot
