@@ -1622,15 +1622,21 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 		runHandlerNow(qr)
 	}
 
+	// The host's frames are read on a goroutine of their own, which also
+	// answers heartbeats: see spawnFrameReader for why neither may wait on
+	// this loop.
+	feed := spawnFrameReader(reader, &heartbeatResponder{
+		pools:             pr.pools,
+		dropCounters:      pr.dropCounters,
+		stragglerCounters: pr.stragglerCounters,
+	}, writer)
+	// A loop that returns early stops the reader too: nothing is left
+	// answering for a runtime that has stopped.
+	defer feed.stop()
+
 	// Main event loop
-	for {
-		frame, err := reader.ReadFrame()
-		if err != nil {
-			if err == io.EOF {
-				break // stdin closed, exit cleanly
-			}
-			return fmt.Errorf("failed to read frame: %w", err)
-		}
+	for received := range feed.Frames() {
+		frame := &received
 
 		switch frame.FrameType {
 		case FrameTypeReq:
@@ -1718,46 +1724,11 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 			continue // Wait for STREAM_START/CHUNK/STREAM_END/END frames
 
 		case FrameTypeHeartbeat:
-			// The heartbeat is the capacity CONFIG channel: a probe may
-			// carry the operator's desired configured values. The whole
-			// batch is validated first — an unknown pool refuses it all
-			// with an ERR naming it, and the probe gets that ERR instead
-			// of a reply, so the host's awaited apply fails precisely
-			// rather than silently.
-			if desiredBytes := frame.DesiredCapacityBytes(); desiredBytes != nil {
-				desired, decodeErr := DecodeDesired(desiredBytes)
-				applyErr := decodeErr
-				if applyErr == nil {
-					pr.pools.mu.Lock()
-					applyErr = pr.pools.pools.applyDesired(desired)
-					pr.pools.mu.Unlock()
-				}
-				if applyErr != nil {
-					errFrame := NewErr(frame.Id, "UNKNOWN_POOL", AttributionClassInternal, fmt.Sprintf("desired capacities refused: %v", applyErr), nil)
-					if err := writer.WriteFrame(errFrame); err != nil {
-						return fmt.Errorf("failed to write UNKNOWN_POOL error: %w", err)
-					}
-					continue
-				}
-				// A limit that rose may let requests in line go.
-				admitWaiting()
-			}
-			// Respond to heartbeat immediately - never blocked by handlers
-			response := NewHeartbeat(frame.Id)
-			pr.pools.mu.Lock()
-			heartbeatSnapshot := pr.pools.pools.snapshot()
-			pr.pools.mu.Unlock()
-			// The benign straggler total rides alongside drops_total,
-			// under its own name — stragglers are not drops. The pool map
-			// is MANDATORY: the host hard-errors on a reply without it.
-			response.Meta = map[string]interface{}{
-				"drops_total":      pr.dropCounters.Total(),
-				"stragglers_total": pr.stragglerCounters.Total(),
-				MetaPools:          EncodePoolStates(heartbeatSnapshot),
-			}
-			if err := writer.WriteFrame(response); err != nil {
-				return fmt.Errorf("failed to write heartbeat response: %w", err)
-			}
+			// ALREADY ANSWERED, by the reader's own goroutine (see
+			// spawnFrameReader). It is passed on so this loop turns: a probe
+			// may have raised a pool's capacity, and a limit that rose may
+			// let requests in line go.
+			admitWaiting()
 
 		case FrameTypeHello:
 			// Unexpected HELLO after handshake - protocol error
@@ -2283,6 +2254,9 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 			}
 			pr.policy.Set(policy)
 		}
+	}
+	if err := feed.Err(); err != nil {
+		return err
 	}
 
 	// Wait for all active handlers to complete before exiting
@@ -3013,6 +2987,125 @@ func buildCliForeachIterations(rawPayload []byte, capDef *cap.Cap) ([][]byte, er
 	}
 
 	return out, nil
+}
+
+// heartbeatResponder is what a heartbeat reply is made from. All of it is
+// shared state behind locks and atomics, so a reply can be built on any
+// goroutine. (matches Rust HeartbeatResponder)
+type heartbeatResponder struct {
+	pools             *poolsCell
+	dropCounters      *DropCounters
+	stragglerCounters *StragglerCounters
+}
+
+// answer is the reply to one heartbeat probe — or the ERR that refuses it.
+func (h *heartbeatResponder) answer(frame *Frame) *Frame {
+	// The heartbeat is the capacity CONFIG channel: a probe may carry the
+	// operator's desired configured values. The whole batch is validated
+	// first — an unknown pool refuses it all with an ERR naming it, and the
+	// probe gets that ERR instead of a reply, so the host's awaited apply
+	// fails precisely rather than silently.
+	if desiredBytes := frame.DesiredCapacityBytes(); desiredBytes != nil {
+		desired, err := DecodeDesired(desiredBytes)
+		if err == nil {
+			h.pools.mu.Lock()
+			err = h.pools.pools.applyDesired(desired)
+			h.pools.mu.Unlock()
+		}
+		if err != nil {
+			return NewErr(frame.Id, "UNKNOWN_POOL", AttributionClassInternal, fmt.Sprintf("desired capacities refused: %v", err), nil)
+		}
+	}
+	h.pools.mu.Lock()
+	snapshot := h.pools.pools.snapshot()
+	h.pools.mu.Unlock()
+	response := NewHeartbeat(frame.Id)
+	// Protocol observability (L8): the dropped-frame total rides every
+	// heartbeat so the host can surface it without a stats round-trip. The
+	// benign straggler total rides alongside, under its own name —
+	// stragglers are not drops. The pool map is MANDATORY: the host
+	// hard-errors on a reply without it.
+	response.Meta = map[string]interface{}{
+		"drops_total":      h.dropCounters.Total(),
+		"stragglers_total": h.stragglerCounters.Total(),
+		MetaPools:          EncodePoolStates(snapshot),
+	}
+	return response
+}
+
+// frameFeed is what the frame reader hands the main loop: every frame the
+// host sent, in order, and — once its channel has closed — why the input
+// ended.
+type frameFeed struct {
+	frames *unboundedFrameChan
+	// err is nil at the end of input, else the read or write failure that
+	// ended it. Written before frames is closed; read only after.
+	err error
+	// stopped is set when the main loop has returned: the reader stops at
+	// its next frame, answering nothing more.
+	stopped atomic.Bool
+}
+
+// stop tells the reader the main loop is gone and drops what it had queued.
+func (f *frameFeed) stop() {
+	f.stopped.Store(true)
+	f.frames.Discard()
+}
+
+// Frames is the in-order delivery channel; it closes when the input ends.
+func (f *frameFeed) Frames() <-chan Frame {
+	return f.frames.Chan()
+}
+
+// Err is why the input ended: nil at its end. Valid once Frames() has closed.
+func (f *frameFeed) Err() error {
+	return f.err
+}
+
+// spawnFrameReader reads the host's frames on a goroutine of its own, and
+// answers its heartbeats from there.
+//
+// A HEARTBEAT ASKS WHETHER THE CARTRIDGE IS THERE, and the host gives it ten
+// seconds to say so. The main loop read the frames and answered the probes
+// itself, and it also handed each frame of a peer call's answer to its
+// handler through a bounded channel: a handler busy with something else let
+// that channel fill, the loop stopped reading, and the cartridge was declared
+// dead in the middle of work it was doing correctly.
+//
+// The reader answers a heartbeat itself, straight to the writer, and passes
+// every frame — heartbeats included — to the main loop in the order it
+// arrived, through a queue that never makes the reader wait. Nothing between
+// the probe arriving and the reply leaving waits on the main loop or on a
+// handler.
+//
+// What this does NOT claim: that the handlers are making progress. That is
+// what a request's own activity and stall tracking say. A heartbeat says the
+// process is alive and reading its input. (matches Rust spawn_frame_reader)
+func spawnFrameReader(reader *FrameReader, responder *heartbeatResponder, writer *syncFrameWriter) *frameFeed {
+	feed := &frameFeed{frames: newUnboundedFrameChan()}
+	go func() {
+		defer feed.frames.Close()
+		for {
+			frame, err := reader.ReadFrame()
+			if err != nil {
+				if err != io.EOF {
+					feed.err = fmt.Errorf("failed to read frame: %w", err)
+				}
+				return
+			}
+			if feed.stopped.Load() {
+				return // The main loop is gone — shutting down
+			}
+			if frame.FrameType == FrameTypeHeartbeat {
+				if err := writer.WriteFrame(responder.answer(frame)); err != nil {
+					feed.err = fmt.Errorf("failed to write heartbeat response: %w", err)
+					return
+				}
+			}
+			feed.frames.Send(*frame)
+		}
+	}()
+	return feed
 }
 
 // syncFrameWriter wraps FrameWriter with a mutex for concurrent access,

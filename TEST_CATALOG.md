@@ -2,7 +2,7 @@
 
 Generated from the test catalogue. Edit the tests, not this file.
 
-1391 tests: 1368 numbered, 23 unnumbered.
+1394 tests: 1371 numbered, 23 unnumbered.
 
 ## Numbered
 
@@ -1303,6 +1303,9 @@ Generated from the test catalogue. Edit the tests, not this file.
 | TEST12389 | capdag/capdag-go | go | `Test12389_handshake_refuses_a_zero_credit_window` | bifaci/conformance_test.go:1003 | TEST12389: a HELLO proposing a credit window of zero fails the handshake, naming the window. Under a zero window no chunk may be sent, and with none consumed none is ever granted: every stream would stop at its first chunk, for good. |
 | TEST12596 | capdag/capdag-go | go | `Test12596_AnArgumentOutlivesACollectionDuringTheCall` | urn/formal_conformance_test.go:123 | TEST12596: a call into the model whose argument is a temporary survives a collection during the call. An argument is lent to the runtime as a handle identifier, and the value holding the handle can be unreachable by then — `CapQueryFromPattern(c)` is used once and dropped. Its finalizer released the handle before the runtime read it, and a release's test run panicked with "217920 is not a live handle". Collected continuously here, so a handle that is not kept alive for the call is released during one. |
 | TEST12597 | capdag/capdag-go | go | `Test12597_EveryModelFunctionCarriesAProvedClaim` | formal_assurance_test.go:16 | TEST12597: every function of the proved model this mirror calls carries a proved claim. The model's package carries what is proved of each function it exports (its assurance document, generated from ../formal): each one decides, equals or keeps what its claim says, and none rests on an assumption about the host — the model needs none. |
+| TEST12647 | capdag/capdag-go | go | `Test12647_heartbeat_is_answered_without_the_main_loop` | bifaci/cartridge_runtime_test.go:5558 | TEST12647: A heartbeat is answered while the main loop takes nothing — the reader's goroutine answers it by itself. A cartridge whose main loop waited on a handler stopped answering, and was declared dead in the middle of correct work. |
+| TEST12648 | capdag/capdag-go | go | `Test12648_other_frames_reach_the_loop_in_order_and_eof_closes_it` | bifaci/cartridge_runtime_test.go:5610 | TEST12648: Every other frame goes to the main loop untouched and in order, and nothing is written for it; the end of input ends the reader and closes the loop's channel. |
+| TEST12650 | capdag/capdag-go | go | `Test12650_a_heartbeat_is_answered_while_a_handler_leaves_its_peer_answer_unread` | bifaci/cartridge_runtime_test.go:5423 | TEST12650: A heartbeat is answered while a handler leaves a peer call's answer unread. The read loop answered heartbeats itself, and it also handed each frame of a peer response to its handler through a bounded channel: once a handler that was busy elsewhere let that channel fill, the loop stopped reading, the next probe went unanswered, and the host declared the cartridge dead in the middle of correct work. |
 | TEST12705 | capdag/capdag-go | go | `Test12705_rule15_the_stdin_argument_is_the_caps_input` | cap/validation_test.go:398 | TEST12705: RULE15 - the stdin argument's URN is the cap's `in=`, as a tagged URN: the same tags in another order pass, another type does not. |
 | TEST12706 | capdag/capdag-go | go | `Test12706_rule17_argument_names` | cap/validation_test.go:414 | TEST12706: RULE17 - every argument has a well-formed name, unique in its cap. |
 | TEST12707 | capdag/capdag-go | go | `Test12707_rule18_accepts_and_the_two_urns_of_an_argument` | cap/validation_test.go:450 | TEST12707: RULE18 - an argument says what it accepts in one place; and what it accepts is not what it is delivered under. |
