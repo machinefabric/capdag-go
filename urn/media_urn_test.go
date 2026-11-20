@@ -857,3 +857,44 @@ func Test1811_void_atomicity_reads_the_marker(t *testing.T) {
 		assert.True(t, ok && enc == "utf8", "%s keeps its other tags", input)
 	}
 }
+
+// TEST1812: every marker predicate reads its marker, never the key's presence. For each marker x, the predicate is true for media:x and false for media:!x (must not have x) and media:?x (x left open); the negated predicates (is_scalar, is_opaque) are the reverse.
+func Test1812_marker_predicates_read_the_marker(t *testing.T) {
+	predicates := []struct {
+		marker    string
+		predicate func(*MediaUrn) bool
+	}{
+		{"list", (*MediaUrn).IsList},
+		{"record", (*MediaUrn).IsRecord},
+		{"image", (*MediaUrn).IsImage},
+		{"audio", (*MediaUrn).IsAudio},
+		{"video", (*MediaUrn).IsVideo},
+		{"numeric", (*MediaUrn).IsNumeric},
+		{"bool", (*MediaUrn).IsBool},
+		{"void", (*MediaUrn).IsVoid},
+		{"file-path", (*MediaUrn).IsFilePath},
+		{"live", (*MediaUrn).IsLiveFeed},
+	}
+	parse := func(s string) *MediaUrn {
+		urn, err := NewMediaUrnFromString(s)
+		require.NoError(t, err, s)
+		return urn
+	}
+	for _, p := range predicates {
+		assert.True(t, p.predicate(parse("media:"+p.marker)), "media:%s", p.marker)
+		assert.False(t, p.predicate(parse("media:!"+p.marker)), "media:!%s", p.marker)
+		assert.False(t, p.predicate(parse("media:?"+p.marker)), "media:?%s", p.marker)
+	}
+	negated := []struct {
+		marker    string
+		predicate func(*MediaUrn) bool
+	}{
+		{"list", (*MediaUrn).IsScalar},
+		{"record", (*MediaUrn).IsOpaque},
+	}
+	for _, p := range negated {
+		assert.False(t, p.predicate(parse("media:"+p.marker)), "media:%s", p.marker)
+		assert.True(t, p.predicate(parse("media:!"+p.marker)), "media:!%s", p.marker)
+		assert.True(t, p.predicate(parse("media:?"+p.marker)), "media:?%s", p.marker)
+	}
+}

@@ -459,27 +459,27 @@ func (m *MediaUrn) HasMarkerTag(tagName string) bool {
 
 // IsImage returns true if this has the "image" marker tag
 func (m *MediaUrn) IsImage() bool {
-	return m.HasTag("image")
+	return m.hasMarkerTag("image")
 }
 
 // IsAudio returns true if this has the "audio" marker tag
 func (m *MediaUrn) IsAudio() bool {
-	return m.HasTag("audio")
+	return m.hasMarkerTag("audio")
 }
 
 // IsVideo returns true if this has the "video" marker tag
 func (m *MediaUrn) IsVideo() bool {
-	return m.HasTag("video")
+	return m.hasMarkerTag("video")
 }
 
 // IsNumeric returns true if this has the "numeric" marker tag
 func (m *MediaUrn) IsNumeric() bool {
-	return m.HasTag("numeric")
+	return m.hasMarkerTag("numeric")
 }
 
 // IsBool returns true if this has the "bool" marker tag
 func (m *MediaUrn) IsBool() bool {
-	return m.HasTag("bool")
+	return m.hasMarkerTag("bool")
 }
 
 // IsFilePath returns true if this URN specializes `media:file-path`.
@@ -489,7 +489,7 @@ func (m *MediaUrn) IsBool() bool {
 // deciding scalar-vs-sequence must look at the arg definition's is_sequence
 // flag instead.
 func (m *MediaUrn) IsFilePath() bool {
-	return m.HasTag("file-path")
+	return m.hasMarkerTag("file-path")
 }
 
 // IsLiveFeed returns true if this URN carries the `live` marker tag — a
@@ -499,7 +499,7 @@ func (m *MediaUrn) IsFilePath() bool {
 // `media:file-path`. This is the canonical membership predicate for that
 // family; callers must not test the `live` tag themselves.
 func (m *MediaUrn) IsLiveFeed() bool {
-	return m.HasTag("live")
+	return m.hasMarkerTag("live")
 }
 
 // GetExtension returns the ext tag value if present
