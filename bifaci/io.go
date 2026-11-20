@@ -41,23 +41,45 @@ func (fr *FrameReader) ReadFrame() (*Frame, error) {
 
 	// Enforce max_frame limit
 	if int(length) > fr.limits.MaxFrame {
-		return nil, fmt.Errorf("frame size %d exceeds max_frame limit %d", length, fr.limits.MaxFrame)
+		return nil, &MalformedFrameError{Err: fmt.Errorf("frame size %d exceeds max_frame limit %d", length, fr.limits.MaxFrame)}
 	}
 
 	// Hard limit check
 	if int(length) > MaxFrameHardLimit {
-		return nil, fmt.Errorf("frame size %d exceeds hard limit %d", length, MaxFrameHardLimit)
+		return nil, &MalformedFrameError{Err: fmt.Errorf("frame size %d exceeds hard limit %d", length, MaxFrameHardLimit)}
 	}
 
-	// Read CBOR payload
+	// Read CBOR payload. The stream may end cleanly only before a length
+	// prefix: one that ends after it, before any of the frame it announced,
+	// ended part way through that frame.
 	frameBuf := make([]byte, length)
 	if _, err := io.ReadFull(fr.reader, frameBuf); err != nil {
+		if err == io.EOF {
+			return nil, io.ErrUnexpectedEOF
+		}
 		return nil, err
 	}
 
 	// Decode frame
-	return DecodeFrame(frameBuf)
+	frame, err := DecodeFrame(frameBuf)
+	if err != nil {
+		return nil, &MalformedFrameError{Err: err}
+	}
+	return frame, nil
 }
+
+// MalformedFrameError says the bytes read from a stream are not a frame: one
+// larger than the limits allow, or a payload that does not decode as one. The
+// stream itself was read; what it carried is wrong. Every other error from
+// ReadFrame is the stream's own: io.EOF between two frames, io.ErrUnexpectedEOF
+// part way through one, or the error the read failed with.
+type MalformedFrameError struct {
+	Err error
+}
+
+func (e *MalformedFrameError) Error() string { return e.Err.Error() }
+
+func (e *MalformedFrameError) Unwrap() error { return e.Err }
 
 // FrameWriter writes length-prefixed CBOR frames to a stream
 type FrameWriter struct {

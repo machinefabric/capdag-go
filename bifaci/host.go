@@ -142,6 +142,8 @@ type cartridgeEvent struct {
 	generation   uint64
 	frame        *Frame
 	isDeath      bool
+	// streamEnd is how the cartridge's output ended, on a death.
+	streamEnd streamEnd
 }
 
 // capTableEntry maps a cap URN to a cartridge index.
@@ -215,8 +217,16 @@ type ManagedCartridge struct {
 	// death report quotes.
 	stderrMu   sync.Mutex
 	stderrTail string
-	manifest   []byte
-	limits     Limits
+	// stderrDone is closed when the stderr drain has read the stream to its
+	// end; the death report waits on it, bounded, for the last lines.
+	stderrDone chan struct{}
+	// pipes are this host's ends of the process's stdout and stderr, closed
+	// once its death is handled. The process is waited for with
+	// os.Process.Wait rather than exec.Cmd.Wait, which would close them
+	// under the stderr drain.
+	pipes    []io.Closer
+	manifest []byte
+	limits   Limits
 	// caps is the flat URN view derived from capGroups (kept in sync
 	// alongside it to avoid recomputing on every cap-table rebuild).
 	caps []string
@@ -1256,7 +1266,7 @@ func (h *CartridgeHost) Run(relayRead io.Reader, relayWrite io.Writer, resourceF
 				continue
 			}
 			if event.isDeath {
-				h.handleCartridgeDeath(event.cartridgeIdx, event.generation, out)
+				h.handleCartridgeDeath(event.cartridgeIdx, event.generation, event.streamEnd, out)
 			} else if event.frame != nil {
 				h.handleCartridgeFrame(event.cartridgeIdx, event.frame, out)
 			}
@@ -1323,9 +1333,9 @@ func (h *CartridgeHost) retireKillLocked(cartridgeIdx int) {
 		close(cartridge.writerCh)
 		cartridge.writerCh = nil
 	}
+	// Killed here and collected by the death its reader then reports.
 	if cartridge.cmd != nil && cartridge.cmd.Process != nil {
 		cartridge.cmd.Process.Kill()
-		cartridge.cmd = nil
 	}
 	cartridge.running = false
 }
@@ -1957,7 +1967,7 @@ func drainCartridgeStderr(cartridge *ManagedCartridge, stderr io.Reader) {
 	}
 }
 
-func (h *CartridgeHost) handleCartridgeDeath(cartridgeIdx int, generation uint64, relayWriter *relayOutbound) {
+func (h *CartridgeHost) handleCartridgeDeath(cartridgeIdx int, generation uint64, end streamEnd, relayWriter *relayOutbound) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -1978,10 +1988,30 @@ func (h *CartridgeHost) handleCartridgeDeath(cartridgeIdx int, generation uint64
 		cartridge.writerCh = nil
 	}
 
+	// How the process ended. A retired one is ended by the host; one whose
+	// output ended on its own is given time to exit, since a crash closes its
+	// output before it is collected; one that wrote something that is not a
+	// frame is ended now.
+	ended := processEnd{kind: processNone}
 	if cartridge.cmd != nil && cartridge.cmd.Process != nil {
-		cartridge.cmd.Process.Kill()
+		wait := time.Duration(0)
+		if !cartridge.retired && (end.kind == streamClosed || end.kind == streamBroken) {
+			wait = exitWaitLimit
+		}
+		ended = awaitExit(cartridge.cmd.Process, wait)
 		cartridge.cmd = nil
 	}
+	if cartridge.stderrDone != nil {
+		select {
+		case <-cartridge.stderrDone:
+		case <-time.After(stderrDrainLimit):
+		}
+		cartridge.stderrDone = nil
+	}
+	for _, pipe := range cartridge.pipes {
+		pipe.Close()
+	}
+	cartridge.pipes = nil
 
 	// Send ERR for all pending requests this cartridge was involved
 	// in — both the request bodies it was handling (incomingRxids)
@@ -1998,9 +2028,9 @@ func (h *CartridgeHost) handleCartridgeDeath(cartridgeIdx int, generation uint64
 	// healthy process crashed. Both are Environment — the cause is outside the
 	// engine either way. Mirrors Rust ShutdownReason::RosterRetired.
 	deathCode := "CARTRIDGE_DIED"
-	deathReason := fmt.Sprintf("cartridge %d died", cartridgeIdx)
-	if tail := cartridge.takeStderrTail(); tail != "" {
-		deathReason = fmt.Sprintf("cartridge %d died. stderr:\n%s", cartridgeIdx, tail)
+	deathReason := deathReport(cartridge.path, end, ended)
+	if tail := strings.TrimRight(cartridge.takeStderrTail(), "\n"); tail != "" {
+		deathReason = fmt.Sprintf("%s stderr:\n%s", deathReason, tail)
 	}
 	if h.cartridges[cartridgeIdx].retired {
 		deathCode = "CARTRIDGE_RETIRED"
@@ -2087,7 +2117,12 @@ func (h *CartridgeHost) readerLoop(cartridgeIdx int, generation uint64, reader *
 	for {
 		frame, err := reader.ReadFrame()
 		if err != nil {
-			h.eventCh <- cartridgeEvent{cartridgeIdx: cartridgeIdx, generation: generation, isDeath: true}
+			h.eventCh <- cartridgeEvent{
+				cartridgeIdx: cartridgeIdx,
+				generation:   generation,
+				isDeath:      true,
+				streamEnd:    streamEndFromReadError(err),
+			}
 			return
 		}
 		h.eventCh <- cartridgeEvent{cartridgeIdx: cartridgeIdx, generation: generation, frame: frame}
@@ -2145,10 +2180,16 @@ func (h *CartridgeHost) spawnCartridgeLocked(cartridgeIdx int) error {
 		return fmt.Errorf("failed to start cartridge: %w", err)
 	}
 	cartridge.cmd = cmd
+	cartridge.pipes = []io.Closer{stdout, stderr}
 	cartridge.stderrMu.Lock()
 	cartridge.stderrTail = ""
 	cartridge.stderrMu.Unlock()
-	go drainCartridgeStderr(cartridge, stderr)
+	stderrDone := make(chan struct{})
+	cartridge.stderrDone = stderrDone
+	go func() {
+		defer close(stderrDone)
+		drainCartridgeStderr(cartridge, stderr)
+	}()
 
 	reader := NewFrameReader(stdout)
 	writer := NewFrameWriter(stdin)
