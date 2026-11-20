@@ -553,33 +553,30 @@ func Test024_directional_accepts(t *testing.T) {
 	assert.False(t, cap5.Accepts(cap1))
 }
 
-// TEST25: Test find_best_match returns most specific matching cap
+// TEST25: find_best_match chooses the serving cap closest to the request: an exact match over a refinement
 func Test025_best_match(t *testing.T) {
 	matcher := &CapMatcher{}
 
-	caps := []*CapUrn{}
-
-	cap1, err := NewCapUrnFromString(testUrn("op"))
+	op, err := NewCapUrnFromString(testUrn("op"))
 	require.NoError(t, err)
-	caps = append(caps, cap1)
-
-	cap2, err := NewCapUrnFromString(testUrn("generate"))
+	pdf, err := NewCapUrnFromString(testUrn("generate;ext=pdf"))
 	require.NoError(t, err)
-	caps = append(caps, cap2)
-
-	cap3, err := NewCapUrnFromString(testUrn("generate;ext=pdf"))
+	generate, err := NewCapUrnFromString(testUrn("generate"))
 	require.NoError(t, err)
-	caps = append(caps, cap3)
-
 	request, err := NewCapUrnFromString(testUrn("generate"))
 	require.NoError(t, err)
 
-	best := matcher.FindBestMatch(caps, request)
-	require.NotNil(t, best)
+	// Both generate caps serve the request; the pdf one is more specific.
+	assert.True(t, pdf.IsDispatchable(request))
+	assert.True(t, generate.IsDispatchable(request))
+	assert.Greater(t, pdf.Specificity(), generate.Specificity())
 
-	ext, exists := best.GetTag("ext")
-	assert.True(t, exists)
-	assert.Equal(t, "pdf", ext)
+	// The exact match wins over the more specific refinement, though it is
+	// registered after it.
+	assert.Same(t, generate, matcher.FindBestMatch([]*CapUrn{op, pdf, generate}, request))
+
+	// A refinement is chosen when nothing matches exactly.
+	assert.Same(t, pdf, matcher.FindBestMatch([]*CapUrn{op, pdf}, request))
 }
 
 // TEST26: Test merge combines tags from both caps, subset keeps only specified tags
@@ -1120,31 +1117,79 @@ func Test560_with_in_out_spec(t *testing.T) {
 	assert.Equal(t, "media:enc=utf8;txt", changedBoth.OutSpec())
 }
 
-// TEST563: CapMatcher::find_all_matches returns all matching caps sorted by specificity
+// TEST563: CapMatcher::find_all_matches returns every serving cap in ranking order, closest to the request first
 func Test563_find_all_matches(t *testing.T) {
-	caps := []*CapUrn{}
-	c1, err := NewCapUrnFromString(`cap:in="media:void";test;out="media:void"`)
+	pdf, err := NewCapUrnFromString(`cap:in="media:void";test;ext=pdf;out="media:void"`)
 	require.NoError(t, err)
-	caps = append(caps, c1)
-	c2, err := NewCapUrnFromString(`cap:in="media:void";test;ext=pdf;out="media:void"`)
+	exact, err := NewCapUrnFromString(`cap:in="media:void";test;out="media:void"`)
 	require.NoError(t, err)
-	caps = append(caps, c2)
-	c3, err := NewCapUrnFromString(`cap:in="media:void";different;out="media:void"`)
+	different, err := NewCapUrnFromString(`cap:in="media:void";different;out="media:void"`)
 	require.NoError(t, err)
-	caps = append(caps, c3)
 
 	request, err := NewCapUrnFromString(`cap:in="media:void";test;out="media:void"`)
 	require.NoError(t, err)
 	matcher := &CapMatcher{}
-	matches := matcher.FindAllMatches(caps, request)
+	matches := matcher.FindAllMatches([]*CapUrn{pdf, exact, different}, request)
 
-	// Should find 2 matches (test and test;ext=pdf), not different
-	assert.Equal(t, 2, len(matches))
-	// Sorted by specificity descending: ext=pdf first (more specific)
-	assert.True(t, matches[0].Specificity() >= matches[1].Specificity())
-	extVal, exists := matches[0].GetTag("ext")
-	assert.True(t, exists)
-	assert.Equal(t, "pdf", extVal)
+	// The two test caps serve the request; the different one does not. The
+	// exact match ranks before the more specific refinement.
+	require.Len(t, matches, 2)
+	assert.Same(t, exact, matches[0])
+	assert.Same(t, pdf, matches[1])
+}
+
+// TEST477: CapMatcher keeps the first registered of candidates the ranking cannot tell apart
+func Test477_matcher_first_registered_of_equal_rank_wins(t *testing.T) {
+	zeta, err := NewCapUrnFromString(`cap:engine=zeta;in="media:document;ext=pdf";out="media:ext=png;image";thumbnail`)
+	require.NoError(t, err)
+	alpha, err := NewCapUrnFromString(`cap:engine=alpha;in="media:document;ext=pdf";out="media:ext=png;image";thumbnail`)
+	require.NoError(t, err)
+	request, err := NewCapUrnFromString(`cap:in="media:document;ext=pdf";out="media:ext=png;image";thumbnail`)
+	require.NoError(t, err)
+
+	// Both serve the request, and they rank alike.
+	assert.True(t, zeta.IsDispatchable(request))
+	assert.True(t, alpha.IsDispatchable(request))
+	assert.Equal(t, zeta.Specificity(), alpha.Specificity())
+
+	matcher := &CapMatcher{}
+	for _, order := range [][]*CapUrn{{zeta, alpha}, {alpha, zeta}} {
+		assert.Same(t, order[0], matcher.FindBestMatch(order, request))
+		matches := matcher.FindAllMatches(order, request)
+		require.Len(t, matches, 2)
+		assert.Same(t, order[0], matches[0])
+		assert.Same(t, order[1], matches[1])
+	}
+}
+
+// TEST484: CapMatcher chooses among the caps that serve the request, never among those the request accepts as a pattern
+func Test484_matcher_ranks_serving_caps_not_accepted_ones(t *testing.T) {
+	request, err := NewCapUrnFromString(`cap:extract;in="media:document;ext=pdf";out=media:record`)
+	require.NoError(t, err)
+	// Takes any document, so it takes the pdf the request sends.
+	broader, err := NewCapUrnFromString(`cap:extract;in=media:document;out=media:record`)
+	require.NoError(t, err)
+	// Takes only a version-2 pdf, so not every pdf the request may send.
+	narrower, err := NewCapUrnFromString(`cap:extract;in="media:document;ext=pdf;v=2";out=media:record`)
+	require.NoError(t, err)
+
+	assert.True(t, broader.IsDispatchable(request))
+	assert.False(t, narrower.IsDispatchable(request))
+	// Read as a pattern, the request fits the narrower cap and not the
+	// broader one, and the narrower one is the more specific.
+	assert.True(t, request.Accepts(narrower))
+	assert.False(t, request.Accepts(broader))
+	assert.Greater(t, narrower.Specificity(), broader.Specificity())
+
+	matcher := &CapMatcher{}
+	assert.Same(t, broader, matcher.FindBestMatch([]*CapUrn{broader, narrower}, request))
+	matches := matcher.FindAllMatches([]*CapUrn{broader, narrower}, request)
+	require.Len(t, matches, 1)
+	assert.Same(t, broader, matches[0])
+
+	// Nothing serves when only the narrower cap is registered.
+	assert.Nil(t, matcher.FindBestMatch([]*CapUrn{narrower}, request))
+	assert.Empty(t, matcher.FindAllMatches([]*CapUrn{narrower}, request))
 }
 
 // TEST564: CapMatcher::are_compatible detects bidirectional overlap

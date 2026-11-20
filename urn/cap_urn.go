@@ -18,10 +18,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"sort"
 	"strings"
 
 	capformal "github.com/machinefabric/capdag-go/formal"
+	lungo "github.com/machinefabric/lungo-go"
 	taggedurn "github.com/machinefabric/tagged-urn-go"
 )
 
@@ -847,6 +849,46 @@ func (c *CapUrn) IsDispatchable(request *CapUrn) bool {
 	return decided(capformal.Dispatch(c.formal, request.formal))
 }
 
+// Select returns the position in candidates of the cap the proved ranking
+// chooses to serve request (CapDAG.Exec.select): among the candidates that
+// serve it, the one whose ranking key is least, and of equal keys the first.
+// The second result is false when none serves it.
+func Select(candidates []*CapUrn, request *CapUrn) (int, bool) {
+	formals := make([]capformal.WfCap, len(candidates))
+	for i, candidate := range candidates {
+		formals[i] = candidate.formal
+	}
+	chosen := decided(capformal.Select(formals, request.formal))
+	if !chosen.Valid {
+		return 0, false
+	}
+	// The model returns the cap it chose; it is the first candidate that
+	// serves the request with the chosen cap's key, since the model keeps the
+	// first of equal keys.
+	key := decided(capformal.RankingKey(chosen.Value, request.formal))
+	for i, candidate := range candidates {
+		if candidate.IsDispatchable(request) && compareRankingKeys(candidate.rankingKey(request), key) == 0 {
+			return i, true
+		}
+	}
+	panic(fmt.Sprintf("capdag: the model chose a cap to serve %s that is none of the candidates", request))
+}
+
+// rankingKey is this candidate's key in the proved ranking for request
+// (CapDAG.Exec.rankingKey): the smaller key ranks first.
+func (c *CapUrn) rankingKey(request *CapUrn) lungo.Pair[*big.Int, *big.Int] {
+	return decided(capformal.RankingKey(c.formal, request.formal))
+}
+
+// compareRankingKeys orders two ranking keys as the model does: by their
+// first part, then by their second.
+func compareRankingKeys(a, b lungo.Pair[*big.Int, *big.Int]) int {
+	if order := a.First.Cmp(b.First); order != 0 {
+		return order
+	}
+	return a.Second.Cmp(b.Second)
+}
+
 // MayDispatch reports whether this candidate COULD serve request: not
 // guaranteed, not excluded. For exploring what the fabric might do — never for
 // routing a call, which must be served.
@@ -1249,53 +1291,55 @@ func (c *CapUrn) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// CapMatcher provides utility methods for matching caps
+// CapMatcher chooses among registered caps for a request, as the proved
+// ranking does (CapDAG.Exec.select): only the caps that serve the request
+// (IsDispatchable) are considered, the one whose specificity is closest to the
+// request's ranks first (an exact match, then the nearest refinement, then the
+// nearest fallback), and of caps that rank alike the first registered comes
+// first. caps is in registration order.
 type CapMatcher struct{}
 
-// FindBestMatch finds the most specific cap that accepts a request
+// FindBestMatch returns the cap the ranking chooses to serve request (Select),
+// or nil when no cap serves it.
 func (m *CapMatcher) FindBestMatch(caps []*CapUrn, request *CapUrn) *CapUrn {
-	var best *CapUrn
-	bestSpecificity := -1
-
-	for _, cap := range caps {
-		// Routing direction: request.accepts(cap) — request is pattern, cap is instance
-		if request.Accepts(cap) {
-			specificity := cap.Specificity()
-			if specificity > bestSpecificity {
-				best = cap
-				bestSpecificity = specificity
-			}
-		}
+	index, found := Select(caps, request)
+	if !found {
+		return nil
 	}
-
-	return best
+	return caps[index]
 }
 
-// FindAllMatches finds all caps that match a request, sorted by specificity
+// FindAllMatches returns every cap that serves request, in ranking order: the
+// one FindBestMatch chooses first, and caps that rank alike in registration
+// order.
 func (m *CapMatcher) FindAllMatches(caps []*CapUrn, request *CapUrn) []*CapUrn {
-	var matches []*CapUrn
-
+	type ranked struct {
+		cap *CapUrn
+		key lungo.Pair[*big.Int, *big.Int]
+	}
+	var serving []ranked
 	for _, cap := range caps {
-		// Routing direction: request.accepts(cap) — request is pattern, cap is instance
-		if request.Accepts(cap) {
-			matches = append(matches, cap)
+		if cap.IsDispatchable(request) {
+			serving = append(serving, ranked{cap: cap, key: cap.rankingKey(request)})
 		}
 	}
-
-	// Sort by specificity (most specific first)
-	sort.Slice(matches, func(i, j int) bool {
-		return matches[i].Specificity() > matches[j].Specificity()
+	// A stable sort, so caps of equal key keep their registration order.
+	sort.SliceStable(serving, func(i, j int) bool {
+		return compareRankingKeys(serving[i].key, serving[j].key) < 0
 	})
-
+	matches := make([]*CapUrn, len(serving))
+	for i, entry := range serving {
+		matches[i] = entry.cap
+	}
 	return matches
 }
 
-// AreCompatible checks if two cap sets are compatible
-// Two caps are compatible if either accepts the other (bidirectional accepts)
+// AreCompatible reports whether two cap sets overlap: some cap of one is
+// comparable with some cap of the other (IsComparable).
 func (m *CapMatcher) AreCompatible(caps1, caps2 []*CapUrn) bool {
 	for _, c1 := range caps1 {
 		for _, c2 := range caps2 {
-			if c1.Accepts(c2) || c2.Accepts(c1) {
+			if c1.IsComparable(c2) {
 				return true
 			}
 		}
