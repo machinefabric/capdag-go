@@ -2,6 +2,7 @@ package bifaci
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"math"
 	"net"
@@ -1865,27 +1866,57 @@ func Test12712_parse_cap_groups_rejects_an_invalid_definition(t *testing.T) {
 	assert.Contains(t, text, "RULE21")
 }
 
+// faultingRelayWrite is a relay transport whose every write fails while the
+// relay is still there: not a hang-up, a fault.
+type faultingRelayWrite struct{}
+
+func (faultingRelayWrite) Write([]byte) (int, error) {
+	return 0, errors.New("the relay transport faulted")
+}
+
+// runHostUntilItEnds runs host on the relay and returns how its session
+// ended, failing the test when it has not ended within five seconds.
+func runHostUntilItEnds(t *testing.T, host *CartridgeHost, relayRead io.Reader, relayWrite io.Writer) error {
+	t.Helper()
+	done := make(chan error, 1)
+	go func() { done <- host.Run(relayRead, relayWrite, nil) }()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(5 * time.Second):
+		t.Fatal("the host's session did not end")
+		return nil
+	}
+}
+
 // TEST7193: a frame the host cannot write to its relay ends its session with
 // the failure named. The writer used to stop on the error without a word while
 // the host went on reading the relay, so the engine waited for answers the
 // host could no longer give. Here the relay's read side stays open and sends
-// nothing; the host's first frame — its initial RelayNotify — cannot be
-// written. Mirrors Rust TEST7193.
+// nothing, and its write side faults: the host's first frame — its initial
+// RelayNotify — cannot be written. Mirrors Rust TEST7193.
 func Test7193_failed_relay_write_ends_the_host_session(t *testing.T) {
+	relayRead, engineWrite := io.Pipe()
+	defer engineWrite.Close()
+
+	err := runHostUntilItEnds(t, NewCartridgeHost(), relayRead, faultingRelayWrite{})
+	require.Error(t, err, "the session ends with the failed write")
+	assert.True(t, strings.Contains(err.Error(), "relay write failed") &&
+		strings.Contains(err.Error(), "the relay transport faulted"),
+		"the session's end names the failed write: %v", err)
+}
+
+// TEST7194: a write that fails because the engine hung up is the relay
+// closing, as when its read side ends: the session ends cleanly, not with a
+// failed write. Here the engine has closed its reading end and the relay's
+// read side stays open, so only the write can say the engine is gone. Mirrors
+// Rust TEST7194.
+func Test7194_relay_write_to_a_hung_up_engine_ends_the_session_cleanly(t *testing.T) {
 	relayRead, engineWrite := io.Pipe()
 	defer engineWrite.Close()
 	engineRead, relayWrite := io.Pipe()
 	require.NoError(t, engineRead.Close())
 
-	host := NewCartridgeHost()
-	done := make(chan error, 1)
-	go func() { done <- host.Run(relayRead, relayWrite, nil) }()
-
-	select {
-	case err := <-done:
-		require.Error(t, err, "the session ends with the failed write")
-		assert.True(t, strings.Contains(err.Error(), "relay write failed"), "the session's end names the failed write: %v", err)
-	case <-time.After(5 * time.Second):
-		t.Fatal("a host whose relay cannot take its frames ends its session")
-	}
+	err := runHostUntilItEnds(t, NewCartridgeHost(), relayRead, relayWrite)
+	assert.NoError(t, err, "an engine that hung up closed the relay; the session ends cleanly")
 }
