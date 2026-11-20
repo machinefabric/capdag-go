@@ -2033,6 +2033,306 @@ func Test0135_runtime_identity_probe_success_makes_caps_routable(t *testing.T) {
 	}
 }
 
+// readIdentityProbe reads an identity probe a fake master was sent — its REQ
+// and body — and returns what answering it takes: the probe's rid, its xid,
+// and the chunk payload to echo.
+func readIdentityProbe(t *testing.T, reader *FrameReader) (MessageId, *MessageId, []byte, bool) {
+	t.Helper()
+	req, err := reader.ReadFrame()
+	if err != nil || req == nil || req.FrameType != FrameTypeReq {
+		t.Errorf("expected the identity probe's REQ: %v %v", req, err)
+		return MessageId{}, nil, nil, false
+	}
+	var payload []byte
+	for {
+		f, err := reader.ReadFrame()
+		if err != nil || f == nil {
+			t.Errorf("expected the identity probe's body: %v", err)
+			return MessageId{}, nil, nil, false
+		}
+		switch f.FrameType {
+		case FrameTypeStreamStart, FrameTypeStreamEnd:
+		case FrameTypeChunk:
+			payload = append(payload, f.Payload...)
+		case FrameTypeEnd:
+			return req.Id, req.RoutingId, payload, true
+		default:
+			t.Errorf("unexpected frame type in an identity probe: %d", f.FrameType)
+			return MessageId{}, nil, nil, false
+		}
+	}
+}
+
+// identityEchoFrames is the echo that answers an identity probe:
+// STREAM_START, CHUNK(payload), STREAM_END, END, on the probe's flow.
+func identityEchoFrames(rid MessageId, xid *MessageId, payload []byte) []*Frame {
+	streamID := "identity-echo"
+	frames := []*Frame{
+		NewStreamStart(rid, streamID, "media:", nil),
+		NewChunk(rid, streamID, 0, payload, 0, ComputeChecksum(payload)),
+		NewStreamEnd(rid, streamID, 1),
+		NewEnd(rid, nil),
+	}
+	for _, fr := range frames {
+		fr.RoutingId = xid
+	}
+	return frames
+}
+
+// drainUntilHangup keeps a fake master connected until the switch hangs up,
+// as a real one does.
+func drainUntilHangup(reader *FrameReader) {
+	for {
+		if f, err := reader.ReadFrame(); err != nil || f == nil {
+			return
+		}
+	}
+}
+
+// newCaplessSwitch is a switch whose one master advertises no caps, for
+// tests that attach the masters they are about to it.
+func newCaplessSwitch(t *testing.T) *RelaySwitch {
+	t.Helper()
+	engineRead, slaveWrite := createSocketPair(t)
+	slaveRead, engineWrite := createSocketPair(t)
+	go func() {
+		reader := NewFrameReader(slaveRead)
+		if serveRelayHandshake(t, reader, NewFrameWriter(slaveWrite), nil) {
+			drainUntilHangup(reader)
+		}
+	}()
+	sw, err := NewRelaySwitch([]SocketPair{
+		{ID: "capless", Read: engineRead, Write: engineWrite},
+	}, HostPolicy{Network: NetworkPolicyFull})
+	if err != nil {
+		t.Fatalf("NewRelaySwitch: %v", err)
+	}
+	return sw
+}
+
+// masterHealth reads a slot's health and the error it reports under the
+// switch lock.
+func masterHealth(sw *RelaySwitch, idx int) (bool, string) {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	if sw.masters[idx].lastError == nil {
+		return sw.masters[idx].healthy, ""
+	}
+	return sw.masters[idx].healthy, *sw.masters[idx].lastError
+}
+
+// routesTo reports whether the switch routes capURN to master idx.
+func routesTo(sw *RelaySwitch, capURN string, idx int) bool {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	got, err := sw.findMasterForCap(capURN, nil)
+	return err == nil && got == idx
+}
+
+// waitUntil polls until done holds, or fails naming what it waited for.
+func waitUntil(t *testing.T, limit time.Duration, what string, done func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(limit)
+	for !done() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting until %s", what)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// TEST7190: a host whose identity answer outlasts AddMaster's probe window —
+// a cartridge cold start longer than the window — joins unverified and
+// reported overdue, and its answer, arriving after the window, verifies it.
+// Half the answer arrives inside the window and the rest after it: the part
+// AddMaster read carries over to the wait. Mirrors Rust TEST7190.
+func Test7190_add_master_probe_answered_after_its_window_verifies_the_master(t *testing.T) {
+	lateCap := `cap:in="media:void";late;out="media:void"`
+	sw := newCaplessSwitch(t)
+	sw.setIdentityProbeWindow(300 * time.Millisecond)
+	sw.StartBackgroundPump()
+
+	engineRead, slaveWrite := createSocketPair(t)
+	slaveRead, engineWrite := createSocketPair(t)
+	release := make(chan struct{})
+	go func() {
+		reader := NewFrameReader(slaveRead)
+		writer := NewFrameWriter(slaveWrite)
+		manifest, _ := json.Marshal(testManifestWithCaps([]string{testCapIdentity, lateCap}))
+		if err := SendNotify(writer, manifest, DefaultLimits()); err != nil {
+			t.Errorf("SendNotify: %v", err)
+			return
+		}
+		if !expectPolicy(t, reader) {
+			return
+		}
+		rid, xid, payload, ok := readIdentityProbe(t, reader)
+		if !ok {
+			return
+		}
+		echo := identityEchoFrames(rid, xid, payload)
+		for _, fr := range echo[:2] {
+			if err := writer.WriteFrame(fr); err != nil {
+				return
+			}
+		}
+		<-release
+		for _, fr := range echo[2:] {
+			if err := writer.WriteFrame(fr); err != nil {
+				return
+			}
+		}
+		drainUntilHangup(reader)
+	}()
+
+	idx, err := sw.AddMaster(SocketPair{ID: "slow-host", Read: engineRead, Write: engineWrite})
+	if err != nil {
+		t.Fatalf("AddMaster: %v", err)
+	}
+	healthy, reported := masterHealth(sw, idx)
+	if healthy {
+		t.Fatalf("a master whose probe is unanswered is not verified")
+	}
+	if !strings.Contains(reported, "identity probe unanswered after") {
+		t.Fatalf("the master is reported overdue: %q", reported)
+	}
+	if routesTo(sw, lateCap, idx) {
+		t.Fatalf("an unverified master's cap must not be routable")
+	}
+
+	close(release)
+	waitUntil(t, 5*time.Second, "the late answer verifies the master", func() bool {
+		return routesTo(sw, lateCap, idx)
+	})
+	if healthy, reported := masterHealth(sw, idx); !healthy || reported != "" {
+		t.Fatalf("a verified master is healthy and reports nothing: %v %q", healthy, reported)
+	}
+}
+
+// TEST7191: the runtime identity probe (a master whose advertised caps went
+// from empty to non-empty) left unanswered past its window reports the
+// master overdue and stays open; the answer, when it comes, makes the
+// master's caps routable. Mirrors Rust TEST7191.
+func Test7191_runtime_probe_answered_after_its_window_verifies_the_master(t *testing.T) {
+	lateCap := `cap:in="media:void";late;out="media:void"`
+	engineRead, slaveWrite := createSocketPair(t)
+	slaveRead, engineWrite := createSocketPair(t)
+	release := make(chan struct{})
+	go func() {
+		reader := NewFrameReader(slaveRead)
+		writer := NewFrameWriter(slaveWrite)
+		empty, _ := json.Marshal(map[string]interface{}{"installed_cartridges": []interface{}{}})
+		if err := SendNotify(writer, empty, DefaultLimits()); err != nil {
+			t.Errorf("empty SendNotify: %v", err)
+			return
+		}
+		if !expectPolicy(t, reader) {
+			return
+		}
+		if err := SendNotify(writer, deferredIdentityNotify([]string{testCapIdentity, lateCap}), DefaultLimits()); err != nil {
+			t.Errorf("populated SendNotify: %v", err)
+			return
+		}
+		rid, xid, payload, ok := readIdentityProbe(t, reader)
+		if !ok {
+			return
+		}
+		<-release
+		for _, fr := range identityEchoFrames(rid, xid, payload) {
+			if err := writer.WriteFrame(fr); err != nil {
+				return
+			}
+		}
+		drainUntilHangup(reader)
+	}()
+
+	sw, err := NewRelaySwitch([]SocketPair{
+		{ID: "test-master-0", Read: engineRead, Write: engineWrite},
+	}, HostPolicy{Network: NetworkPolicyFull})
+	if err != nil {
+		t.Fatalf("NewRelaySwitch: %v", err)
+	}
+	sw.setIdentityProbeWindow(300 * time.Millisecond)
+	sw.StartBackgroundPump()
+
+	waitUntil(t, 5*time.Second, "the unanswered probe is reported overdue", func() bool {
+		_, reported := masterHealth(sw, 0)
+		return strings.Contains(reported, "identity probe unanswered after")
+	})
+	if healthy, _ := masterHealth(sw, 0); healthy {
+		t.Fatalf("a master whose probe is unanswered is not verified")
+	}
+	if routesTo(sw, lateCap, 0) {
+		t.Fatalf("an unverified master's cap must not be routable")
+	}
+
+	close(release)
+	waitUntil(t, 5*time.Second, "the late answer verifies the master", func() bool {
+		return routesTo(sw, lateCap, 0)
+	})
+	if healthy, reported := masterHealth(sw, 0); !healthy || reported != "" {
+		t.Fatalf("a verified master is healthy and reports nothing: %v %q", healthy, reported)
+	}
+}
+
+// TEST7192: a master whose identity probe is open is unhealthy; when its
+// connection dies, the probe's request ends with MASTER_DIED and the master
+// says so. Death handling used to stop at an unhealthy master, leaving its
+// requests — the open probe — in the table for ever. Mirrors Rust TEST7192.
+func Test7192_open_identity_probe_ends_when_its_master_dies(t *testing.T) {
+	sw := newCaplessSwitch(t)
+	sw.setIdentityProbeWindow(200 * time.Millisecond)
+	sw.StartBackgroundPump()
+
+	engineRead, slaveWrite := createSocketPair(t)
+	slaveRead, engineWrite := createSocketPair(t)
+	hangup := make(chan struct{})
+	slaveDone := make(chan struct{})
+	go func() {
+		defer close(slaveDone)
+		reader := NewFrameReader(slaveRead)
+		writer := NewFrameWriter(slaveWrite)
+		manifest, _ := json.Marshal(testManifestWithCaps([]string{testCapIdentity, `cap:in="media:void";mute;out="media:void"`}))
+		if err := SendNotify(writer, manifest, DefaultLimits()); err != nil {
+			t.Errorf("SendNotify: %v", err)
+			return
+		}
+		if !expectPolicy(t, reader) {
+			return
+		}
+		if _, _, _, ok := readIdentityProbe(t, reader); !ok {
+			return
+		}
+		<-hangup
+		_ = slaveWrite.Close()
+		_ = slaveRead.Close()
+	}()
+
+	idx, err := sw.AddMaster(SocketPair{ID: "mute-host", Read: engineRead, Write: engineWrite})
+	if err != nil {
+		t.Fatalf("AddMaster: %v", err)
+	}
+	sw.mu.Lock()
+	open := sw.requests.Len()
+	sw.mu.Unlock()
+	if open != 1 {
+		t.Fatalf("the open probe is a live request: %d requests", open)
+	}
+
+	close(hangup)
+	<-slaveDone
+	waitUntil(t, 5*time.Second, "the dead master's probe ends", func() bool {
+		sw.mu.Lock()
+		empty := sw.requests.IsEmpty()
+		sw.mu.Unlock()
+		_, reported := masterHealth(sw, idx)
+		return empty && strings.Contains(reported, "MASTER_DIED")
+	})
+	if healthy, _ := masterHealth(sw, idx); healthy {
+		t.Fatalf("a master whose connection died is not healthy")
+	}
+}
+
 // TEST1897: the installed-cartridge INVENTORY is NOT health-filtered. A
 // master held unhealthy by a failed runtime identity probe still has its
 // cartridges visible in the aggregate inventory (so a transient master

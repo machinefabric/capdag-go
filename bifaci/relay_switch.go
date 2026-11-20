@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"sort"
 	"strings"
@@ -379,6 +380,158 @@ type MasterConnection struct {
 	// the engine can report WHY a master with visible cartridges is
 	// not routable. Mutated only under RelaySwitch.mu.
 	lastError *string
+	// identityProbe is the identity probe this master's health waits on,
+	// while one is open. Only its answer settles the master; the answer of
+	// a probe it replaced (a reattach, a later probe) is ignored. Mutated
+	// only under RelaySwitch.mu.
+	identityProbe *RequestKey
+}
+
+// IdentityProbeWindow is how long an identity probe may go unanswered before
+// its master is reported overdue. Starting the cartridge that answers
+// identity is part of the round trip, and a cold start can outlast any fixed
+// bound, so the window does not end the probe: past it the master is
+// reported overdue, stays unverified, and the answer, whenever it comes,
+// settles it. Mirrors Rust IDENTITY_PROBE_WINDOW.
+const IdentityProbeWindow = 30 * time.Second
+
+// identityProbeJob is a job for the identity-probe driver: probe master
+// `masterIdx` through the switch (its advertised caps went from empty to
+// non-empty), or, when `await` is set, wait for the answer to a probe
+// already sent — AddMaster's, left unanswered when its window ended.
+type identityProbeJob struct {
+	masterIdx int
+	await     *openIdentityProbe
+}
+
+// openIdentityProbe is an identity probe the switch has sent and whose answer
+// it waits for. Its answer arrives through the request table on `answers`.
+type openIdentityProbe struct {
+	masterIdx int
+	key       RequestKey
+	answers   chan Frame
+	nonce     []byte
+	// echoed is the echo received so far.
+	echoed []byte
+	sentAt time.Time
+	window time.Duration
+	// overdue is whether the master has been reported overdue.
+	overdue bool
+}
+
+// masterRead is one read of a master's socket: a frame, or the error (EOF
+// included) that ended the connection.
+type masterRead struct {
+	frame *Frame
+	err   error
+}
+
+// readerDiversion is where a master's reader puts what it reads until
+// AddMaster has committed the master's slot (`diverting`), instead of the
+// switch's frame loop. AddMaster waits on its identity probe through this
+// rather than reading the socket itself, so the reader is the only reader of
+// the socket and AddMaster's wait can end at its window without a read
+// part-way through a frame. The reader never blocks on it: reads queue in
+// `pending` and `notify` wakes the waiter.
+type readerDiversion struct {
+	mu        sync.Mutex
+	diverting bool
+	pending   []masterRead
+	notify    chan struct{}
+}
+
+func newReaderDiversion(diverting bool) *readerDiversion {
+	return &readerDiversion{diverting: diverting, notify: make(chan struct{}, 1)}
+}
+
+// pop takes the oldest read the probe has not handled.
+func (d *readerDiversion) pop() (masterRead, bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if len(d.pending) == 0 {
+		return masterRead{}, false
+	}
+	read := d.pending[0]
+	d.pending = d.pending[1:]
+	return read, true
+}
+
+// sameRequestKey reports whether two request keys name the same request.
+func sameRequestKey(a, b RequestKey) bool {
+	return a.Xid.Equals(b.Xid) && a.Rid.Equals(b.Rid)
+}
+
+// identityProbeFrames is an identity probe's REQ and body — STREAM_START,
+// CHUNK(CBOR-encoded nonce), STREAM_END, END — on the flow (xid, rid).
+func identityProbeFrames(rid, xid MessageId, streamID string, cborNonce []byte) []*Frame {
+	seq := NewSeqAssigner()
+	req := NewReq(rid, standard.CapIdentity, []byte{}, "application/cbor")
+	ss := NewStreamStart(rid, streamID, "media:", nil)
+	chunk := NewChunk(rid, streamID, 0, cborNonce, 0, ComputeChecksum(cborNonce))
+	se := NewStreamEnd(rid, streamID, 1)
+	end := NewEnd(rid, nil)
+	frames := []*Frame{req, ss, chunk, se, end}
+	for _, fr := range frames {
+		x := xid
+		fr.RoutingId = &x
+		seq.Assign(fr)
+	}
+	return frames
+}
+
+// identityAnswerStep is what one frame of an identity probe's answer does to
+// the probe: the answer is STREAM_START, CHUNK(nonce)…, STREAM_END, END, or
+// an ERR. Returns done=false while the answer is still coming; a non-nil
+// error is a failed probe.
+func identityAnswerStep(frame *Frame, nonce []byte, echoed *[]byte) (bool, error) {
+	switch frame.FrameType {
+	case FrameTypeStreamStart, FrameTypeStreamEnd:
+		return false, nil
+	case FrameTypeChunk:
+		if frame.Payload != nil {
+			var decoded []byte
+			if err := cbor2.Unmarshal(frame.Payload, &decoded); err != nil {
+				return true, fmt.Errorf("identity: failed to decode CBOR chunk: %w", err)
+			}
+			*echoed = append(*echoed, decoded...)
+		}
+		return false, nil
+	case FrameTypeEnd:
+		if !bytesEqual(*echoed, nonce) {
+			return true, fmt.Errorf("identity payload mismatch (expected %d bytes, got %d)", len(nonce), len(*echoed))
+		}
+		return true, nil
+	case FrameTypeErr:
+		code := frame.ErrorCode()
+		if code == "" {
+			return true, errors.New("identity failed: ERR frame missing required text code")
+		}
+		msg := frame.ErrorMessage()
+		if msg == "" {
+			return true, errors.New("identity failed: ERR frame missing required text message")
+		}
+		return true, fmt.Errorf("identity failed: [%s] %s", code, msg)
+	case FrameTypeLog, FrameTypeCredit, FrameTypeHeartbeat:
+		// Control/side-channel frames are legal ANYWHERE during the
+		// probe (spec 12.4: LOG interleaves without affecting data
+		// flow; CREDIT/HEARTBEAT are the control plane the writer
+		// gate itself exempts, L4). A cartridge crediting its probe
+		// input as it consumes (L10) must not fail identity
+		// verification.
+		return false, nil
+	default:
+		return true, fmt.Errorf("identity: unexpected frame type %v", frame.FrameType)
+	}
+}
+
+// identityProbeOverdueMessage is what a master still waiting on its
+// identity probe reports.
+func identityProbeOverdueMessage(masterIdx int, window time.Duration) string {
+	return fmt.Sprintf(
+		"master %d: identity probe unanswered after %v — the master stays unverified until the host answers it "+
+			"(the cartridge answering identity is still starting, or the probe or its answer was lost on the way)",
+		masterIdx, window,
+	)
 }
 
 // RelaySwitch is a cap-aware routing multiplexer for multiple RelayMasters
@@ -425,14 +578,18 @@ type RelaySwitch struct {
 	// rather than advancing to "ready" prematurely.
 	expectedMasterCount int
 	mu                  sync.Mutex
-	// pendingProbes queues master indices whose advertised cap set
-	// transitioned empty → non-empty in the last RelayNotify update and
-	// therefore need an end-to-end identity probe before their caps may
-	// become routable. handleMasterFrame enqueues; the probe-driver
-	// goroutine (started by StartBackgroundPump) drains and runs the
-	// probe. Buffered + non-blocking enqueue so the frame loop never
+	// pendingProbes queues identity-probe jobs: masters whose advertised
+	// cap set transitioned empty → non-empty in the last RelayNotify update
+	// (handleMasterFrame enqueues), and AddMaster probes left unanswered at
+	// the end of their window. The probe-driver goroutine (started by
+	// StartBackgroundPump) runs each, gating cap-table publication on its
+	// answer. Buffered + non-blocking enqueue so the frame loop never
 	// stalls while holding sw.mu.
-	pendingProbes chan int
+	pendingProbes chan identityProbeJob
+	// identityProbeWindow is how long an identity probe may go unanswered
+	// before its master is reported overdue (IdentityProbeWindow). The
+	// probe stays open after it. Guarded by mu.
+	identityProbeWindow time.Duration
 	// capWatch broadcasts the routable (health-filtered) capabilities
 	// wire bytes. Subscribers receive the current snapshot on subscribe
 	// and a fresh one whenever the routable set changes — the engine
@@ -698,7 +855,8 @@ func NewRelaySwitch(sockets []SocketPair, policy HostPolicy) (*RelaySwitch, erro
 		stragglers:                   NewStragglerCounters(),
 		aggregateInstalledCartridges: []InstalledCartridgeRecord{},
 		frameRx:                      frameRx,
-		pendingProbes:                make(chan int, 256),
+		pendingProbes:                make(chan identityProbeJob, 256),
+		identityProbeWindow:          IdentityProbeWindow,
 		capWatch:                     newCapWatch(),
 		admission:                    NewAdmissionController(),
 		policy:                       policy,
@@ -708,7 +866,7 @@ func NewRelaySwitch(sockets []SocketPair, policy HostPolicy) (*RelaySwitch, erro
 	// reader AddMaster uses, so a dying socket detaches the slot the same
 	// way whichever path attached it.
 	for _, pr := range pendingReaders {
-		go sw.readMaster(pr.masterIdx, pr.socketReader)
+		go sw.readMaster(pr.masterIdx, pr.socketReader, newReaderDiversion(false))
 	}
 
 	// Seed admission from every master's initial inventory, so the very first
@@ -879,33 +1037,149 @@ func (sw *RelaySwitch) AddMaster(sockPair SocketPair) (int, error) {
 		}
 	}
 
+	// The master's reader starts now and is the only reader of its socket
+	// from here on. Until the slot is committed below, the reader hands what
+	// it reads to this call instead of the frame loop: to the identity probe
+	// while it waits, and in any case so the frame loop never sees a frame
+	// of a master it does not hold yet.
+	diversion := newReaderDiversion(true)
+	go sw.readMaster(masterIdx, socketReader, diversion)
+
 	// End-to-end identity verification — the runtime counterpart of the
 	// synchronous probe NewRelaySwitch runs. Mirrors Rust add_master:
 	// whenever the (re)attaching host advertises at least one cap, prove
 	// its handler chain answers identity end-to-end BEFORE its caps
-	// become routable. The probe must run on the synchronous socket here
-	// (before the reader goroutine is spawned) so its reply frames are
-	// not stolen by the per-master reader.
+	// become routable.
+	//
+	// Starting the cartridge that answers identity is part of the round
+	// trip, and its cold start has no fixed bound, so the wait here is
+	// bounded by the probe window and the master joins when it ends,
+	// answered or not. A probe unanswered at the end of its window is not
+	// a failure: the master joins unverified and reported overdue, the
+	// probe stays open, and its answer, whenever it comes, verifies the
+	// master (the probe driver waits for it).
 	//
 	// On failure the master still joins, but as UNHEALTHY: its
 	// installed_cartridges stay visible to the inventory aggregate while
 	// its caps are held out of the routing table. We do NOT error out —
 	// that would make the whole reattach fail and hide the inventory.
-	var identityFailure *string
+	sw.mu.Lock()
+	window := sw.identityProbeWindow
+	sw.mu.Unlock()
+	var (
+		identityFailure *string
+		openProbe       *openIdentityProbe
+	)
 	if len(caps) > 0 {
-		if verr := VerifyIdentity(socketReader, socketWriter); verr != nil {
-			msg := fmt.Sprintf("AddMaster master %d: identity verification failed: %v", masterIdx, verr)
+		rid := NewMessageIdRandom()
+		xid := NewMessageIdFromUint(atomic.AddUint64(&sw.xidCounter, 1))
+		nonce := identityNonce()
+		cborNonce, err := cbor2.Marshal(nonce)
+		if err != nil {
+			return 0, fmt.Errorf("BUG: failed to CBOR-encode identity nonce: %w", err)
+		}
+		sentAt := time.Now()
+		var failure error
+		for _, fr := range identityProbeFrames(rid, xid, "identity-verify", cborNonce) {
+			if werr := socketWriter.WriteFrame(fr); werr != nil {
+				failure = fmt.Errorf("identity send failed: %w", werr)
+				break
+			}
+		}
+		var echoed []byte
+		answered := failure != nil
+		deadline := time.NewTimer(window)
+		for !answered {
+			read, ok := diversion.pop()
+			if !ok {
+				select {
+				case <-diversion.notify:
+					continue
+				case <-deadline.C:
+				}
+				break
+			}
+			if read.err != nil {
+				if read.err == io.EOF {
+					failure = errors.New("closed during identity verification")
+				} else {
+					failure = fmt.Errorf("identity read failed: %w", read.err)
+				}
+				break
+			}
+			if read.frame.FrameType == FrameTypeRelayNotify {
+				if m := read.frame.RelayNotifyManifest(); m != nil {
+					updated, perr := parseRelayNotifyPayload(m)
+					if perr != nil {
+						failure = fmt.Errorf("RelayNotify reparse failed: %w", perr)
+						break
+					}
+					manifest = m
+					payload = updated
+					caps = payload.CapURNs()
+				}
+				if l := read.frame.RelayNotifyLimits(); l != nil {
+					limits = l
+				}
+				continue
+			}
+			answered, failure = identityAnswerStep(read.frame, nonce, &echoed)
+		}
+		deadline.Stop()
+		elapsedMs := time.Since(sentAt).Milliseconds()
+		switch {
+		case failure != nil:
+			msg := fmt.Sprintf("AddMaster master %d: identity verification failed: %v (after %d ms)", masterIdx, failure, elapsedMs)
 			identityFailure = &msg
+		case !answered:
+			msg := identityProbeOverdueMessage(masterIdx, window)
+			identityFailure = &msg
+			openProbe = &openIdentityProbe{
+				masterIdx: masterIdx,
+				key:       RequestKey{Xid: xid, Rid: rid},
+				answers:   make(chan Frame, 64),
+				nonce:     nonce,
+				echoed:    echoed,
+				sentAt:    sentAt,
+				window:    window,
+				overdue:   true,
+			}
 		}
 	}
 	healthyAtRegister := identityFailure == nil
 
-	// Spawn reader goroutine bound to masterIdx.
-	go sw.readMaster(masterIdx, socketReader)
-
 	// Commit the connection state into the slot.
 	sw.mu.Lock()
-	defer sw.mu.Unlock()
+	unlocked := false
+	defer func() {
+		if !unlocked {
+			sw.mu.Unlock()
+		}
+	}()
+	// An unanswered probe's answer will come through the frame loop: its
+	// request is registered before the reader stops handing reads to this
+	// call, so no part of the answer finds the table without it.
+	var openProbeKey *RequestKey
+	if openProbe != nil {
+		probeCap := standard.CapIdentity
+		state := NewRequestState(
+			RequestRoutingEntry{SourceMasterIdx: nil, DestinationMasterIdx: masterIdx},
+			nil,
+			openProbe.answers,
+			false,
+			uint64(limits.InitialCredit),
+		).WithCapUrn(&probeCap)
+		if regErr := sw.requests.Register(openProbe.key, state); regErr != nil {
+			// The connection does not join: closing it ends its reader.
+			_ = sockPair.Read.Close()
+			return 0, &RelaySwitchError{
+				Type:    RelaySwitchErrorTypeProtocol,
+				Message: fmt.Sprintf("AddMaster master %d: registering its open identity probe failed: %v", masterIdx, regErr),
+			}
+		}
+		key := openProbe.key
+		openProbeKey = &key
+	}
 	if existingIdx < 0 {
 		// Append. The captured `masterIdx` MUST equal the new
 		// length; if not, a concurrent appender bypassed
@@ -930,6 +1204,7 @@ func (sw *RelaySwitch) AddMaster(sockPair SocketPair) (int, error) {
 			hostProtocolStats:   payload.HostProtocolStats,
 			healthy:             healthyAtRegister,
 			lastError:           identityFailure,
+			identityProbe:       openProbeKey,
 		})
 	} else {
 		slot := sw.masters[masterIdx]
@@ -953,6 +1228,7 @@ func (sw *RelaySwitch) AddMaster(sockPair SocketPair) (int, error) {
 		slot.hostProtocolStats = payload.HostProtocolStats
 		slot.healthy = healthyAtRegister
 		slot.lastError = identityFailure
+		slot.identityProbe = openProbeKey
 		slot.detached = false
 	}
 
@@ -964,6 +1240,33 @@ func (sw *RelaySwitch) AddMaster(sockPair SocketPair) (int, error) {
 	sw.rebuildInstalledCartridges()
 	sw.rebuildCapabilities()
 	sw.rebuildLimits()
+	unlocked = true
+	sw.mu.Unlock()
+
+	// The slot is in place: the reader hands its reads to the frame loop
+	// from now on, after what the probe left unread — under the
+	// diversion's lock, so no later read overtakes them. Outside sw.mu,
+	// which the frame loop takes for each read it handles.
+	diversion.mu.Lock()
+	if diversion.diverting {
+		diversion.diverting = false
+		for _, read := range diversion.pending {
+			sw.frameRx <- inboundOfRead(masterIdx, read)
+		}
+		diversion.pending = nil
+	}
+	diversion.mu.Unlock()
+
+	if openProbe != nil {
+		// The probe driver waits for the answer. Without a driver
+		// (StartBackgroundPump) the job waits in the queue and the master
+		// stays reported overdue.
+		select {
+		case sw.pendingProbes <- identityProbeJob{masterIdx: masterIdx, await: openProbe}:
+		default:
+			go func(job identityProbeJob) { sw.pendingProbes <- job }(identityProbeJob{masterIdx: masterIdx, await: openProbe})
+		}
+	}
 
 	return masterIdx, nil
 }
@@ -1135,50 +1438,48 @@ func (sw *RelaySwitch) StartBackgroundPump() {
 	go sw.runProbeDriver()
 }
 
-// runProbeDriver serially drains pendingProbes and probes each named
-// master. On success it flips the master healthy and rebuilds the cap
-// table so its caps become routable; on failure it keeps the master
-// unhealthy and stamps lastError. Mirrors Rust's spawn_identity_probe_driver.
+// runProbeDriver drains pendingProbes and runs each job in a goroutine of
+// its own: a probe of a master that transitioned empty → non-empty caps, or
+// the wait for the answer to an AddMaster probe left unanswered at the end
+// of its window. An answer flips the master healthy and rebuilds the cap
+// table so its caps become routable; a failure keeps the master unhealthy
+// and stamps lastError. A probe unanswered after its window is reported
+// overdue and stays open, so a probe waiting on a slow host never holds
+// back another master's. Mirrors Rust's spawn_identity_probe_driver.
 func (sw *RelaySwitch) runProbeDriver() {
-	for masterIdx := range sw.pendingProbes {
-		err := sw.runIdentityProbeViaRelay(masterIdx)
-
-		sw.mu.Lock()
-		if masterIdx >= 0 && masterIdx < len(sw.masters) {
-			if err == nil {
-				sw.masters[masterIdx].healthy = true
-				sw.masters[masterIdx].lastError = nil
-			} else {
-				sw.masters[masterIdx].healthy = false
-				msg := err.Error()
-				sw.masters[masterIdx].lastError = &msg
+	for job := range sw.pendingProbes {
+		go func(job identityProbeJob) {
+			probe := job.await
+			if probe == nil {
+				opened, key, err := sw.openIdentityProbe(job.masterIdx)
+				if err != nil {
+					sw.settleIdentityProbe(job.masterIdx, key, err)
+					return
+				}
+				probe = opened
 			}
-			// Only the health-filtered surfaces depend on this flip;
-			// inventory (unfiltered) is unchanged. Matches the Rust
-			// driver, which rebuilds cap_table + capabilities only.
-			sw.rebuildCapTable()
-			sw.rebuildCapabilities()
-		}
-		sw.mu.Unlock()
+			sw.awaitIdentityAnswer(probe)
+		}(job)
 	}
 }
 
-// runIdentityProbeViaRelay runs an end-to-end CAP_IDENTITY probe against a
-// single master through the relay's normal master writer + reader path. The
-// probe is registered on the unified request table (L7) exactly like any
-// other request — origin nil (external), destination masterIdx, external
-// channel `ch` — so its reply frames route back through handleMasterFrame's
-// normal response-continuation path (RouteBack::External) instead of a
-// bespoke interception map. Whatever the outcome (success, failure, or
-// timeout) the entry is unconditionally terminated on exit — the success and
-// failure paths already self-terminate via handleMasterFrame's End/Err
-// handling; the final Terminate call here only matters for the timeout case,
-// where it is the sole cleanup path. On success returns nil; on failure
-// returns a typed error suitable for MasterConnection.lastError. Mirrors
-// Rust's run_identity_probe_via_relay + register_external.
-func (sw *RelaySwitch) runIdentityProbeViaRelay(masterIdx int) error {
-	const probeTimeout = 10 * time.Second
+// setIdentityProbeWindow shortens the identity probe window, so a test can
+// watch a probe outlast it.
+func (sw *RelaySwitch) setIdentityProbeWindow(window time.Duration) {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	sw.identityProbeWindow = window
+}
 
+// openIdentityProbe sends an end-to-end CAP_IDENTITY probe to a single master
+// through the relay's normal master writer + reader path. The probe is
+// registered on the unified request table (L7) exactly like any other
+// request — origin nil (external), destination masterIdx, external channel —
+// so its reply frames route back through handleMasterFrame's normal
+// response-continuation path. The probe becomes the master's open probe
+// before anything is sent. A probe that could not be sent is returned with
+// its key and why, to be settled. Mirrors Rust's open_identity_probe.
+func (sw *RelaySwitch) openIdentityProbe(masterIdx int) (*openIdentityProbe, RequestKey, error) {
 	rid := NewMessageIdRandom()
 	xid := NewMessageIdFromUint(atomic.AddUint64(&sw.xidCounter, 1))
 	key := RequestKey{Xid: xid, Rid: rid}
@@ -1186,134 +1487,138 @@ func (sw *RelaySwitch) runIdentityProbeViaRelay(masterIdx int) error {
 	nonce := identityNonce()
 	cborNonce, err := cbor2.Marshal(nonce)
 	if err != nil {
-		return fmt.Errorf("BUG: failed to CBOR-encode identity nonce: %w", err)
+		return nil, key, fmt.Errorf("BUG: failed to CBOR-encode identity nonce: %w", err)
 	}
-	streamID := "identity-verify-runtime"
 
 	// Buffered so handleMasterFrame's delivery (under sw.mu) never blocks
 	// for the bounded probe response (REQ echo is STREAM_START + CHUNK +
 	// STREAM_END + END, or a single ERR).
-	ch := make(chan Frame, 64)
+	answers := make(chan Frame, 64)
 
 	// Register the request and send all five probe frames under sw.mu so
 	// the writes don't interleave with other master writers (the relay
 	// serialises every switch→master write through sw.mu).
 	sw.mu.Lock()
+	defer sw.mu.Unlock()
 	if masterIdx < 0 || masterIdx >= len(sw.masters) {
-		sw.mu.Unlock()
-		return fmt.Errorf("runtime identity probe: master index %d out of range", masterIdx)
+		return nil, key, fmt.Errorf("master %d: identity probe for a master that does not exist", masterIdx)
 	}
+	sw.masters[masterIdx].identityProbe = &key
 	probeCap := standard.CapIdentity
 	state := NewRequestState(
 		RequestRoutingEntry{SourceMasterIdx: nil, DestinationMasterIdx: masterIdx},
 		nil,
-		ch,
+		answers,
 		false,
 		sw.masterInitialCreditLocked(masterIdx),
 	).WithCapUrn(&probeCap)
 	if regErr := sw.requests.Register(key, state); regErr != nil {
-		sw.mu.Unlock()
-		return fmt.Errorf("runtime identity probe registration failed: %w", regErr)
+		return nil, key, fmt.Errorf("master %d: identity probe registration failed: %w", masterIdx, regErr)
 	}
+	sentAt := time.Now()
 	writer := sw.masters[masterIdx].socketWriter
-
-	seq := NewSeqAssigner()
-	req := NewReq(rid, standard.CapIdentity, []byte{}, "application/cbor")
-	req.RoutingId = &xid
-	seq.Assign(req)
-	ss := NewStreamStart(rid, streamID, "media:", nil)
-	ss.RoutingId = &xid
-	seq.Assign(ss)
-	checksum := ComputeChecksum(cborNonce)
-	chunk := NewChunk(rid, streamID, 0, cborNonce, 0, checksum)
-	chunk.RoutingId = &xid
-	seq.Assign(chunk)
-	se := NewStreamEnd(rid, streamID, 1)
-	se.RoutingId = &xid
-	seq.Assign(se)
-	end := NewEnd(rid, nil)
-	end.RoutingId = &xid
-	seq.Assign(end)
-
-	var sendErr error
-	for _, fr := range []*Frame{req, ss, chunk, se, end} {
+	for _, fr := range identityProbeFrames(rid, xid, "identity-verify-runtime", cborNonce) {
 		if werr := writer.WriteFrame(fr); werr != nil {
-			sendErr = werr
-			break
+			return nil, key, fmt.Errorf("master %d: identity probe send failed: %w", masterIdx, werr)
 		}
 	}
-	sw.mu.Unlock()
+	return &openIdentityProbe{
+		masterIdx: masterIdx,
+		key:       key,
+		answers:   answers,
+		nonce:     nonce,
+		sentAt:    sentAt,
+		window:    sw.identityProbeWindow,
+	}, key, nil
+}
 
-	probeErr := func() error {
-		if sendErr != nil {
-			return fmt.Errorf("identity probe send failed: %w", sendErr)
-		}
-
-		timeout := time.After(probeTimeout)
-		var accumulated []byte
-		for {
-			select {
-			case <-timeout:
-				return fmt.Errorf("runtime identity probe timed out after %v", probeTimeout)
-			case fr, ok := <-ch:
-				if !ok {
-					return fmt.Errorf("runtime identity probe channel closed before END")
-				}
-				switch fr.FrameType {
-				case FrameTypeStreamStart, FrameTypeStreamEnd:
-					// no-op
-				case FrameTypeChunk:
-					if fr.Payload != nil {
-						var decoded []byte
-						if derr := cbor2.Unmarshal(fr.Payload, &decoded); derr != nil {
-							return fmt.Errorf("identity probe: failed to decode CBOR chunk: %w", derr)
-						}
-						accumulated = append(accumulated, decoded...)
-					}
-				case FrameTypeEnd:
-					if !bytesEqual(accumulated, nonce) {
-						return fmt.Errorf(
-							"identity probe payload mismatch (expected %d bytes, got %d)",
-							len(nonce), len(accumulated),
-						)
-					}
-					return nil
-				case FrameTypeErr:
-					code := fr.ErrorCode()
-					if code == "" {
-						code = "UNKNOWN"
-					}
-					msg := fr.ErrorMessage()
-					if msg == "" {
-						msg = "no message"
-					}
-					return fmt.Errorf("identity probe failed: [%s] %s", code, msg)
-				case FrameTypeLog, FrameTypeCredit, FrameTypeHeartbeat:
-					// Control/side-channel frames are legal ANYWHERE during
-					// the probe (spec 12.4: LOG interleaves without affecting
-					// data flow; CREDIT/HEARTBEAT are the control plane the
-					// writer gate itself exempts, L4). A v4 cartridge
-					// crediting its probe input as it consumes (L10) must
-					// not fail identity verification.
-				default:
-					return fmt.Errorf("identity probe: unexpected frame type %v", fr.FrameType)
-				}
+// awaitIdentityAnswer waits for an open identity probe's answer and settles
+// its master with it. Past the probe's window the master is reported overdue
+// and the wait goes on: the answer, whenever it comes, settles the master.
+// The wait ends without an answer only when the switch ends the probe's
+// request (its master's connection died: an ERR). Mirrors Rust's
+// await_identity_answer.
+func (sw *RelaySwitch) awaitIdentityAnswer(probe *openIdentityProbe) {
+	var windowEnd <-chan time.Time
+	if !probe.overdue {
+		timer := time.NewTimer(probe.window - time.Since(probe.sentAt))
+		defer timer.Stop()
+		windowEnd = timer.C
+	}
+	var outcome error
+wait:
+	for {
+		select {
+		case <-windowEnd:
+			windowEnd = nil
+			probe.overdue = true
+			sw.reportIdentityProbeOverdue(probe)
+		case frame := <-probe.answers:
+			done, err := identityAnswerStep(&frame, probe.nonce, &probe.echoed)
+			if err != nil {
+				outcome = fmt.Errorf("master %d: %w", probe.masterIdx, err)
+				break wait
+			}
+			if done {
+				break wait
 			}
 		}
-	}()
+	}
+	sw.settleIdentityProbe(probe.masterIdx, probe.key, outcome)
+}
 
-	// Always terminate the request on exit — whether the probe succeeded,
-	// failed, or timed out. Leaking the entry would waste memory and
-	// confuse introspection over time (L7).
+// reportIdentityProbeOverdue reports a master whose open identity probe
+// outlasted its window.
+func (sw *RelaySwitch) reportIdentityProbeOverdue(probe *openIdentityProbe) {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	if probe.masterIdx < 0 || probe.masterIdx >= len(sw.masters) {
+		return
+	}
+	master := sw.masters[probe.masterIdx]
+	if master.identityProbe == nil || !sameRequestKey(*master.identityProbe, probe.key) {
+		return
+	}
+	msg := identityProbeOverdueMessage(probe.masterIdx, probe.window)
+	master.lastError = &msg
+}
+
+// settleIdentityProbe settles a master with its identity probe's outcome
+// (nil: verified, its caps become routable; an error: it stays unhealthy
+// with why). A probe that is no longer the master's open one (the master
+// reattached, or was probed again) settles nothing. Mirrors Rust's
+// settle_identity_probe.
+func (sw *RelaySwitch) settleIdentityProbe(masterIdx int, key RequestKey, outcome error) {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+	// The request ends here whichever way the probe did; one its answer or
+	// a master death already ended is gone.
 	kind := TerminalKindEnd
-	if probeErr != nil {
+	if outcome != nil {
 		kind = TerminalKindErr
 	}
-	sw.mu.Lock()
 	sw.requests.Terminate(key, kind)
-	sw.mu.Unlock()
-
-	return probeErr
+	if masterIdx < 0 || masterIdx >= len(sw.masters) {
+		return
+	}
+	master := sw.masters[masterIdx]
+	if master.identityProbe == nil || !sameRequestKey(*master.identityProbe, key) {
+		return
+	}
+	master.identityProbe = nil
+	if outcome == nil {
+		master.healthy = true
+		master.lastError = nil
+	} else {
+		master.healthy = false
+		msg := outcome.Error()
+		master.lastError = &msg
+	}
+	// Only the health-filtered surfaces depend on this flip; inventory
+	// (unfiltered) is unchanged. Matches the Rust driver, which rebuilds
+	// cap_table + capabilities only.
+	sw.rebuildCapTable()
+	sw.rebuildCapabilities()
 }
 
 // SlotAcceptsAttach reports whether AddMaster(id) is legitimate RIGHT
@@ -1633,7 +1938,7 @@ func (sw *RelaySwitch) SendToMaster(frame *Frame, preferredCap *string) error {
 // death is handed to the pump, because that hand-off blocks until the pump
 // drains frameRx, and a reattach for this id is legitimate from the instant
 // the connection is gone, not from whenever the pump gets around to it.
-func (sw *RelaySwitch) readMaster(idx int, socketReader *FrameReader) {
+func (sw *RelaySwitch) readMaster(idx int, socketReader *FrameReader, diversion *readerDiversion) {
 	detach := func() {
 		sw.mu.Lock()
 		if idx < len(sw.masters) {
@@ -1643,18 +1948,37 @@ func (sw *RelaySwitch) readMaster(idx int, socketReader *FrameReader) {
 	}
 	for {
 		f, err := socketReader.ReadFrame()
+		if err == nil && f == nil {
+			err = io.EOF
+		}
+		read := masterRead{frame: f, err: err}
+		diversion.mu.Lock()
+		if diversion.diverting {
+			// For AddMaster, until it commits the slot. A connection that
+			// ends meanwhile is handed on with the rest then, and the
+			// frame loop's death handling detaches the slot.
+			diversion.pending = append(diversion.pending, read)
+			select {
+			case diversion.notify <- struct{}{}:
+			default:
+			}
+			diversion.mu.Unlock()
+		} else {
+			diversion.mu.Unlock()
+			if err != nil {
+				detach()
+			}
+			sw.frameRx <- inboundOfRead(idx, read)
+		}
 		if err != nil {
-			detach()
-			sw.frameRx <- inbound{master: &MasterFrame{MasterIdx: idx, Frame: nil, Err: err}}
 			return
 		}
-		if f == nil {
-			detach()
-			sw.frameRx <- inbound{master: &MasterFrame{MasterIdx: idx, Frame: nil, Err: fmt.Errorf("EOF")}}
-			return
-		}
-		sw.frameRx <- inbound{master: &MasterFrame{MasterIdx: idx, Frame: f, Err: nil}}
 	}
+}
+
+// inboundOfRead is what a master's reader hands the frame loop for one read.
+func inboundOfRead(idx int, read masterRead) inbound {
+	return inbound{master: &MasterFrame{MasterIdx: idx, Frame: read.frame, Err: read.err}}
 }
 
 // ReadFromMasters blocks until a frame is available from any master
@@ -2498,9 +2822,9 @@ func (sw *RelaySwitch) handleMasterFrame(sourceIdx int, frame *Frame) (*Frame, e
 		if probeRequired {
 			// Hand off to the probe driver without blocking under sw.mu.
 			select {
-			case sw.pendingProbes <- sourceIdx:
+			case sw.pendingProbes <- identityProbeJob{masterIdx: sourceIdx}:
 			default:
-				go func(i int) { sw.pendingProbes <- i }(sourceIdx)
+				go func(i int) { sw.pendingProbes <- identityProbeJob{masterIdx: i} }(sourceIdx)
 			}
 		}
 
@@ -2536,12 +2860,27 @@ func (sw *RelaySwitch) handleMasterDeath(masterIdx int) {
 	}
 
 	if !sw.masters[masterIdx].healthy {
+		// Already unhealthy: its death was handled before, or it never
+		// became routable (its identity probe is open or failed). No route
+		// leads here, but a request to it — its open identity probe —
+		// still ends: nobody is left to answer it.
+		sw.failRequestsToMasterLocked(masterIdx)
 		return
 	}
 
 	sw.masters[masterIdx].healthy = false
+	sw.failRequestsToMasterLocked(masterIdx)
 
-	// Find all pending requests routed to this master.
+	sw.rebuildCapTable()
+	sw.rebuildCapabilities()
+	sw.rebuildInstalledCartridges()
+	sw.rebuildLimits()
+}
+
+// failRequestsToMasterLocked ends every request routed to a master whose
+// connection died, each with a MASTER_DIED ERR to whoever waits on it.
+// Caller holds sw.mu.
+func (sw *RelaySwitch) failRequestsToMasterLocked(masterIdx int) {
 	deadKeys := sw.requests.KeysWhere(func(s *RequestState) bool {
 		return s.Routing.DestinationMasterIdx == masterIdx
 	})
@@ -2576,11 +2915,6 @@ func (sw *RelaySwitch) handleMasterDeath(masterIdx int) {
 			}
 		}
 	}
-
-	sw.rebuildCapTable()
-	sw.rebuildCapabilities()
-	sw.rebuildInstalledCartridges()
-	sw.rebuildLimits()
 }
 
 // rebuildCapTable rebuilds the cap table from all healthy masters
