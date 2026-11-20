@@ -190,15 +190,17 @@ func Test067_is_text(t *testing.T) {
 	assert.False(t, binary.HasTag("enc"))
 }
 
-// TEST68: Test is_void returns true when void flag or type=void tag is present
+// TEST68: is_void is true only for the void marker: media:void; not media:!void (must not be void), media:?void (unconstrained), a URN with no void tag, or media:
 func Test068_is_void(t *testing.T) {
 	voidUrn, err := NewMediaUrnFromString("media:void")
 	require.NoError(t, err)
 	assert.True(t, voidUrn.IsVoid())
 
-	nonVoid, err := NewMediaUrnFromString("media:string")
-	require.NoError(t, err)
-	assert.False(t, nonVoid.IsVoid())
+	for _, s := range []string{"media:!void", "media:?void", "media:string", "media:"} {
+		nonVoid, err := NewMediaUrnFromString(s)
+		require.NoError(t, err)
+		assert.False(t, nonVoid.IsVoid(), s)
+	}
 }
 
 // Mirror-specific coverage: Test simple constructor creates media URN with type tag
@@ -835,5 +837,23 @@ func Test1810_media_void_is_atomic(t *testing.T) {
 		assert.Equal(t, ErrorMediaVoidNotAtomic, mediaErr.Code,
 			"%s: expected ErrorMediaVoidNotAtomic, got code %d (%s)",
 			input, mediaErr.Code, mediaErr.Message)
+	}
+}
+
+// TEST1811: atomicity belongs to the void marker alone. media:void;enc=utf8 is refused with VoidNotAtomic, naming enc; media:!void;enc=utf8 (must not be void) and media:?void;enc=utf8 (void left open) name void without the marker, so each parses as an ordinary media URN that is not void.
+func Test1811_void_atomicity_reads_the_marker(t *testing.T) {
+	_, err := NewMediaUrnFromString("media:void;enc=utf8")
+	require.Error(t, err, "media:void;enc=utf8: expected parse error")
+	mediaErr, ok := err.(*MediaUrnError)
+	require.True(t, ok, "expected *MediaUrnError, got %T (%v)", err, err)
+	assert.Equal(t, ErrorMediaVoidNotAtomic, mediaErr.Code, mediaErr.Message)
+	assert.Contains(t, mediaErr.Message, "enc")
+
+	for _, input := range []string{"media:!void;enc=utf8", "media:?void;enc=utf8"} {
+		urn, err := NewMediaUrnFromString(input)
+		require.NoError(t, err, "%s must parse: it does not say void", input)
+		assert.False(t, urn.IsVoid(), "%s is not void", input)
+		enc, ok := urn.GetTag("enc")
+		assert.True(t, ok && enc == "utf8", "%s keeps its other tags", input)
 	}
 }

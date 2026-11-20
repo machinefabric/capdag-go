@@ -63,9 +63,10 @@ func NewMediaUrnFromString(s string) (*MediaUrn, error) {
 	}
 
 	// Enforce media:void atomicity. The unit type has no lattice
-	// underneath it; refinements are conceptually wrong.
+	// underneath it; refinements are conceptually wrong. Only the void
+	// marker is atomic: media:!void;… and media:?void;… do not say void.
 	allTags := urn.AllTags()
-	if _, hasVoid := allTags["void"]; hasVoid && len(allTags) > 1 {
+	if v, hasVoid := allTags["void"]; hasVoid && v == "*" && len(allTags) > 1 {
 		extras := make([]string, 0, len(allTags)-1)
 		for k := range allTags {
 			if k != "void" {
@@ -113,8 +114,11 @@ func (m *MediaUrn) GetTag(tag string) (string, bool) {
 // IsVoid returns true if this represents void/no data — the **unit
 // type** in the type-theoretic reading. media:void is the nullary
 // value. NOT "invalid" or "absent".
+//
+// True only for the void marker (`void`, stored as `*`): `media:!void` says
+// the media must not be void, and `media:?void` leaves it open.
 func (m *MediaUrn) IsVoid() bool {
-	return m.HasTag("void")
+	return m.hasMarkerTag("void")
 }
 
 // IsTop returns true if this is the **top** media URN — the universal
