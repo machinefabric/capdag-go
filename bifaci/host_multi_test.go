@@ -1864,3 +1864,28 @@ func Test12712_parse_cap_groups_rejects_an_invalid_definition(t *testing.T) {
 	})
 	assert.Contains(t, text, "RULE21")
 }
+
+// TEST7193: a frame the host cannot write to its relay ends its session with
+// the failure named. The writer used to stop on the error without a word while
+// the host went on reading the relay, so the engine waited for answers the
+// host could no longer give. Here the relay's read side stays open and sends
+// nothing; the host's first frame — its initial RelayNotify — cannot be
+// written. Mirrors Rust TEST7193.
+func Test7193_failed_relay_write_ends_the_host_session(t *testing.T) {
+	relayRead, engineWrite := io.Pipe()
+	defer engineWrite.Close()
+	engineRead, relayWrite := io.Pipe()
+	require.NoError(t, engineRead.Close())
+
+	host := NewCartridgeHost()
+	done := make(chan error, 1)
+	go func() { done <- host.Run(relayRead, relayWrite, nil) }()
+
+	select {
+	case err := <-done:
+		require.Error(t, err, "the session ends with the failed write")
+		assert.True(t, strings.Contains(err.Error(), "relay write failed"), "the session's end names the failed write: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("a host whose relay cannot take its frames ends its session")
+	}
+}
