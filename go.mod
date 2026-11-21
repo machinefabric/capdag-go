@@ -1,13 +1,13 @@
 module github.com/machinefabric/capdag-go
 
-// version: 1.620.419
+// version: 1.621.425
 
 go 1.22
 
 // Dispatch, acceptance and specificity are decided by code generated from ../formal
 // (package formal), which runs on lungo's runtime through lungo-go, at exactly the lungo
 // release that generated it; its URNs are tagged-urn-go's.
-require github.com/machinefabric/lungo-go v1.126.0
+require github.com/machinefabric/lungo-go v1.127.0
 
 require (
 	github.com/machinefabric/tagged-urn-go v1.153.0
