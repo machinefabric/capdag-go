@@ -243,52 +243,53 @@ func (r *ResolvedMediaDef) IsStructured() bool {
 	return r.IsRecord()
 }
 
-// HasEncoding returns true if the media declares a character encoding via the
-// `enc=` tag (e.g. enc=utf8). This is the positive test for "is this value
-// text-representable" — there is no `textable` coercion marker and no separate
-// binary/text axis; text is identified by the presence of an encoding.
+// HasEncoding returns true if the media guarantees a character encoding: it
+// conforms to `media:enc` (enc=utf8 and enc do; ?enc and !enc do not). This is
+// the positive test for "is this value text-representable" — there is no
+// `textable` coercion marker and no separate binary/text axis; text is
+// identified by an encoding.
 func (r *ResolvedMediaDef) HasEncoding() bool {
-	return HasMediaUrnTag(r.SpecID, "enc")
+	if r.SpecID == "" {
+		panic("HasEncoding called with empty media URN - this indicates the MediaDef was not resolved via ResolveMediaUrn")
+	}
+	parsed, err := taggedurn.NewTaggedUrnFromString(r.SpecID)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to parse media URN '%s': %v - this indicates invalid data", r.SpecID, err))
+	}
+	anyEncoding, err := taggedurn.NewTaggedUrnFromString("media:enc")
+	if err != nil {
+		panic(fmt.Sprintf("media:enc is a media URN: %v", err))
+	}
+	encoded, err := parsed.ConformsTo(anyEncoding)
+	if err != nil {
+		panic(fmt.Sprintf("media URN '%s' does not compare with media:enc: %v", r.SpecID, err))
+	}
+	return encoded
 }
 
 // IsImage returns true if the "image" marker tag is present in the source media URN.
 func (r *ResolvedMediaDef) IsImage() bool {
-	return HasMediaUrnTag(r.SpecID, "image")
+	return HasMediaUrnMarkerTag(r.SpecID, "image")
 }
 
 // IsAudio returns true if the "audio" marker tag is present in the source media URN.
 func (r *ResolvedMediaDef) IsAudio() bool {
-	return HasMediaUrnTag(r.SpecID, "audio")
+	return HasMediaUrnMarkerTag(r.SpecID, "audio")
 }
 
 // IsVideo returns true if the "video" marker tag is present in the source media URN.
 func (r *ResolvedMediaDef) IsVideo() bool {
-	return HasMediaUrnTag(r.SpecID, "video")
+	return HasMediaUrnMarkerTag(r.SpecID, "video")
 }
 
 // IsNumeric returns true if the "numeric" marker tag is present in the source media URN.
 func (r *ResolvedMediaDef) IsNumeric() bool {
-	return HasMediaUrnTag(r.SpecID, "numeric")
+	return HasMediaUrnMarkerTag(r.SpecID, "numeric")
 }
 
 // IsBool returns true if the "bool" marker tag is present in the source media URN.
 func (r *ResolvedMediaDef) IsBool() bool {
-	return HasMediaUrnTag(r.SpecID, "bool")
-}
-
-// HasMediaUrnTag checks if a media URN carries a tag with the given key (e.g.
-// "enc", "fmt", "record"). Uses tagged-urn parsing for proper tag detection.
-// Requires a valid, non-empty media URN - panics otherwise.
-func HasMediaUrnTag(mediaUrn, tagName string) bool {
-	if mediaUrn == "" {
-		panic("HasMediaUrnTag called with empty mediaUrn - this indicates the MediaDef was not resolved via ResolveMediaUrn")
-	}
-	parsed, err := taggedurn.NewTaggedUrnFromString(mediaUrn)
-	if err != nil {
-		panic(fmt.Sprintf("Failed to parse media URN '%s': %v - this indicates invalid data", mediaUrn, err))
-	}
-	_, exists := parsed.GetTag(tagName)
-	return exists
+	return HasMediaUrnMarkerTag(r.SpecID, "bool")
 }
 
 // HasMediaUrnTagValue checks if a media URN has a tag with a specific value (e.g., record).
@@ -302,11 +303,10 @@ func HasMediaUrnTagValue(mediaUrn, tagKey, tagValue string) bool {
 	if err != nil {
 		panic(fmt.Sprintf("Failed to parse media URN '%s': %v - this indicates invalid data", mediaUrn, err))
 	}
-	value, exists := parsed.GetTag(tagKey)
-	return exists && value == tagValue
+	return parsed.HasTag(tagKey, tagValue)
 }
 
-// HasMediaUrnMarkerTag checks if a media URN has a marker tag (tag with wildcard value "*").
+// HasMediaUrnMarkerTag checks if a media URN has a marker tag (written as just the key).
 // Marker tags are used for boolean flags like `list` and `record`.
 // Uses tagged-urn parsing for proper tag detection.
 // Requires a valid, non-empty media URN - panics otherwise.
@@ -318,8 +318,7 @@ func HasMediaUrnMarkerTag(mediaUrn, tagName string) bool {
 	if err != nil {
 		panic(fmt.Sprintf("Failed to parse media URN '%s': %v - this indicates invalid data", mediaUrn, err))
 	}
-	value, exists := parsed.GetTag(tagName)
-	return exists && value == "*"
+	return parsed.HasMarkerTag(tagName)
 }
 
 // PrimaryType returns the primary type (e.g., "image" from "image/png")
