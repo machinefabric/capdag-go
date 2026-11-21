@@ -1,6 +1,4 @@
-// Package capdag provides flat re-exports of all submodules
-// This file should be created as capdag.go in the root after reorganization
-// Matches Rust's src/lib.rs flat pub use re-exports
+// Package capdag re-exports the main types of its subpackages, as Rust's src/lib.rs does.
 package capdag
 
 // Re-export URN module
