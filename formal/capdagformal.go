@@ -2407,6 +2407,69 @@ func (t wfCapDescriptor) Decode(r *lungo.Reader) (WfCap, error) {
 	return v, nil
 }
 
+// Illegal is Lean's CapDAG.Illegal: one of IllegalBareTop, IllegalNoneNotInside.
+type Illegal interface{ isIllegal() }
+
+// IllegalBareTop is Lean's CapDAG.Illegal.bareTop.
+type IllegalBareTop struct{}
+
+func (IllegalBareTop) isIllegal() {}
+
+// IllegalNoneNotInside is Lean's CapDAG.Illegal.noneNotInside.
+type IllegalNoneNotInside struct{}
+
+func (IllegalNoneNotInside) isIllegal() {}
+
+// IllegalFingerprint is the layout fingerprint of Lean's CapDAG.Illegal: a package using Illegal from this one checks it.
+const IllegalFingerprint = "a8ff18eaaff4ebd30f6722ab9492b959e2e1db00d14532ca7790977b3eb7a528"
+
+type illegalDescriptor struct{}
+
+// IllegalType describes CapDAG.Illegal for polymorphic functions.
+func IllegalType() lungo.Type[Illegal] {
+	return illegalDescriptor{}
+}
+
+func (t illegalDescriptor) Expr() []byte { return lungo.InductiveExpr(27) }
+
+func (t illegalDescriptor) Encode(w *lungo.Writer, v Illegal) error {
+	switch x := v.(type) {
+	case IllegalBareTop:
+		w.U32(0)
+		return nil
+	case *IllegalBareTop:
+		if x == nil {
+			return lungo.Malformed("a nil *IllegalBareTop")
+		}
+		return t.Encode(w, *x)
+	case IllegalNoneNotInside:
+		w.U32(1)
+		return nil
+	case *IllegalNoneNotInside:
+		if x == nil {
+			return lungo.Malformed("a nil *IllegalNoneNotInside")
+		}
+		return t.Encode(w, *x)
+	}
+	return lungo.Malformed("a nil Illegal")
+}
+
+func (t illegalDescriptor) Decode(r *lungo.Reader) (Illegal, error) {
+	c, err := r.U32()
+	if err != nil {
+		return nil, err
+	}
+	switch c {
+	case 0:
+		var v IllegalBareTop
+		return v, nil
+	case 1:
+		var v IllegalNoneNotInside
+		return v, nil
+	}
+	return nil, lungo.Malformed("constructor index %d of CapDAG.Illegal", c)
+}
+
 // Effect is Lean's CapDAG.Effect: one of EffectUnspecified, EffectDeclared, EffectNone, EffectPatch.
 type Effect interface{ isEffect() }
 
@@ -2440,7 +2503,7 @@ func EffectType() lungo.Type[Effect] {
 	return effectDescriptor{}
 }
 
-func (t effectDescriptor) Expr() []byte { return lungo.InductiveExpr(27) }
+func (t effectDescriptor) Expr() []byte { return lungo.InductiveExpr(28) }
 
 func (t effectDescriptor) Encode(w *lungo.Writer, v Effect) error {
 	switch x := v.(type) {
@@ -2520,7 +2583,7 @@ func WfQueryType() lungo.Type[WfQuery] {
 	return wfQueryDescriptor{}
 }
 
-func (t wfQueryDescriptor) Expr() []byte { return lungo.InductiveExpr(28) }
+func (t wfQueryDescriptor) Expr() []byte { return lungo.InductiveExpr(29) }
 
 func (t wfQueryDescriptor) Encode(w *lungo.Writer, v WfQuery) error {
 	w.U32(0)
@@ -2604,7 +2667,7 @@ func GradeType() lungo.Type[Grade] {
 	return gradeDescriptor{}
 }
 
-func (t gradeDescriptor) Expr() []byte { return lungo.InductiveExpr(29) }
+func (t gradeDescriptor) Expr() []byte { return lungo.InductiveExpr(30) }
 
 func (t gradeDescriptor) Encode(w *lungo.Writer, v Grade) error {
 	switch x := v.(type) {
@@ -2699,7 +2762,7 @@ func RunPhaseType() lungo.Type[RunPhase] {
 	return runPhaseDescriptor{}
 }
 
-func (t runPhaseDescriptor) Expr() []byte { return lungo.InductiveExpr(30) }
+func (t runPhaseDescriptor) Expr() []byte { return lungo.InductiveExpr(31) }
 
 func (t runPhaseDescriptor) Encode(w *lungo.Writer, v RunPhase) error {
 	switch x := v.(type) {
@@ -2799,7 +2862,7 @@ func RunOutcomeType() lungo.Type[RunOutcome] {
 	return runOutcomeDescriptor{}
 }
 
-func (t runOutcomeDescriptor) Expr() []byte { return lungo.InductiveExpr(31) }
+func (t runOutcomeDescriptor) Expr() []byte { return lungo.InductiveExpr(32) }
 
 func (t runOutcomeDescriptor) Encode(w *lungo.Writer, v RunOutcome) error {
 	switch x := v.(type) {
@@ -2910,7 +2973,7 @@ func RunAskType() lungo.Type[RunAsk] {
 	return runAskDescriptor{}
 }
 
-func (t runAskDescriptor) Expr() []byte { return lungo.InductiveExpr(32) }
+func (t runAskDescriptor) Expr() []byte { return lungo.InductiveExpr(33) }
 
 func (t runAskDescriptor) Encode(w *lungo.Writer, v RunAsk) error {
 	switch x := v.(type) {
@@ -2999,7 +3062,7 @@ func RunNextType() lungo.Type[RunNext] {
 	return runNextDescriptor{}
 }
 
-func (t runNextDescriptor) Expr() []byte { return lungo.InductiveExpr(33) }
+func (t runNextDescriptor) Expr() []byte { return lungo.InductiveExpr(34) }
 
 func (t runNextDescriptor) Encode(w *lungo.Writer, v RunNext) error {
 	w.U32(0)
@@ -3087,7 +3150,7 @@ func StepStateType() lungo.Type[StepState] {
 	return stepStateDescriptor{}
 }
 
-func (t stepStateDescriptor) Expr() []byte { return lungo.InductiveExpr(34) }
+func (t stepStateDescriptor) Expr() []byte { return lungo.InductiveExpr(35) }
 
 func (t stepStateDescriptor) Encode(w *lungo.Writer, v StepState) error {
 	switch x := v.(type) {
@@ -3236,7 +3299,7 @@ func StepReportType() lungo.Type[StepReport] {
 	return stepReportDescriptor{}
 }
 
-func (t stepReportDescriptor) Expr() []byte { return lungo.InductiveExpr(35) }
+func (t stepReportDescriptor) Expr() []byte { return lungo.InductiveExpr(36) }
 
 func (t stepReportDescriptor) Encode(w *lungo.Writer, v StepReport) error {
 	switch x := v.(type) {
@@ -3387,7 +3450,7 @@ func ConstraintType() lungo.Type[Constraint] {
 	return constraintDescriptor{}
 }
 
-func (t constraintDescriptor) Expr() []byte { return lungo.InductiveExpr(36) }
+func (t constraintDescriptor) Expr() []byte { return lungo.InductiveExpr(37) }
 
 func (t constraintDescriptor) Encode(w *lungo.Writer, v Constraint) error {
 	switch x := v.(type) {
@@ -3523,7 +3586,7 @@ func PoolType() lungo.Type[Pool] {
 	return poolDescriptor{}
 }
 
-func (t poolDescriptor) Expr() []byte { return lungo.InductiveExpr(37) }
+func (t poolDescriptor) Expr() []byte { return lungo.InductiveExpr(38) }
 
 func (t poolDescriptor) Encode(w *lungo.Writer, v Pool) error {
 	w.U32(0)
@@ -3594,7 +3657,7 @@ func RulesType() lungo.Type[Rules] {
 	return rulesDescriptor{}
 }
 
-func (t rulesDescriptor) Expr() []byte { return lungo.InductiveExpr(38) }
+func (t rulesDescriptor) Expr() []byte { return lungo.InductiveExpr(39) }
 
 func (t rulesDescriptor) Encode(w *lungo.Writer, v Rules) error {
 	switch x := v.(type) {
@@ -3684,7 +3747,7 @@ func WfAskType() lungo.Type[WfAsk] {
 	return wfAskDescriptor{}
 }
 
-func (t wfAskDescriptor) Expr() []byte { return lungo.InductiveExpr(39) }
+func (t wfAskDescriptor) Expr() []byte { return lungo.InductiveExpr(40) }
 
 func (t wfAskDescriptor) Encode(w *lungo.Writer, v WfAsk) error {
 	switch x := v.(type) {
@@ -3808,7 +3871,7 @@ func RunActType() lungo.Type[RunAct] {
 	return runActDescriptor{}
 }
 
-func (t runActDescriptor) Expr() []byte { return lungo.InductiveExpr(40) }
+func (t runActDescriptor) Expr() []byte { return lungo.InductiveExpr(41) }
 
 func (t runActDescriptor) Encode(w *lungo.Writer, v RunAct) error {
 	switch x := v.(type) {
@@ -4487,6 +4550,17 @@ func Accepts(pattern WfCap, cap_ WfCap) (result bool, err error) {
 	}
 	status, out := call(C.lungo_entry(C.capdagFormal__call_l_CapDAG_dExec_daccepts), w.Bytes())
 	return lungo.DecodeValue(program(), status, out, lungo.BoolType)
+}
+
+// CapIllegal is Lean's CapDAG.Exec.capIllegal : CapDAG.Exec.WfCap → Option CapDAG.Illegal
+func CapIllegal(c_ WfCap) (result lungo.Option[Illegal], err error) {
+	w := lungo.NewCall(program())
+	defer w.Release()
+	if err = WfCapType().Encode(w, c_); err != nil {
+		return
+	}
+	status, out := call(C.lungo_entry(C.capdagFormal__call_l_CapDAG_dExec_dcapIllegal), w.Bytes())
+	return lungo.DecodeValue(program(), status, out, lungo.OptionType(IllegalType()))
 }
 
 // Comparable is Lean's CapDAG.Exec.comparable : CapDAG.Exec.WfCap → CapDAG.Exec.WfCap → Bool

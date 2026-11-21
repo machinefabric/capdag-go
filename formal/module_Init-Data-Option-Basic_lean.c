@@ -2,6 +2,24 @@
 /* Compiled Lean module Init.Data.Option.Basic. */
 #include "capdagFormal_program.h"
 
+/* Lean: Option.decidableEqNone._redArg */
+/* Compiled from: Option.decidableEqNone */
+/* Source: <lean>/Init/Data/Option/Basic.lean:32:1 */
+uint8_t capdagFormal__l_Option_ddecidableEqNone_d__redArg(lungo_obj x_1) {
+    uint8_t x_2;
+    uint8_t x_3;
+    switch (lungo_obj_tag(x_1)) {
+        case 0: {
+            x_2 = (uint8_t)1u;
+            return x_2;
+        }
+        default: {
+            x_3 = (uint8_t)0u;
+            return x_3;
+        }
+    }
+}
+
 /* Lean: Option.instDecidableEq._redArg */
 /* Compiled from: Option.instDecidableEq */
 /* Source: <lean>/Init/Data/Option/Basic.lean:18:1 */

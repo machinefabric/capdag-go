@@ -165,6 +165,24 @@ uint8_t capdagFormal__l_List_dinstDecidablePairwise_d__redArg(lungo_obj x_1, lun
     }
 }
 
+/* Lean: List.isEmpty._redArg */
+/* Compiled from: List.isEmpty */
+/* Source: <lean>/Init/Data/List/Basic.lean:763:1 */
+uint8_t capdagFormal__l_List_disEmpty_d__redArg(lungo_obj x_1) {
+    uint8_t x_2;
+    uint8_t x_3;
+    switch (lungo_obj_tag(x_1)) {
+        case 0: {
+            x_2 = (uint8_t)1u;
+            return x_2;
+        }
+        default: {
+            x_3 = (uint8_t)0u;
+            return x_3;
+        }
+    }
+}
+
 /* Lean: List.range */
 /* Source: <lean>/Init/Data/List/Basic.lean:2092:1 */
 lungo_obj capdagFormal__l_List_drange(lungo_obj x_1) {
