@@ -83,8 +83,9 @@ type CapUrn struct {
 	outSpec string
 	// effect is the runtime media/type effect coordinate
 	effect string
-	// tags are additional tags that define this cap (not including in/out/effect)
-	tags map[string]string
+	// tags are the cap-tags (the y axis), each the constraint it writes; in, out
+	// and effect are never here
+	tags map[string]taggedurn.Constraint
 	// formal is the same cap on the proved model's side: its three URNs and its
 	// effect. Dispatch, acceptance, equivalence and specificity are asked of it,
 	// through code generated from ../formal (package formal). Built once, by
@@ -110,7 +111,6 @@ const (
 	ErrorInvalidTagFormat      = 4
 	ErrorMissingCapPrefix      = 5
 	ErrorDuplicateKey          = 6
-	ErrorNumericKey            = 7
 	ErrorUnterminatedQuote     = 8
 	ErrorInvalidEscapeSequence = 9
 	ErrorMissingInSpec         = 10
@@ -121,43 +121,142 @@ const (
 	ErrorIllegalDeclaration    = 15
 )
 
-func normalizeEffectValue(raw *string) (string, error) {
-	if raw == nil {
+// writtenTag is one tag as a tagged URN writes it, for an error that names it.
+func writtenTag(key string, constraint taggedurn.Constraint) string {
+	urn, err := taggedurn.NewTaggedUrnFromTags("cap", map[string]taggedurn.Constraint{key: constraint})
+	if err != nil {
+		panic(fmt.Sprintf("capdag: a tag a tagged URN held is one it writes: %v", err))
+	}
+	text := urn.ToString()
+	return text[len("cap:"):]
+}
+
+// normalizeEffectValue is the effect a cap's tag map writes: none is declared;
+// the marker or ?effect is the unconstrained ?; an exact declared, none or patch
+// is that effect; anything else is refused, named as written.
+func normalizeEffectValue(raw taggedurn.Constraint, present bool) (string, error) {
+	if !present {
 		return string(CapEffectDeclared), nil
 	}
-	switch *raw {
-	case "*", "?":
+	switch v := raw.(type) {
+	case taggedurn.ConstraintPresent, taggedurn.ConstraintUnconstrained:
 		return string(CapEffectAny), nil
-	case "declared":
-		return string(CapEffectDeclared), nil
-	case "none":
-		return string(CapEffectNone), nil
-	case "patch":
-		return string(CapEffectPatch), nil
-	case "":
-		return "", &CapUrnError{Code: ErrorInvalidEffect, Message: "Empty value for 'effect' tag is not allowed"}
-	default:
-		return "", &CapUrnError{
-			Code: ErrorInvalidEffect,
-			Message: fmt.Sprintf(
-				"Unsupported effect '%s'. Supported values are declared, none, patch, or explicit unconstrained ?effect/effect=*",
-				*raw,
-			),
+	case taggedurn.ConstraintExact:
+		switch v.Value {
+		case "declared", "none", "patch":
+			return v.Value, nil
 		}
+	}
+	return "", &CapUrnError{
+		Code: ErrorInvalidEffect,
+		Message: fmt.Sprintf(
+			"Unsupported effect '%s'. Supported values are declared, none, patch, or explicit unconstrained ?effect/effect=*",
+			writtenTag("effect", raw),
+		),
 	}
 }
 
+// parseEffect is an effect given as text to a constructor: declared, none,
+// patch or ?.
+func parseEffect(effect string) (string, error) {
+	switch CapEffect(effect) {
+	case CapEffectDeclared, CapEffectNone, CapEffectPatch, CapEffectAny:
+		return effect, nil
+	}
+	return "", &CapUrnError{
+		Code:    ErrorInvalidEffect,
+		Message: fmt.Sprintf("Unsupported effect '%s'. Supported values are declared, none, patch, or ?", effect),
+	}
+}
+
+// directionError is what a direction side says when its value is no media URN:
+// a value that does not even name the media prefix, in the validation rules'
+// words, and one that names it but does not parse, with the parser's reason.
+func directionError(side, value string, err error) *CapUrnError {
+	code := ErrorInvalidMediaUrn
+	var taggedErr *taggedurn.TaggedUrnError
+	notMedia := false
+	if errors.As(err, &taggedErr) {
+		switch taggedErr.Code {
+		case taggedurn.ErrorMissingPrefix, taggedurn.ErrorEmptyPrefix, taggedurn.ErrorPrefixMismatch:
+			notMedia = true
+		}
+	}
+	if notMedia {
+		return &CapUrnError{Code: code, Message: fmt.Sprintf("Invalid '%s' media URN: %s. Must start with 'media:' or be '*'", side, value)}
+	}
+	return &CapUrnError{Code: code, Message: fmt.Sprintf("Invalid '%s' media URN: %s: %v", side, value, err)}
+}
+
+// directionMedia is a direction side's media URN, in canonical form. An empty
+// value is refused.
+func directionMedia(side, value string) (string, error) {
+	if value == "" {
+		return "", &CapUrnError{Code: ErrorInvalidMediaUrn, Message: fmt.Sprintf("Empty value for '%s' tag is not allowed", side)}
+	}
+	media, err := NewMediaUrnFromString(value)
+	if err != nil {
+		return "", directionError(side, value, err)
+	}
+	return media.String(), nil
+}
+
+// directionSpec is a direction spec given as text to a constructor or the
+// builder: * is the top media media:, as the marker is in parsing; anything else
+// is a media URN, in canonical form.
+func directionSpec(side, raw string) (string, error) {
+	if raw == "*" {
+		return "media:", nil
+	}
+	return directionMedia(side, raw)
+}
+
+// processDirectionTag reads a direction tag as a cap's tag map holds it: missing,
+// or the marker (in, in=*), is media:; an exact value is that media URN in
+// canonical form; any other form is refused.
+func processDirectionTag(tag taggedurn.Constraint, present bool, side string) (string, error) {
+	if !present {
+		return "media:", nil
+	}
+	switch v := tag.(type) {
+	case taggedurn.ConstraintPresent:
+		return "media:", nil
+	case taggedurn.ConstraintExact:
+		return directionMedia(side, v.Value)
+	}
+	return "", &CapUrnError{
+		Code:    ErrorInvalidMediaUrn,
+		Message: fmt.Sprintf("Invalid '%s' media URN: %s. Must start with 'media:' or be '*'", side, writtenTag(side, tag)),
+	}
+}
+
+// structuralKeys are the keys a cap carries apart from its cap-tags.
+var structuralKeys = map[string]bool{"in": true, "out": true, "effect": true}
+
 // assemble is the one way a CapUrn is made: the fields, the model's value built from
 // exactly them, and the admissibility check — so no constructor or edit can produce a
-// cap whose model value describes something else.
-func assemble(inSpec, outSpec, effect string, tags map[string]string) (*CapUrn, error) {
+// cap whose model value describes something else. inSpec and outSpec are canonical
+// media URNs; tags are the cap-tags, which may not name a structural key.
+func assemble(inSpec, outSpec, effect string, tags map[string]taggedurn.Constraint) (*CapUrn, error) {
+	for k := range tags {
+		if structuralKeys[strings.ToLower(k)] {
+			return nil, &CapUrnError{
+				Code:    ErrorInvalidTagFormat,
+				Message: fmt.Sprintf("reserved structural key '%s' must be passed as in_urn, out_urn or effect, not as a tag", k),
+			}
+		}
+	}
 	inMedia, err := NewMediaUrnFromString(inSpec)
 	if err != nil {
-		return nil, &CapUrnError{Code: ErrorInvalidMediaUrn, Message: fmt.Sprintf("Invalid media URN for in spec '%s': %v", inSpec, err)}
+		return nil, directionError("in", inSpec, err)
 	}
 	outMedia, err := NewMediaUrnFromString(outSpec)
 	if err != nil {
-		return nil, &CapUrnError{Code: ErrorInvalidMediaUrn, Message: fmt.Sprintf("Invalid media URN for out spec '%s': %v", outSpec, err)}
+		return nil, directionError("out", outSpec, err)
+	}
+	other, err := taggedurn.NewTaggedUrnFromTags("cap", tags)
+	if err != nil {
+		return nil, capUrnErrorFromTaggedUrn(err)
 	}
 	var formalEffect capformal.Effect
 	switch CapEffect(effect) {
@@ -176,11 +275,11 @@ func assemble(inSpec, outSpec, effect string, tags map[string]string) (*CapUrn, 
 		inSpec:  inSpec,
 		outSpec: outSpec,
 		effect:  effect,
-		tags:    tags,
+		tags:    other.AllTags(),
 		formal: capformal.WfCap{
 			Input:  inMedia.inner.Formal(),
 			Output: outMedia.inner.Formal(),
-			Other:  taggedurn.NewTaggedUrnFromTags("cap", tags).Formal(),
+			Other:  other.Formal(),
 			Effect: formalEffect,
 		},
 	}
@@ -199,88 +298,36 @@ func decided[T any](answer T, err error) T {
 	return answer
 }
 
-func validateNonStructuralTags(tags map[string]string) error {
-	urn := taggedurn.NewTaggedUrnFromTags("cap", tags)
-	if _, err := taggedurn.NewTaggedUrnFromString(urn.ToString()); err != nil {
-		return capUrnErrorFromTaggedUrn(err)
-	}
-	return nil
-}
-
-// processDirectionTag processes a direction tag (in or out) with wildcard expansion
-//
-// - Missing tag → "media:" (wildcard)
-// - tag=* → "media:" (wildcard)
-// - tag= (empty) → error
-// - tag=value → value (validated later)
-func processDirectionTag(taggedUrn *taggedurn.TaggedUrn, tagName string) (string, error) {
-	value, hasTag := taggedUrn.GetTag(tagName)
-	if !hasTag {
-		// Tag is missing - default to media: wildcard
-		return "media:", nil
-	}
-
-	if value == "*" {
-		// Replace * with media: wildcard
-		return "media:", nil
-	}
-
-	if value == "" {
-		// Empty value is not allowed (in= or out= with nothing after =)
-		if tagName == "in" {
-			return "", &CapUrnError{
-				Code:    ErrorInvalidMediaUrn,
-				Message: "Empty value for 'in' tag is not allowed",
-			}
-		}
-		return "", &CapUrnError{
-			Code:    ErrorInvalidMediaUrn,
-			Message: "Empty value for 'out' tag is not allowed",
-		}
-	}
-
-	// Regular value - will be validated as MediaUrn later
-	return value, nil
-}
-
-// Note: needsQuoting and quoteValue are delegated to TaggedUrn
-
-// capUrnErrorFromTaggedUrn converts TaggedUrn errors to CapUrn errors
+// capUrnErrorFromTaggedUrn carries a tagged URN error's code into a cap URN error.
 func capUrnErrorFromTaggedUrn(err error) *CapUrnError {
-	if err == nil {
-		return nil
+	var taggedErr *taggedurn.TaggedUrnError
+	if !errors.As(err, &taggedErr) {
+		panic(fmt.Sprintf("capdag: a tagged URN failed with no TaggedUrnError: %v", err))
 	}
-	msg := err.Error()
-	msgLower := strings.ToLower(msg)
-
-	var code int
-	switch {
-	case strings.Contains(msgLower, "invalid character"):
-		code = ErrorInvalidCharacter
-	case strings.Contains(msgLower, "duplicate"):
-		code = ErrorDuplicateKey
-	case strings.Contains(msgLower, "unterminated") || strings.Contains(msgLower, "unclosed"):
-		code = ErrorUnterminatedQuote
-	case strings.Contains(msgLower, "expected") && strings.Contains(msgLower, "after quoted"):
-		code = ErrorUnterminatedQuote
-	case strings.Contains(msgLower, "numeric"):
-		code = ErrorNumericKey
-	case strings.Contains(msgLower, "escape"):
-		code = ErrorInvalidEscapeSequence
-	case strings.Contains(msgLower, "incomplete") || strings.Contains(msgLower, "missing value"):
-		code = ErrorInvalidTagFormat
-	default:
-		code = ErrorInvalidFormat
+	code := map[int]int{
+		taggedurn.ErrorInvalidFormat:         ErrorInvalidFormat,
+		taggedurn.ErrorEmptyTag:              ErrorEmptyTag,
+		taggedurn.ErrorInvalidCharacter:      ErrorInvalidCharacter,
+		taggedurn.ErrorInvalidTagFormat:      ErrorInvalidTagFormat,
+		taggedurn.ErrorMissingPrefix:         ErrorMissingCapPrefix,
+		taggedurn.ErrorDuplicateKey:          ErrorDuplicateKey,
+		taggedurn.ErrorUnterminatedQuote:     ErrorUnterminatedQuote,
+		taggedurn.ErrorInvalidEscapeSequence: ErrorInvalidEscapeSequence,
+		taggedurn.ErrorEmptyPrefix:           ErrorMissingCapPrefix,
+		taggedurn.ErrorPrefixMismatch:        ErrorMissingCapPrefix,
+		taggedurn.ErrorWhitespaceInInput:     ErrorInvalidCharacter,
+	}[taggedErr.Code]
+	if code == 0 {
+		panic(fmt.Sprintf("capdag: tagged URN error code %d has no cap URN code", taggedErr.Code))
 	}
-
-	return &CapUrnError{Code: code, Message: msg}
+	return &CapUrnError{Code: code, Message: taggedErr.Message}
 }
 
 // NewCapUrnFromString creates a cap URN from a string
 // Format: cap:in="media:...";out="media:...";key1=value1;...
-// The "cap:" prefix is mandatory
-// The 'in' and 'out' tags are REQUIRED (direction is part of cap identity)
-// The in/out values must be valid media URNs (starting with "media:") or wildcards (*)
+// The "cap:" prefix is mandatory. A missing in or out, or the marker (in, in=*),
+// is media:; an exact value is a media URN; a quoted in="*" is the literal value
+// *, which is no media URN.
 // Trailing semicolons are optional and ignored
 // Tags are automatically sorted alphabetically for canonical form
 //
@@ -289,236 +336,78 @@ func capUrnErrorFromTaggedUrn(err error) *CapUrnError {
 // - Unquoted values: Normalized to lowercase
 // - Quoted values: Case preserved exactly as specified
 func NewCapUrnFromString(s string) (*CapUrn, error) {
-	if s == "" {
-		return nil, &CapUrnError{
-			Code:    ErrorInvalidFormat,
-			Message: "cap URN cannot be empty",
-		}
-	}
-
-	// Check for "cap:" prefix early (case-insensitive)
-	if len(s) < 4 || !strings.EqualFold(s[:4], "cap:") {
-		return nil, &CapUrnError{
-			Code:    ErrorMissingCapPrefix,
-			Message: "cap URN must start with 'cap:'",
-		}
-	}
-
-	// Use TaggedUrn for parsing
 	taggedUrn, err := taggedurn.NewTaggedUrnFromString(s)
 	if err != nil {
 		return nil, capUrnErrorFromTaggedUrn(err)
 	}
-
-	// Verify prefix is "cap"
 	if taggedUrn.GetPrefix() != "cap" {
 		return nil, &CapUrnError{
 			Code:    ErrorMissingCapPrefix,
 			Message: "cap URN must start with 'cap:'",
 		}
 	}
-
-	// Process in and out tags with wildcard expansion
-	// Missing tag or tag=* → "media:" (the wildcard)
-	inSpec, err := processDirectionTag(taggedUrn, "in")
-	if err != nil {
-		return nil, err
-	}
-
-	outSpec, err := processDirectionTag(taggedUrn, "out")
-	if err != nil {
-		return nil, err
-	}
-	effectRaw, hasEffect := taggedUrn.GetTag("effect")
-	var effectPtr *string
-	if hasEffect {
-		effectPtr = &effectRaw
-	}
-	effect, err := normalizeEffectValue(effectPtr)
-	if err != nil {
-		return nil, err
-	}
-
-	// Validate and canonicalize in/out specs as media URNs.
-	// Parse through MediaUrn and re-serialize to get canonical tag ordering.
-	// After processing, "media:" is the wildcard (not "*").
-	if inSpec != "media:" {
-		inMediaUrn, err := NewMediaUrnFromString(inSpec)
-		if err != nil {
-			return nil, &CapUrnError{
-				Code:    ErrorInvalidMediaUrn,
-				Message: fmt.Sprintf("Invalid media URN for in spec '%s': %v", inSpec, err),
-			}
-		}
-		inSpec = inMediaUrn.String()
-	}
-	if outSpec != "media:" {
-		outMediaUrn, err := NewMediaUrnFromString(outSpec)
-		if err != nil {
-			return nil, &CapUrnError{
-				Code:    ErrorInvalidMediaUrn,
-				Message: fmt.Sprintf("Invalid media URN for out spec '%s': %v", outSpec, err),
-			}
-		}
-		outSpec = outMediaUrn.String()
-	}
-
-	// Build tags map without in/out
-	tags := make(map[string]string)
-	for key, value := range taggedUrn.AllTags() {
-		if key != "in" && key != "out" && key != "effect" {
-			tags[key] = value
-		}
-	}
-	if err := validateNonStructuralTags(tags); err != nil {
-		return nil, err
-	}
-	return assemble(inSpec, outSpec, effect, tags)
+	return NewCapUrnFromTags(taggedUrn.AllTags())
 }
 
-// NewCapUrnFromTags creates a cap URN from tags that must contain 'in' and 'out'
-// Keys are normalized to lowercase; values are preserved as-is
-// Returns error if 'in' or 'out' tags are missing or invalid
-func NewCapUrnFromTags(tags map[string]string) (*CapUrn, error) {
-	// Normalize keys to lowercase
-	result := make(map[string]string)
+// NewCapUrnFromTags creates a cap URN from a tag map, as string parsing reads one:
+// in, out and effect are taken out of it and read exactly as NewCapUrnFromString
+// reads them, and the rest are the cap-tags.
+func NewCapUrnFromTags(tags map[string]taggedurn.Constraint) (*CapUrn, error) {
+	rest := make(map[string]taggedurn.Constraint, len(tags))
 	for k, v := range tags {
-		result[strings.ToLower(k)] = v
+		rest[k] = v
 	}
-
-	// Extract required in and out specs with wildcard expansion
-	inSpec, hasIn := result["in"]
-	if !hasIn {
-		// Missing tag defaults to wildcard
-		inSpec = "media:"
-	} else if inSpec == "*" {
-		// Wildcard expansion
-		inSpec = "media:"
-	} else if inSpec == "" {
-		return nil, &CapUrnError{
-			Code:    ErrorInvalidMediaUrn,
-			Message: "Empty value for 'in' tag is not allowed",
-		}
+	take := func(key string) (taggedurn.Constraint, bool) {
+		v, ok := rest[key]
+		delete(rest, key)
+		return v, ok
 	}
-	delete(result, "in")
-
-	// Validate and canonicalize in spec
-	if inSpec != "media:" {
-		inMediaUrn, err := NewMediaUrnFromString(inSpec)
-		if err != nil {
-			return nil, &CapUrnError{
-				Code:    ErrorInvalidMediaUrn,
-				Message: fmt.Sprintf("Invalid media URN for in spec '%s': %v", inSpec, err),
-			}
-		}
-		inSpec = inMediaUrn.String()
-	}
-
-	outSpec, hasOut := result["out"]
-	if !hasOut {
-		// Missing tag defaults to wildcard
-		outSpec = "media:"
-	} else if outSpec == "*" {
-		// Wildcard expansion
-		outSpec = "media:"
-	} else if outSpec == "" {
-		return nil, &CapUrnError{
-			Code:    ErrorInvalidMediaUrn,
-			Message: "Empty value for 'out' tag is not allowed",
-		}
-	}
-	delete(result, "out")
-	effectRaw, hasEffect := result["effect"]
-	var effectPtr *string
-	if hasEffect {
-		effectPtr = &effectRaw
-	}
-	effect, err := normalizeEffectValue(effectPtr)
+	inTag, hasIn := take("in")
+	outTag, hasOut := take("out")
+	effectTag, hasEffect := take("effect")
+	inSpec, err := processDirectionTag(inTag, hasIn, "in")
 	if err != nil {
 		return nil, err
 	}
-	delete(result, "effect")
-
-	// Validate and canonicalize out spec
-	if outSpec != "media:" {
-		outMediaUrn, err := NewMediaUrnFromString(outSpec)
-		if err != nil {
-			return nil, &CapUrnError{
-				Code:    ErrorInvalidMediaUrn,
-				Message: fmt.Sprintf("Invalid media URN for out spec '%s': %v", outSpec, err),
-			}
-		}
-		outSpec = outMediaUrn.String()
-	}
-
-	if err := validateNonStructuralTags(result); err != nil {
+	outSpec, err := processDirectionTag(outTag, hasOut, "out")
+	if err != nil {
 		return nil, err
 	}
-	return assemble(inSpec, outSpec, effect, result)
+	effect, err := normalizeEffectValue(effectTag, hasEffect)
+	if err != nil {
+		return nil, err
+	}
+	return assemble(inSpec, outSpec, effect, rest)
 }
 
-// NewCapUrn creates a cap URN from direction specs and additional tags
-// Keys are normalized to lowercase; values are preserved as-is
-// inSpec and outSpec are required direction specifiers
-// Specs are canonicalized through MediaUrn parsing for consistent tag ordering.
-func NewCapUrn(inSpec, outSpec string, tags map[string]string) *CapUrn {
-	// Canonicalize specs through MediaUrn parsing
-	if inSpec != "" && inSpec != "media:" {
-		if mu, err := NewMediaUrnFromString(inSpec); err == nil {
-			inSpec = mu.String()
-		}
-	}
-	if outSpec != "" && outSpec != "media:" {
-		if mu, err := NewMediaUrnFromString(outSpec); err == nil {
-			outSpec = mu.String()
-		}
-	}
-	normalizedTags := make(map[string]string)
-	for k, v := range tags {
-		keyLower := strings.ToLower(k)
-		// Ensure in, out, and effect are not in tags
-		if keyLower != "in" && keyLower != "out" && keyLower != "effect" {
-			normalizedTags[keyLower] = v
-		}
-	}
-	cap, err := NewCapUrnWithEffect(inSpec, outSpec, string(CapEffectDeclared), normalizedTags)
+// NewCapUrn creates a cap URN from direction specs and cap-tags, with the default
+// effect declared; a cap that cannot be made is a panic. See NewCapUrnWithEffect.
+func NewCapUrn(inSpec, outSpec string, tags map[string]taggedurn.Constraint) *CapUrn {
+	cap, err := NewCapUrnWithEffect(inSpec, outSpec, string(CapEffectDeclared), tags)
 	if err != nil {
 		panic(fmt.Sprintf("invalid CapUrn construction: %v", err))
 	}
 	return cap
 }
 
-func NewCapUrnWithEffect(inSpec, outSpec, effect string, tags map[string]string) (*CapUrn, error) {
-	if inSpec == "*" || inSpec == "" {
-		inSpec = "media:"
-	}
-	if outSpec == "*" || outSpec == "" {
-		outSpec = "media:"
-	}
-	inMedia, err := NewMediaUrnFromString(inSpec)
-	if err != nil {
-		return nil, &CapUrnError{Code: ErrorInvalidMediaUrn, Message: fmt.Sprintf("Invalid media URN for in spec '%s': %v", inSpec, err)}
-	}
-	outMedia, err := NewMediaUrnFromString(outSpec)
-	if err != nil {
-		return nil, &CapUrnError{Code: ErrorInvalidMediaUrn, Message: fmt.Sprintf("Invalid media URN for out spec '%s': %v", outSpec, err)}
-	}
-	effectValue, err := normalizeEffectValue(&effect)
+// NewCapUrnWithEffect creates a cap URN from direction specs, an effect and cap-tags.
+// inSpec and outSpec are media URNs, normalized to canonical form; * and media: are
+// both the top media media:, as in parsing, and an empty spec is refused. effect is
+// declared, none, patch or ?. The cap-tags may not name in, out or effect.
+func NewCapUrnWithEffect(inSpec, outSpec, effect string, tags map[string]taggedurn.Constraint) (*CapUrn, error) {
+	in, err := directionSpec("in", inSpec)
 	if err != nil {
 		return nil, err
 	}
-	normalizedTags := make(map[string]string)
-	for k, v := range tags {
-		keyLower := strings.ToLower(k)
-		if keyLower == "in" || keyLower == "out" || keyLower == "effect" {
-			continue
-		}
-		normalizedTags[keyLower] = v
-	}
-	if err := validateNonStructuralTags(normalizedTags); err != nil {
+	out, err := directionSpec("out", outSpec)
+	if err != nil {
 		return nil, err
 	}
-	return assemble(inMedia.String(), outMedia.String(), effectValue, normalizedTags)
+	effectValue, err := parseEffect(effect)
+	if err != nil {
+		return nil, err
+	}
+	return assemble(in, out, effectValue, tags)
 }
 
 // InSpec returns the input spec ID
@@ -646,83 +535,55 @@ func CanonicalOption(capUrn *string) (*string, error) {
 	return &canonical, nil
 }
 
-// GetTag returns the value of a specific tag
-// Key is normalized to lowercase for lookup
-// For 'in', 'out', and 'effect', returns the structural coordinate fields
-func (c *CapUrn) GetTag(key string) (string, bool) {
-	keyLower := strings.ToLower(key)
-	switch keyLower {
-	case "in":
-		return c.inSpec, true
-	case "out":
-		return c.outSpec, true
-	case "effect":
-		return c.effect, true
-	default:
-		value, exists := c.tags[keyLower]
-		return value, exists
-	}
+// GetTag returns the constraint this cap writes for the cap-tag key, and
+// whether it mentions it. Key is normalized to lowercase. The direction and the
+// effect are not cap-tags: they are read with InSpec, OutSpec and Effect.
+func (c *CapUrn) GetTag(key string) (taggedurn.Constraint, bool) {
+	value, exists := c.tags[strings.ToLower(key)]
+	return value, exists
 }
 
-// HasTag checks if this cap has a specific tag with a specific value
-// Key is normalized to lowercase; value comparison is case-sensitive
-// For structural coordinates, checks the dedicated fields
-func (c *CapUrn) HasTag(key, value string) bool {
-	keyLower := strings.ToLower(key)
-	switch keyLower {
-	case "in":
-		return c.inSpec == value
-	case "out":
-		return c.outSpec == value
-	case "effect":
-		return c.effect == value
-	default:
-		tagValue, exists := c.tags[keyLower]
-		return exists && tagValue == value
-	}
+// ExactValue is the exact value this cap writes for the cap-tag key (key=value),
+// and whether it writes one; false when it does not mention the key or
+// constrains it in another form.
+func (c *CapUrn) ExactValue(key string) (string, bool) {
+	exact, ok := c.tags[strings.ToLower(key)].(taggedurn.ConstraintExact)
+	return exact.Value, ok
 }
 
-// HasMarkerTag checks if a marker tag (solo tag with no value) is present.
-// A marker tag is stored as key="*" in the cap URN.
-// Example: `cap:constrained;...` has marker tag "constrained"
-func (c *CapUrn) HasMarkerTag(tagName string) bool {
-	val, ok := c.tags[strings.ToLower(tagName)]
-	return ok && val == "*"
-}
-
-// WithTag returns a new cap URN with an added or updated tag
-// Key is normalized to lowercase; value is preserved as-is
-// Note: Cannot modify structural coordinates here.
-func (c *CapUrn) WithTag(key, value string) *CapUrn {
-	keyLower := strings.ToLower(key)
-	if keyLower == "in" || keyLower == "out" || keyLower == "effect" {
-		panic(fmt.Sprintf("CapUrn::WithTag cannot set reserved structural key '%s'; use WithInSpec/WithOutSpec/WithEffect", keyLower))
-	}
-	newTags := make(map[string]string)
+// Tags returns a copy of the cap-tags.
+func (c *CapUrn) Tags() map[string]taggedurn.Constraint {
+	out := make(map[string]taggedurn.Constraint, len(c.tags))
 	for k, v := range c.tags {
-		newTags[k] = v
+		out[k] = v
 	}
-	newTags[keyLower] = value
-	result, err := NewCapUrnWithEffect(c.inSpec, c.outSpec, c.effect, newTags)
-	if err != nil {
-		panic(fmt.Sprintf("CapUrn::WithTag produced an illegal cap declaration: %v", err))
-	}
-	return result
+	return out
 }
 
-// WithTagValidated adds or updates a tag, rejecting empty values (matches Rust with_tag)
-func (c *CapUrn) WithTagValidated(key, value string) (*CapUrn, error) {
-	if value == "" {
-		return nil, errors.New("tag value cannot be empty")
-	}
-	keyLower := strings.ToLower(key)
-	if keyLower == "in" || keyLower == "out" || keyLower == "effect" {
-		return nil, &CapUrnError{
-			Code:    ErrorInvalidTagFormat,
-			Message: fmt.Sprintf("reserved structural key '%s' must be changed via dedicated CapUrn accessors", keyLower),
-		}
-	}
-	return c.WithTag(key, value), nil
+// HasTag reports whether this cap writes the exact value value for the cap-tag
+// key (key=value). Key is normalized to lowercase; value comparison is
+// case-sensitive.
+func (c *CapUrn) HasTag(key, value string) bool {
+	v, ok := c.ExactValue(key)
+	return ok && v == value
+}
+
+// HasMarkerTag reports whether the cap-tag tagName is present as a marker
+// (written as just the key). Example: `cap:constrained;...` has marker tag
+// "constrained".
+func (c *CapUrn) HasMarkerTag(tagName string) bool {
+	_, ok := c.tags[strings.ToLower(tagName)].(taggedurn.ConstraintPresent)
+	return ok
+}
+
+// WithTag returns a new cap URN with a cap-tag added or replaced. The key must be
+// an identifier; the constraint must be one a URN can write; a structural key
+// (in, out, effect) is refused — those change with WithInSpec, WithOutSpec and
+// WithEffect.
+func (c *CapUrn) WithTag(key string, constraint taggedurn.Constraint) (*CapUrn, error) {
+	newTags := c.Tags()
+	newTags[strings.ToLower(key)] = constraint
+	return assemble(c.inSpec, c.outSpec, c.effect, newTags)
 }
 
 // WithInSpec returns a new cap URN with a different input spec
@@ -759,13 +620,9 @@ func (c *CapUrn) WithoutTag(key string) *CapUrn {
 	if keyLower == "in" || keyLower == "out" || keyLower == "effect" {
 		panic(fmt.Sprintf("CapUrn::WithoutTag cannot remove reserved structural key '%s'", keyLower))
 	}
-	newTags := make(map[string]string)
-	for k, v := range c.tags {
-		if k != keyLower {
-			newTags[k] = v
-		}
-	}
-	result, err := NewCapUrnWithEffect(c.inSpec, c.outSpec, c.effect, newTags)
+	newTags := c.Tags()
+	delete(newTags, keyLower)
+	result, err := assemble(c.inSpec, c.outSpec, c.effect, newTags)
 	if err != nil {
 		panic(fmt.Sprintf("CapUrn::WithoutTag produced an illegal cap declaration: %v", err))
 	}
@@ -1092,7 +949,14 @@ func (c *CapUrn) Compare(other *CapUrn) int {
 	if cmp := effectOrder(c.Effect()) - effectOrder(other.Effect()); cmp != 0 {
 		return cmp
 	}
-	return taggedurn.NewTaggedUrnFromTags("cap", c.tags).Compare(taggedurn.NewTaggedUrnFromTags("cap", other.tags))
+	capTags := func(cap *CapUrn) *taggedurn.TaggedUrn {
+		urn, err := taggedurn.NewTaggedUrnFromTags("cap", cap.tags)
+		if err != nil {
+			panic(fmt.Sprintf("CapUrn invariant: cap-tags make a tagged URN: %v", err))
+		}
+		return urn
+	}
+	return capTags(c).Compare(capTags(other))
 }
 
 // Less returns true if this CapUrn is ordered before other (see Compare).
@@ -1117,12 +981,9 @@ func (c *CapUrn) WithWildcardTag(key string) *CapUrn {
 		return c.WithEffect(CapEffectAny)
 	default:
 		if _, exists := c.tags[keyLower]; exists {
-			newTags := make(map[string]string)
-			for k, v := range c.tags {
-				newTags[k] = v
-			}
-			newTags[keyLower] = "*"
-			result, err := NewCapUrnWithEffect(c.inSpec, c.outSpec, c.effect, newTags)
+			newTags := c.Tags()
+			newTags[keyLower] = taggedurn.ConstraintPresent{}
+			result, err := assemble(c.inSpec, c.outSpec, c.effect, newTags)
 			if err != nil {
 				panic(fmt.Sprintf("CapUrn::WithWildcardTag produced an illegal cap declaration: %v", err))
 			}
@@ -1135,7 +996,7 @@ func (c *CapUrn) WithWildcardTag(key string) *CapUrn {
 // Subset returns a new cap with only specified tags
 // Structural coordinates remain intact; y-axis tags are filtered.
 func (c *CapUrn) Subset(keys []string) *CapUrn {
-	newTags := make(map[string]string)
+	newTags := make(map[string]taggedurn.Constraint)
 	for _, key := range keys {
 		keyLower := strings.ToLower(key)
 		// Skip in/out as they're handled separately
@@ -1146,7 +1007,7 @@ func (c *CapUrn) Subset(keys []string) *CapUrn {
 			newTags[keyLower] = value
 		}
 	}
-	result, err := NewCapUrnWithEffect(c.inSpec, c.outSpec, c.effect, newTags)
+	result, err := assemble(c.inSpec, c.outSpec, c.effect, newTags)
 	if err != nil {
 		panic(fmt.Sprintf("CapUrn::Subset produced an illegal cap declaration: %v", err))
 	}
@@ -1156,14 +1017,11 @@ func (c *CapUrn) Subset(keys []string) *CapUrn {
 // Merge returns a new cap merged with another (other takes precedence for conflicts)
 // Direction specs from other override this one's
 func (c *CapUrn) Merge(other *CapUrn) *CapUrn {
-	newTags := make(map[string]string)
-	for k, v := range c.tags {
-		newTags[k] = v
-	}
+	newTags := c.Tags()
 	for k, v := range other.tags {
 		newTags[k] = v
 	}
-	result, err := NewCapUrnWithEffect(other.inSpec, other.outSpec, other.effect, newTags)
+	result, err := assemble(other.inSpec, other.outSpec, other.effect, newTags)
 	if err != nil {
 		panic(fmt.Sprintf("CapUrn::Merge produced an illegal cap declaration: %v", err))
 	}
@@ -1179,21 +1037,28 @@ func (c *CapUrn) Merge(other *CapUrn) *CapUrn {
 // default on admissible caps. `effect=none` is never omitted; identity is the
 // explicit `cap:effect=none`, never bare `cap:`.
 func (c *CapUrn) ToString() string {
-	allTags := make(map[string]string, len(c.tags)+3)
+	allTags := make(map[string]taggedurn.Constraint, len(c.tags)+3)
 	if c.inSpec != "media:" {
-		allTags["in"] = c.inSpec
+		allTags["in"] = taggedurn.ConstraintExact{Value: c.inSpec}
 	}
 	if c.outSpec != "media:" {
-		allTags["out"] = c.outSpec
+		allTags["out"] = taggedurn.ConstraintExact{Value: c.outSpec}
 	}
-	if c.effect != string(CapEffectDeclared) {
-		allTags["effect"] = c.effect
+	switch CapEffect(c.effect) {
+	case CapEffectDeclared:
+	case CapEffectAny:
+		allTags["effect"] = taggedurn.ConstraintUnconstrained{}
+	default:
+		allTags["effect"] = taggedurn.ConstraintExact{Value: c.effect}
 	}
 	for k, v := range c.tags {
 		allTags[k] = v
 	}
 
-	taggedUrn := taggedurn.NewTaggedUrnFromTags("cap", allTags)
+	taggedUrn, err := taggedurn.NewTaggedUrnFromTags("cap", allTags)
+	if err != nil {
+		panic(fmt.Sprintf("CapUrn invariant: its tags make a tagged URN: %v", err))
+	}
 	return taggedUrn.ToString()
 }
 
@@ -1323,13 +1188,13 @@ type CapUrnBuilder struct {
 	inSpec  *string
 	outSpec *string
 	effect  *string
-	tags    map[string]string
+	tags    map[string]taggedurn.Constraint
 }
 
 // NewCapUrnBuilder creates a new builder
 func NewCapUrnBuilder() *CapUrnBuilder {
 	return &CapUrnBuilder{
-		tags: make(map[string]string),
+		tags: make(map[string]taggedurn.Constraint),
 	}
 }
 
@@ -1351,29 +1216,26 @@ func (b *CapUrnBuilder) Effect(effect CapEffect) *CapUrnBuilder {
 	return b
 }
 
-// Tag adds or updates a tag
-// Key is normalized to lowercase; value is preserved as-is
-// Note: structural coordinates are not set here.
-func (b *CapUrnBuilder) Tag(key, value string) *CapUrnBuilder {
+// Constraint adds a cap-tag of any form, its key normalized to lowercase. The key
+// and constraint are checked when the cap is built; a structural key (in, out,
+// effect) is set with InSpec/OutSpec/Effect instead.
+func (b *CapUrnBuilder) Constraint(key string, constraint taggedurn.Constraint) *CapUrnBuilder {
 	keyLower := strings.ToLower(key)
-	if keyLower == "in" || keyLower == "out" || keyLower == "effect" {
-		panic(fmt.Sprintf("CapUrnBuilder::Tag cannot set reserved structural key '%s'; use InSpec/OutSpec/Effect", keyLower))
+	if structuralKeys[keyLower] {
+		panic(fmt.Sprintf("CapUrnBuilder cannot set reserved structural key '%s'; use InSpec/OutSpec/Effect", keyLower))
 	}
-	b.tags[keyLower] = value
+	b.tags[keyLower] = constraint
 	return b
 }
 
-// Marker adds a marker tag (a wildcard-valued tag that serializes as just the key).
-// Equivalent to Tag(key, "*") but expresses authorial intent: this tag is
-// present as a marker, not a key=value pair.
-// Structural coordinates cannot be set as marker keys.
+// Tag adds a cap-tag with the exact value value, taken literally.
+func (b *CapUrnBuilder) Tag(key, value string) *CapUrnBuilder {
+	return b.Constraint(key, taggedurn.ConstraintExact{Value: value})
+}
+
+// Marker adds a cap-tag as a marker (written as just the key).
 func (b *CapUrnBuilder) Marker(key string) *CapUrnBuilder {
-	keyLower := strings.ToLower(key)
-	if keyLower == "in" || keyLower == "out" || keyLower == "effect" {
-		panic(fmt.Sprintf("CapUrnBuilder::Marker cannot set reserved structural key '%s'; use InSpec/OutSpec/Effect", keyLower))
-	}
-	b.tags[keyLower] = "*"
-	return b
+	return b.Constraint(key, taggedurn.ConstraintPresent{})
 }
 
 // Build creates the final CapUrn
@@ -1381,14 +1243,14 @@ func (b *CapUrnBuilder) Build() (*CapUrn, error) {
 	if b.inSpec == nil {
 		return nil, &CapUrnError{
 			Code:    ErrorMissingInSpec,
-			Message: "cap URN is missing required 'in' spec - caps must declare their input type (use media:void for no input)",
+			Message: "Cap URN requires 'in' tag",
 		}
 	}
 
 	if b.outSpec == nil {
 		return nil, &CapUrnError{
 			Code:    ErrorMissingOutSpec,
-			Message: "cap URN is missing required 'out' spec - caps must declare their output type",
+			Message: "Cap URN requires 'out' tag",
 		}
 	}
 

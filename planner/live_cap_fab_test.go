@@ -7,13 +7,14 @@ import (
 	"github.com/machinefabric/capdag-go/cap"
 	"github.com/machinefabric/capdag-go/fabric"
 	"github.com/machinefabric/capdag-go/urn"
+	taggedurn "github.com/machinefabric/tagged-urn-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // makeTestCapForGraph creates a minimal cap for live_cap_fab tests.
 func makeTestCapForGraph(inSpec, outSpec, op, title string) *cap.Cap {
-	capUrn := urn.NewCapUrn(inSpec, outSpec, map[string]string{"op": op})
+	capUrn := urn.NewCapUrn(inSpec, outSpec, map[string]taggedurn.Constraint{"op": taggedurn.ConstraintExact{Value: op}})
 	stdin := inSpec
 	mainArg := cap.NewCapArg(inSpec, "input", true, []cap.ArgSource{{Stdin: &stdin}})
 	return cap.NewCapWithArgs(capUrn, title, []string{"test"}, []cap.CapArg{mainArg})
@@ -721,7 +722,7 @@ func Test789_cap_from_json_has_valid_specs(t *testing.T) {
 
 // TEST790: Tests identity_urn is specific and doesn't match everything
 func Test790_identity_urn_is_specific(t *testing.T) {
-	identityUrn, err := urn.NewCapUrnWithEffect("media:", "media:", string(urn.CapEffectNone), map[string]string{})
+	identityUrn, err := urn.NewCapUrnWithEffect("media:", "media:", string(urn.CapEffectNone), map[string]taggedurn.Constraint{})
 	require.NoError(t, err)
 
 	assert.Equal(t, "media:", identityUrn.InSpec())

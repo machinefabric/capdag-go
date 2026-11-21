@@ -249,13 +249,11 @@ func settle(survivors []*urn.MediaUrn, valueAdapters *ValueAdapterRegistry, cont
 	for _, survivor := range survivors {
 		u := survivor
 		if isText {
-			refinedStr := valueAdapters.RefineMediaUrn(survivor.String(), string(content))
-			parsed, err := urn.NewMediaUrnFromString(refinedStr)
+			refinedUrn, err := valueAdapters.RefineMediaUrn(survivor, string(content))
 			if err != nil {
-				return nil, fmt.Errorf("a value adapter refined a file's media to '%s', which is no media URN: %v",
-					refinedStr, err)
+				return nil, err
 			}
-			u = parsed
+			u = refinedUrn
 		}
 		seen := false
 		for _, prior := range refined {
