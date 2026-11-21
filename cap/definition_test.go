@@ -8,6 +8,7 @@ import (
 	"github.com/machinefabric/capdag-go/media"
 	"github.com/machinefabric/capdag-go/standard"
 	"github.com/machinefabric/capdag-go/urn"
+	taggedurn "github.com/machinefabric/tagged-urn-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -1065,7 +1066,7 @@ func Test8065_SequenceShapeUsesMainInputIdentityNotArgumentOrder(t *testing.T) {
 	capUrn := urn.NewCapUrn(
 		"media:enc=utf8",
 		"media:enc=utf8;result",
-		map[string]string{"op": "ordered"},
+		map[string]taggedurn.Constraint{"op": taggedurn.ConstraintExact{Value: "ordered"}},
 	)
 	secondaryStdin := "media:enc=utf8;context"
 	mainStdin := "media:enc=utf8"
@@ -1093,7 +1094,7 @@ func Test8066_VoidInputSequenceShapeIsScalarWithoutArguments(t *testing.T) {
 	capUrn := urn.NewCapUrn(
 		standard.MediaVoid,
 		"media:time",
-		map[string]string{"op": "clock"},
+		map[string]taggedurn.Constraint{"op": taggedurn.ConstraintExact{Value: "clock"}},
 	)
 	capDef := NewCap(capUrn, "Clock", []string{"clock"})
 

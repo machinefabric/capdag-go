@@ -49,16 +49,10 @@ func NewMediaUrnFromString(s string) (*MediaUrn, error) {
 		return nil, err
 	}
 
-	// Verify it has the "media:" prefix and preserve the actual prefix in the error.
-	urnStr := urn.String()
-	if !strings.HasPrefix(strings.ToLower(urnStr), "media:") {
-		actual := s
-		if idx := strings.Index(actual, ":"); idx >= 0 {
-			actual = actual[:idx]
-		}
+	if urn.GetPrefix() != "media" {
 		return nil, &taggedurn.TaggedUrnError{
 			Code:    taggedurn.ErrorPrefixMismatch,
-			Message: fmt.Sprintf("invalid prefix for media URN: expected 'media:', got '%s:'", actual),
+			Message: fmt.Sprintf("invalid prefix for media URN: expected 'media:', got '%s:'", urn.GetPrefix()),
 		}
 	}
 
@@ -66,7 +60,7 @@ func NewMediaUrnFromString(s string) (*MediaUrn, error) {
 	// underneath it; refinements are conceptually wrong. Only the void
 	// marker is atomic: media:!void;… and media:?void;… do not say void.
 	allTags := urn.AllTags()
-	if v, hasVoid := allTags["void"]; hasVoid && v == "*" && len(allTags) > 1 {
+	if urn.HasMarkerTag("void") && len(allTags) > 1 {
 		extras := make([]string, 0, len(allTags)-1)
 		for k := range allTags {
 			if k != "void" {
@@ -103,19 +97,32 @@ func (m *MediaUrn) HasTag(tag string) bool {
 	return ok
 }
 
-// GetTag retrieves a tag value
-func (m *MediaUrn) GetTag(tag string) (string, bool) {
+// GetTag returns the constraint this media writes for a key, and whether it
+// mentions it.
+func (m *MediaUrn) GetTag(tag string) (taggedurn.Constraint, bool) {
 	if m.inner == nil {
-		return "", false
+		return nil, false
 	}
 	return m.inner.GetTag(tag)
+}
+
+// ExactValue is the exact value this media writes for a key (key=value), and
+// whether it writes one; false when it does not mention the key or constrains it
+// in another form.
+func (m *MediaUrn) ExactValue(tag string) (string, bool) {
+	c, ok := m.GetTag(tag)
+	if !ok {
+		return "", false
+	}
+	exact, ok := c.(taggedurn.ConstraintExact)
+	return exact.Value, ok
 }
 
 // IsVoid returns true if this represents void/no data — the **unit
 // type** in the type-theoretic reading. media:void is the nullary
 // value. NOT "invalid" or "absent".
 //
-// True only for the void marker (`void`, stored as `*`): `media:!void` says
+// True only for the void marker (`void`, the constraint present): `media:!void` says
 // the media must not be void, and `media:?void` leaves it open.
 func (m *MediaUrn) IsVoid() bool {
 	return m.hasMarkerTag("void")
@@ -136,13 +143,13 @@ func (m *MediaUrn) IsTop() bool {
 // The serialization format is the single `fmt=` axis — `fmt=json` marks JSON
 // content regardless of whether it also came from a `.json` file (`ext=json`).
 func (m *MediaUrn) IsJson() bool {
-	val, ok := m.GetTag("fmt")
+	val, ok := m.ExactValue("fmt")
 	return ok && val == "json"
 }
 
 // IsYaml returns true iff the content serialization format is YAML (`fmt=yaml`).
 func (m *MediaUrn) IsYaml() bool {
-	val, ok := m.GetTag("fmt")
+	val, ok := m.ExactValue("fmt")
 	return ok && val == "yaml"
 }
 
@@ -152,7 +159,7 @@ func (m *MediaUrn) IsYaml() bool {
 // the catalog publishes. A `.csv` file on disk carries `ext=csv` *and* `fmt=csv`;
 // the file-type tag alone (`ext=csv`) does not make a value CSV content.
 func (m *MediaUrn) IsCsv() bool {
-	val, ok := m.GetTag("fmt")
+	val, ok := m.ExactValue("fmt")
 	return ok && val == "csv"
 }
 
@@ -392,12 +399,17 @@ func (m *MediaUrn) IsStructured() bool {
 	return m.IsRecord()
 }
 
-// WithTag creates a new MediaUrn with an additional or updated tag.
-func (m *MediaUrn) WithTag(key, value string) *MediaUrn {
+// WithTag creates a new MediaUrn with a tag added or replaced; the key must be an
+// identifier and the constraint one a URN can write.
+func (m *MediaUrn) WithTag(key string, constraint taggedurn.Constraint) (*MediaUrn, error) {
 	if m.inner == nil {
-		return m
+		panic("capdag: WithTag on a MediaUrn that was never made")
 	}
-	return &MediaUrn{inner: m.inner.WithTag(key, value)}
+	tagged, err := m.inner.WithTag(key, constraint)
+	if err != nil {
+		return nil, err
+	}
+	return NewMediaUrnFromString(tagged.String())
 }
 
 // WithoutTag creates a new MediaUrn without a specific tag.
@@ -440,19 +452,17 @@ func LeastUpperBound(urns []*MediaUrn) *MediaUrn {
 // HELPER: Check for marker tag presence
 // =========================================================================
 
-// hasMarkerTag checks if a marker tag (tag with wildcard/no value) is present.
-// A marker tag is stored as key="*" in the tagged URN.
+// hasMarkerTag reports whether tagName is present as a marker (written as just
+// the key).
 func (m *MediaUrn) hasMarkerTag(tagName string) bool {
 	if m.inner == nil {
 		return false
 	}
-	val, ok := m.inner.GetTag(tagName)
-	return ok && val == "*"
+	return m.inner.HasMarkerTag(tagName)
 }
 
-// HasMarkerTag checks if a marker tag (tag with wildcard/no value) is present.
-// A marker tag is stored as key="*" in the tagged URN.
-// This is the exported version of hasMarkerTag.
+// HasMarkerTag reports whether tagName is present as a marker (written as just
+// the key). This is the exported version of hasMarkerTag.
 func (m *MediaUrn) HasMarkerTag(tagName string) bool {
 	return m.hasMarkerTag(tagName)
 }
@@ -502,9 +512,10 @@ func (m *MediaUrn) IsLiveFeed() bool {
 	return m.hasMarkerTag("live")
 }
 
-// GetExtension returns the ext tag value if present
+// GetExtension returns the extension this media names exactly (ext=pdf gives
+// "pdf"), and whether it names one.
 func (m *MediaUrn) GetExtension() (string, bool) {
-	return m.GetTag("ext")
+	return m.ExactValue("ext")
 }
 
 // Built-in media URN constructors matching Rust
