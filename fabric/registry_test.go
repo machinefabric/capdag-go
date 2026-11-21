@@ -923,7 +923,7 @@ func Test12714_a_served_definition_is_held_to_the_definition_rules(t *testing.T)
 	const capURN = `cap:in="media:document;ext=pdf";disbind;out="media:enc=utf8;page"`
 	definition := func(args []any, outputs []any) []byte {
 		body, err := json.Marshal(map[string]any{
-			"urn": capURN, "aliases": []string{"disbind"}, "title": "Disbind PDF",
+			"urn": capURN, "version": 1, "aliases": []string{"disbind"}, "title": "Disbind PDF",
 			"args": args, "outputs": outputs,
 		})
 		require.NoError(t, err)
@@ -936,25 +936,27 @@ func Test12714_a_served_definition_is_held_to_the_definition_rules(t *testing.T)
 		}
 	}
 	page := map[string]any{"media_urn": "media:enc=utf8;page", "name": "pages", "output_description": "Pages"}
+	key, err := NormalizeCapURN(capURN)
+	require.NoError(t, err)
 
-	c, err := checkedCapDefinition(definition([]any{main("media:document;ext=pdf")}, []any{page}), capURN)
+	c, err := checkedCapDefinition(definition([]any{main("media:document;ext=pdf")}, []any{page}), key, 1)
 	require.NoError(t, err, "a valid definition")
 	require.NotNil(t, c.MainOutput())
 	assert.Equal(t, "pages", c.MainOutput().Name)
 
-	_, err = checkedCapDefinition([]byte("{not json"), capURN)
+	_, err = checkedCapDefinition([]byte("{not json"), key, 1)
 	require.Error(t, err)
 	assert.Equal(t, ErrParse, kindOf(err))
 
 	// The cap URN says it produces pages, and the definition declares no such output.
-	_, err = checkedCapDefinition(definition([]any{main("media:document;ext=pdf")}, []any{}), capURN)
+	_, err = checkedCapDefinition(definition([]any{main("media:document;ext=pdf")}, []any{}), key, 1)
 	require.Error(t, err)
 	assert.Equal(t, ErrValidation, kindOf(err))
 	assert.Contains(t, err.Error(), "RULE21")
 	assert.Contains(t, err.Error(), "disbind")
 
 	// The main input is declared under a type that is not the cap's `in=`.
-	_, err = checkedCapDefinition(definition([]any{main("media:document")}, []any{page}), capURN)
+	_, err = checkedCapDefinition(definition([]any{main("media:document")}, []any{page}), key, 1)
 	require.Error(t, err)
 	assert.Equal(t, ErrValidation, kindOf(err))
 	assert.Contains(t, err.Error(), "RULE15")
@@ -1006,7 +1008,7 @@ func storeTestCap(t *testing.T, file string, c *cap.Cap) {
 	t.Helper()
 	definition, err := json.Marshal(c)
 	require.NoError(t, err)
-	require.NoError(t, storeEntry(file, capCacheEntry{Definition: definition, CachedAt: 0, TTLHours: 0}, "cap"))
+	require.NoError(t, storeEntry(file, capCacheEntry{Definition: definition}, "cap"))
 }
 
 // TEST12816: fetching a cap requires the definition of every media URN a
@@ -1216,8 +1218,7 @@ func capWithDims(t *testing.T, urnStr string, refs []media.DimRef) *cap.Cap {
 
 // TEST1971: what is loaded from the disk cache is kept only as the pinned
 // manifest names it — a dim at another version is dropped — and a definition
-// is kept only when every dim it names survives with the value it names. At v0
-// there are no dims.
+// is kept only when every dim it names survives with the value it names.
 func Test1971_TheDiskCacheKeepsDefinitionsOnlyWithTheirPinnedDims(t *testing.T) {
 	manifest := media.EmptyManifest(11)
 	manifest.Dims["language"] = 2
@@ -1248,16 +1249,110 @@ func Test1971_TheDiskCacheKeepsDefinitionsOnlyWithTheirPinnedDims(t *testing.T) 
 		"medium":   testDim("medium", 1, "text"),
 	}
 
-	retainPinned(manifest, 11, caps, specs, aliases, dims)
+	retainPinned(manifest, caps, specs, aliases, dims)
 	assert.Equal(t, []string{"medium"}, sortedKeys(dims), "a dim at another version is dropped")
 	assert.Equal(t, sortedStrings([]string{normalized[0], normalized[2]}), sortedKeys(caps),
 		"the cap naming the dropped dim is dropped with it")
 	assert.Equal(t, []string{"media:x"}, sortedKeys(specs), "a value the dim lacks drops the definition")
+}
 
-	v0Dims := map[string]media.StoredDim{"medium": testDim("medium", 1, "text")}
-	retainPinned(media.EmptyManifest(0), 0, map[string]*cap.Cap{}, map[string]media.StoredMediaDef{},
-		map[string]media.StoredAlias{}, v0Dims)
-	assert.Empty(t, v0Dims, "v0 has no dims")
+// TEST1976: a cap a registry serves is the cap that was asked for, at the
+// version the manifest pins: another cap's body, or this cap at another
+// version, is refused before it is cached.
+func Test1976_AServedCapIsTheOneAskedForAtItsPinnedVersion(t *testing.T) {
+	const capURN = `cap:in="media:document;ext=pdf";disbind;out="media:enc=utf8;page"`
+	key, err := NormalizeCapURN(capURN)
+	require.NoError(t, err)
+	body := func(urn string, version uint32) []byte {
+		b, err := json.Marshal(map[string]any{
+			"urn": urn, "version": version, "aliases": []string{"disbind"}, "title": "Disbind PDF",
+			"args": []any{map[string]any{
+				"media_urn": "media:document;ext=pdf", "name": "document", "required": true,
+				"sources": []any{map[string]any{"stdin": "media:document;ext=pdf"}},
+			}},
+			"outputs": []any{map[string]any{"media_urn": "media:enc=utf8;page", "name": "pages", "output_description": "Pages"}},
+		})
+		require.NoError(t, err)
+		return b
+	}
+
+	c, err := checkedCapDefinition(body(capURN, 3), key, 3)
+	require.NoError(t, err, "the matching body")
+	assert.Equal(t, uint32(3), c.Version)
+
+	_, err = checkedCapDefinition(body(`cap:in="media:document;ext=pdf";bind;out="media:enc=utf8;page"`, 3), key, 3)
+	require.Error(t, err)
+	assert.Equal(t, ErrParse, kindOf(err))
+	assert.Contains(t, err.Error(), "does not match requested URN")
+
+	_, err = checkedCapDefinition(body(capURN, 2), key, 3)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "reports version 2 but manifest pins defver 3")
+}
+
+// TEST1977: a media definition a registry serves is the one that was asked
+// for, at the version the manifest pins.
+func Test1977_AServedMediaDefIsTheOneAskedForAtItsPinnedVersion(t *testing.T) {
+	key, err := NormalizeMediaURN("media:document;ext=pdf")
+	require.NoError(t, err)
+	body := func(urn string, version uint32) []byte {
+		b, err := json.Marshal(map[string]any{"urn": urn, "version": version, "media_type": "application/pdf", "title": "PDF"})
+		require.NoError(t, err)
+		return b
+	}
+
+	spec, err := checkedMediaDef(body("media:ext=pdf;document", 3), key, 3)
+	require.NoError(t, err, "the matching body, its tags in another order")
+	assert.Equal(t, uint32(3), spec.Version)
+
+	_, err = checkedMediaDef(body("media:ext=png;image", 3), key, 3)
+	require.Error(t, err)
+	assert.Equal(t, ErrParse, kindOf(err))
+	assert.Contains(t, err.Error(), "does not match requested URN")
+
+	_, err = checkedMediaDef(body("media:document;ext=pdf", 2), key, 3)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "reports version 2 but manifest pins defver 3")
+}
+
+// TEST1978: every definition a manifest pins is at version 1 or later; a
+// manifest pinning one at 0 is refused, and no registry is pinned at
+// manifest 0.
+func Test1978_AManifestPinningADefinitionAtZeroIsRefused(t *testing.T) {
+	manifest := media.EmptyManifest(14)
+	manifest.Caps["cap:effect=none"] = 13
+	require.NoError(t, checkManifestDefvers(manifest))
+
+	manifest.Media["media:"] = 0
+	err := checkManifestDefvers(manifest)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "manifest v14 pins 'media:' at 0, which is no definition version")
+
+	assert.Panics(t, func() { NewForTestWithConfigAndVersion(DefaultConfig(), 0) },
+		"a registry is pinned at manifest 1 or later")
+}
+
+// TEST1979: the identity cap is held at the version the pinned manifest holds
+// it at, and the manifest is not rewritten; a manifest without the identity
+// cap is refused, naming it.
+func Test1979_TheIdentityCapIsHeldAtTheVersionItsManifestPins(t *testing.T) {
+	r := NewForTestWithConfigAndVersion(DefaultConfig(), 14)
+	identity, err := cap.IdentityCap()
+	require.NoError(t, err)
+	key, err := NormalizeCapURN(identity.Urn.String())
+	require.NoError(t, err)
+	r.manifest.Caps[key] = 13
+	delete(r.cachedCaps, key)
+
+	require.NoError(t, r.EnsureIdentityCap())
+	assert.Equal(t, uint32(13), r.cachedCaps[key].Version)
+	assert.Equal(t, uint32(13), r.manifest.Caps[key], "the manifest still pins 13")
+
+	delete(r.manifest.Caps, key)
+	delete(r.cachedCaps, key)
+	err = r.EnsureIdentityCap()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "does not hold the identity cap 'cap:effect=none'")
 }
 
 func sortedKeys[V any](m map[string]V) []string {
@@ -1357,7 +1452,7 @@ func Test1990_concurrent_readers_and_writers_never_see_a_torn_entry(t *testing.T
 		variants[n] = sharedEntryVariant(t, fmt.Sprintf("written by writer %d", n))
 		definition, err := json.Marshal(variants[n])
 		require.NoError(t, err)
-		entries[n] = capCacheEntry{Definition: definition, CachedAt: 0, TTLHours: 0}
+		entries[n] = capCacheEntry{Definition: definition}
 	}
 	writtenByAWriter := func(c *cap.Cap) bool {
 		for _, v := range variants {

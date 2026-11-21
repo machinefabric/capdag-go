@@ -32,6 +32,27 @@ func Test1880_AliasNameNormalizationRules(t *testing.T) {
 	}
 }
 
+// TEST1980: an alias name lowercases A-Z and no other character, and refuses
+// every Unicode White_Space character as whitespace: under Unicode case
+// mapping KELVIN SIGN lowercases to `k`, and one implementation would publish
+// a name another refuses.
+func Test1980_AliasNamesLowercaseOnlyASCIILetters(t *testing.T) {
+	got, err := media.NormalizeAliasName("JSONDoc")
+	require.NoError(t, err)
+	assert.Equal(t, "jsondoc", got)
+
+	refusal := func(name string) string {
+		_, err := media.NormalizeAliasName(name)
+		require.Error(t, err, "%q must be refused", name)
+		return err.Error()
+	}
+	assert.Contains(t, refusal(string(rune(0x212A))+"ind"), "invalid characters", "KELVIN SIGN is no ASCII letter")
+	assert.Contains(t, refusal("a"+string(rune(0xA0))+"b"), "whitespace", "NO-BREAK SPACE is white space")
+	assert.Contains(t, refusal("a"+string(rune(0x85))+"b"), "whitespace", "NEXT LINE is white space")
+	assert.Contains(t, refusal("a"+string(rune(0xFEFF))+"b"), "invalid characters", "ZERO WIDTH NO-BREAK SPACE is not white space")
+	assert.Contains(t, refusal("a"+string(rune(0x1C))+"b"), "invalid characters", "FILE SEPARATOR is not white space")
+}
+
 // TEST1881: URN-vs-alias detection keys purely on the presence of ':'. The whole design rests on this discriminator being exact.
 func Test1881_TokenURNvsAliasDetection(t *testing.T) {
 	assert.True(t, media.TokenIsURN(`cap:in="media:document;ext=pdf";extract;out="media:enc=utf8"`))
