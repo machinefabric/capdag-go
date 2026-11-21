@@ -172,7 +172,7 @@ func Test067_is_text(t *testing.T) {
 
 	jsonUrn, err := NewMediaUrnFromString(standard.MediaJSON) // media:enc=utf8;fmt=json;record
 	require.NoError(t, err)
-	jsonEnc, ok := jsonUrn.GetTag("enc")
+	jsonEnc, ok := jsonUrn.ExactValue("enc")
 	assert.True(t, ok)
 	assert.Equal(t, "utf8", jsonEnc, "a JSON record is UTF-8")
 
@@ -215,7 +215,7 @@ func Test6359_WithSubtypeConstructor(t *testing.T) {
 	urn, err := NewMediaUrnFromString("media:application;subtype=json")
 	require.NoError(t, err)
 	assert.True(t, urn.HasTag("application"))
-	subtype, ok := urn.GetTag("subtype")
+	subtype, ok := urn.ExactValue("subtype")
 	assert.True(t, ok)
 	assert.Equal(t, "json", subtype)
 }
@@ -276,14 +276,14 @@ func Test072_constants_parse(t *testing.T) {
 func Test073_extension_helpers(t *testing.T) {
 	pdfUrn, err := NewMediaUrnFromString("media:document;ext=pdf")
 	require.NoError(t, err)
-	ext, ok := pdfUrn.GetTag("ext")
+	ext, ok := pdfUrn.ExactValue("ext")
 	assert.True(t, ok)
 	assert.Equal(t, "pdf", ext)
 
 	// A UTF-8 text file carries enc=utf8 + ext, and a prose type is plain text besides
 	md, err := NewMediaUrnFromString(TextMediaUrnForExt("md"))
 	require.NoError(t, err)
-	mdEnc, ok := md.GetTag("enc")
+	mdEnc, ok := md.ExactValue("enc")
 	assert.True(t, ok)
 	assert.Equal(t, "utf8", mdEnc)
 	assert.True(t, md.HasTag("plain-text"), "Markdown is plain text")
@@ -400,7 +400,7 @@ func Test304_media_availability_output_constant(t *testing.T) {
 	urn, err := NewMediaUrnFromString("media:enc=utf8;fmt=json;model-availability;record")
 	require.NoError(t, err)
 	assert.True(t, urn.IsJson(), "model-availability is a JSON record")
-	enc, ok := urn.GetTag("enc")
+	enc, ok := urn.ExactValue("enc")
 	assert.True(t, ok)
 	assert.Equal(t, "utf8", enc, "a JSON record is UTF-8")
 	assert.False(t, urn.HasTag("plain-text"), "a JSON record is not plain text")
@@ -412,7 +412,7 @@ func Test305_media_path_output_constant(t *testing.T) {
 	urn, err := NewMediaUrnFromString("media:enc=utf8;fmt=json;model-path;record")
 	require.NoError(t, err)
 	assert.True(t, urn.IsJson(), "model-path is a JSON record")
-	enc, ok := urn.GetTag("enc")
+	enc, ok := urn.ExactValue("enc")
 	assert.True(t, ok)
 	assert.Equal(t, "utf8", enc, "a JSON record is UTF-8")
 	assert.False(t, urn.HasTag("plain-text"), "a JSON record is not plain text")
@@ -643,7 +643,7 @@ func Test558_predicate_constant_consistency(t *testing.T) {
 	jsonUrn, err := NewMediaUrnFromString(standard.MediaJSON)
 	require.NoError(t, err)
 	assert.True(t, jsonUrn.IsJson())
-	enc, hasEnc := jsonUrn.GetTag("enc")
+	enc, hasEnc := jsonUrn.ExactValue("enc")
 	assert.True(t, hasEnc)
 	assert.Equal(t, "utf8", enc)
 	assert.True(t, jsonUrn.IsRecord())
@@ -853,7 +853,7 @@ func Test1811_void_atomicity_reads_the_marker(t *testing.T) {
 		urn, err := NewMediaUrnFromString(input)
 		require.NoError(t, err, "%s must parse: it does not say void", input)
 		assert.False(t, urn.IsVoid(), "%s is not void", input)
-		enc, ok := urn.GetTag("enc")
+		enc, ok := urn.ExactValue("enc")
 		assert.True(t, ok && enc == "utf8", "%s keeps its other tags", input)
 	}
 }

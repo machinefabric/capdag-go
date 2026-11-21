@@ -61,13 +61,10 @@ func (q *CapQuery) String() string {
 }
 
 // tagPattern is the cap-tag pattern a query asks for: `cap:` with these tags.
-// A nil or empty map asks for none.
-func tagPattern(tags map[string]string) *taggedurn.TaggedUrn {
-	copied := make(map[string]string, len(tags))
-	for k, v := range tags {
-		copied[k] = v
-	}
-	return taggedurn.NewTaggedUrnFromTags("cap", copied)
+// A nil or empty map asks for none; a key that is no identifier, or a
+// constraint no URN writes, is refused.
+func tagPattern(tags map[string]taggedurn.Constraint) (*taggedurn.TaggedUrn, error) {
+	return taggedurn.NewTaggedUrnFromTags("cap", tags)
 }
 
 // CapQueryFromRequest is the cap URN request, read as a request: an input it
@@ -90,29 +87,41 @@ func CapQueryFromPattern(pattern *CapUrn) *CapQuery {
 
 // CapQueryProducing asks for caps that GIVE output, whatever they take, with
 // the cap-tags tags asks for.
-func CapQueryProducing(output *MediaUrn, tags map[string]string) *CapQuery {
-	return &CapQuery{
-		formal: decided(capformal.QueryProducing(output.inner.Formal(), tagPattern(tags).Formal())),
-		asked:  fmt.Sprintf("anything giving %s", output),
+func CapQueryProducing(output *MediaUrn, tags map[string]taggedurn.Constraint) (*CapQuery, error) {
+	pattern, err := tagPattern(tags)
+	if err != nil {
+		return nil, err
 	}
+	return &CapQuery{
+		formal: decided(capformal.QueryProducing(output.inner.Formal(), pattern.Formal())),
+		asked:  fmt.Sprintf("anything giving %s", output),
+	}, nil
 }
 
 // CapQueryConsuming asks for caps that TAKE input, whatever they give: what
 // this input can become in one step.
-func CapQueryConsuming(input *MediaUrn, tags map[string]string) *CapQuery {
-	return &CapQuery{
-		formal: decided(capformal.QueryConsuming(input.inner.Formal(), tagPattern(tags).Formal())),
-		asked:  fmt.Sprintf("anything taking %s", input),
+func CapQueryConsuming(input *MediaUrn, tags map[string]taggedurn.Constraint) (*CapQuery, error) {
+	pattern, err := tagPattern(tags)
+	if err != nil {
+		return nil, err
 	}
+	return &CapQuery{
+		formal: decided(capformal.QueryConsuming(input.inner.Formal(), pattern.Formal())),
+		asked:  fmt.Sprintf("anything taking %s", input),
+	}, nil
 }
 
 // CapQueryBetween asks for caps that take input and give output: nothing
 // unknown.
-func CapQueryBetween(input, output *MediaUrn, tags map[string]string) *CapQuery {
-	return &CapQuery{
-		formal: decided(capformal.QueryBetween(input.inner.Formal(), output.inner.Formal(), tagPattern(tags).Formal())),
-		asked:  fmt.Sprintf("anything taking %s and giving %s", input, output),
+func CapQueryBetween(input, output *MediaUrn, tags map[string]taggedurn.Constraint) (*CapQuery, error) {
+	pattern, err := tagPattern(tags)
+	if err != nil {
+		return nil, err
 	}
+	return &CapQuery{
+		formal: decided(capformal.QueryBetween(input.inner.Formal(), output.inner.Formal(), pattern.Formal())),
+		asked:  fmt.Sprintf("anything taking %s and giving %s", input, output),
+	}, nil
 }
 
 // Admits reports whether cap is guaranteed to be what is asked.

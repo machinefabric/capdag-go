@@ -319,12 +319,6 @@ type handlerEntry struct {
 	handler FrameHandler
 }
 
-// inProcessCapTableEntry maps a cap URN string to a handler index.
-type inProcessCapTableEntry struct {
-	capUrn     string
-	handlerIdx int
-}
-
 // InProcessHostIdentity declares the identity values an InProcessCartridgeHost
 // advertises in its RelayNotify payload. The host has no on-disk cartridge
 // directory, so the embedding application must supply the same four-tuple
@@ -465,96 +459,30 @@ func (h *InProcessCartridgeHost) BuildManifest() []byte {
 	return out
 }
 
-// buildCapTable builds the cap table for routing: flat list of (cap_urn,
-// handler_idx).
-func buildCapTable(handlers []handlerEntry) []inProcessCapTableEntry {
-	var table []inProcessCapTableEntry
+// registeredCaps returns every handler's caps as parsed values, in handler
+// order and then each handler's cap order, with the owning handler's index at
+// the same position.
+func registeredCaps(handlers []handlerEntry) ([]*urn.CapUrn, []int) {
+	var caps []*urn.CapUrn
+	var owners []int
 	for idx, entry := range handlers {
 		for _, c := range entry.caps {
-			table = append(table, inProcessCapTableEntry{capUrn: c.Urn.String(), handlerIdx: idx})
+			caps = append(caps, c.Urn)
+			owners = append(owners, idx)
 		}
 	}
-	return table
+	return caps, owners
 }
 
-// findHandlerForCap finds the best handler for a cap URN.
-//
-// Uses IsDispatchable(candidate, request) to find handlers that can legally
-// handle the request, then ranks by specificity.
-//
-// Ranking prefers:
-//  1. Equivalent matches (distance 0)
-//  2. More specific candidates (positive distance) - refinements
-//  3. More generic candidates (negative distance) - fallbacks
-//
-// Returns the handler index and true, or 0 and false when no handler matches.
-func findHandlerForCap(capTable []inProcessCapTableEntry, capUrn string) (int, bool) {
-	requestUrn, err := urn.NewCapUrnFromString(capUrn)
-	if err != nil {
+// findHandlerForCap returns the index of the handler that serves request, and
+// true, or 0 and false when no handler serves it. The proved selection
+// (urn.Select): least ranking key; of equal keys, the first registered.
+func findHandlerForCap(caps []*urn.CapUrn, owners []int, request *urn.CapUrn) (int, bool) {
+	i, ok := urn.Select(caps, request)
+	if !ok {
 		return 0, false
 	}
-
-	requestSpecificity := requestUrn.Specificity()
-
-	var matches []capMatch
-
-	for _, entry := range capTable {
-		registeredUrn, err := urn.NewCapUrnFromString(entry.capUrn)
-		if err != nil {
-			continue
-		}
-		// Use IsDispatchable: can this candidate handle this request?
-		if registeredUrn.IsDispatchable(requestUrn) {
-			specificity := registeredUrn.Specificity()
-			signedDistance := specificity - requestSpecificity
-			matches = append(matches, capMatch{handlerIdx: entry.handlerIdx, signedDistance: signedDistance})
-		}
-	}
-
-	if len(matches) == 0 {
-		return 0, false
-	}
-
-	// Ranking: prefer equivalent (0), then more specific (+), then more generic (-).
-	// Preserve insertion order among equal-distance candidates.
-	best := matches[0]
-	for _, m := range matches[1:] {
-		if rankLess(m, best) {
-			best = m
-		}
-	}
-	return best.handlerIdx, true
-}
-
-// capMatch is a candidate handler match with its signed specificity distance
-// relative to the request URN.
-type capMatch struct {
-	handlerIdx     int
-	signedDistance int
-}
-
-// rankLess reports whether a should be ranked before b (mirrors the Rust
-// sort_by comparator in find_handler_for_cap).
-func rankLess(a, b capMatch) bool {
-	aNonNeg := a.signedDistance >= 0
-	bNonNeg := b.signedDistance >= 0
-	// First: non-negative distances before negative.
-	switch {
-	case aNonNeg && !bNonNeg:
-		return true
-	case !aNonNeg && bNonNeg:
-		return false
-	default:
-		// Same sign: prefer smaller absolute distance.
-		return absInt(a.signedDistance) < absInt(b.signedDistance)
-	}
-}
-
-func absInt(x int) int {
-	if x < 0 {
-		return -x
-	}
-	return x
+	return owners[i], true
 }
 
 // inProcessPoolStates is the host's full pool-state map: one at-rest
@@ -617,7 +545,7 @@ func (h *InProcessCartridgeHost) Run(localRead io.Reader, localWrite io.Writer) 
 	notify := NewRelayNotify(manifest, limits.MaxFrame, limits.MaxChunk, limits.MaxReorderBuffer, limits.InitialCredit)
 	writeTx <- *notify
 
-	capTable := buildCapTable(h.handlers)
+	caps, owners := registeredCaps(h.handlers)
 
 	// Advertised caps (canonical URNs) — the singleton pool roster — and
 	// the operator `configured` overlay delivered via heartbeat probes.
@@ -680,7 +608,10 @@ readLoop:
 			if isIdentity {
 				handler = identity
 			} else {
-				idx, ok := findHandlerForCap(capTable, capUrn)
+				idx, ok := 0, false
+				if request, err := urn.NewCapUrnFromString(capUrn); err == nil {
+					idx, ok = findHandlerForCap(caps, owners, request)
+				}
 				if !ok {
 					// No registered handler for a dispatched cap is a
 					// deployment mismatch — Environment.

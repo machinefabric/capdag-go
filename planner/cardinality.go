@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/machinefabric/capdag-go/urn"
+	taggedurn "github.com/machinefabric/tagged-urn-go"
 )
 
 // InputCardinality represents the cardinality of cap inputs/outputs.
@@ -199,7 +200,11 @@ func (s InputStructure) ApplyToUrn(baseUrn string) string {
 		if hasRecord {
 			return baseUrn
 		}
-		return mediaUrn.WithTag("record", "*").String()
+		withRecord, err := mediaUrn.WithTag("record", taggedurn.ConstraintPresent{})
+		if err != nil {
+			panic(fmt.Sprintf("failed to add the record marker to '%s': %v", mediaUrn, err))
+		}
+		return withRecord.String()
 	default:
 		return baseUrn
 	}
