@@ -224,7 +224,8 @@ func (r *MediaAdapterRegistry) extensionCandidates(ext string) ([]*urn.MediaUrn,
 //  1. Queries the FabricRegistry for the extension's file media types.
 //  2. For each candidate, finds registered adapters where the candidate
 //     ConformsTo the registered adapter URN.
-//  3. Returns one match per cartridge.
+//  3. Returns one match per matching adapter: a cartridge appears once per
+//     adapter it registered.
 //
 // The fabric's file media types that cannot be loaded are an error.
 func (r *MediaAdapterRegistry) FindAdaptersForExtension(ext string) ([]AdapterMatch, error) {
@@ -235,11 +236,11 @@ func (r *MediaAdapterRegistry) FindAdaptersForExtension(ext string) ([]AdapterMa
 	return r.AdaptersForCandidates(candidates), nil
 }
 
-// AdaptersForCandidates is the registered adapters some of these candidates
-// conform to, one per cartridge.
+// AdaptersForCandidates is every registered adapter some of these candidates
+// conform to, in registration order. A cartridge appears once per adapter;
+// detection asks it once.
 func (r *MediaAdapterRegistry) AdaptersForCandidates(candidates []*urn.MediaUrn) []AdapterMatch {
 	var results []AdapterMatch
-	seenCartridges := make(map[string]bool)
 
 	for i := range r.registeredAdapters {
 		registered := &r.registeredAdapters[i]
@@ -250,8 +251,7 @@ func (r *MediaAdapterRegistry) AdaptersForCandidates(candidates []*urn.MediaUrn)
 				break
 			}
 		}
-		if matches && !seenCartridges[registered.cartridgeID] {
-			seenCartridges[registered.cartridgeID] = true
+		if matches {
 			results = append(results, AdapterMatch{
 				CartridgeID: registered.cartridgeID,
 				MediaUrn:    registered.mediaUrn,
