@@ -560,57 +560,27 @@ func (c *CapUrn) Effect() CapEffect {
 	}
 }
 
+// validateAdmissible refuses a cap that cannot be declared, as the model decides
+// (Cap.illegal): the bare top form, and an effect=none cap whose input is not
+// inside its output.
 func (c *CapUrn) validateAdmissible() error {
-	inMedia, err := c.InMediaUrn()
-	if err != nil {
-		return &CapUrnError{Code: ErrorInvalidMediaUrn, Message: fmt.Sprintf("Stored inSpec failed CapUrn admissibility validation: %v", err)}
+	illegal := decided(capformal.CapIllegal(c.formal))
+	if !illegal.Valid {
+		return nil
 	}
-	outMedia, err := c.OutMediaUrn()
-	if err != nil {
-		return &CapUrnError{Code: ErrorInvalidMediaUrn, Message: fmt.Sprintf("Stored outSpec failed CapUrn admissibility validation: %v", err)}
-	}
-	if inMedia.IsTop() && outMedia.IsTop() && len(c.tags) == 0 && c.Effect() == CapEffectDeclared {
+	switch illegal.Value.(type) {
+	case capformal.IllegalBareTop:
 		return &CapUrnError{
 			Code:    ErrorIllegalDeclaration,
 			Message: "illegal bare top cap; use cap:effect=none for identity, or declare a non-vacuous input/output/effect/tag",
 		}
-	}
-
-	switch c.Effect() {
-	case CapEffectDeclared, CapEffectAny:
-		return nil
-	case CapEffectNone:
-		if !inMedia.ConformsTo(outMedia) {
-			return &CapUrnError{
-				Code:    ErrorIllegalDeclaration,
-				Message: fmt.Sprintf("effect=none requires declared input '%s' to conform to declared output '%s'", inMedia, outMedia),
-			}
+	case capformal.IllegalNoneNotInside:
+		return &CapUrnError{
+			Code:    ErrorIllegalDeclaration,
+			Message: fmt.Sprintf("effect=none requires declared input '%s' to conform to declared output '%s'", c.inSpec, c.outSpec),
 		}
-		return nil
-	case CapEffectPatch:
-		delta, err := outMedia.DeltaFrom(inMedia)
-		if err != nil {
-			return &CapUrnError{
-				Code:    ErrorIllegalDeclaration,
-				Message: fmt.Sprintf("effect=patch requires a computable declared media delta from '%s' to '%s': %v", inMedia, outMedia, err),
-			}
-		}
-		witness, err := inMedia.ApplyDelta(delta)
-		if err != nil {
-			return &CapUrnError{
-				Code:    ErrorIllegalDeclaration,
-				Message: fmt.Sprintf("effect=patch failed to apply declared media delta to input '%s': %v", inMedia, err),
-			}
-		}
-		if !witness.ConformsTo(outMedia) {
-			return &CapUrnError{
-				Code:    ErrorIllegalDeclaration,
-				Message: fmt.Sprintf("effect=patch witness '%s' does not conform to declared output '%s'", witness, outMedia),
-			}
-		}
-		return nil
 	default:
-		return &CapUrnError{Code: ErrorInvalidEffect, Message: fmt.Sprintf("invalid stored effect '%s'", c.effect)}
+		panic(fmt.Sprintf("capdag: the model named a reason a cap is illegal that this package does not know: %#v", illegal.Value))
 	}
 }
 
