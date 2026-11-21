@@ -1798,12 +1798,12 @@ func Test8067_stale_reader_death_cannot_kill_replacement_generation(t *testing.T
 	})
 	out := &relayOutbound{ch: make(chan *Frame, 8)}
 
-	host.handleCartridgeDeath(0, 6, out)
+	host.handleCartridgeDeath(0, 6, streamEnd{kind: streamClosed}, out)
 	assert.True(t, host.cartridges[0].running)
 	assert.Equal(t, uint64(7), host.cartridges[0].generation)
 	assert.Empty(t, out.ch)
 
-	host.handleCartridgeDeath(0, 7, out)
+	host.handleCartridgeDeath(0, 7, streamEnd{kind: streamClosed}, out)
 	assert.False(t, host.cartridges[0].running)
 	assert.Equal(t, uint64(8), host.cartridges[0].generation)
 }

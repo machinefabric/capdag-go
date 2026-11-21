@@ -505,14 +505,15 @@ func Test221_read_frame_eof(t *testing.T) {
 	}
 }
 
-// TEST222: Test read_frame handles truncated length prefix (fewer than 4 bytes available)
+// TEST222: a stream that ends inside a length prefix ended part way through a
+// frame: ReadFrame says so, and never reads it as the clean end.
 func Test222_read_frame_truncated_length_prefix(t *testing.T) {
 	buf := bytes.NewBuffer([]byte{0x00, 0x00}) // Only 2 bytes of 4-byte length prefix
 	reader := NewFrameReader(buf)
 
 	_, err := reader.ReadFrame()
-	if err == nil {
-		t.Error("Expected error for truncated length prefix")
+	if err != io.ErrUnexpectedEOF {
+		t.Errorf("a cut length prefix is an unexpected end, got %v", err)
 	}
 }
 
