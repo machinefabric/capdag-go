@@ -951,24 +951,18 @@ func (c *CapUrn) InferRuntimeOutputMedia(runtimeInput *MediaUrn) (*MediaUrn, err
 		}
 	}
 
-	var runtimeOut *MediaUrn
-	switch c.Effect() {
-	case CapEffectDeclared:
-		runtimeOut = declaredOut
-	case CapEffectNone:
-		runtimeOut = runtimeInput
-	case CapEffectPatch:
-		delta, err := declaredOut.DeltaFrom(declaredIn)
-		if err != nil {
-			return nil, &CapUrnError{Code: ErrorInvalidEffectApply, Message: fmt.Sprintf("Failed to derive media delta from '%s' to '%s': %v", declaredIn, declaredOut, err)}
-		}
-		runtimeOut, err = runtimeInput.ApplyDelta(delta)
-		if err != nil {
-			return nil, &CapUrnError{Code: ErrorInvalidEffectApply, Message: fmt.Sprintf("Failed to apply media delta to runtime input '%s': %v", runtimeInput, err)}
-		}
-	case CapEffectAny:
+	if c.Effect() == CapEffectAny {
 		return nil, &CapUrnError{Code: ErrorInvalidEffectApply, Message: "Cannot infer runtime output for an unconstrained effect request"}
 	}
+	// What the cap gives for it is the proved model's (CapDAG.Exec.capGives,
+	// which is Cap.gives): its declared output, the input itself, or the input
+	// with the keys the declared input and output disagree on set to the output's.
+	given := decided(capformal.CapGives(c.formal, runtimeInput.Formal()))
+	tags := make(map[string]string, len(given))
+	for _, p := range given {
+		tags[p.First] = p.Second
+	}
+	runtimeOut := &MediaUrn{inner: taggedurn.NewTaggedUrnFromTags("media", tags)}
 
 	if !runtimeOut.Satisfies(declaredOut) {
 		return nil, &CapUrnError{
@@ -980,47 +974,36 @@ func (c *CapUrn) InferRuntimeOutputMedia(runtimeInput *MediaUrn) (*MediaUrn, err
 }
 
 // IsConformantRuntimeOutput reports whether an actually-emitted runtime
-// output satisfies this cap's declared effect contract for the given
-// runtime input.
+// output keeps this cap's effect contract for the given runtime input.
 //
-// This is THE effect-audit predicate: every check of "did the cap emit
-// what its effect promised" must go through it — never a hand-rolled
-// combination of InferRuntimeOutputMedia with equality or conformance
-// checks, so the contract has exactly one definition.
+// This is THE effect-audit predicate: every check of "did the cap emit what
+// its effect promised" goes through it, so the contract has exactly one
+// definition — the proved model's (CapDAG.Exec.audit, which is Cap.audits).
+// Both media are those of values that exist, read complete:
 //
-// The condition is deliberately asymmetric per effect:
+//   - effect=declared promises its declared out=, read complete — what it
+//     does not mention, the cap does not give — so the emission must be
+//     inside it, read complete: a cap declaring out=media:record may emit
+//     media:record, and not media:enc=utf8;fmt=json;record.
+//   - effect=none and effect=patch give exactly what their effect makes of
+//     the input (InferRuntimeOutputMedia), so the emission must be that.
 //
-//   - effect=none and effect=patch compute an EXACT runtime output type,
-//     so the emission must be tag-equivalent to the inference. A more
-//     specific emission would still be a lie: the effect promises the
-//     type is fully determined by the input.
-//   - effect=declared promises only the declared out=, so an emission
-//     that is MORE specific than the declaration is legal and desirable;
-//     the emission must conform to the declared output. A more generic
-//     emission breaks downstream plan refinement and fails.
-//
-// Errors (rather than returning false) when the inference itself is
-// impossible: the runtime input does not conform to the declared input,
-// the effect is the unconstrained request form (?effect), or the URN
-// state is internally inconsistent — those are upstream contract breaks,
-// not emission mismatches, and must surface as such.
+// Errors (rather than returning false) when the input itself is wrong: the
+// runtime input does not conform to the declared input, the effect is the
+// unconstrained request form (?effect), or the URN state is internally
+// inconsistent — those are upstream contract breaks, not emission
+// mismatches, and must surface as such.
 func (c *CapUrn) IsConformantRuntimeOutput(runtimeInput, runtimeOutput *MediaUrn) (bool, error) {
-	inferred, err := c.InferRuntimeOutputMedia(runtimeInput)
-	if err != nil {
+	if c.Effect() == CapEffectAny {
+		return false, &CapUrnError{Code: ErrorInvalidEffectApply, Message: "Cannot audit an emission against an unconstrained effect request"}
+	}
+	if _, err := c.InferRuntimeOutputMedia(runtimeInput); err != nil {
 		return false, err
 	}
 	if runtimeOutput == nil {
 		return false, &CapUrnError{Code: ErrorInvalidEffectApply, Message: "cannot audit a nil runtime output"}
 	}
-	switch c.Effect() {
-	case CapEffectNone, CapEffectPatch:
-		return runtimeOutput.IsEquivalent(inferred), nil
-	case CapEffectDeclared:
-		return runtimeOutput.Satisfies(inferred), nil
-	case CapEffectAny:
-		return false, &CapUrnError{Code: ErrorInvalidEffectApply, Message: "Cannot audit an emission against an unconstrained effect request"}
-	}
-	return false, &CapUrnError{Code: ErrorInvalidEffectApply, Message: fmt.Sprintf("unknown effect '%s'", c.Effect())}
+	return decided(capformal.Audit(c.formal, runtimeInput.Formal(), runtimeOutput.Formal())), nil
 }
 
 // Per-axis weights for cap-URN specificity. Two orders of magnitude
