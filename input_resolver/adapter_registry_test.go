@@ -1,11 +1,13 @@
 package input_resolver
 
 import (
+	"context"
 	"strings"
 	"testing"
 
 	"github.com/machinefabric/capdag-go/fabric"
 	"github.com/machinefabric/capdag-go/media"
+	"github.com/machinefabric/capdag-go/urn"
 )
 
 // createTestRegistry builds a FabricRegistry whose manifest names one file
@@ -175,5 +177,64 @@ func Test1281_NoAdapterForUnknown(t *testing.T) {
 	}
 	if has {
 		t.Fatal("Unknown extension must return false")
+	}
+}
+
+// claimsOne is a cartridge that claims every file as one media type, counting
+// how often it is asked.
+type claimsOne struct {
+	claim string
+	calls int
+}
+
+func (c *claimsOne) InvokeAdapterSelection(_ context.Context, _, _ string) ([]string, error) {
+	c.calls++
+	return []string{c.claim}, nil
+}
+
+// TEST1318: A cartridge with two incomparable adapters covering candidates of
+// one extension is returned once per adapter, so detection hands the model
+// every adapter that owns a candidate: asked once, the cartridge claims only
+// the record type, and the list candidate under its second adapter is owned,
+// unclaimed, and does not stand.
+func Test1318_AdaptersForCandidatesReturnsEveryOwningAdapter(t *testing.T) {
+	registry := NewMediaAdapterRegistry(createTestRegistry(t))
+	record := "media:enc=utf8;ext=json;fmt=json;record"
+	list := "media:enc=utf8;ext=json;fmt=json;list"
+	if err := registry.RegisterCapGroup("g", []string{record, list}, "datacartridge"); err != nil {
+		t.Fatalf("two incomparable adapters register: %v", err)
+	}
+	recordUrn, err := urn.NewMediaUrnFromString(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listUrn, err := urn.NewMediaUrnFromString(list)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	matches := registry.AdaptersForCandidates([]*urn.MediaUrn{recordUrn, listUrn})
+	if len(matches) != 2 {
+		t.Fatalf("both adapters of the cartridge must be returned, got %v", matches)
+	}
+	for i, want := range []*urn.MediaUrn{recordUrn, listUrn} {
+		if matches[i].CartridgeID != "datacartridge" || !matches[i].MediaUrn.IsEquivalent(want) {
+			t.Fatalf("match %d: expected (datacartridge, %s), got (%s, %s)",
+				i, want, matches[i].CartridgeID, matches[i].MediaUrn)
+		}
+	}
+
+	candidates := []fileMediaCandidate{{urn: recordUrn}, {urn: listUrn}}
+	invoker := &claimsOne{claim: record}
+	verdict := consult(context.Background(), "doc.json", candidates, registry, invoker)
+	if invoker.calls != 1 {
+		t.Fatalf("the cartridge is asked once, was asked %d times", invoker.calls)
+	}
+	survivors, err := survivingCandidates([]byte(`{"a": 1}`), candidates, verdict)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(survivors) != 1 || !survivors[0].IsEquivalent(recordUrn) {
+		t.Fatalf("the list candidate is owned and unclaimed, so only the claimed record stands; got %v", survivors)
 	}
 }
