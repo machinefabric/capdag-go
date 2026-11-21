@@ -665,3 +665,30 @@ func Test629_profile_constants_format(t *testing.T) {
 // publisher (`fabric/src/fabric.js`), which validates spec contents
 // at publish time. Asserting that invariant here against an empty
 // registry is a category error.
+
+// TEST7242: A resolved media definition's kind predicates read the marker: !x and ?x are not x
+func Test7242_media_def_kind_predicates_read_the_marker(t *testing.T) {
+	resolved := func(urn string) *ResolvedMediaDef {
+		return &ResolvedMediaDef{SpecID: urn, MediaType: "application/octet-stream", Extensions: []string{}}
+	}
+	predicates := map[string]func(*ResolvedMediaDef) bool{
+		"image":   (*ResolvedMediaDef).IsImage,
+		"audio":   (*ResolvedMediaDef).IsAudio,
+		"video":   (*ResolvedMediaDef).IsVideo,
+		"numeric": (*ResolvedMediaDef).IsNumeric,
+		"bool":    (*ResolvedMediaDef).IsBool,
+		"record":  (*ResolvedMediaDef).IsRecord,
+		"list":    (*ResolvedMediaDef).IsList,
+	}
+	for marker, predicate := range predicates {
+		assert.True(t, predicate(resolved("media:"+marker)), "media:%s", marker)
+		assert.False(t, predicate(resolved("media:!"+marker)), "media:!%s", marker)
+		assert.False(t, predicate(resolved("media:?"+marker)), "media:?%s", marker)
+	}
+
+	// An encoding counts only where the URN guarantees one.
+	assert.True(t, resolved("media:enc=utf8").HasEncoding())
+	assert.True(t, resolved("media:enc").HasEncoding())
+	assert.False(t, resolved("media:?enc").HasEncoding())
+	assert.False(t, resolved("media:!enc").HasEncoding())
+}

@@ -634,13 +634,37 @@ func Test660_ClosestSpecificityRouting(t *testing.T) {
 		},
 	}
 
-	capTable := buildCapTable(handlers)
+	caps, owners := registeredCaps(handlers)
 
 	// Request for pdf thumbnail should match specific (pdf, specificity 3) over
 	// generic (image, specificity 2)
-	idx, ok := findHandlerForCap(capTable, `cap:in="media:document;ext=pdf";thumbnail;out="media:ext=png;image"`)
+	request, err := urn.NewCapUrnFromString(`cap:in="media:document;ext=pdf";thumbnail;out="media:ext=png;image"`)
+	require.NoError(t, err)
+	idx, ok := findHandlerForCap(caps, owners, request)
 	assert.True(t, ok)
 	assert.Equal(t, 1, idx) // specific handler
+}
+
+// TEST7240: The in-process host chooses among tied handlers by the proved selection: the first registered, every time
+func Test7240_InProcessHostTiesGoToTheFirstRegistered(t *testing.T) {
+	first := `cap:in=media:;op;out=media:;x=a`
+	second := `cap:in=media:;op;out=media:;y=b`
+	request, err := urn.NewCapUrnFromString(`cap:in=media:;op;out=media:`)
+	require.NoError(t, err)
+	chosen := func(names [2]string, urns [2]string) string {
+		handlers := []handlerEntry{
+			{name: names[0], caps: []cap.Cap{makeTestCap(t, urns[0])}, handler: taggedHandler{names[0]}},
+			{name: names[1], caps: []cap.Cap{makeTestCap(t, urns[1])}, handler: taggedHandler{names[1]}},
+		}
+		caps, owners := registeredCaps(handlers)
+		idx, ok := findHandlerForCap(caps, owners, request)
+		require.True(t, ok, "both handlers serve the request")
+		return handlers[idx].name
+	}
+	for i := 0; i < 32; i++ {
+		assert.Equal(t, "first", chosen([2]string{"first", "second"}, [2]string{first, second}))
+		assert.Equal(t, "second", chosen([2]string{"second", "first"}, [2]string{second, first}))
+	}
 }
 
 // taggedHandler tags its output with its name.
