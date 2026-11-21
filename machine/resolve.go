@@ -2,6 +2,7 @@ package machine
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 
@@ -22,20 +23,27 @@ import (
 // # Binding a wiring's members
 //
 // Members that name an arg bind first, each to the arg of that name; the
-// source must conform to what that arg ACCEPTS. A name written more than once
+// source must fit what that arg ACCEPTS. A name written more than once
 // gathers, and only a sequence arg may be gathered into. A constant is held to
 // the validation of the arg's media definition.
+//
+// A node some step of the strand produces holds what that step gives, a
+// complete thing, so it fits a type it satisfies: what it does not mention it
+// does not have. A node nothing produces (an input of the machine) holds the
+// type the text or an input anchor wrote, and fits a type it conforms to.
 //
 // The members that name no arg are matched by type over the args no name
 // bound, by minimum-cost assignment in two phases of strict precedence:
 //
-//   - Cost of pairing source s with arg a: spec(s) - spec(a) if s conforms
-//     to what a accepts — how much more the source says than the arg asks;
-//     otherwise the pair is impossible.
+//   - Cost of pairing source s with an arg a it fits: spec(s) - spec(a), the
+//     signed specificity distance. A complete source may fit an arg that says
+//     more than it writes, so the distance may be negative; a negative
+//     distance is a fit like any other. A pair that does not fit is
+//     impossible.
 //   - Phase 1 — product: each source claims a distinct arg. Whenever such an
 //     assignment exists, this phase decides.
 //   - Phase 2 — gather: only when no such assignment exists, a sequence arg
-//     may absorb several conforming sources (scalar args still take at most
+//     may absorb several sources that fit it (scalar args still take at most
 //     one).
 //   - The minimum-cost assignment of the deciding phase must be unique: a tie
 //     is ErrAbstractionAmbiguousMachineNotation. Where a member stands in its
@@ -259,7 +267,11 @@ func resolveWirings(
 	// sequence. (A node a mapped step produces has one such value per item;
 	// what it is from outside the map is IterationStructure's to say.) An
 	// input of the machine is one value: notation has no run shape.
+	//
+	// A node some wiring produces holds what that step gives, a complete
+	// thing; every other node holds a type the text or an input anchor wrote.
 	nodeIsSequence := make([]bool, len(nodes))
+	nodeIsGiven := make([]bool, len(nodes))
 	definitions := make([]*cap.Cap, len(wirings))
 	wiringOutputs := make([][]EdgeOutput, len(wirings))
 	for index, wiring := range wirings {
@@ -292,6 +304,7 @@ func resolveWirings(
 				}
 			}
 			nodeIsSequence[target.node] = output.IsSequence
+			nodeIsGiven[target.node] = true
 			outputs = append(outputs, EdgeOutput{
 				OutputMediaUrn: outputMediaUrn,
 				OutputName:     output.Name,
@@ -331,7 +344,7 @@ func resolveWirings(
 			}
 		}
 
-		// Every arg, by what it ACCEPTS (the type a source must conform to:
+		// Every arg, by what it ACCEPTS (the type a source must fit:
 		// its stdin source URN for the main input, its `accepts` when it gives
 		// one, its own URN otherwise) and by its SLOT (its media_urn, the
 		// identity a binding records and the URN its stream is delivered
@@ -364,7 +377,7 @@ func resolveWirings(
 				}
 			} else {
 				sourceUrn := nodes[named.source.Node]
-				if !sourceUrn.ConformsTo(argAccepts[argIndex]) {
+				if !sourceFits(sourceUrn, nodeIsGiven[named.source.Node], argAccepts[argIndex]) {
 					return nil, sourceDoesNotConformToArgError(strandIndex, capUrn, named.name,
 						argAccepts[argIndex].String(), sourceUrn.String())
 				}
@@ -401,12 +414,14 @@ func resolveWirings(
 			}
 		}
 		sourceUrns := make([]*urn.MediaUrn, len(wiring.sourceNodeIds))
+		sourceGiven := make([]bool, len(wiring.sourceNodeIds))
 		for i, id := range wiring.sourceNodeIds {
 			sourceUrns[i] = nodes[id]
+			sourceGiven[i] = nodeIsGiven[id]
 		}
 
 		if len(sourceUrns) > 0 {
-			matched, failure := matchSourcesToArgs(sourceUrns, freeAccepts, freeIsSequence, mustBind)
+			matched, failure := matchSourcesToArgs(sourceUrns, sourceGiven, freeAccepts, freeIsSequence, mustBind)
 			if failure != nil {
 				if !failure.ambiguous {
 					return nil, unmatchedSourceError(strandIndex, capUrn, sourceUrns[failure.source].String())
@@ -645,8 +660,22 @@ type undecidedSource struct {
 	args   []int
 }
 
+// sourceFits says whether a source fits a type an arg accepts. A source that
+// is what a step gave (given) is a complete thing: what it does not mention it
+// does not have, so it fits a type it satisfies. A source the text or an input
+// anchor typed is a type, and fits a type it conforms to (04 §Complete things).
+func sourceFits(source *urn.MediaUrn, given bool, accepts *urn.MediaUrn) bool {
+	if given {
+		return source.Satisfies(accepts)
+	}
+	return source.ConformsTo(accepts)
+}
+
 // matchSourcesToArgs matches a wiring's sources to a cap's args by minimum
-// total specificity-distance, with a uniqueness requirement.
+// total signed specificity distance, with a uniqueness requirement.
+//
+// sourceGiven[s] says that sources[s] is what a step gave, a complete thing;
+// otherwise it is a written type (see sourceFits).
 //
 // Two phases, in strict precedence order:
 //
@@ -654,9 +683,9 @@ type undecidedSource struct {
 //     assignment exists, including the hard failure on tied minimum-cost
 //     assignments.
 //  2. Gather — only when no such assignment exists (more sources than args, or
-//     a Hall violation): a sequence arg may absorb several conforming sources;
-//     a scalar arg still takes at most one. The minimum-cost such assignment
-//     must be unique.
+//     a Hall violation): a sequence arg may absorb several sources that fit
+//     it; a scalar arg still takes at most one. The minimum-cost such
+//     assignment must be unique.
 //
 // `mustBind` is the index of the arg an assignment MUST bind — the cap's main
 // input, when these sources are what can feed it — or -1.
@@ -666,17 +695,21 @@ type undecidedSource struct {
 // order).
 func matchSourcesToArgs(
 	sources []*urn.MediaUrn,
+	sourceGiven []bool,
 	args []*urn.MediaUrn,
 	argIsSequence []bool,
 	mustBind int,
 ) ([]matchedPair, *matchFailure) {
+	if len(sources) != len(sourceGiven) {
+		panic(fmt.Sprintf("every source says whether a step gave it: %d sources, %d flags", len(sources), len(sourceGiven)))
+	}
 	hasSequenceArg := false
 	for _, isSequence := range argIsSequence {
 		hasSequenceArg = hasSequenceArg || isSequence
 	}
-	fitsSomething := func(source *urn.MediaUrn) bool {
+	fitsSomething := func(s int) bool {
 		for _, arg := range args {
-			if source.ConformsTo(arg) {
+			if sourceFits(sources[s], sourceGiven[s], arg) {
 				return true
 			}
 		}
@@ -688,33 +721,29 @@ func matchSourcesToArgs(
 		// exists to gather the surplus. The first source with no candidate
 		// arg is the one named; when every source has one, at least one of
 		// them MUST end up unmatched, and the first stands for it.
-		for position, source := range sources {
-			if !fitsSomething(source) {
+		for position := range sources {
+			if !fitsSomething(position) {
 				return nil, &matchFailure{source: position}
 			}
 		}
 		return nil, &matchFailure{source: 0}
 	}
 
-	// cost[s][a] is the distance when sources[s] conforms to args[a], else
+	// cost[s][a] is the distance when sources[s] fits args[a], else
 	// impossible.
 	cost := make([][]int, len(sources))
 	for s, source := range sources {
-		if !fitsSomething(source) {
+		if !fitsSomething(s) {
 			return nil, &matchFailure{source: s}
 		}
 		cost[s] = make([]int, len(args))
 		for a, arg := range args {
 			cost[s][a] = impossible
-			if source.ConformsTo(arg) {
-				// The specificity distance: how much more the source says
-				// than the arg asks. It is never negative — refining never
-				// scores lower (04 §Predicates, tagScore_monotone).
-				distance := source.Specificity() - arg.Specificity()
-				if distance < 0 {
-					panic(fmt.Sprintf("a source that conforms to an arg is never less specific than it: %s conforms to %s", source, arg))
-				}
-				cost[s][a] = distance
+			if sourceFits(source, sourceGiven[s], arg) {
+				// The signed specificity distance: how much more the source
+				// says than the arg asks. A complete source may say less than
+				// an arg it satisfies, so it may be negative.
+				cost[s][a] = source.Specificity() - arg.Specificity()
 			}
 		}
 	}
@@ -788,8 +817,9 @@ func oneAssignment(best [][]int, sources, args []*urn.MediaUrn) ([]matchedPair, 
 }
 
 // impossible marks a pairing that cannot be made, and a search that found no
-// assignment.
-const impossible = -1
+// assignment. Costs are signed distances, so it is a value no cost or total
+// of costs reaches.
+const impossible = math.MinInt
 
 // assignmentToPairs converts a source→arg assignment into pairs sorted by arg
 // URN. The sort is stable and pairs are emitted in source order.

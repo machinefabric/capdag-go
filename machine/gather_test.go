@@ -16,7 +16,7 @@ import (
 func Test1400_gather_n_sources_into_sequence_arg(t *testing.T) {
 	sources := []*urn.MediaUrn{mediaUrn("media:enc=utf8;page"), mediaUrn("media:enc=utf8;page"), mediaUrn("media:enc=utf8;page")}
 	args := []*urn.MediaUrn{mediaUrn("media:enc=utf8")}
-	pairs, err := matchSourcesToArgs(sources, args, []bool{true}, -1)
+	pairs, err := matchSourcesToArgs(sources, make([]bool, len(sources)), args, []bool{true}, -1)
 	require.Nil(t, err, "three sources must gather into the sequence arg")
 	require.Len(t, pairs, 3, "one binding per gathered source")
 	for _, pair := range pairs {
@@ -24,7 +24,7 @@ func Test1400_gather_n_sources_into_sequence_arg(t *testing.T) {
 		assert.True(t, pair.source.IsEquivalent(mediaUrn("media:enc=utf8;page")))
 	}
 	// The same three with an arg that takes one value have nowhere to go.
-	_, err = matchSourcesToArgs(sources, args, []bool{false}, -1)
+	_, err = matchSourcesToArgs(sources, make([]bool, len(sources)), args, []bool{false}, -1)
 	assert.Equal(t, &matchFailure{source: 0}, err)
 }
 
@@ -34,7 +34,7 @@ func Test1400_gather_n_sources_into_sequence_arg(t *testing.T) {
 func Test1401_product_precedence_over_gather(t *testing.T) {
 	sources := []*urn.MediaUrn{mediaUrn("media:enc=utf8;page"), mediaUrn("media:enc=utf8;summary")}
 	args := []*urn.MediaUrn{mediaUrn("media:enc=utf8;page"), mediaUrn("media:enc=utf8")}
-	pairs, err := matchSourcesToArgs(sources, args, []bool{false, true}, -1)
+	pairs, err := matchSourcesToArgs(sources, make([]bool, len(sources)), args, []bool{false, true}, -1)
 	require.Nil(t, err, "unique injection must resolve")
 	require.Len(t, pairs, 2)
 	// The page source must claim the scalar page arg (injection), NOT be
@@ -53,7 +53,7 @@ func Test1401_product_precedence_over_gather(t *testing.T) {
 	// both into the sequence arg would be cheaper and unique, and it is not
 	// what is asked: a tied product is ambiguous, it does not become a gather.
 	pages := []*urn.MediaUrn{mediaUrn("media:enc=utf8;page"), mediaUrn("media:enc=utf8;page")}
-	_, err = matchSourcesToArgs(pages, args, []bool{true, false}, -1)
+	_, err = matchSourcesToArgs(pages, make([]bool, len(pages)), args, []bool{true, false}, -1)
 	assert.Equal(t, &matchFailure{ambiguous: true, undecided: []undecidedSource{
 		{source: 0, args: []int{0, 1}}, {source: 1, args: []int{0, 1}},
 	}}, err)
@@ -68,7 +68,7 @@ func Test1402_gather_ambiguity_and_scalar_pigeonhole_fail_hard(t *testing.T) {
 	chunk := mediaUrn("media:chunk;enc=utf8;page")
 	sources := []*urn.MediaUrn{chunk, chunk, chunk}
 	args := []*urn.MediaUrn{mediaUrn("media:enc=utf8;page"), mediaUrn("media:chunk;enc=utf8")}
-	_, err := matchSourcesToArgs(sources, args, []bool{true, true}, -1)
+	_, err := matchSourcesToArgs(sources, make([]bool, len(sources)), args, []bool{true, true}, -1)
 	assert.Equal(t, &matchFailure{ambiguous: true, undecided: []undecidedSource{
 		{source: 0, args: []int{0, 1}}, {source: 1, args: []int{0, 1}}, {source: 2, args: []int{0, 1}},
 	}}, err, "tied gather distributions must be ambiguous")

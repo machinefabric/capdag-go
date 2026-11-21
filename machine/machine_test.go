@@ -928,7 +928,7 @@ func Test6700_line_based_format_round_trips(t *testing.T) {
 func Test1178_match_single_source_picks_unique_arg(t *testing.T) {
 	sources := []*urn.MediaUrn{mediaUrn("media:document;ext=pdf")}
 	args := []*urn.MediaUrn{mediaUrn("media:document;ext=pdf")}
-	pairs, err := matchSourcesToArgs(sources, args, make([]bool, len(args)), -1)
+	pairs, err := matchSourcesToArgs(sources, make([]bool, len(sources)), args, make([]bool, len(args)), -1)
 	require.Nil(t, err, "trivial single-source match must succeed")
 	require.Equal(t, 1, len(pairs))
 	assert.True(t, pairs[0].arg.IsEquivalent(mediaUrn("media:document;ext=pdf")), "arg must be media:document;ext=pdf")
@@ -939,7 +939,7 @@ func Test1178_match_single_source_picks_unique_arg(t *testing.T) {
 func Test1179_match_more_specific_source_assigned_to_general_arg(t *testing.T) {
 	sources := []*urn.MediaUrn{mediaUrn("media:page;enc=utf8")}
 	args := []*urn.MediaUrn{mediaUrn("media:enc=utf8")}
-	pairs, err := matchSourcesToArgs(sources, args, make([]bool, len(args)), -1)
+	pairs, err := matchSourcesToArgs(sources, make([]bool, len(sources)), args, make([]bool, len(args)), -1)
 	require.Nil(t, err, "more-specific source must be matched to its arg")
 	require.Equal(t, 1, len(pairs))
 	assert.True(t, pairs[0].arg.IsEquivalent(mediaUrn("media:enc=utf8")), "arg must be media:enc=utf8")
@@ -950,13 +950,13 @@ func Test1179_match_more_specific_source_assigned_to_general_arg(t *testing.T) {
 func Test1180_match_unmatched_source_fails_hard(t *testing.T) {
 	sources := []*urn.MediaUrn{mediaUrn("media:numeric")}
 	args := []*urn.MediaUrn{mediaUrn("media:enc=utf8")}
-	_, failure := matchSourcesToArgs(sources, args, make([]bool, len(args)), -1)
+	_, failure := matchSourcesToArgs(sources, make([]bool, len(sources)), args, make([]bool, len(args)), -1)
 	assert.Equal(t, &matchFailure{source: 0}, failure, "unmatched source must fail hard")
 
 	// It is the source that fits nothing that is named, wherever it stands.
 	sources = []*urn.MediaUrn{mediaUrn("media:enc=utf8;page"), mediaUrn("media:numeric")}
 	args = []*urn.MediaUrn{mediaUrn("media:enc=utf8"), mediaUrn("media:enc=utf8;page")}
-	_, failure = matchSourcesToArgs(sources, args, make([]bool, len(args)), -1)
+	_, failure = matchSourcesToArgs(sources, make([]bool, len(sources)), args, make([]bool, len(args)), -1)
 	assert.Equal(t, &matchFailure{source: 1}, failure)
 }
 
@@ -964,7 +964,7 @@ func Test1180_match_unmatched_source_fails_hard(t *testing.T) {
 func Test1181_match_two_sources_disambiguated_by_specificity(t *testing.T) {
 	sources := []*urn.MediaUrn{mediaUrn("media:ext=png;image"), mediaUrn("media:model-spec;enc=utf8")}
 	args := []*urn.MediaUrn{mediaUrn("media:ext=png;image"), mediaUrn("media:enc=utf8")}
-	pairs, err := matchSourcesToArgs(sources, args, make([]bool, len(args)), -1)
+	pairs, err := matchSourcesToArgs(sources, make([]bool, len(sources)), args, make([]bool, len(args)), -1)
 	require.Nil(t, err, "two sources disambiguated by specificity must succeed")
 	require.Equal(t, 2, len(pairs))
 
@@ -984,13 +984,13 @@ func Test1181_match_two_sources_disambiguated_by_specificity(t *testing.T) {
 	// The pairs come by arg URN — its parts, not its text — whatever order
 	// the sources stand in.
 	for _, ordered := range [][]*urn.MediaUrn{sources, {sources[1], sources[0]}} {
-		pairs, err := matchSourcesToArgs(ordered, args, make([]bool, len(args)), -1)
+		pairs, err := matchSourcesToArgs(ordered, make([]bool, len(ordered)), args, make([]bool, len(args)), -1)
 		require.Nil(t, err)
 		require.Len(t, pairs, 2)
 		assert.Negative(t, pairs[0].arg.Compare(pairs[1].arg))
 	}
 	fileThings := []*urn.MediaUrn{mediaUrn("media:file-path"), mediaUrn("media:file;sample")}
-	byParts, err := matchSourcesToArgs(fileThings, fileThings, make([]bool, 2), -1)
+	byParts, err := matchSourcesToArgs(fileThings, make([]bool, 2), fileThings, make([]bool, 2), -1)
 	require.Nil(t, err)
 	require.Len(t, byParts, 2)
 	assert.Equal(t, mediaUrn("media:file;sample").String(), byParts[0].arg.String())
@@ -1001,7 +1001,7 @@ func Test1181_match_two_sources_disambiguated_by_specificity(t *testing.T) {
 	page := []*urn.MediaUrn{mediaUrn("media:enc=utf8;page")}
 	general, exact := mediaUrn("media:enc=utf8"), mediaUrn("media:enc=utf8;page")
 	for _, either := range [][]*urn.MediaUrn{{general, exact}, {exact, general}} {
-		pairs, err = matchSourcesToArgs(page, either, make([]bool, 2), -1)
+		pairs, err = matchSourcesToArgs(page, make([]bool, 1), either, make([]bool, 2), -1)
 		require.Nil(t, err)
 		require.Len(t, pairs, 1)
 		assert.True(t, pairs[0].arg.IsEquivalent(exact), "the exact arg, not the general one: %s", pairs[0].arg)
@@ -1014,7 +1014,7 @@ func Test1182_match_ambiguous_when_two_sources_could_swap(t *testing.T) {
 	sources := []*urn.MediaUrn{text, text}
 	args := []*urn.MediaUrn{text, text}
 	// Both are left open, and each could go to either arg.
-	_, failure := matchSourcesToArgs(sources, args, make([]bool, len(args)), -1)
+	_, failure := matchSourcesToArgs(sources, make([]bool, len(sources)), args, make([]bool, len(args)), -1)
 	assert.Equal(t, &matchFailure{ambiguous: true, undecided: []undecidedSource{
 		{source: 0, args: []int{0, 1}}, {source: 1, args: []int{0, 1}},
 	}}, failure, "ambiguous matching must fail hard")
@@ -1024,7 +1024,7 @@ func Test1182_match_ambiguous_when_two_sources_could_swap(t *testing.T) {
 	number := mediaUrn("media:numeric")
 	sources = []*urn.MediaUrn{text, number, text}
 	args = []*urn.MediaUrn{text, text, number}
-	_, failure = matchSourcesToArgs(sources, args, make([]bool, len(args)), -1)
+	_, failure = matchSourcesToArgs(sources, make([]bool, len(sources)), args, make([]bool, len(args)), -1)
 	assert.Equal(t, &matchFailure{ambiguous: true, undecided: []undecidedSource{
 		{source: 0, args: []int{0, 1}}, {source: 2, args: []int{0, 1}},
 	}}, failure)
@@ -1036,13 +1036,67 @@ func Test1183_match_more_sources_than_args_fails_hard(t *testing.T) {
 	args := []*urn.MediaUrn{mediaUrn("media:document;ext=pdf"), mediaUrn("media:document;ext=pdf")}
 	// Every source has somewhere to go and one of them must go without: the
 	// first stands for it.
-	_, failure := matchSourcesToArgs(sources, args, make([]bool, len(args)), -1)
+	_, failure := matchSourcesToArgs(sources, make([]bool, len(sources)), args, make([]bool, len(args)), -1)
 	assert.Equal(t, &matchFailure{source: 0}, failure, "more sources than args must fail hard")
 
 	// Where one of them fits nothing at all, that is the one named.
 	sources[1] = mediaUrn("media:numeric")
-	_, failure = matchSourcesToArgs(sources, args, make([]bool, len(args)), -1)
+	_, failure = matchSourcesToArgs(sources, make([]bool, len(sources)), args, make([]bool, len(args)), -1)
 	assert.Equal(t, &matchFailure{source: 1}, failure)
+}
+
+// TEST7217: a node a step gives is read complete when it is bound: a JSON
+// record, which does not mention `list`, binds to an input that refuses lists,
+// at a distance below zero, and is preferred to an input that takes any text.
+// The same type written for an input of the machine is a type, which may be a
+// list, and binds to neither.
+func Test7217_a_given_node_binds_by_satisfaction_at_a_negative_distance(t *testing.T) {
+	record := mediaUrn("media:enc=utf8;ext=json;fmt=json;record")
+	noList := mediaUrn("media:enc=utf8;fmt=json;record;!list")
+	text := mediaUrn("media:enc=utf8")
+	assert.Less(t, record.Specificity(), noList.Specificity(), "the distance is below zero")
+
+	sources := []*urn.MediaUrn{record}
+	for _, args := range [][]*urn.MediaUrn{{noList, text}, {text, noList}} {
+		pairs, failure := matchSourcesToArgs(sources, []bool{true}, args, []bool{false, false}, -1)
+		require.Nil(t, failure, "a given record binds to the closest input it satisfies")
+		require.Len(t, pairs, 1)
+		assert.True(t, pairs[0].arg.IsEquivalent(noList), "bound to %s", pairs[0].arg)
+	}
+	_, failure := matchSourcesToArgs(sources, []bool{false}, []*urn.MediaUrn{noList}, []bool{false}, -1)
+	assert.Equal(t, &matchFailure{source: 0}, failure)
+
+	// Through the resolver: a step that gives the record feeds one whose input
+	// refuses lists.
+	makeRecord := `cap:in=media:enc=utf8;make-record;out="media:enc=utf8;ext=json;fmt=json;record"`
+	toYaml := `cap:in="media:enc=utf8;fmt=json;record;!list";to-yaml;out="media:enc=utf8;fmt=yaml;record"`
+	registry := registryWith([]*cap.Cap{
+		buildCap(makeRecord, "make", []string{"media:enc=utf8"}, "media:enc=utf8;ext=json;fmt=json;record"),
+		buildCap(toYaml, "to yaml", []string{"media:enc=utf8;fmt=json;record;!list"}, "media:enc=utf8;fmt=yaml;record"),
+	})
+	wiring := func(token, capUrn string, source, target NodeId) preInternedWiring {
+		return preInternedWiring{
+			tokenId:       mustStepToken(t, token),
+			capUrn:        capUrnVal(capUrn),
+			sourceNodeIds: []NodeId{source},
+			targets:       []wiringTarget{{node: target}},
+		}
+	}
+	yaml := mediaUrn("media:enc=utf8;fmt=yaml;record")
+	strand, err := resolvePreInterned(
+		[]*urn.MediaUrn{text, record, yaml},
+		[]preInternedWiring{wiring("tok-1", makeRecord, 0, 1), wiring("tok-2", toYaml, 1, 2)},
+		registry, 0)
+	require.Nil(t, err, "the given record feeds the step that refuses lists")
+	assert.Len(t, strand.Edges(), 2)
+
+	// The record as an input of the machine: a type, which may be a list.
+	_, err = resolvePreInterned(
+		[]*urn.MediaUrn{record, yaml},
+		[]preInternedWiring{wiring("tok-3", toYaml, 0, 1)},
+		registry, 0)
+	require.NotNil(t, err)
+	assert.Equal(t, ErrAbstractionUnmatchedSourceInCapArgs, err.Kind)
 }
 
 // TEST1184: Resolving a strand with one cap produces one resolved machine edge.

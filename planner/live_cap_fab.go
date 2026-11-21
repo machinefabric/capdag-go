@@ -533,7 +533,11 @@ func (g *LiveCapFab) pushCapEdge(c *cap.Cap, fromSpec, toSpec *urn.MediaUrn, inp
 //   - Otherwise: include with outIsSeq = edge.OutputIsSequence.
 //
 // Synthesizes a ForEach edge when isSequence=true and there is at least one Cap edge
-// with !InputIsSequence whose FromSpec source conforms to.
+// with !InputIsSequence whose FromSpec source satisfies.
+//
+// A source is what a step gave or a file's detected type, a complete thing:
+// what it does not mention it does not have, so it takes an edge whose input it
+// satisfies.
 func (g *LiveCapFab) getOutgoingEdges(source *urn.MediaUrn, isSequence bool) ([]*LiveMachinePlanEdge, []bool) {
 	var edges []*LiveMachinePlanEdge
 	var outSeqs []bool
@@ -544,7 +548,7 @@ func (g *LiveCapFab) getOutgoingEdges(source *urn.MediaUrn, isSequence bool) ([]
 		if edge.Type != EdgeTypeCap {
 			continue
 		}
-		if !source.ConformsTo(edge.FromSpec) {
+		if !source.Satisfies(edge.FromSpec) {
 			continue
 		}
 		if isSequence && !edge.InputIsSequence {

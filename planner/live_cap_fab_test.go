@@ -705,6 +705,40 @@ func Test1150_add_cap_and_basic_traversal(t *testing.T) {
 	assert.Equal(t, 1, found.MinPathLength)
 }
 
+// TEST7216: a source is read complete: a JSON record file, which does not
+// mention `list`, takes the edge of a cap whose input refuses lists, though as
+// a type it may be a list; a JSON list does not.
+func Test7216_a_source_takes_an_edge_it_satisfies(t *testing.T) {
+	graph := NewLiveCapFab()
+	c := makeTestCapForGraph("media:enc=utf8;fmt=json;record;!list", "media:enc=utf8;fmt=yaml;record", "record_to_yaml", "Record To YAML")
+	graph.AddCap(c)
+
+	media := func(s string) *urn.MediaUrn {
+		m, err := urn.NewMediaUrnFromString(s)
+		require.NoError(t, err)
+		return m
+	}
+	yaml := media("media:enc=utf8;fmt=yaml;record")
+	record := media("media:enc=utf8;ext=json;fmt=json;record")
+	assert.False(t, record.ConformsTo(media("media:enc=utf8;fmt=json;record;!list")), "as a type the file may be a list")
+
+	reaches := func(source *urn.MediaUrn) *ReachableTargetInfo {
+		targets := graph.GetReachableTargets(source, false, 5)
+		for i := range targets {
+			if targets[i].MediaDef.IsEquivalent(yaml) {
+				return &targets[i]
+			}
+		}
+		return nil
+	}
+	found := reaches(record)
+	require.NotNil(t, found, "the record file takes the edge to YAML")
+	assert.Equal(t, 1, found.MinPathLength)
+	assert.Len(t, graph.FindPathsToExactTarget(record, yaml, false, 5, 10), 1)
+
+	assert.Nil(t, reaches(media("media:enc=utf8;ext=json;fmt=json;list;record")), "a list does not take an edge that refuses lists")
+}
+
 // TEST1151: Exact target lookup prefers the direct singular or list-producing path over longer alternatives.
 func Test1151_exact_vs_conformance_matching(t *testing.T) {
 	singular, err := urn.NewMediaUrnFromString("media:analysis-result")

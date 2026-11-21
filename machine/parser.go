@@ -563,6 +563,15 @@ func includeMachines(
 		}
 	}
 
+	// A node some step produces holds what that step gives, a complete thing;
+	// every other node holds the type the text wrote for it.
+	produced := map[string]bool{}
+	for _, w := range wirings {
+		for _, target := range w.targets {
+			produced[target.node] = true
+		}
+	}
+
 	uses := map[string]int{}
 	written := make([]rawWiring, 0, len(wirings))
 	for index := range wirings {
@@ -599,7 +608,7 @@ func includeMachines(
 			}
 			if !member.value.isConstant {
 				held := nodeMedia[member.value.node]
-				if !held.ConformsTo(accepts) {
+				if !sourceFits(held, produced[member.value.node], accepts) {
 					return nil, abstractionParseError(sourceDoesNotConformToMachineInputError(
 						position, alias, member.name, accepts.String(), held.String()))
 				}
@@ -616,14 +625,16 @@ func includeMachines(
 				}
 			}
 			sources := make([]*urn.MediaUrn, len(unnamed))
+			given := make([]bool, len(unnamed))
 			for i, node := range unnamed {
 				sources[i] = nodeMedia[node]
+				given[i] = produced[node]
 			}
 			accepts := make([]*urn.MediaUrn, len(free))
 			for i, input := range free {
 				accepts[i] = input.media
 			}
-			pairs, failure := matchSourcesToArgs(sources, accepts, make([]bool, len(accepts)), -1)
+			pairs, failure := matchSourcesToArgs(sources, given, accepts, make([]bool, len(accepts)), -1)
 			if failure != nil {
 				if !failure.ambiguous {
 					return nil, abstractionParseError(unmatchedMachineMemberError(position, alias, sources[failure.source].String()))
