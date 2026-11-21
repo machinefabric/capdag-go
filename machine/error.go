@@ -184,6 +184,8 @@ const (
 	// yet. Err says which. Never raised for a definition the registry does not
 	// hold.
 	ErrAbstractionDefinitionUnavailable
+	// ErrAbstractionRetryOnStreamingStep — a step with retry whose cap declares a streaming output.
+	ErrAbstractionRetryOnStreamingStep
 )
 
 // definitionUnavailableError is ErrAbstractionDefinitionUnavailable for urn.
@@ -356,6 +358,12 @@ func outputTakenTwiceError(strandIndex int, capUrn, output string) *MachineAbstr
 func noMainOutputError(strandIndex int, capUrn string) *MachineAbstractionError {
 	return inStrand(ErrAbstractionNoMainOutput, strandIndex,
 		"cap '%s' has no main output to take (its out= is media:void)", capUrn)
+}
+
+func retryOnStreamingStepError(strandIndex int, capUrn string, retry uint32, output string) *MachineAbstractionError {
+	return inStrand(ErrAbstractionRetryOnStreamingStep, strandIndex,
+		"cap '%s' is given retry=%d, and its output '%s' is streaming — a retried step's outputs are held until an attempt succeeds, and a streaming output cannot be held",
+		capUrn, retry, output)
 }
 
 func untypedMachineInputError(position int, capUrn string, members []string) *MachineAbstractionError {

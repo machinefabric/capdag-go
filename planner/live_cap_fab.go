@@ -693,23 +693,8 @@ func (g *LiveCapFab) FindPathsToExactTarget(
 		g.iddfsFind(source, source, target, isSequence, nil, visited, depth, maxPaths, &results)
 	}
 
-	// Sort: cap_step_count ascending, total_specificity descending, description lexicographic.
-	sort.Slice(results, func(i, j int) bool {
-		if results[i].CapStepCount != results[j].CapStepCount {
-			return results[i].CapStepCount < results[j].CapStepCount
-		}
-		specI := 0
-		for _, s := range results[i].Steps {
-			specI += s.Specificity()
-		}
-		specJ := 0
-		for _, s := range results[j].Steps {
-			specJ += s.Specificity()
-		}
-		if specI != specJ {
-			return specI > specJ // descending
-		}
-		return results[i].Description < results[j].Description
+	sort.SliceStable(results, func(i, j int) bool {
+		return comparePaths(results[i], results[j]) < 0
 	})
 
 	return results
@@ -752,23 +737,8 @@ func (g *LiveCapFab) FindPathsStreaming(
 		})
 	}
 
-	// Sort
-	sort.Slice(results, func(i, j int) bool {
-		if results[i].CapStepCount != results[j].CapStepCount {
-			return results[i].CapStepCount < results[j].CapStepCount
-		}
-		specI := 0
-		for _, s := range results[i].Steps {
-			specI += s.Specificity()
-		}
-		specJ := 0
-		for _, s := range results[j].Steps {
-			specJ += s.Specificity()
-		}
-		if specI != specJ {
-			return specI > specJ
-		}
-		return results[i].Description < results[j].Description
+	sort.SliceStable(results, func(i, j int) bool {
+		return comparePaths(results[i], results[j]) < 0
 	})
 
 	onEvent(PathFindingEventComplete{
@@ -781,6 +751,80 @@ func (g *LiveCapFab) FindPathsStreaming(
 	}
 
 	return results
+}
+
+// comparePaths orders two paths: fewest cap steps first (ForEach and Collect
+// do not count), then the highest sum of step specificities, then the steps
+// compared structurally in turn (compareSteps), the shorter path first when
+// one is a prefix of the other. No URN is compared as text.
+func comparePaths(a, b *Strand) int {
+	if a.CapStepCount != b.CapStepCount {
+		if a.CapStepCount < b.CapStepCount {
+			return -1
+		}
+		return 1
+	}
+	specA := 0
+	for _, s := range a.Steps {
+		specA += s.Specificity()
+	}
+	specB := 0
+	for _, s := range b.Steps {
+		specB += s.Specificity()
+	}
+	if specA != specB {
+		if specA > specB {
+			return -1
+		}
+		return 1
+	}
+	for i := 0; i < len(a.Steps) && i < len(b.Steps); i++ {
+		if cmp := compareSteps(a.Steps[i], b.Steps[i]); cmp != 0 {
+			return cmp
+		}
+	}
+	return len(a.Steps) - len(b.Steps)
+}
+
+// compareSteps orders two strand steps structurally: a cap before a ForEach
+// before a Collect; caps by CapUrn.Compare and then the output they take (the
+// main output, nil, before a named one); ForEach and Collect by their media
+// definition; then FromSpec and ToSpec by MediaUrn.Compare.
+func compareSteps(a, b *StrandStep) int {
+	if a.StepType != b.StepType {
+		return stepRank(a.StepType) - stepRank(b.StepType)
+	}
+	switch a.StepType {
+	case StepTypeCap:
+		if cmp := a.CapUrnVal.Compare(b.CapUrnVal); cmp != 0 {
+			return cmp
+		}
+		if cmp := a.OutputUrn.Compare(b.OutputUrn); cmp != 0 {
+			return cmp
+		}
+	case StepTypeForEach, StepTypeCollect:
+		if cmp := a.MediaDef.Compare(b.MediaDef); cmp != 0 {
+			return cmp
+		}
+	}
+	if cmp := a.FromSpec.Compare(b.FromSpec); cmp != 0 {
+		return cmp
+	}
+	return a.ToSpec.Compare(b.ToSpec)
+}
+
+// stepRank is a step type's place in the structural step order.
+func stepRank(stepType StrandStepType) int {
+	switch stepType {
+	case StepTypeCap:
+		return 0
+	case StepTypeForEach:
+		return 1
+	case StepTypeCollect:
+		return 2
+	default:
+		panic(fmt.Sprintf("strand step invariant: no step type %d", stepType))
+	}
 }
 
 // iddfsFind performs depth-limited DFS from current toward target.

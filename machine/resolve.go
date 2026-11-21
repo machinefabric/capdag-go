@@ -270,6 +270,13 @@ func resolveWirings(
 				func() *MachineAbstractionError { return unknownCapError(capUrn) })
 		}
 		definitions[index] = definition
+		if wiring.policy.Retry > 0 {
+			for _, output := range definition.GetOutputs() {
+				if output.Streaming {
+					return nil, retryOnStreamingStepError(strandIndex, capUrn, wiring.policy.Retry, output.Name)
+				}
+			}
+		}
 		outputs := make([]EdgeOutput, 0, len(wiring.targets))
 		for _, target := range wiring.targets {
 			var output *cap.CapOutput

@@ -209,6 +209,65 @@ func Test787_find_paths_sorting_prefers_shorter(t *testing.T) {
 	}
 }
 
+// makeTaggedTestCapForGraph creates a minimal cap from format-a to format-c
+// whose cap URN carries the tags written in tagsText (such as "convert;fast").
+func makeTaggedTestCapForGraph(t *testing.T, tagsText, title string) *cap.Cap {
+	capUrn, err := urn.NewCapUrnFromString(`cap:` + tagsText + `;in="media:format-a";out="media:format-c"`)
+	require.NoError(t, err)
+	stdin := "media:format-a"
+	mainArg := cap.NewCapArg("media:format-a", "input", true, []cap.ArgSource{{Stdin: &stdin}})
+	return cap.NewCapWithArgs(capUrn, title, []string{"test"}, []cap.CapArg{mainArg})
+}
+
+// TEST7271: Among paths with as many cap steps, the one whose steps' specificities sum higher comes first, whatever order the caps were added in
+func Test7271_paths_of_as_many_steps_are_ordered_by_specificity(t *testing.T) {
+	general := makeTaggedTestCapForGraph(t, "convert", "Convert")
+	specific := makeTaggedTestCapForGraph(t, "convert;fast", "Convert fast")
+	require.Greater(t, specific.Urn.Specificity(), general.Urn.Specificity())
+
+	source, err := urn.NewMediaUrnFromString("media:format-a")
+	require.NoError(t, err)
+	target, err := urn.NewMediaUrnFromString("media:format-c")
+	require.NoError(t, err)
+
+	for _, caps := range [][]*cap.Cap{{general, specific}, {specific, general}} {
+		graph := NewLiveCapFab()
+		for _, c := range caps {
+			graph.AddCap(c)
+		}
+		paths := graph.FindPathsToExactTarget(source, target, false, 5, 10)
+		require.Equal(t, 2, len(paths), "one path through each cap")
+		assert.True(t, paths[0].Steps[0].GetCapUrn().IsEquivalent(specific.Urn),
+			"the convert;fast path comes first, got %s", paths[0].Steps[0].GetCapUrn())
+	}
+}
+
+// TEST7272: Paths equal in cap steps and specificity are ordered by their cap URNs' structure, not by their text or titles
+func Test7272_equal_paths_are_ordered_structurally_not_by_text(t *testing.T) {
+	// Structurally the tag key `a` comes before `a-x`. As text,
+	// `cap:a-x=c;…` sorts before `cap:a=b;…` ('-' < '='), and by title
+	// "Alpha" sorts before "Zed": either would put the other path first.
+	zed := makeTaggedTestCapForGraph(t, "a=b", "Zed")
+	alpha := makeTaggedTestCapForGraph(t, "a-x=c", "Alpha")
+	require.Equal(t, zed.Urn.Specificity(), alpha.Urn.Specificity())
+
+	source, err := urn.NewMediaUrnFromString("media:format-a")
+	require.NoError(t, err)
+	target, err := urn.NewMediaUrnFromString("media:format-c")
+	require.NoError(t, err)
+
+	for _, caps := range [][]*cap.Cap{{zed, alpha}, {alpha, zed}} {
+		graph := NewLiveCapFab()
+		for _, c := range caps {
+			graph.AddCap(c)
+		}
+		paths := graph.FindPathsToExactTarget(source, target, false, 5, 10)
+		require.Equal(t, 2, len(paths), "one path through each cap")
+		assert.Equal(t, "Zed", paths[0].Steps[0].Title())
+		assert.Equal(t, "Alpha", paths[1].Steps[0].Title())
+	}
+}
+
 // TEST788: ForEach is only synthesized when is_sequence=true
 func Test788_foreach_only_with_sequence_input(t *testing.T) {
 	graph := NewLiveCapFab()

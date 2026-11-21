@@ -128,6 +128,20 @@ func scoreCap() *cap.Cap {
 	)
 }
 
+// tailCap: follows a series as it grows, giving its rows as they come — a
+// streaming output, which may never end.
+func tailCap() *cap.Cap {
+	rows := outputOf(residualsMedia, "rows", "The rows as they come")
+	rows.IsSequence = true
+	rows.Streaming = true
+	return definition(
+		fmt.Sprintf(`cap:in="%s";tail;out="%s"`, seriesMedia, residualsMedia),
+		"tail",
+		[]cap.CapArg{stdinArg(seriesMedia, "series")},
+		[]cap.CapOutput{rows},
+	)
+}
+
 func mediaDef(mediaUrn string, validation *media.MediaValidation, schema any) media.StoredMediaDef {
 	return media.StoredMediaDef{
 		Urn:        mediaUrn,
@@ -144,7 +158,7 @@ func mediaDef(mediaUrn string, validation *media.MediaValidation, schema any) me
 // twelve bytes.
 func notationRegistry() *fabric.FabricRegistry {
 	registry := fabric.NewForTest()
-	registry.AddCapsToCache([]*cap.Cap{compareCap(), fetchCap(), publishCap(), meanCap(), scoreCap()})
+	registry.AddCapsToCache([]*cap.Cap{compareCap(), fetchCap(), publishCap(), meanCap(), scoreCap(), tailCap()})
 	minimum, maximum := 1.0, 365.0
 	registry.AddSpec(mediaDef(windowMedia, &media.MediaValidation{Min: &minimum, Max: &maximum}, map[string]any{"type": "integer"}))
 	registry.AddSpec(mediaDef(labelMedia, &media.MediaValidation{AllowedValues: []string{"mean", "median", "max"}}, map[string]any{"type": "string"}))
@@ -895,4 +909,30 @@ func Test12867_render_payload_marks_the_main_input_and_output(t *testing.T) {
 		outputs[output.OutputName] = output.IsMainOutput
 	}
 	assert.Equal(t, map[string]bool{"comparison": true, "residuals": false}, outputs)
+}
+
+// TEST7270: a step given `retry` whose cap declares a streaming output is
+// refused when the machine is read. A retried step's outputs are held until an
+// attempt succeeds, and a streaming output, which may never end, cannot be
+// held. The same step with no retry, or with only `on_error`, resolves, and
+// `retry` on a step whose outputs are all bounded still does.
+func Test7270_retry_is_refused_on_a_step_that_streams(t *testing.T) {
+	withTail := func(wiring string) (*Machine, *MachineParseError) {
+		header := fmt.Sprintf(`[tail cap:in="%s";tail;out="%s"]`, seriesMedia, residualsMedia)
+		return ParseMachine(notationHeaders+header+wiring, notationRegistry())
+	}
+
+	_, err := withTail("[s -> tail{retry=2} -> r]")
+	require.NotNil(t, err, "retry on a streaming step must be refused")
+	require.NotNil(t, err.Abstraction, "expected a resolution error, got %v", err)
+	assert.Equal(t, ErrAbstractionRetryOnStreamingStep, err.Abstraction.Kind)
+	assert.Contains(t, err.Abstraction.Error(), "retry=2")
+	assert.Contains(t, err.Abstraction.Error(), "its output 'rows' is streaming")
+	assert.True(t, strings.HasSuffix(err.Abstraction.Error(), "a streaming output cannot be held"), err.Abstraction.Error())
+
+	for _, wiring := range []string{"[s -> tail -> r]", "[s -> tail{on_error=absent} -> r]"} {
+		_, err := withTail(wiring)
+		require.Nil(t, err, "%s must resolve: %v", wiring, err)
+	}
+	machineOf(t, "[s -> compare{retry=2} -> r]")
 }

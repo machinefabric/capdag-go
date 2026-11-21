@@ -12,9 +12,9 @@ import (
 type InputCardinality int
 
 const (
-	// CardinalitySingle — exactly 1 item (no list marker = scalar by default).
+	// CardinalitySingle — exactly 1 item (no is_sequence declared).
 	CardinalitySingle InputCardinality = iota
-	// CardinalitySequence — array of items (has list marker).
+	// CardinalitySequence — a sequence of items (is_sequence declared).
 	CardinalitySequence
 	// CardinalityAtLeastOne — 1 or more items (cap can handle either).
 	CardinalityAtLeastOne
@@ -98,20 +98,6 @@ func (c InputCardinality) IsCompatibleWith(source InputCardinality) CardinalityC
 	default:
 		return CardinalityDirect
 	}
-}
-
-// ApplyToUrn validates the URN is parseable and returns it unchanged.
-//
-// DEPRECATED: Cardinality is tracked by IsSequence on the wire protocol,
-// not by URN tags. This method is a no-op that returns the URN unchanged.
-func (c InputCardinality) ApplyToUrn(baseUrn string) string {
-	// Validate the URN is parseable — fail hard on broken input
-	_, err := urn.NewMediaUrnFromString(baseUrn)
-	if err != nil {
-		panic(fmt.Sprintf("Invalid media URN in ApplyToUrn: %s - %s", baseUrn, err))
-	}
-	// Cardinality does not change the URN — shape is tracked by IsSequence
-	return baseUrn
 }
 
 // InputStructure represents the structure of media data.
@@ -302,12 +288,6 @@ func (ms MediaShape) IsCompatibleWith(source MediaShape) ShapeCompatibility {
 	default:
 		return ShapeCompatibilityDirect
 	}
-}
-
-// ApplyToUrn applies this shape to a base URN.
-func (ms MediaShape) ApplyToUrn(baseUrn string) string {
-	withCardinality := ms.Cardinality.ApplyToUrn(baseUrn)
-	return ms.Structure.ApplyToUrn(withCardinality)
 }
 
 // CapShapeInfo provides complete shape analysis for a cap transformation.
