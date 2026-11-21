@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/machinefabric/capdag-go/urn"
 )
@@ -204,10 +205,12 @@ func IsAliasToken(token string) bool {
 	return !TokenIsURN(token)
 }
 
-// NormalizeAliasName normalizes and validates an alias name. Lowercases the
-// input, then requires it non-empty, free of ':' (so it can never look like a
-// tagged URN), free of whitespace, and matching [a-z0-9._-]+. Returns the
-// canonical lowercased name or an error — no lenient path.
+// NormalizeAliasName normalizes and validates an alias name. Requires it
+// non-empty, free of ':' (so it can never look like a tagged URN) and of
+// Unicode White_Space, then lowercases A-Z (and no other character: Unicode
+// case mapping would turn a non-ASCII letter such as KELVIN SIGN into an
+// ASCII one) and requires it to match [a-z0-9._-]+. Returns the canonical
+// lowercased name or an error — no lenient path.
 func NormalizeAliasName(name string) (string, error) {
 	if name == "" {
 		return "", &MediaDefError{Message: "alias name is empty"}
@@ -216,11 +219,17 @@ func NormalizeAliasName(name string) (string, error) {
 		return "", &MediaDefError{Message: fmt.Sprintf(
 			"alias name '%s' contains ':' — aliases must never look like a tagged URN", name)}
 	}
-	if strings.ContainsAny(name, " \t\n\r\f\v") {
+	// unicode.IsSpace is Unicode White_Space, Rust's char::is_whitespace.
+	if strings.IndexFunc(name, unicode.IsSpace) >= 0 {
 		return "", &MediaDefError{Message: fmt.Sprintf(
 			"alias name '%s' contains whitespace", name)}
 	}
-	lowered := strings.ToLower(name)
+	lowered := strings.Map(func(r rune) rune {
+		if r >= 'A' && r <= 'Z' {
+			return r + ('a' - 'A')
+		}
+		return r
+	}, name)
 	if !aliasNameRe.MatchString(lowered) {
 		return "", &MediaDefError{Message: fmt.Sprintf(
 			"alias name '%s' contains invalid characters; allowed: lowercase letters, digits, '.', '_', '-'", name)}

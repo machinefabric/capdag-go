@@ -241,19 +241,21 @@ func survivingCandidates(content []byte, candidates []fileMediaCandidate, verdic
 
 // settle refines what stands through the value adapters and keeps only the
 // most specific member of each line of refinement (the model's MostSpecific),
-// in order.
+// in order. Content that is not UTF-8 holds no text, so no value adapter is
+// asked of it.
 func settle(survivors []*urn.MediaUrn, valueAdapters *ValueAdapterRegistry, content []byte) ([]string, error) {
-	text := ""
-	if utf8.Valid(content) {
-		text = string(content)
-	}
+	isText := utf8.Valid(content)
 	refined := make([]*urn.MediaUrn, 0, len(survivors))
 	for _, survivor := range survivors {
-		refinedStr := valueAdapters.RefineMediaUrn(survivor.String(), text)
-		u, err := urn.NewMediaUrnFromString(refinedStr)
-		if err != nil {
-			return nil, fmt.Errorf("a value adapter refined a file's media to '%s', which is no media URN: %v",
-				refinedStr, err)
+		u := survivor
+		if isText {
+			refinedStr := valueAdapters.RefineMediaUrn(survivor.String(), string(content))
+			parsed, err := urn.NewMediaUrnFromString(refinedStr)
+			if err != nil {
+				return nil, fmt.Errorf("a value adapter refined a file's media to '%s', which is no media URN: %v",
+					refinedStr, err)
+			}
+			u = parsed
 		}
 		seen := false
 		for _, prior := range refined {
