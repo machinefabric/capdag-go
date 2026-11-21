@@ -166,9 +166,9 @@ func (m *MediaUrn) comparable(name string, other *MediaUrn) (*taggedurn.TaggedUr
 	return m.inner, other.inner
 }
 
-// decided returns a comparison's answer. The tagged-URN comparisons fail only
+// mediaAnswer returns a comparison's answer. The tagged-URN comparisons fail only
 // on a prefix mismatch, which two media URNs never have.
-func decided(match bool, err error) bool {
+func mediaAnswer(match bool, err error) bool {
 	if err != nil {
 		panic(fmt.Sprintf("capdag: every MediaUrn has the media prefix: %v", err))
 	}
@@ -179,14 +179,14 @@ func decided(match bool, err error) bool {
 // Uses TaggedUrn.Accepts semantics: pattern accepts instance if instance satisfies pattern's constraints.
 func (m *MediaUrn) Accepts(instance *MediaUrn) bool {
 	a, b := m.comparable("Accepts", instance)
-	return decided(a.Accepts(b))
+	return mediaAnswer(a.Accepts(b))
 }
 
 // ConformsTo checks if this MediaUrn (instance) conforms to the given pattern's constraints.
 // Equivalent to pattern.Accepts(self).
 func (m *MediaUrn) ConformsTo(pattern *MediaUrn) bool {
 	a, b := m.comparable("ConformsTo", pattern)
-	return decided(a.ConformsTo(b))
+	return mediaAnswer(a.ConformsTo(b))
 }
 
 // Meets reports whether this media type and other COULD describe the same
@@ -194,7 +194,7 @@ func (m *MediaUrn) ConformsTo(pattern *MediaUrn) bool {
 // `media:document;ext=pdf`; `media:document;ext=pdf` does not meet `media:ext=png`.
 func (m *MediaUrn) Meets(other *MediaUrn) bool {
 	a, b := m.comparable("Meets", other)
-	return decided(a.Meets(b))
+	return mediaAnswer(a.Meets(b))
 }
 
 // Satisfies reports whether a VALUE whose media this is satisfies the type
@@ -206,13 +206,13 @@ func (m *MediaUrn) Meets(other *MediaUrn) bool {
 // stream that arrived, an output that was produced.
 func (m *MediaUrn) Satisfies(pattern *MediaUrn) bool {
 	a, b := m.comparable("Satisfies", pattern)
-	return decided(a.Satisfies(b))
+	return mediaAnswer(a.Satisfies(b))
 }
 
 // MaySatisfy reports whether a value whose media this is COULD satisfy pattern.
 func (m *MediaUrn) MaySatisfy(pattern *MediaUrn) bool {
 	a, b := m.comparable("MaySatisfy", pattern)
-	return decided(a.MaySatisfy(b))
+	return mediaAnswer(a.MaySatisfy(b))
 }
 
 // IsComparable checks if two media URNs are comparable in the order-theoretic sense.
