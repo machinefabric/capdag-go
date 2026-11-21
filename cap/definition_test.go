@@ -1189,3 +1189,48 @@ func Test12713_built_in_definitions_pass_the_definition_rules(t *testing.T) {
 	require.NotNil(t, identity.MainOutput())
 	assert.Equal(t, "output", identity.MainOutput().GetName())
 }
+
+// TEST1983: a cap's default model is its model-spec argument's default, the
+// value a run uses; a cap with no model-spec argument has none, and a cap that
+// declares two is an error naming it. A body that still carries a stored
+// `default_model_spec` is read, and the stored value is not used.
+func Test1983_TheDefaultModelIsTheModelSpecArgumentsDefault(t *testing.T) {
+	parse := func(args string, extra string) *Cap {
+		var c Cap
+		body := `{"urn":"cap:in=\"media:enc=utf8;plain-text\";generate;out=\"media:enc=utf8;ext=txt;plain-text\"","title":"Generate","aliases":["generate"],"args":` + args + extra + `}`
+		require.NoError(t, json.Unmarshal([]byte(body), &c))
+		return &c
+	}
+	prompt := `{"media_urn":"media:enc=utf8;plain-text","name":"prompt","required":true,"sources":[{"stdin":"media:enc=utf8;plain-text"}]}`
+	model := func(name, defaultValue string) string {
+		arg := `{"media_urn":"media:candle;enc=utf8;llm;model-spec","name":"` + name + `","required":false,"sources":[{"cli_flag":"--` + name + `"}]`
+		if defaultValue != "" {
+			arg += `,"default_value":"` + defaultValue + `"`
+		}
+		return arg + `}`
+	}
+
+	withDefault := parse(`[`+prompt+`,`+model("model-spec", "hf:a/b")+`]`, "")
+	spec, err := withDefault.DefaultModelSpec()
+	require.NoError(t, err)
+	require.NotNil(t, spec)
+	assert.Equal(t, "hf:a/b", *spec)
+	arg, err := withDefault.ModelSpecArg()
+	require.NoError(t, err)
+	assert.Equal(t, "model-spec", arg.Name)
+
+	noModel := parse(`[`+prompt+`]`, "")
+	spec, err = noModel.DefaultModelSpec()
+	require.NoError(t, err)
+	assert.Nil(t, spec)
+
+	two := parse(`[`+prompt+`,`+model("model-a", "")+`,`+model("model-b", "")+`]`, "")
+	_, err = two.DefaultModelSpec()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "declares two model-spec arguments")
+
+	stored := parse(`[`+prompt+`]`, `,"default_model_spec":"hf:stored/model"`)
+	spec, err = stored.DefaultModelSpec()
+	require.NoError(t, err)
+	assert.Nil(t, spec, "a stored default is not the cap's")
+}

@@ -109,8 +109,9 @@ type StepArgumentRequirements struct {
 	// SupportedModelTypes are the architecture identifiers (config.json
 	// model_type) the cap can run. Empty when the cap declares no restriction.
 	SupportedModelTypes []string `json:"supported_model_types"`
-	// DefaultModelSpec is the default model spec literal declared in the cap's
-	// capfab toml. Nil when the cap has no default model.
+	// DefaultModelSpec is the model a run of the cap uses when none is named:
+	// its model-spec argument's default (Cap.DefaultModelSpec). Nil when the
+	// cap takes no model spec or declares no default.
 	DefaultModelSpec *string `json:"default_model_spec,omitempty"`
 }
 
