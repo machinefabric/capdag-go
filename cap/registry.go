@@ -9,15 +9,15 @@ import (
 )
 
 // RegistryCapResponse represents the per-cap JSON body served at
-// /caps/<sha256>. The wire shape is the flattened cap entry; fields
-// beyond what we explicitly model below (urn_tags, in_spec, out_spec,
-// in_media_title, out_media_title, media_defs, registered_by,
-// documentation) are silently ignored by Go's JSON unmarshaller — the
-// Go Cap type only carries the subset below.
+// /caps/<sha256>/<version>. The wire shape is the flattened cap entry
+// (cap.schema.json); the fields the registry derives for readers that hold
+// no Cap (urn_tags, in_spec, out_spec, in_media_title, out_media_title) and
+// the ones the Go Cap does not carry (registered_by, documentation) are
+// ignored by Go's JSON unmarshaller.
 type RegistryCapResponse struct {
 	Urn            string  `json:"urn"` // URN in canonical string format
 	Title          string  `json:"title"`
-	Version        string  `json:"version"`
+	Version        uint32  `json:"version"`
 	CapDescription *string `json:"cap_description,omitempty"`
 	// Dims are the dims the cap was built from (see Cap.Dims). Each entry
 	// refuses keys it does not know.
@@ -50,6 +50,7 @@ func (r *RegistryCapResponse) ToCap() (*Cap, error) {
 	}
 
 	cap := NewCap(capUrn, title, r.Aliases)
+	cap.Version = r.Version
 	cap.IsAbstract = r.IsAbstract
 	cap.CapDescription = r.CapDescription
 	cap.Dims = r.Dims

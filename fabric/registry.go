@@ -59,10 +59,6 @@ import (
 // from its charter.
 const DefaultFabricAnchor = "https://fabric.capdag.com"
 
-// CacheDurationHours is the TTL applied to cache entries of version 0.
-// Versioned entries (defver >= 1) are immutable and never expire.
-const CacheDurationHours = 24
-
 const httpTimeout = 10 * time.Second
 
 // ---------------------------------------------------------------------------
@@ -275,36 +271,23 @@ func NormalizeMediaURN(s string) (string, error) {
 // Cache entries
 // ---------------------------------------------------------------------------
 
+// Cache entries hold a definition at the version its manifest pins; a
+// published version never changes, so an entry never expires.
+
 type capCacheEntry struct {
 	Definition json.RawMessage `json:"definition"`
-	CachedAt   int64           `json:"cached_at"`
-	TTLHours   int             `json:"ttl_hours"`
-}
-
-func (e *capCacheEntry) isExpired() bool {
-	return time.Now().Unix() > e.CachedAt+int64(e.TTLHours)*3600
 }
 
 type mediaCacheEntry struct {
-	Spec     media.StoredMediaDef `json:"spec"`
-	CachedAt int64                `json:"cached_at"`
-	TTLHours int                  `json:"ttl_hours"`
-}
-
-func (e *mediaCacheEntry) isExpired() bool {
-	return time.Now().Unix() > e.CachedAt+int64(e.TTLHours)*3600
+	Spec media.StoredMediaDef `json:"spec"`
 }
 
 type aliasCacheEntry struct {
-	Alias    media.StoredAlias `json:"alias"`
-	CachedAt int64             `json:"cached_at"`
-	TTLHours int               `json:"ttl_hours"`
+	Alias media.StoredAlias `json:"alias"`
 }
 
 type dimCacheEntry struct {
-	Dim      media.StoredDim `json:"dim"`
-	CachedAt int64           `json:"cached_at"`
-	TTLHours int             `json:"ttl_hours"`
+	Dim media.StoredDim `json:"dim"`
 }
 
 // ---------------------------------------------------------------------------
@@ -595,7 +578,7 @@ func WithConfigAndManifestVersion(config Config, manifestVersion uint32) (*Fabri
 		return nil, err
 	}
 	// Keep a definition only when every dim it names survives with it.
-	retainPinned(manifest, manifestVersion, pinned.caps, pinned.media, pinned.aliases, pinned.dims)
+	retainPinned(manifest, pinned.caps, pinned.media, pinned.aliases, pinned.dims)
 
 	r := &FabricRegistry{
 		client:          client,
@@ -613,7 +596,9 @@ func WithConfigAndManifestVersion(config Config, manifestVersion uint32) (*Fabri
 		fetchFailures:   make(map[fetchKey]error),
 	}
 
-	r.EnsureIdentityCap()
+	if err := r.EnsureIdentityCap(); err != nil {
+		return nil, err
+	}
 	return r, nil
 }
 
@@ -643,12 +628,29 @@ func resolveCharter(client *http.Client, capdagCache, anchor string) (*bifaci.Ch
 	return fetched.Charter, nil
 }
 
+// checkManifestDefvers refuses a manifest that pins a cap, media def, alias or
+// dim at defver 0: every definition a registry serves is at version 1 or
+// later, so a 0 names nothing a reader could fetch. Matches Rust: fn
+// check_manifest_defvers
+func checkManifestDefvers(m *media.Manifest) error {
+	for _, pins := range []map[string]uint32{m.Caps, m.Media, m.Aliases, m.Dims} {
+		for name, defver := range pins {
+			if defver == 0 {
+				return errf(ErrParse, "manifest v%d pins '%s' at 0, which is no definition version", m.Version, name)
+			}
+		}
+	}
+	return nil
+}
+
 // loadOrFetchManifest is the manifest bootstrap, in the cache folder cacheDir
 // of manifest version. It tries the cached manifest first, then a blocking
-// network GET; if neither produces a manifest it is an error — there is no v0
-// fallback. A cached manifest that does not parse, or is another version's, is
-// corrupt: an error naming its file, never a silent refetch. The fetched bytes
-// are written whole (writeAtomically). Matches Rust: fn load_or_fetch_manifest
+// network GET; if neither produces a manifest it is an error. A cached
+// manifest that does not parse, or is another version's, is corrupt: an error
+// naming its file, never a silent refetch. A manifest, cached or fetched, that
+// pins anything at defver 0 is refused (checkManifestDefvers). The fetched
+// bytes are written whole (writeAtomically). Matches Rust: fn
+// load_or_fetch_manifest
 func loadOrFetchManifest(cacheDir string, client *http.Client, locations Locations, version uint32) (*media.Manifest, error) {
 	cacheFile := filepath.Join(cacheDir, manifestFile)
 	cached, err := readEntry[media.Manifest](cacheFile, "manifest")
@@ -659,6 +661,9 @@ func loadOrFetchManifest(cacheDir string, client *http.Client, locations Locatio
 		if cached.Version != version {
 			return nil, corrupt(cacheFile, "manifest",
 				fmt.Sprintf("it is manifest %d, in the folder of manifest %d", cached.Version, version))
+		}
+		if err := checkManifestDefvers(cached); err != nil {
+			return nil, err
 		}
 		return cached, nil
 	}
@@ -674,6 +679,9 @@ func loadOrFetchManifest(cacheDir string, client *http.Client, locations Locatio
 	}
 	if m.Version != version {
 		return nil, errf(ErrParse, "manifest fetched as v%d reports version %d", version, m.Version)
+	}
+	if err := checkManifestDefvers(&m); err != nil {
+		return nil, err
 	}
 	if err := writeAtomically(cacheFile, body); err != nil {
 		return nil, err
@@ -752,10 +760,6 @@ func loadPinnedEntries(cacheDir string, manifest *media.Manifest) (pinnedEntries
 				"it holds '%s' at defver %d, where '%s' at defver %d belongs",
 				cachedURN, c.Version, key, defver))
 		}
-		if defver == 0 && entry.isExpired() {
-			fmt.Fprintf(os.Stderr, "[INFO] the cached cap %s is past its time to live\n", path)
-			continue
-		}
 		if err := cap.ValidateCapDefinition(&c); err != nil {
 			fmt.Fprintf(os.Stderr, "[WARN] dropping the cached cap %s: %v\n", path, err)
 			_ = os.Remove(path)
@@ -780,10 +784,6 @@ func loadPinnedEntries(cacheDir string, manifest *media.Manifest) (pinnedEntries
 			return pinnedEntries{}, corrupt(path, "media def", fmt.Sprintf(
 				"it holds '%s' at defver %d, where '%s' at defver %d belongs",
 				cachedURN, entry.Spec.Version, key, defver))
-		}
-		if defver == 0 && entry.isExpired() {
-			fmt.Fprintf(os.Stderr, "[INFO] the cached media def %s is past its time to live\n", path)
-			continue
 		}
 		entries.media[cachedURN] = entry.Spec
 	}
@@ -827,45 +827,37 @@ func loadPinnedEntries(cacheDir string, manifest *media.Manifest) (pinnedEntries
 
 // retainPinned keeps, of what was loaded from the disk cache, only what the
 // pinned manifest names at the version it names, and only definitions whose
-// dims all survive with them. At v0 the manifest is empty and caps and media
-// are all retained; aliases and dims are versioned-regime concepts and are all
-// dropped.
+// dims all survive with them.
 //
 // A definition whose dims did not survive is dropped here and fetched again,
 // with its dims, when it is next asked for — so a cached definition always has
 // its dims cached. Matches Rust: fn retain_pinned
 func retainPinned(
 	manifest *media.Manifest,
-	manifestVersion uint32,
 	caps map[string]*cap.Cap,
 	specs map[string]media.StoredMediaDef,
 	aliases map[string]media.StoredAlias,
 	dims map[string]media.StoredDim,
 ) {
-	if manifestVersion >= 1 {
-		for key, c := range caps {
-			if manifest.Caps[key] != c.Version {
-				delete(caps, key)
-			}
+	for key, c := range caps {
+		if manifest.Caps[key] != c.Version {
+			delete(caps, key)
 		}
-		for key, spec := range specs {
-			if manifest.Media[key] != spec.Version {
-				delete(specs, key)
-			}
+	}
+	for key, spec := range specs {
+		if manifest.Media[key] != spec.Version {
+			delete(specs, key)
 		}
-		for name, alias := range aliases {
-			if manifest.Aliases[name] != alias.Version {
-				delete(aliases, name)
-			}
+	}
+	for name, alias := range aliases {
+		if manifest.Aliases[name] != alias.Version {
+			delete(aliases, name)
 		}
-		for name, dim := range dims {
-			if manifest.Dims[name] != dim.Version {
-				delete(dims, name)
-			}
+	}
+	for name, dim := range dims {
+		if manifest.Dims[name] != dim.Version {
+			delete(dims, name)
 		}
-	} else {
-		clear(aliases)
-		clear(dims)
 	}
 	for key, c := range caps {
 		if !dimsResolveIn(c.Dims, dims) {
@@ -927,11 +919,7 @@ func (r *FabricRegistry) saveCapToCache(c *cap.Cap) error {
 	if err != nil {
 		return errf(ErrCache, "serializing cap %s: %v", c.Urn.String(), err)
 	}
-	return storeEntry(path, capCacheEntry{
-		Definition: definition,
-		CachedAt:   time.Now().Unix(),
-		TTLHours:   CacheDurationHours,
-	}, "cap")
+	return storeEntry(path, capCacheEntry{Definition: definition}, "cap")
 }
 
 func (r *FabricRegistry) saveMediaDefToCache(spec media.StoredMediaDef) error {
@@ -939,28 +927,16 @@ func (r *FabricRegistry) saveMediaDefToCache(spec media.StoredMediaDef) error {
 	if err != nil {
 		return err
 	}
-	return storeEntry(path, mediaCacheEntry{
-		Spec:     spec,
-		CachedAt: time.Now().Unix(),
-		TTLHours: CacheDurationHours,
-	}, "media def")
+	return storeEntry(path, mediaCacheEntry{Spec: spec}, "media def")
 }
 
 func (r *FabricRegistry) saveAliasToCache(alias media.StoredAlias) error {
-	return storeEntry(r.aliasCacheFilePath(alias.Name, alias.Version), aliasCacheEntry{
-		Alias:    alias,
-		CachedAt: time.Now().Unix(),
-		TTLHours: CacheDurationHours,
-	}, "alias")
+	return storeEntry(r.aliasCacheFilePath(alias.Name, alias.Version), aliasCacheEntry{Alias: alias}, "alias")
 }
 
 func (r *FabricRegistry) saveDimToCache(dim media.StoredDim) error {
 	_, path := definitionURLAndCachePath(r.cacheDir, r.locations, "dims", dim.Name, dim.Version)
-	return storeEntry(path, dimCacheEntry{
-		Dim:      dim,
-		CachedAt: time.Now().Unix(),
-		TTLHours: CacheDurationHours,
-	}, "dim")
+	return storeEntry(path, dimCacheEntry{Dim: dim}, "dim")
 }
 
 // ---------------------------------------------------------------------------
@@ -987,26 +963,38 @@ func (r *FabricRegistry) fetchCapFromRegistry(capURN string, defver uint32) (*ca
 	if err != nil {
 		return nil, err
 	}
-	return checkedCapDefinition(body, capURN)
+	return checkedCapDefinition(body, normalized, defver)
 }
 
-// checkedCapDefinition reads a definition a registry served and holds it to
-// the definition rules (RULE1-RULE22) before it is cached or returned: a
+// checkedCapDefinition reads a definition a registry served for the cap
+// normalizedURN at defver, checks it is that cap at that version, and holds it
+// to the definition rules (RULE1-RULE22) before it is cached or returned: a
 // definition is held to them by the side that receives it as well as the side
-// that sends it. One that does not parse is a parse error; one that parses
-// and breaks a rule is a validation error naming the cap and the rule.
-// Matches Rust: fn checked_cap_definition(body, normalized_urn)
-func checkedCapDefinition(body []byte, capURN string) (*cap.Cap, error) {
+// that sends it. One that does not parse, or is another cap or another
+// version, is a parse error; one that breaks a rule is a validation error
+// naming the cap and the rule. Matches Rust: fn checked_cap_definition
+func checkedCapDefinition(body []byte, normalizedURN string, defver uint32) (*cap.Cap, error) {
 	var wire cap.RegistryCapResponse
 	if err := json.Unmarshal(body, &wire); err != nil {
-		return nil, &Error{Kind: ErrParse, Message: fmt.Sprintf("parsing the registry response for cap '%s'", capURN), Err: err}
+		return nil, &Error{Kind: ErrParse, Message: fmt.Sprintf("parsing the registry response for cap '%s'", normalizedURN), Err: err}
 	}
 	c, err := wire.ToCap()
 	if err != nil {
-		return nil, &Error{Kind: ErrParse, Message: fmt.Sprintf("converting the registry response for cap '%s'", capURN), Err: err}
+		return nil, &Error{Kind: ErrParse, Message: fmt.Sprintf("converting the registry response for cap '%s'", normalizedURN), Err: err}
+	}
+	served, err := NormalizeCapURN(c.Urn.String())
+	if err != nil {
+		return nil, err
+	}
+	if served != normalizedURN {
+		return nil, errf(ErrParse, "cap object URN '%s' does not match requested URN '%s'", c.Urn.String(), normalizedURN)
+	}
+	if c.Version != defver {
+		return nil, errf(ErrParse, "cap '%s' object reports version %d but manifest pins defver %d",
+			normalizedURN, c.Version, defver)
 	}
 	if err := cap.ValidateCapDefinition(c); err != nil {
-		return nil, &Error{Kind: ErrValidation, Message: fmt.Sprintf("the registry's definition of cap '%s' breaks a definition rule", capURN), Err: err}
+		return nil, &Error{Kind: ErrValidation, Message: fmt.Sprintf("the registry's definition of cap '%s' breaks a definition rule", normalizedURN), Err: err}
 	}
 	return c, nil
 }
@@ -1021,9 +1009,28 @@ func (r *FabricRegistry) fetchMediaDefFromRegistry(mediaURN string, defver uint3
 	if err != nil {
 		return nil, err
 	}
+	return checkedMediaDef(body, normalized, defver)
+}
+
+// checkedMediaDef reads a media definition a registry served for the media
+// URN normalizedURN at defver and checks it is that definition at that
+// version: one that does not parse, or is another definition or another
+// version, is a parse error. Matches Rust: fn checked_media_def
+func checkedMediaDef(body []byte, normalizedURN string, defver uint32) (*media.StoredMediaDef, error) {
 	var spec media.StoredMediaDef
 	if err := json.Unmarshal(body, &spec); err != nil {
-		return nil, &Error{Kind: ErrParse, Message: fmt.Sprintf("parsing the registry response for media '%s'", mediaURN), Err: err}
+		return nil, &Error{Kind: ErrParse, Message: fmt.Sprintf("parsing the registry response for media '%s'", normalizedURN), Err: err}
+	}
+	served, err := NormalizeMediaURN(spec.Urn)
+	if err != nil {
+		return nil, err
+	}
+	if served != normalizedURN {
+		return nil, errf(ErrParse, "media def object URN '%s' does not match requested URN '%s'", spec.Urn, normalizedURN)
+	}
+	if spec.Version != defver {
+		return nil, errf(ErrParse, "media def '%s' object reports version %d but manifest pins defver %d",
+			normalizedURN, spec.Version, defver)
 	}
 	return &spec, nil
 }
@@ -1133,11 +1140,6 @@ func (r *FabricRegistry) ensureDimsCached(owner string, refs []media.DimRef) err
 		r.mu.RUnlock()
 		dim := &cached
 		if !ok {
-			if manifestVersion == 0 {
-				return errf(ErrNotFound,
-					"%s names dim '%s', but the registry is pinned at v0 (dims are a versioned-regime concept)",
-					owner, ref.Dim)
-			}
 			if !listed {
 				return errf(ErrNotFound, "%s names dim '%s', which is not in manifest v%d",
 					owner, ref.Dim, manifestVersion)
@@ -1163,9 +1165,6 @@ func (r *FabricRegistry) ensureDimsCached(owner string, refs []media.DimRef) err
 // ---------------------------------------------------------------------------
 
 func (r *FabricRegistry) capDefver(normalizedURN string) (uint32, error) {
-	if r.manifestVersion == 0 {
-		return 0, nil
-	}
 	defver, ok := r.manifest.Caps[normalizedURN]
 	if !ok {
 		return 0, errf(ErrNotFound, "cap '%s' is not part of manifest v%d", normalizedURN, r.manifestVersion)
@@ -1174,9 +1173,6 @@ func (r *FabricRegistry) capDefver(normalizedURN string) (uint32, error) {
 }
 
 func (r *FabricRegistry) mediaDefver(normalizedURN string) (uint32, error) {
-	if r.manifestVersion == 0 {
-		return 0, nil
-	}
 	defver, ok := r.manifest.Media[normalizedURN]
 	if !ok {
 		return 0, errf(ErrNotFound, "media def '%s' is not part of manifest v%d", normalizedURN, r.manifestVersion)
@@ -1185,11 +1181,6 @@ func (r *FabricRegistry) mediaDefver(normalizedURN string) (uint32, error) {
 }
 
 func (r *FabricRegistry) aliasDefver(normalizedName string) (uint32, error) {
-	if r.manifestVersion == 0 {
-		return 0, errf(ErrNotFound,
-			"alias '%s' cannot resolve: the registry is pinned at v0 (aliases are a versioned-regime concept)",
-			normalizedName)
-	}
 	defver, ok := r.manifest.Aliases[normalizedName]
 	if !ok {
 		return 0, errf(ErrNotFound, "alias '%s' is not part of manifest v%d", normalizedName, r.manifestVersion)
@@ -1230,15 +1221,9 @@ func (r *FabricRegistry) AliasDefverFor(name string) (uint32, error) {
 	return r.aliasDefver(normalized)
 }
 
-// dimDefver resolves a dim name to its defver under the pinned manifest. Dims
-// exist only in the versioned regime: at v0 any dim lookup is a hard NotFound.
-// At v >= 1 the name must be in the manifest's `dims` map. The caller holds
-// r.mu.
+// dimDefver resolves a dim name to its defver under the pinned manifest. The
+// name must be in the manifest's `dims` map. The caller holds r.mu.
 func (r *FabricRegistry) dimDefver(name string) (uint32, error) {
-	if r.manifestVersion == 0 {
-		return 0, errf(ErrNotFound,
-			"dim '%s' cannot resolve: registry is pinned at v0 (dims are a versioned-regime concept)", name)
-	}
 	defver, ok := r.manifest.Dims[name]
 	if !ok {
 		return 0, errf(ErrNotFound, "dim '%s' is not part of manifest v%d", name, r.manifestVersion)
@@ -2159,7 +2144,9 @@ func (r *FabricRegistry) ClearCache() error {
 	r.mu.Unlock()
 	// The identity cap is mandatory in every capability set; a cleared cache
 	// still has it.
-	r.EnsureIdentityCap()
+	if err := r.EnsureIdentityCap(); err != nil {
+		return err
+	}
 
 	return clearCacheFolder(r.cacheDir)
 }
@@ -2195,37 +2182,34 @@ func (r *FabricRegistry) CacheDir() string { return r.cacheDir }
 // Identity cap (mandatory)
 // ---------------------------------------------------------------------------
 
-// EnsureIdentityCap installs the mandatory identity cap into the in-memory
-// cache. Idempotent. The identity cap is mandatory in every capability set so
-// the resolver's source-to-cap-arg matching can route through identity in any
-// notation.
-func (r *FabricRegistry) EnsureIdentityCap() {
+// EnsureIdentityCap seeds the mandatory identity cap into the in-memory cache
+// at the version the pinned manifest holds it at. Idempotent. The identity
+// cap is mandatory in every capability set so the resolver's source-to-cap-arg
+// matching can route through identity in any notation; it is a fabric cap
+// like any other, so a manifest that does not hold it is no capability set
+// this library reads, and is refused. Matches Rust: fn ensure_identity_cap
+func (r *FabricRegistry) EnsureIdentityCap() error {
 	identity, err := cap.IdentityCap()
 	if err != nil {
-		// The identity URN is a built-in constant; if it ever stops parsing,
-		// say so loudly rather than failing every later lookup with a
-		// mysterious miss.
-		fmt.Fprintf(os.Stderr, "[ERROR] %v\n", err)
-		return
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	// Standard caps travel with the manifest: their per-def version IS the
-	// registry's pinned manifest version.
-	if r.manifestVersion >= 1 {
-		identity.Version = r.manifestVersion
+		return errf(ErrValidation, "the identity cap: %v", err)
 	}
 	normalized, err := NormalizeCapURN(identity.Urn.String())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "[ERROR] identity cap URN does not parse: %v\n", err)
-		return
+		return err
 	}
-	if _, ok := r.cachedCaps[normalized]; !ok {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	defver, ok := r.manifest.Caps[normalized]
+	if !ok {
+		return errf(ErrValidation,
+			"manifest v%d does not hold the identity cap '%s', which every capability set includes",
+			r.manifestVersion, normalized)
+	}
+	identity.Version = defver
+	if _, cached := r.cachedCaps[normalized]; !cached {
 		r.cachedCaps[normalized] = identity
 	}
-	if r.manifestVersion >= 1 {
-		r.manifest.Caps[normalized] = r.manifestVersion
-	}
+	return nil
 }
 
 // ---------------------------------------------------------------------------
@@ -2271,9 +2255,13 @@ func NewForTestInDir(config Config, registryDir string) *FabricRegistry {
 	return newForTestInDirAt(config, registryDir, 1)
 }
 
-// newForTestInDirAt is NewForTestInDir pinned at manifestVersion, with an
-// empty manifest; its cache folder is that version's folder in registryDir.
+// newForTestInDirAt is NewForTestInDir pinned at manifestVersion, with a
+// manifest holding only the identity cap, at defver 1; its cache folder is that
+// version's folder in registryDir.
 func newForTestInDirAt(config Config, registryDir string, manifestVersion uint32) *FabricRegistry {
+	if manifestVersion == 0 {
+		panic("a registry is pinned at manifest 1 or later")
+	}
 	charter := PublisherLayoutCharter(config.Anchor)
 	locations, err := LocationsFromCharter(charter)
 	if err != nil {
@@ -2299,18 +2287,26 @@ func newForTestInDirAt(config Config, registryDir string, manifestVersion uint32
 		manifest:        media.EmptyManifest(manifestVersion),
 		fetchFailures:   make(map[fetchKey]error),
 	}
-	r.EnsureIdentityCap()
+	identity, err := cap.IdentityCap()
+	if err != nil {
+		panic(fmt.Sprintf("the identity cap: %v", err))
+	}
+	r.manifest.Caps[identity.Urn.String()] = 1
+	if err := r.EnsureIdentityCap(); err != nil {
+		panic(fmt.Sprintf("the test manifest holds the identity cap: %v", err))
+	}
 	return r
 }
 
 // AddCapsToCache inserts caps directly into the in-memory cache and records
-// each in the manifest at its version. A cap whose version is 0 is stamped to
-// the pinned manifest version.
+// each in the manifest at its version. A cap at version 0 is one no registry
+// has published (a dev cartridge's, or a test fixture's); it is recorded at
+// the pinned manifest version, the snapshot it now belongs to.
 func (r *FabricRegistry) AddCapsToCache(caps []*cap.Cap) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, c := range caps {
-		if c.Version == 0 && r.manifestVersion >= 1 {
+		if c.Version == 0 {
 			c.Version = r.manifestVersion
 		}
 		normalized, err := NormalizeCapURN(c.Urn.String())
@@ -2319,18 +2315,18 @@ func (r *FabricRegistry) AddCapsToCache(caps []*cap.Cap) {
 			continue
 		}
 		r.cachedCaps[normalized] = c
-		if r.manifestVersion >= 1 {
-			r.manifest.Caps[normalized] = c.Version
-		}
+		r.manifest.Caps[normalized] = c.Version
 	}
 }
 
 // AddSpec inserts a media def directly into the in-memory cache and records it
-// in the manifest, which is then no longer the file it was read from.
+// in the manifest, which is then no longer the file it was read from. A media
+// def at version 0 is recorded at the pinned manifest version, as
+// AddCapsToCache records a cap.
 func (r *FabricRegistry) AddSpec(spec media.StoredMediaDef) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if spec.Version == 0 && r.manifestVersion >= 1 {
+	if spec.Version == 0 {
 		spec.Version = r.manifestVersion
 	}
 	normalized, err := NormalizeMediaURN(spec.Urn)
@@ -2339,9 +2335,7 @@ func (r *FabricRegistry) AddSpec(spec media.StoredMediaDef) {
 		return
 	}
 	r.cachedSpecs[normalized] = spec
-	if r.manifestVersion >= 1 {
-		r.manifest.Media[normalized] = spec.Version
-	}
+	r.manifest.Media[normalized] = spec.Version
 	r.manifestPath = ""
 }
 
@@ -2380,9 +2374,7 @@ func (r *FabricRegistry) AddAliasesToCache(aliases []media.StoredAlias) {
 	defer r.mu.Unlock()
 	for _, alias := range aliases {
 		r.cachedAliases[alias.Name] = alias
-		if r.manifestVersion >= 1 {
-			r.manifest.Aliases[alias.Name] = alias.Version
-		}
+		r.manifest.Aliases[alias.Name] = alias.Version
 	}
 }
 
@@ -2393,7 +2385,5 @@ func (r *FabricRegistry) InsertCachedDimForTest(dim media.StoredDim) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.cachedDims[dim.Name] = dim
-	if r.manifestVersion >= 1 {
-		r.manifest.Dims[dim.Name] = dim.Version
-	}
+	r.manifest.Dims[dim.Name] = dim.Version
 }

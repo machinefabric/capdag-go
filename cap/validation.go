@@ -1124,9 +1124,3 @@ func capArgRuleBroken(cap *Cap) *ValidationError {
 
 	return nil
 }
-
-// Utility functions
-
-// ============================================================================
-// XV5 VALIDATION - No Redefinition of Registry Media Defs
-// ============================================================================
