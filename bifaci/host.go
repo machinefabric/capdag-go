@@ -1195,13 +1195,19 @@ func (h *CartridgeHost) Run(relayRead io.Reader, relayWrite io.Writer, resourceF
 	// loop never blocks behind a slow relay reader.
 	out := &relayOutbound{ch: make(chan *Frame, 256)}
 	writerDone := make(chan struct{})
+	// A frame the relay could not take ends the session (below): it is
+	// lost, and every frame after it would be too, so the engine would wait
+	// on answers this host can no longer give. Mirrors the reference run
+	// loop, which ends with the failed write.
+	relayWriteFailed := make(chan error, 1)
 	go func() {
 		defer close(writerDone)
 		for frame := range out.ch {
 			if err := relayWriter.WriteFrame(frame); err != nil {
-				// Relay closed mid-write. Drain remaining queued frames
-				// without writing so WriteFrame senders never block, then
-				// exit when the channel is closed at teardown.
+				relayWriteFailed <- fmt.Errorf("relay write failed: %v for %v could not be written: %w", frame.FrameType, frame.Id, err)
+				// Drain remaining queued frames without writing so
+				// WriteFrame senders never block, then exit when the
+				// channel is closed at teardown.
 				for range out.ch {
 				}
 				return
@@ -1232,6 +1238,12 @@ func (h *CartridgeHost) Run(relayRead io.Reader, relayWrite io.Writer, resourceF
 
 	for {
 		select {
+		case werr := <-relayWriteFailed:
+			h.killAllCartridges()
+			close(out.ch)
+			<-writerDone
+			return werr
+
 		case frame, ok := <-relayCh:
 			if !ok {
 				err := <-relayDone
