@@ -3,6 +3,7 @@ package urn
 import (
 	"testing"
 
+	taggedurn "github.com/machinefabric/tagged-urn-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -33,7 +34,8 @@ func Test12368_AQuestionMayLeaveASideUnknown(t *testing.T) {
 	someImage := queryCap(t, `cap:render;in="media:document;ext=pdf";out="media:image"`)
 	passesThrough := queryCap(t, "cap:decimate-sequence;effect=none")
 
-	wantsJpeg := CapQueryProducing(queryMedia(t, "media:ext=jpeg;image"), nil)
+	wantsJpeg, err := CapQueryProducing(queryMedia(t, "media:ext=jpeg;image"), nil)
+	require.NoError(t, err)
 	assert.Equal(t, MatchExact, wantsJpeg.Grade(toJpeg))
 	assert.True(t, wantsJpeg.Admits(toJpeg), "whatever it takes: a png here")
 	// "Some image" is not a jpeg, and not excluded: possible, never routed on.
@@ -43,13 +45,15 @@ func Test12368_AQuestionMayLeaveASideUnknown(t *testing.T) {
 	assert.Equal(t, MatchNone, wantsJpeg.Grade(pages))
 
 	// Asked for any image, a jpeg is guaranteed to be one, not exactly it.
-	wantsImage := CapQueryProducing(queryMedia(t, "media:image"), nil)
+	wantsImage, err := CapQueryProducing(queryMedia(t, "media:image"), nil)
+	require.NoError(t, err)
 	assert.Equal(t, MatchGuaranteed, wantsImage.Grade(toJpeg))
 	assert.Equal(t, MatchExact, wantsImage.Grade(someImage))
 	assert.False(t, wantsImage.Admits(passesThrough), "media: out promises no image")
 
 	// What can a pdf become? Whatever takes a pdf — or takes anything.
-	hasPdf := CapQueryConsuming(queryMedia(t, "media:document;ext=pdf"), nil)
+	hasPdf, err := CapQueryConsuming(queryMedia(t, "media:document;ext=pdf"), nil)
+	require.NoError(t, err)
 	assert.True(t, hasPdf.Admits(pages))
 	assert.True(t, hasPdf.Admits(someImage))
 	assert.True(t, hasPdf.Admits(passesThrough), "it takes anything, a pdf included")
@@ -57,7 +61,8 @@ func Test12368_AQuestionMayLeaveASideUnknown(t *testing.T) {
 	assert.Equal(t, MatchNone, hasPdf.Grade(toJpeg))
 
 	// Both sides stated is the typed call.
-	pdfToImage := CapQueryBetween(queryMedia(t, "media:document;ext=pdf"), queryMedia(t, "media:image"), nil)
+	pdfToImage, err := CapQueryBetween(queryMedia(t, "media:document;ext=pdf"), queryMedia(t, "media:image"), nil)
+	require.NoError(t, err)
 	assert.True(t, pdfToImage.Admits(someImage))
 	assert.False(t, pdfToImage.Admits(pages))
 	assert.False(t, pdfToImage.Admits(toJpeg))
@@ -73,11 +78,13 @@ func Test12369_AQuerysTagsAreAskedOfTheTagsACapHas(t *testing.T) {
 	someImage := queryCap(t, `cap:render;in="media:document;ext=pdf";out="media:image"`)
 	anyImage := queryMedia(t, "media:image")
 
-	converters := CapQueryProducing(anyImage, map[string]string{"convert-image": "*"})
+	converters, err := CapQueryProducing(anyImage, map[string]taggedurn.Constraint{"convert-image": taggedurn.ConstraintPresent{}})
+	require.NoError(t, err)
 	assert.True(t, converters.Admits(toJpeg))
 	assert.False(t, converters.Admits(someImage), "it renders; it is not tagged convert-image")
 
-	notConverters := CapQueryProducing(anyImage, map[string]string{"convert-image": "!"})
+	notConverters, err := CapQueryProducing(anyImage, map[string]taggedurn.Constraint{"convert-image": taggedurn.ConstraintAbsent{}})
+	require.NoError(t, err)
 	assert.True(t, notConverters.Admits(someImage), "it does not have the tag")
 	assert.False(t, notConverters.Admits(toJpeg), "it has it")
 	assert.Equal(t, MatchNone, notConverters.Grade(toJpeg))

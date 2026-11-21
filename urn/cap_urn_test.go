@@ -3,9 +3,11 @@ package urn
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/machinefabric/capdag-go/standard"
+	taggedurn "github.com/machinefabric/tagged-urn-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -36,13 +38,13 @@ func Test001_cap_urn_creation(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, capUrn)
 
-	capType, exists := capUrn.GetTag("type")
+	capType, exists := capUrn.ExactValue("type")
 	assert.True(t, exists)
 	assert.Equal(t, "data_processing", capType)
 
 	assert.True(t, capUrn.HasMarkerTag("transform"))
 
-	format, exists := capUrn.GetTag("format")
+	format, exists := capUrn.ExactValue("format")
 	assert.True(t, exists)
 	assert.Equal(t, "json", format)
 
@@ -101,17 +103,17 @@ func Test004_unquoted_values_lowercased(t *testing.T) {
 
 	assert.True(t, cap.HasMarkerTag("generate"))
 
-	ext, exists := cap.GetTag("ext")
+	ext, exists := cap.ExactValue("ext")
 	assert.True(t, exists)
 	assert.Equal(t, "pdf", ext)
 
-	target, exists := cap.GetTag("target")
+	target, exists := cap.ExactValue("target")
 	assert.True(t, exists)
 	assert.Equal(t, "thumbnail", target)
 
 	// Key lookup is case-insensitive: uppercase variants of `ext`
 	// resolve to the same keyed tag.
-	extUpper, exists := cap.GetTag("EXT")
+	extUpper, exists := cap.ExactValue("EXT")
 	assert.True(t, exists)
 	assert.Equal(t, "pdf", extUpper)
 }
@@ -120,13 +122,13 @@ func Test004_unquoted_values_lowercased(t *testing.T) {
 func Test005_quoted_values_preserve_case(t *testing.T) {
 	cap, err := NewCapUrnFromString(testUrn(`key="Value With Spaces"`))
 	require.NoError(t, err)
-	value, exists := cap.GetTag("key")
+	value, exists := cap.ExactValue("key")
 	assert.True(t, exists)
 	assert.Equal(t, "Value With Spaces", value)
 
 	cap2, err := NewCapUrnFromString(testUrn(`KEY="Value With Spaces"`))
 	require.NoError(t, err)
-	value2, exists := cap2.GetTag("key")
+	value2, exists := cap2.ExactValue("key")
 	assert.True(t, exists)
 	assert.Equal(t, "Value With Spaces", value2)
 
@@ -135,8 +137,8 @@ func Test005_quoted_values_preserve_case(t *testing.T) {
 	quoted, err := NewCapUrnFromString(testUrn(`key="UPPERCASE"`))
 	require.NoError(t, err)
 
-	unquotedVal, _ := unquoted.GetTag("key")
-	quotedVal, _ := quoted.GetTag("key")
+	unquotedVal, _ := unquoted.ExactValue("key")
+	quotedVal, _ := quoted.ExactValue("key")
 	assert.Equal(t, "uppercase", unquotedVal)
 	assert.Equal(t, "UPPERCASE", quotedVal)
 	assert.False(t, unquoted.Equals(quoted))
@@ -146,19 +148,19 @@ func Test005_quoted_values_preserve_case(t *testing.T) {
 func Test006_quoted_value_special_chars(t *testing.T) {
 	cap, err := NewCapUrnFromString(testUrn(`key="value;with;semicolons"`))
 	require.NoError(t, err)
-	value, exists := cap.GetTag("key")
+	value, exists := cap.ExactValue("key")
 	assert.True(t, exists)
 	assert.Equal(t, "value;with;semicolons", value)
 
 	cap2, err := NewCapUrnFromString(testUrn(`key="value=with=equals"`))
 	require.NoError(t, err)
-	value2, exists := cap2.GetTag("key")
+	value2, exists := cap2.ExactValue("key")
 	assert.True(t, exists)
 	assert.Equal(t, "value=with=equals", value2)
 
 	cap3, err := NewCapUrnFromString(testUrn(`key="hello world"`))
 	require.NoError(t, err)
-	value3, exists := cap3.GetTag("key")
+	value3, exists := cap3.ExactValue("key")
 	assert.True(t, exists)
 	assert.Equal(t, "hello world", value3)
 }
@@ -167,19 +169,19 @@ func Test006_quoted_value_special_chars(t *testing.T) {
 func Test007_quoted_value_escape_sequences(t *testing.T) {
 	cap, err := NewCapUrnFromString(testUrn(`key="value\"quoted\""`))
 	require.NoError(t, err)
-	value, exists := cap.GetTag("key")
+	value, exists := cap.ExactValue("key")
 	assert.True(t, exists)
 	assert.Equal(t, `value"quoted"`, value)
 
 	cap2, err := NewCapUrnFromString(testUrn(`key="path\\file"`))
 	require.NoError(t, err)
-	value2, exists := cap2.GetTag("key")
+	value2, exists := cap2.ExactValue("key")
 	assert.True(t, exists)
 	assert.Equal(t, `path\file`, value2)
 
 	cap3, err := NewCapUrnFromString(testUrn(`key="say \"hello\\world\""`))
 	require.NoError(t, err)
-	value3, exists := cap3.GetTag("key")
+	value3, exists := cap3.ExactValue("key")
 	assert.True(t, exists)
 	assert.Equal(t, `say "hello\world"`, value3)
 }
@@ -189,11 +191,11 @@ func Test008_mixed_quoted_unquoted(t *testing.T) {
 	cap, err := NewCapUrnFromString(testUrn(`a="Quoted";b=simple`))
 	require.NoError(t, err)
 
-	a, exists := cap.GetTag("a")
+	a, exists := cap.ExactValue("a")
 	assert.True(t, exists)
 	assert.Equal(t, "Quoted", a)
 
-	b, exists := cap.GetTag("b")
+	b, exists := cap.ExactValue("b")
 	assert.True(t, exists)
 	assert.Equal(t, "simple", b)
 }
@@ -276,7 +278,7 @@ func Test013_round_trip_quoted(t *testing.T) {
 	reparsed, err := NewCapUrnFromString(serialized)
 	require.NoError(t, err)
 	assert.True(t, cap.Equals(reparsed))
-	value, exists := reparsed.GetTag("key")
+	value, exists := reparsed.ExactValue("key")
 	assert.True(t, exists)
 	assert.Equal(t, "Value With Spaces", value)
 }
@@ -286,7 +288,7 @@ func Test014_round_trip_escapes(t *testing.T) {
 	original := testUrn(`key="value\"with\\escapes"`)
 	cap, err := NewCapUrnFromString(original)
 	require.NoError(t, err)
-	value, exists := cap.GetTag("key")
+	value, exists := cap.ExactValue("key")
 	assert.True(t, exists)
 	assert.Equal(t, `value"with\escapes`, value)
 	serialized := cap.ToString()
@@ -421,7 +423,7 @@ func Test019_missing_tag_handling(t *testing.T) {
 	assert.True(t, cap3.Accepts(request3))
 }
 
-// TEST20: Specificity is the sum of per-tag truth-table scores across in/out/y. Marker tags (bare segments like `generate`) are must-have-any (score 2), exact `key=value` tags score 3, missing/`?` score 0, `!` scores 1. test_urn() builds "cap:in=media:void;out=media:record;<tags>" so the directional baseline is: in:  media:void  -> {void=*}     -> 2 out: media:record -> {record=*}  -> 2 Total directional baseline: 4.
+// TEST20: Specificity is the sum of per-tag truth-table scores across in/out/y. Marker tags (bare segments like `generate`) are must-have-any (score 2), exact `key=value` tags score 4, missing/`?` score 0, `x?=v` 1, `x!=v` 3, `!` 5. test_urn() builds "cap:in=media:void;out=media:record;<tags>" so the directional baseline is: in:  media:void  -> {void=*}     -> 2 out: media:record -> {record=*}  -> 2 Total directional baseline: 4.
 func Test020_specificity(t *testing.T) {
 	cap1, err := NewCapUrnFromString(testUrn("type=general"))
 	require.NoError(t, err)
@@ -497,7 +499,7 @@ func Test023_builder_preserves_case(t *testing.T) {
 		Build()
 	require.NoError(t, err)
 
-	value, exists := cap.GetTag("key")
+	value, exists := cap.ExactValue("key")
 	assert.True(t, exists)
 	assert.Equal(t, "ValueWithCase", value)
 }
@@ -520,7 +522,7 @@ func Test6544_builder_rejects_structural_keys(t *testing.T) {
 	require.Error(t, err)
 	capError, ok := err.(*CapUrnError)
 	require.True(t, ok)
-	assert.Equal(t, ErrorNumericKey, capError.Code)
+	assert.Equal(t, ErrorInvalidCharacter, capError.Code)
 }
 
 // TEST24: Directional accepts — pattern's tags are constraints, instance must satisfy
@@ -592,7 +594,7 @@ func Test026_merge_and_subset(t *testing.T) {
 	assert.Equal(t, "media:integer", merged.OutSpec())
 
 	assert.True(t, merged.HasMarkerTag("generate"))
-	ext, _ := merged.GetTag("ext")
+	ext, _ := merged.ExactValue("ext")
 	assert.Equal(t, "pdf", ext)
 
 	// Subset test
@@ -600,7 +602,7 @@ func Test026_merge_and_subset(t *testing.T) {
 	require.NoError(t, err)
 
 	subset := cap.Subset([]string{"type", "ext"})
-	extVal, exists := subset.GetTag("ext")
+	extVal, exists := subset.ExactValue("ext")
 	assert.True(t, exists)
 	assert.Equal(t, "pdf", extVal)
 
@@ -617,9 +619,7 @@ func Test027_wildcard_tag(t *testing.T) {
 	require.NoError(t, err)
 
 	wildcarded := cap.WithWildcardTag("ext")
-	ext, exists := wildcarded.GetTag("ext")
-	assert.True(t, exists)
-	assert.Equal(t, "*", ext)
+	assert.True(t, wildcarded.HasMarkerTag("ext"))
 
 	wildcardIn := cap.WithWildcardTag("in")
 	assert.Equal(t, "media:", wildcardIn.InSpec())
@@ -660,11 +660,11 @@ func Test030_extended_character_support(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, cap)
 
-	urlVal, exists := cap.GetTag("url")
+	urlVal, exists := cap.ExactValue("url")
 	assert.True(t, exists)
 	assert.Equal(t, "https://example_org/api", urlVal)
 
-	pathVal, exists := cap.GetTag("path")
+	pathVal, exists := cap.ExactValue("path")
 	assert.True(t, exists)
 	assert.Equal(t, "/some/file", pathVal)
 }
@@ -682,9 +682,7 @@ func Test031_wildcard_restrictions(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, validValue)
 
-	value, exists := validValue.GetTag("key")
-	assert.True(t, exists)
-	assert.Equal(t, "*", value)
+	assert.True(t, validValue.HasMarkerTag("key"))
 }
 
 // TEST32: Test duplicate keys are rejected with DuplicateKey error
@@ -697,28 +695,25 @@ func Test032_duplicate_key_rejection(t *testing.T) {
 	assert.Equal(t, ErrorDuplicateKey, capError.Code)
 }
 
-// TEST33: Test pure numeric keys rejected, mixed alphanumeric allowed, numeric values allowed
+// TEST33: Test keys that begin with a digit are rejected, digits after the first letter allowed, numeric values allowed
 func Test033_numeric_key_restriction(t *testing.T) {
-	numericKey, err := NewCapUrnFromString(testUrn("123=value"))
-	assert.Error(t, err)
-	assert.Nil(t, numericKey)
-	capError, ok := err.(*CapUrnError)
-	assert.True(t, ok)
-	assert.Equal(t, ErrorNumericKey, capError.Code)
+	for _, refused := range []string{"123=value", "123key=value"} {
+		cap, err := NewCapUrnFromString(testUrn(refused))
+		assert.Nil(t, cap)
+		capError, ok := err.(*CapUrnError)
+		require.True(t, ok, refused)
+		assert.Equal(t, ErrorInvalidCharacter, capError.Code, refused)
+	}
 
 	mixedKey1, err := NewCapUrnFromString(testUrn("key123=value"))
 	assert.NoError(t, err)
 	assert.NotNil(t, mixedKey1)
 
-	mixedKey2, err := NewCapUrnFromString(testUrn("123key=value"))
-	assert.NoError(t, err)
-	assert.NotNil(t, mixedKey2)
-
 	numericValue, err := NewCapUrnFromString(testUrn("key=123"))
 	assert.NoError(t, err)
 	assert.NotNil(t, numericValue)
 
-	value, exists := numericValue.GetTag("key")
+	value, exists := numericValue.ExactValue("key")
 	assert.True(t, exists)
 	assert.Equal(t, "123", value)
 }
@@ -734,7 +729,7 @@ func Test034_empty_value_error(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// TEST35: Test has_tag is case-sensitive for values, case-insensitive for keys, works for in/out
+// TEST35: Test has_tag is case-sensitive for values, case-insensitive for keys, and reads cap-tags only
 func Test035_has_tag_case_sensitive(t *testing.T) {
 	cap, err := NewCapUrnFromString(testUrn(`key="Value"`))
 	require.NoError(t, err)
@@ -744,24 +739,28 @@ func Test035_has_tag_case_sensitive(t *testing.T) {
 	assert.False(t, cap.HasTag("key", "VALUE"))
 	assert.True(t, cap.HasTag("KEY", "Value"))
 	assert.True(t, cap.HasTag("Key", "Value"))
-	assert.True(t, cap.HasTag("in", standard.MediaVoid))
-	assert.True(t, cap.HasTag("out", standard.MediaObject))
+	// The direction is not a cap-tag: it is read with InSpec/OutSpec
+	assert.False(t, cap.HasTag("in", standard.MediaVoid))
+	assert.False(t, cap.HasTag("out", standard.MediaObject))
+	assert.Equal(t, standard.MediaVoid, cap.InSpec())
+	assert.Equal(t, standard.MediaObject, cap.OutSpec())
 }
 
 // TEST36: Test with_tag preserves value case
 func Test036_with_tag_preserves_value(t *testing.T) {
-	cap := NewCapUrn(standard.MediaVoid, standard.MediaObject, map[string]string{})
-	modified := cap.WithTag("key", "ValueWithCase")
+	cap := NewCapUrn(standard.MediaVoid, standard.MediaObject, map[string]taggedurn.Constraint{})
+	modified, err := cap.WithTag("key", taggedurn.ConstraintExact{Value: "ValueWithCase"})
+	require.NoError(t, err)
 
-	value, exists := modified.GetTag("key")
+	value, exists := modified.ExactValue("key")
 	assert.True(t, exists)
 	assert.Equal(t, "ValueWithCase", value)
 }
 
 // TEST37: Test with_tag rejects empty value
 func Test037_with_tag_rejects_empty_value(t *testing.T) {
-	cap := NewCapUrn(standard.MediaVoid, standard.MediaObject, map[string]string{})
-	modified, err := cap.WithTagValidated("key", "")
+	cap := NewCapUrn(standard.MediaVoid, standard.MediaObject, map[string]taggedurn.Constraint{})
+	modified, err := cap.WithTag("key", taggedurn.ConstraintExact{Value: ""})
 	assert.Error(t, err, "with_tag should reject empty value")
 	assert.Nil(t, modified)
 }
@@ -775,28 +774,20 @@ func Test038_semantic_equivalence(t *testing.T) {
 	assert.True(t, unquoted.Equals(quoted))
 }
 
-// TEST39: Test get_tag returns direction specs (in/out) with case-insensitive lookup
-func Test039_get_tag_returns_direction_specs(t *testing.T) {
+// TEST39: Test the direction is read with InSpec/OutSpec, and GetTag reads cap-tags only
+func Test039_direction_specs_are_not_cap_tags(t *testing.T) {
 	cap, err := NewCapUrnFromString(`cap:in="media:string";out="media:integer";test`)
 	require.NoError(t, err)
 
-	inVal, exists := cap.GetTag("in")
-	assert.True(t, exists)
-	assert.Equal(t, "media:string", inVal)
-
-	outVal, exists := cap.GetTag("out")
-	assert.True(t, exists)
-	assert.Equal(t, "media:integer", outVal)
-
+	assert.Equal(t, "media:string", cap.InSpec())
+	assert.Equal(t, "media:integer", cap.OutSpec())
 	assert.True(t, cap.HasMarkerTag("test"))
 
-	inVal2, exists := cap.GetTag("IN")
-	assert.True(t, exists)
-	assert.Equal(t, "media:string", inVal2)
-
-	outVal2, exists := cap.GetTag("OUT")
-	assert.True(t, exists)
-	assert.Equal(t, "media:integer", outVal2)
+	for _, key := range []string{"in", "out", "effect", "IN", "OUT"} {
+		_, exists := cap.GetTag(key)
+		assert.False(t, exists, key)
+	}
+	assert.Len(t, cap.Tags(), 1)
 }
 
 // TEST40: Matching semantics - exact match succeeds
@@ -1029,7 +1020,7 @@ func Test890_direction_semantic_matching(t *testing.T) {
 		"Cap producing generic image must NOT satisfy request requiring image;png;thumbnail")
 }
 
-// TEST891: Semantic direction specificity — more constraints in either axis means a higher score under the truth-table-driven sum. media: (top, no tags) scores 0; each marker tag scores 2; each exact tag scores 3.
+// TEST891: Semantic direction specificity — more constraints in either axis means a higher score under the truth-table-driven sum. media: (top, no tags) scores 0; each marker tag scores 2; each exact tag scores 4.
 func Test891_direction_semantic_specificity(t *testing.T) {
 	genericCap, err := NewCapUrnFromString(
 		`cap:in="media:";generate-thumbnail;out="media:ext=png;image;thumbnail"`,
@@ -1075,13 +1066,13 @@ func Test559_without_tag(t *testing.T) {
 	)
 	require.NoError(t, err)
 	removed := cap.WithoutTag("ext")
-	_, exists := removed.GetTag("ext")
+	_, exists := removed.ExactValue("ext")
 	assert.False(t, exists)
 	assert.True(t, removed.HasMarkerTag("test"))
 
 	// Case-insensitive removal
 	removed2 := cap.WithoutTag("EXT")
-	_, exists = removed2.GetTag("ext")
+	_, exists = removed2.ExactValue("ext")
 	assert.False(t, exists)
 
 	assert.Panics(t, func() { cap.WithoutTag("in") })
@@ -1240,9 +1231,12 @@ func Test566_with_tag_ignores_in_out(t *testing.T) {
 		`cap:in="media:void";test;out="media:void"`,
 	)
 	require.NoError(t, err)
-	assert.Panics(t, func() { cap.WithTag("in", "media:") })
-	assert.Panics(t, func() { cap.WithTag("out", "media:") })
-	assert.Panics(t, func() { cap.WithTag("effect", "none") })
+	for _, key := range []string{"in", "out", "effect"} {
+		_, err := cap.WithTag(key, taggedurn.ConstraintExact{Value: "media:"})
+		capError, ok := err.(*CapUrnError)
+		require.True(t, ok, key)
+		assert.Equal(t, ErrorInvalidTagFormat, capError.Code, key)
+	}
 }
 
 // TEST567: conforms_to_str and accepts_str work with string arguments
@@ -1555,14 +1549,14 @@ func Test561_in_out_media_urn(t *testing.T) {
 	inUrn, err := cap.InMediaUrn()
 	require.NoError(t, err)
 	assert.False(t, inUrn.HasTag("enc")) // pdf file is not text content (no enc tag)
-	inExt, inOk := inUrn.GetTag("ext")
+	inExt, inOk := inUrn.ExactValue("ext")
 	assert.True(t, inOk)
 	assert.Equal(t, "pdf", inExt)
 
 	outUrn, err := cap.OutMediaUrn()
 	require.NoError(t, err)
 	assert.True(t, outUrn.HasTag("enc")) // extracted txt is UTF-8 text
-	ext, ok := outUrn.GetTag("ext")
+	ext, ok := outUrn.ExactValue("ext")
 	assert.True(t, ok)
 	assert.Equal(t, "txt", ext)
 
@@ -1909,22 +1903,21 @@ func Test1830_canonicalize_no_constraint(t *testing.T) {
 	}
 }
 
-// TEST1831: ?x=v and x?=v both canonicalize to x?=v. The third hypothetical form `x=?v` is NOT recognized as a qualifier — a value starting with `?` is just an exact value beginning with a `?` character.
+// TEST1831: ?x=v, x?=v and x=?v all canonicalize to x?=v; a quoted x="?v" is the exact value ?v.
 func Test1831_canonicalize_absent_or_not_value(t *testing.T) {
 	canonical := "cap:x?=foo"
-	for _, input := range []string{"cap:?x=foo", "cap:x?=foo"} {
+	for _, input := range []string{"cap:?x=foo", "cap:x?=foo", "cap:x=?foo"} {
 		cap, err := NewCapUrnFromString(input)
 		require.NoError(t, err, "input %q must parse", input)
 		assert.Equal(t, canonical, cap.String(),
 			"input %q must canonicalize to %q", input, canonical)
 	}
 
-	// `x=?foo` is a plain exact tag whose value is the string `?foo`
-	// — NOT a canonicalization alias.
-	exact, err := NewCapUrnFromString("cap:x=?foo")
+	// A quoted value is literal: the exact value `?foo`.
+	literal, err := NewCapUrnFromString(`cap:x="?foo"`)
 	require.NoError(t, err)
-	assert.Equal(t, "cap:x=?foo", exact.String())
-	val, ok := exact.GetTag("x")
+	assert.Equal(t, `cap:x="?foo"`, literal.String())
+	val, ok := literal.ExactValue("x")
 	assert.True(t, ok)
 	assert.Equal(t, "?foo", val)
 }
@@ -1940,22 +1933,21 @@ func Test1832_canonicalize_must_have_any(t *testing.T) {
 	}
 }
 
-// TEST1833: !x=v and x!=v both canonicalize to x!=v. The third hypothetical form `x=!v` is NOT recognized as a qualifier — a value starting with `!` is just an exact value beginning with a `!` character.
+// TEST1833: !x=v, x!=v and x=!v all canonicalize to x!=v; a quoted x="!v" is the exact value !v.
 func Test1833_canonicalize_present_not_value(t *testing.T) {
 	canonical := "cap:x!=foo"
-	for _, input := range []string{"cap:!x=foo", "cap:x!=foo"} {
+	for _, input := range []string{"cap:!x=foo", "cap:x!=foo", "cap:x=!foo"} {
 		cap, err := NewCapUrnFromString(input)
 		require.NoError(t, err, "input %q must parse", input)
 		assert.Equal(t, canonical, cap.String(),
 			"input %q must canonicalize to %q", input, canonical)
 	}
 
-	// `x=!foo` is a plain exact tag whose value is the string `!foo`
-	// — NOT a canonicalization alias.
-	exact, err := NewCapUrnFromString("cap:x=!foo")
+	// A quoted value is literal: the exact value `!foo`.
+	literal, err := NewCapUrnFromString(`cap:x="!foo"`)
 	require.NoError(t, err)
-	assert.Equal(t, "cap:x=!foo", exact.String())
-	val, ok := exact.GetTag("x")
+	assert.Equal(t, `cap:x="!foo"`, literal.String())
+	val, ok := literal.ExactValue("x")
 	assert.True(t, ok)
 	assert.Equal(t, "!foo", val)
 }
@@ -2291,4 +2283,165 @@ func Test8123_effect_conformance_patch_requires_patched_input(t *testing.T) {
 	ok, err = capUrn.IsConformantRuntimeOutput(input, input)
 	require.NoError(t, err)
 	assert.False(t, ok, "emitting the unpatched input type is a violation")
+}
+
+// TEST6759: NewCapUrnWithEffect and NewCapUrnFromTags read direction tags as parsing does: * is media:, an empty spec is refused, and a cap-tag map naming a structural key is refused
+func Test6759_constructors_normalize_directions_like_parsing(t *testing.T) {
+	op := map[string]taggedurn.Constraint{"op": taggedurn.ConstraintPresent{}}
+	made, err := NewCapUrnWithEffect("*", "media:record", "declared", op)
+	require.NoError(t, err)
+	parsed, err := NewCapUrnFromString("cap:op;out=media:record")
+	require.NoError(t, err)
+	assert.True(t, made.Equals(parsed))
+
+	fromTags, err := NewCapUrnFromTags(map[string]taggedurn.Constraint{
+		"in": taggedurn.ConstraintPresent{}, "out": taggedurn.ConstraintPresent{}, "op": taggedurn.ConstraintPresent{},
+	})
+	require.NoError(t, err)
+	parsedStars, err := NewCapUrnFromString("cap:in=*;op;out=*")
+	require.NoError(t, err)
+	assert.True(t, fromTags.Equals(parsedStars))
+
+	_, err = NewCapUrnWithEffect("", "media:record", "declared", op)
+	require.Error(t, err)
+
+	structural := map[string]taggedurn.Constraint{"op": taggedurn.ConstraintPresent{}, "in": taggedurn.ConstraintExact{Value: "media:pdf"}}
+	_, err = NewCapUrnWithEffect("media:pdf", "media:record", "declared", structural)
+	capError, ok := err.(*CapUrnError)
+	require.True(t, ok, "%v", err)
+	assert.Equal(t, ErrorInvalidTagFormat, capError.Code)
+}
+
+// TEST6760: A quoted * in a direction tag and a quoted ? as the effect are literal values, which a cap refuses
+func Test6760_quoted_structural_sigils_are_literal(t *testing.T) {
+	_, err := NewCapUrnFromString(`cap:in="*";op`)
+	capError, ok := err.(*CapUrnError)
+	require.True(t, ok, "%v", err)
+	assert.Equal(t, ErrorInvalidMediaUrn, capError.Code)
+
+	_, err = NewCapUrnFromString(`cap:effect="?";op`)
+	capError, ok = err.(*CapUrnError)
+	require.True(t, ok, "%v", err)
+	assert.Equal(t, ErrorInvalidEffect, capError.Code)
+
+	open, err := NewCapUrnFromString("cap:in=*;op")
+	require.NoError(t, err)
+	assert.Equal(t, "media:", open.InSpec())
+	unconstrained, err := NewCapUrnFromString("cap:effect=?;op")
+	require.NoError(t, err)
+	assert.Equal(t, CapEffectAny, unconstrained.Effect())
+}
+
+// TEST6761: A missing direction and a direction that is no media URN say what the validation rules say
+func Test6761_cu1_cu2_messages(t *testing.T) {
+	_, err := NewCapUrnBuilder().OutSpec("media:").Build()
+	assert.EqualError(t, err, "Cap URN requires 'in' tag")
+	_, err = NewCapUrnBuilder().InSpec("media:").Build()
+	assert.EqualError(t, err, "Cap URN requires 'out' tag")
+
+	_, err = NewCapUrnFromString("cap:in=invalid;op")
+	assert.EqualError(t, err, "Invalid 'in' media URN: invalid. Must start with 'media:' or be '*'")
+	_, err = NewCapUrnFromString(`cap:in="media:void;x";op`)
+	require.Error(t, err)
+	assert.True(t, strings.HasPrefix(err.Error(), "Invalid 'in' media URN: media:void;x: "), err.Error())
+	_, err = NewCapUrnFromString("cap:op;out=invalid")
+	assert.EqualError(t, err, "Invalid 'out' media URN: invalid. Must start with 'media:' or be '*'")
+}
+
+// TEST6762: Every surface form the cap URN docs give canonicalizes to the canonical form they give, which reads back as itself
+func Test6762_documented_canonical_forms(t *testing.T) {
+	pairs := [][2]string{
+		{"cap:test", "cap:test"},
+		{"cap:in=media:;test;out=media:", "cap:test"},
+		{"cap:in=*;test;out=*", "cap:test"},
+		{"cap:in=media:pdf;extract;out=media:record", "cap:extract;in=media:pdf;out=media:record"},
+		{"cap:in=media:;out=media:;effect=none", "cap:effect=none"},
+		{"cap:effect=none", "cap:effect=none"},
+		{`cap:extract;in="media:document;ext=pdf";out=media:record`, `cap:extract;in="media:document;ext=pdf";out=media:record`},
+		{`cap:in="media:enc=utf8";out="media:enc=utf8;fmt=json;record";prompt`, `cap:in="media:enc=utf8";out="media:enc=utf8;fmt=json;record";prompt`},
+		{"cap:in=media:;out=media:;transform", "cap:transform"},
+		{`cap:in="media:document;ext=pdf";extract;out="media:record"`, `cap:extract;in="media:document;ext=pdf";out=media:record`},
+		{`cap:in=media:;generate;out="media:enc=utf8"`, `cap:generate;out="media:enc=utf8"`},
+	}
+	for _, pair := range pairs {
+		cap, err := NewCapUrnFromString(pair[0])
+		require.NoError(t, err, pair[0])
+		assert.Equal(t, pair[1], cap.String(), pair[0])
+		reread, err := NewCapUrnFromString(pair[1])
+		require.NoError(t, err, pair[1])
+		assert.True(t, reread.Equals(cap), pair[1])
+	}
+
+	_, err := NewCapUrnFromString(`cap:effect=none;in="media:document;ext=pdf";out="media:enc=utf8"`)
+	capError, ok := err.(*CapUrnError)
+	require.True(t, ok, "%v", err)
+	assert.Equal(t, ErrorIllegalDeclaration, capError.Code)
+
+	cap, err := NewCapUrnFromString(`cap:extract;in="media:document;ext=pdf";out=media:record`)
+	require.NoError(t, err)
+	assert.Equal(t, "media:document;ext=pdf", cap.InSpec())
+	assert.Equal(t, "media:record", cap.OutSpec())
+	assert.True(t, cap.HasMarkerTag("extract"))
+	kind, err := cap.Kind()
+	require.NoError(t, err)
+	assert.Equal(t, CapKindTransform, kind)
+}
+
+// TEST6763: The ranking docs' worked examples hold: each candidate's specificity, that it serves the request, the order FindAllMatches gives and the choice Select makes
+func Test6763_documented_ranking_examples(t *testing.T) {
+	p := func(s string) *CapUrn {
+		cap, err := NewCapUrnFromString(s)
+		require.NoError(t, err, s)
+		return cap
+	}
+	matcher := &CapMatcher{}
+	same := func(want, got []*CapUrn) {
+		require.Len(t, got, len(want))
+		for i := range want {
+			assert.True(t, want[i].Equals(got[i]), "position %d: want %s, got %s", i, want[i], got[i])
+		}
+	}
+
+	// Exact match preferred.
+	request := p("cap:extract;in=media:pdf;out=media:record")
+	a := p("cap:extract;in=media:pdf;out=media:record")
+	b := p("cap:extract;in=media:pdf;out=media:record;v=2")
+	c := p("cap:extract;out=media:record")
+	assert.Equal(t, 20202, request.Specificity())
+	assert.Equal(t, []int{20202, 20206, 20002}, []int{a.Specificity(), b.Specificity(), c.Specificity()})
+	caps := []*CapUrn{c, b, a}
+	for _, cap := range caps {
+		assert.True(t, cap.IsDispatchable(request), cap.String())
+	}
+	same([]*CapUrn{a, b, c}, matcher.FindAllMatches(caps, request))
+	i, ok := Select(caps, request)
+	assert.True(t, ok)
+	assert.Equal(t, 2, i)
+
+	// Refinement when no exact match.
+	request = p("cap:convert")
+	a = p("cap:convert;in=media:pdf;out=media:html")
+	b = p("cap:convert;in=media:image;out=media:png")
+	c = p("cap:convert")
+	assert.Equal(t, 2, request.Specificity())
+	assert.Equal(t, []int{20202, 20202, 2}, []int{a.Specificity(), b.Specificity(), c.Specificity()})
+	caps = []*CapUrn{a, b, c}
+	same([]*CapUrn{c, a, b}, matcher.FindAllMatches(caps, request))
+	i, _ = Select(caps, request)
+	assert.Equal(t, 2, i)
+	i, _ = Select([]*CapUrn{a, b}, request)
+	assert.Equal(t, 0, i)
+	i, _ = Select([]*CapUrn{b, a}, request)
+	assert.Equal(t, 0, i)
+
+	// Fallback only.
+	request = p(`cap:extract;format=json;in="media:pdf;v=2.0";out=media:record`)
+	a = p("cap:extract;format=json;in=media:pdf;out=media:record")
+	b = p("cap:extract;format=json;out=media:record")
+	assert.Equal(t, 20606, request.Specificity())
+	assert.Equal(t, []int{20206, 20006}, []int{a.Specificity(), b.Specificity()})
+	caps = []*CapUrn{b, a}
+	same([]*CapUrn{a, b}, matcher.FindAllMatches(caps, request))
+	i, _ = Select(caps, request)
+	assert.Equal(t, 1, i)
 }
