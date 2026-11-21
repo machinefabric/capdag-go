@@ -2,6 +2,7 @@ package planner
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/machinefabric/capdag-go/cap"
@@ -737,6 +738,46 @@ func Test7216_a_source_takes_an_edge_it_satisfies(t *testing.T) {
 	assert.Len(t, graph.FindPathsToExactTarget(record, yaml, false, 5, 10), 1)
 
 	assert.Nil(t, reaches(media("media:enc=utf8;ext=json;fmt=json;list;record")), "a list does not take an edge that refuses lists")
+}
+
+// TEST7219: the exact-path search steps only into states the target is
+// reachable from. Twelve kinds of dead-end data, each convertible into every
+// other, give hundreds of millions of routes within eight steps; the one route
+// to the target is six steps long and is found without walking them.
+func Test7219_search_skips_branches_that_cannot_reach_the_target(t *testing.T) {
+	graph := NewLiveCapFab()
+	dead := func(n int) string { return fmt.Sprintf("media:dead;n=%d", n) }
+	route := func(n int) string { return fmt.Sprintf("media:route;n=%d", n) }
+	for n := 0; n < 12; n++ {
+		graph.AddCap(makeTestCapForGraph("media:start", dead(n), fmt.Sprintf("into-dead-%d", n), "Into Dead"))
+		for m := 0; m < 12; m++ {
+			if m != n {
+				graph.AddCap(makeTestCapForGraph(dead(n), dead(m), fmt.Sprintf("dead-%d-to-%d", n, m), "Dead To Dead"))
+			}
+		}
+	}
+	graph.AddCap(makeTestCapForGraph("media:start", route(1), "route-1", "Route 1"))
+	for n := 1; n < 5; n++ {
+		graph.AddCap(makeTestCapForGraph(route(n), route(n+1), fmt.Sprintf("route-%d", n+1), "Route"))
+	}
+	graph.AddCap(makeTestCapForGraph(route(5), "media:finish", "finish", "Finish"))
+
+	start, err := urn.NewMediaUrnFromString("media:start")
+	require.NoError(t, err)
+	finish, err := urn.NewMediaUrnFromString("media:finish")
+	require.NoError(t, err)
+	paths := graph.FindPathsToExactTarget(start, finish, false, 8, 10)
+	require.Len(t, paths, 1, "the one route is found")
+	assert.Equal(t, 6, paths[0].CapStepCount)
+
+	distances := graph.distancesToExactTarget(start, finish, false, 8)
+	require.NotNil(t, distances)
+	deadThree, err := urn.NewMediaUrnFromString(dead(3))
+	require.NoError(t, err)
+	_, deadReaches := distances[searchState{canonical: deadThree.String()}]
+	assert.False(t, deadReaches, "dead-end data cannot reach the target")
+	assert.Equal(t, 6, distances[searchState{canonical: start.String()}])
+	assert.Nil(t, graph.distancesToExactTarget(finish, start, false, 8))
 }
 
 // TEST1151: Exact target lookup prefers the direct singular or list-producing path over longer alternatives.

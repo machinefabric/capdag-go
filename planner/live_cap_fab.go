@@ -681,12 +681,91 @@ type visitedKey struct {
 	isSequence bool
 }
 
-// FindPathsToExactTarget performs iterative deepening DFS to find paths to an exact target.
+// searchState is a state of the path search: the media reached, whether it is
+// a sequence, and whether the step that reached it was a ForEach (whose scalar
+// cap must come next).
+type searchState struct {
+	canonical      string
+	isSequence     bool
+	pendingForEach bool
+}
+
+// distancesToExactTarget says how few steps each search state reachable from
+// the source is from the target, for the states the target is reachable from
+// within maxDepth of the source; nil when no step reaches the target at all.
+// The states are found forward from the source over the edges getOutgoingEdges
+// gives, and the distances backward over those same steps from the states that
+// are the target. A state missing from the map cannot reach the target; one at
+// distance d cannot reach it in fewer than d steps.
+func (g *LiveCapFab) distancesToExactTarget(source, target *urn.MediaUrn, isSequence bool, maxDepth int) map[searchState]int {
+	type queued struct {
+		urn            *urn.MediaUrn
+		isSequence     bool
+		pendingForEach bool
+		depth          int
+	}
+	start := searchState{canonical: source.String(), isSequence: isSequence}
+	stepsInto := map[searchState][]searchState{}
+	targetStates := map[searchState]bool{}
+	seen := map[searchState]bool{start: true}
+	queue := []queued{{urn: source, isSequence: isSequence}}
+	for len(queue) > 0 {
+		item := queue[0]
+		queue = queue[1:]
+		if item.depth >= maxDepth {
+			continue
+		}
+		from := searchState{canonical: item.urn.String(), isSequence: item.isSequence, pendingForEach: item.pendingForEach}
+		edges, outSeqs := g.getOutgoingEdges(item.urn, item.isSequence)
+		for i, edge := range edges {
+			if item.pendingForEach && !canFollowForEach(edge) {
+				continue
+			}
+			next := searchState{canonical: edge.ToSpec.String(), isSequence: outSeqs[i], pendingForEach: edge.Type == EdgeTypeForEach}
+			stepsInto[next] = append(stepsInto[next], from)
+			// The target: its media, reached by a step, not waiting on a ForEach's cap.
+			if !next.pendingForEach && edge.ToSpec.IsEquivalent(target) {
+				targetStates[next] = true
+			}
+			if !seen[next] {
+				seen[next] = true
+				queue = append(queue, queued{urn: edge.ToSpec, isSequence: next.isSequence, pendingForEach: next.pendingForEach, depth: item.depth + 1})
+			}
+		}
+	}
+	if len(targetStates) == 0 {
+		return nil
+	}
+	distances := map[searchState]int{}
+	var backward []searchState
+	for state := range targetStates {
+		distances[state] = 0
+		backward = append(backward, state)
+	}
+	for len(backward) > 0 {
+		state := backward[0]
+		backward = backward[1:]
+		for _, before := range stepsInto[state] {
+			if _, known := distances[before]; !known {
+				distances[before] = distances[state] + 1
+				backward = append(backward, before)
+			}
+		}
+	}
+	return distances
+}
+
+// FindPathsToExactTarget performs iterative deepening DFS to find paths to an
+// exact target. It steps only into states the target is within reach of.
 func (g *LiveCapFab) FindPathsToExactTarget(
 	source, target *urn.MediaUrn,
 	isSequence bool,
 	maxDepth, maxPaths int,
 ) []*Strand {
+	distances := g.distancesToExactTarget(source, target, isSequence, maxDepth)
+	if distances == nil {
+		return nil
+	}
 	var results []*Strand
 
 	for depth := 1; depth <= maxDepth; depth++ {
@@ -694,7 +773,7 @@ func (g *LiveCapFab) FindPathsToExactTarget(
 			break
 		}
 		visited := make(map[visitedKey]bool)
-		g.iddfsFind(source, source, target, isSequence, nil, visited, depth, maxPaths, &results)
+		g.iddfsFind(source, source, target, isSequence, distances, nil, visited, depth, maxPaths, &results)
 	}
 
 	// Sort: cap_step_count ascending, total_specificity descending, description lexicographic.
@@ -728,6 +807,10 @@ func (g *LiveCapFab) FindPathsStreaming(
 	cancelled *int32,
 	onEvent func(PathFindingEvent),
 ) []*Strand {
+	distances := g.distancesToExactTarget(source, target, isSequence, maxDepth)
+	if distances == nil {
+		return nil
+	}
 	var results []*Strand
 	totalNodesExplored := 0
 
@@ -742,7 +825,7 @@ func (g *LiveCapFab) FindPathsStreaming(
 		visited := make(map[visitedKey]bool)
 		pathsBefore := len(results)
 
-		g.iddfsFind(source, source, target, isSequence, nil, visited, depth, maxPaths, &results)
+		g.iddfsFind(source, source, target, isSequence, distances, nil, visited, depth, maxPaths, &results)
 
 		nodesThisDepth := len(visited)
 		totalNodesExplored += nodesThisDepth
@@ -789,11 +872,15 @@ func (g *LiveCapFab) FindPathsStreaming(
 
 // iddfsFind performs depth-limited DFS from current toward target.
 // originalSource is the root source used to construct Strand.SourceMediaUrn.
+// distances is distancesToExactTarget's: a step into a state the target is not
+// within the steps left of is not taken, since no route through it ends at the
+// target within the depth limit.
 func (g *LiveCapFab) iddfsFind(
 	originalSource *urn.MediaUrn,
 	current *urn.MediaUrn,
 	target *urn.MediaUrn,
 	isSequence bool,
+	distances map[searchState]int,
 	path []*LiveMachinePlanEdge,
 	visited map[visitedKey]bool,
 	depthLimit int,
@@ -883,11 +970,15 @@ func (g *LiveCapFab) iddfsFind(
 		if pendingForEach && !canFollowForEach(edge) {
 			continue
 		}
+		next := searchState{canonical: edge.ToSpec.String(), isSequence: outSeqs[i], pendingForEach: edge.Type == EdgeTypeForEach}
+		if distance, reaches := distances[next]; !reaches || distance > depthLimit-1 {
+			continue
+		}
 		// Make a fresh slice to avoid aliasing between recursive branches.
 		newPath := make([]*LiveMachinePlanEdge, len(path)+1)
 		copy(newPath, path)
 		newPath[len(path)] = edge
-		g.iddfsFind(originalSource, edge.ToSpec, target, outSeqs[i], newPath, visited, depthLimit-1, maxPaths, results)
+		g.iddfsFind(originalSource, edge.ToSpec, target, outSeqs[i], distances, newPath, visited, depthLimit-1, maxPaths, results)
 		if len(*results) >= maxPaths {
 			return
 		}
