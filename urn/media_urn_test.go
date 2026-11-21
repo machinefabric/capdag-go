@@ -768,7 +768,8 @@ func Test555_with_tag_and_without_tag(t *testing.T) {
 	urn, err := NewMediaUrnFromString("media:string")
 	require.NoError(t, err)
 
-	withExt := urn.WithTag("ext", "pdf")
+	withExt, err := urn.WithTag("ext", taggedurn.ConstraintExact{Value: "pdf"})
+	require.NoError(t, err)
 	ext, ok := withExt.GetExtension()
 	assert.True(t, ok)
 	assert.Equal(t, "pdf", ext)

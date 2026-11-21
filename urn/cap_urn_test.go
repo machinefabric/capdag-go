@@ -302,6 +302,10 @@ func Test015_cap_prefix_required(t *testing.T) {
 	capUrn, err := NewCapUrnFromString(`in="media:void";out="media:object";generate`)
 	assert.Nil(t, capUrn)
 	assert.Error(t, err)
+	// A URN of another prefix is no cap
+	capUrn, err = NewCapUrnFromString("media:generate")
+	assert.Nil(t, capUrn)
+	require.Error(t, err)
 	assert.Equal(t, ErrorMissingCapPrefix, err.(*CapUrnError).Code)
 
 	capUrn, err = NewCapUrnFromString(testUrn("generate;ext=pdf"))
