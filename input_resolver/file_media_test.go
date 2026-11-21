@@ -444,3 +444,43 @@ func Test7184_ValidationRulesProveOrDisproveARefinement(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "media:broken;enc=utf8;ext=txt;plain-text")
 }
+
+// refinesAnyText refines any text it is given, empty text included.
+type refinesAnyText struct{}
+
+func (refinesAnyText) Name() string { return "RefinesAnyText" }
+
+func (refinesAnyText) Refine(baseMediaUrn, _ string) *ValueAdapterResult {
+	return &ValueAdapterResult{MediaUrn: baseMediaUrn + ";refined"}
+}
+
+// TEST1984: Content that is not UTF-8 holds no text, so settle asks no value
+// adapter of it and keeps the survivor as it stands; UTF-8 content is refined.
+func Test1984_SettleAsksNoValueAdapterOfBinaryContent(t *testing.T) {
+	adapters := NewValueAdapterRegistry()
+	adapters.Register("media:", refinesAnyText{})
+	survivor, err := urn.NewMediaUrnFromString("media:enc=utf8;fmt=json")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	binary, err := settle([]*urn.MediaUrn{survivor}, adapters, []byte{0xff, 0xfe, 0x00})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(binary) != 1 || binary[0] != survivor.String() {
+		t.Fatalf("binary content must keep the survivor unrefined, got %v", binary)
+	}
+
+	text, err := settle([]*urn.MediaUrn{survivor}, adapters, []byte("x"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	refined, err := urn.NewMediaUrnFromString("media:enc=utf8;fmt=json;refined")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(text) != 1 || text[0] != refined.String() {
+		t.Fatalf("UTF-8 content must be refined to %s, got %v", refined, text)
+	}
+}

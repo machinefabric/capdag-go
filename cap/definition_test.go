@@ -642,14 +642,15 @@ func Test1969_cap_dims_round_trip_in_order_and_refuse_what_they_cannot_hold(t *t
 	assert.Contains(t, err.Error(), "dim 'language' is named more than once")
 
 	var wire RegistryCapResponse
-	require.NoError(t, json.Unmarshal([]byte(strings.Replace(body, `"version":3,`, ``, 1)), &wire))
+	require.NoError(t, json.Unmarshal([]byte(body), &wire), "a published cap body, its numeric version included, parses")
 	fetched, err := wire.ToCap()
 	require.NoError(t, err)
 	assert.Equal(t, expected, fetched.Dims)
-	require.Error(t, json.Unmarshal([]byte(strings.Replace(extra, `"version":3,`, ``, 1)), &RegistryCapResponse{}),
+	assert.Equal(t, uint32(3), fetched.Version)
+	require.Error(t, json.Unmarshal([]byte(extra), &RegistryCapResponse{}),
 		"an unknown dims key is refused on the registry's wire shape too")
 	var twiceWire RegistryCapResponse
-	require.NoError(t, json.Unmarshal([]byte(strings.Replace(twice, `"version":3,`, ``, 1)), &twiceWire))
+	require.NoError(t, json.Unmarshal([]byte(twice), &twiceWire))
 	_, err = twiceWire.ToCap()
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "dim 'language' is named more than once")

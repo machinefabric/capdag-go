@@ -156,44 +156,45 @@ func (m *MediaUrn) IsCsv() bool {
 	return ok && val == "csv"
 }
 
+// comparable returns both sides' tagged URNs for a comparison named name. A
+// MediaUrn with no URN is a programming error, not a media type that matches
+// nothing, so it panics naming the comparison.
+func (m *MediaUrn) comparable(name string, other *MediaUrn) (*taggedurn.TaggedUrn, *taggedurn.TaggedUrn) {
+	if m == nil || m.inner == nil || other == nil || other.inner == nil {
+		panic(fmt.Sprintf("capdag: MediaUrn.%s on a MediaUrn with no URN", name))
+	}
+	return m.inner, other.inner
+}
+
+// decided returns a comparison's answer. The tagged-URN comparisons fail only
+// on a prefix mismatch, which two media URNs never have.
+func decided(match bool, err error) bool {
+	if err != nil {
+		panic(fmt.Sprintf("capdag: every MediaUrn has the media prefix: %v", err))
+	}
+	return match
+}
+
 // Accepts checks if this MediaUrn (pattern/handler) accepts the given instance (request).
 // Uses TaggedUrn.Accepts semantics: pattern accepts instance if instance satisfies pattern's constraints.
 func (m *MediaUrn) Accepts(instance *MediaUrn) bool {
-	if m.inner == nil || instance == nil || instance.inner == nil {
-		return false
-	}
-	match, err := m.inner.Accepts(instance.inner)
-	if err != nil {
-		return false
-	}
-	return match
+	a, b := m.comparable("Accepts", instance)
+	return decided(a.Accepts(b))
 }
 
 // ConformsTo checks if this MediaUrn (instance) conforms to the given pattern's constraints.
 // Equivalent to pattern.Accepts(self).
 func (m *MediaUrn) ConformsTo(pattern *MediaUrn) bool {
-	if m.inner == nil || pattern == nil || pattern.inner == nil {
-		return false
-	}
-	match, err := m.inner.ConformsTo(pattern.inner)
-	if err != nil {
-		return false
-	}
-	return match
+	a, b := m.comparable("ConformsTo", pattern)
+	return decided(a.ConformsTo(b))
 }
 
 // Meets reports whether this media type and other COULD describe the same
 // value: not a guarantee (ConformsTo), and not excluded. `media:ext` meets
 // `media:document;ext=pdf`; `media:document;ext=pdf` does not meet `media:ext=png`.
 func (m *MediaUrn) Meets(other *MediaUrn) bool {
-	if m.inner == nil || other == nil || other.inner == nil {
-		return false
-	}
-	match, err := m.inner.Meets(other.inner)
-	if err != nil {
-		return false
-	}
-	return match
+	a, b := m.comparable("Meets", other)
+	return decided(a.Meets(b))
 }
 
 // Satisfies reports whether a VALUE whose media this is satisfies the type
@@ -204,32 +205,21 @@ func (m *MediaUrn) Meets(other *MediaUrn) bool {
 // it does not have. Use this where the receiver is the media of actual data — a
 // stream that arrived, an output that was produced.
 func (m *MediaUrn) Satisfies(pattern *MediaUrn) bool {
-	if m.inner == nil || pattern == nil || pattern.inner == nil {
-		return false
-	}
-	match, err := m.inner.Satisfies(pattern.inner)
-	if err != nil {
-		return false
-	}
-	return match
+	a, b := m.comparable("Satisfies", pattern)
+	return decided(a.Satisfies(b))
 }
 
 // MaySatisfy reports whether a value whose media this is COULD satisfy pattern.
 func (m *MediaUrn) MaySatisfy(pattern *MediaUrn) bool {
-	if m.inner == nil || pattern == nil || pattern.inner == nil {
-		return false
-	}
-	match, err := m.inner.MaySatisfy(pattern.inner)
-	if err != nil {
-		return false
-	}
-	return match
+	a, b := m.comparable("MaySatisfy", pattern)
+	return decided(a.MaySatisfy(b))
 }
 
 // IsComparable checks if two media URNs are comparable in the order-theoretic sense.
 // Two URNs are comparable if either one accepts (subsumes) the other.
 // Use for discovery/validation: are they on the same specialization chain?
 func (m *MediaUrn) IsComparable(other *MediaUrn) bool {
+	m.comparable("IsComparable", other)
 	return m.Accepts(other) || other.Accepts(m)
 }
 
@@ -238,6 +228,7 @@ func (m *MediaUrn) IsComparable(other *MediaUrn) bool {
 // This means they have the same tag set (order-independent equality).
 // Use for exact stream matching.
 func (m *MediaUrn) IsEquivalent(other *MediaUrn) bool {
+	m.comparable("IsEquivalent", other)
 	return m.Accepts(other) && other.Accepts(m)
 }
 
