@@ -1011,3 +1011,151 @@ func Test12389_handshake_refuses_a_zero_credit_window(t *testing.T) {
 		t.Fatalf("a zero window must fail the handshake, naming it: %v", err)
 	}
 }
+
+// heldFrame is a frame of a held request's script: its type by wire number,
+// and a payload of size bytes. The REQ names its cap and has been given its
+// routing id, as a switch hands it to its holds.
+func heldFrame(code uint64, size uint64) *Frame {
+	frameType := FrameType(code)
+	frame := NewFrame(frameType, NewMessageIdFromUint(1))
+	if size > 0 {
+		frame.Payload = make([]byte, size)
+	}
+	if frameType == FrameTypeReq {
+		capURN := "cap:op=a"
+		xid := NewMessageIdFromUint(9)
+		frame.Cap = &capURN
+		frame.RoutingId = &xid
+	}
+	return frame
+}
+
+func keptSize(frames []*Frame) [2]uint64 {
+	var bytes uint64
+	for _, f := range frames {
+		bytes += uint64(len(f.Payload))
+	}
+	return [2]uint64{uint64(len(frames)), bytes}
+}
+
+// TEST7125: a relay switch's holds do what the model says to a peer request no
+// master serves: hold it exactly when the switch can bring a provider and the
+// request is not itself a replay; keep each frame the caller sends while the
+// bound allows, ending the request at the first frame that would exceed it or
+// at a cancel; and, when bringing the provider ends, replay exactly the frames
+// kept, REQ first, or fail the request with an ERR.
+func Test7125_peer_holds_follow_the_model(t *testing.T) {
+	type size struct {
+		Frames uint64 `json:"frames"`
+		Bytes  uint64 `json:"bytes"`
+	}
+	type row struct {
+		Kind       string `json:"kind"`
+		CanProvide bool   `json:"can_provide"`
+		Replayed   bool   `json:"replayed"`
+		Unrouted   string `json:"unrouted"`
+		Bringing   string `json:"bringing"`
+		Fate       string `json:"fate"`
+		Bound      size   `json:"bound"`
+		Arrivals   []struct {
+			Frame uint64 `json:"frame"`
+			Size  uint64 `json:"size"`
+		} `json:"arrivals"`
+		Steps []json.RawMessage `json:"steps"`
+	}
+	rows := bifaciRows[row](t, "hold")
+	rid := NewMessageIdFromUint(1)
+	refusal := PeerRefusal{Code: "NO_PROVIDER", Class: AttributionClassResource, Message: "no cartridge provides cap:op=a"}
+	var wrong []string
+rows:
+	for _, r := range rows {
+		switch r.Kind {
+		case "unrouted":
+			if held := peerHolds(r.CanProvide, r.Replayed); held != (r.Unrouted == "hold") {
+				wrong = append(wrong, fmt.Sprintf("%+v: held %v", r, held))
+			}
+		case "fate":
+			table := newPeerHoldTable(PeerHoldBound{Frames: 4, Bytes: 64, Deadline: time.Second})
+			if err := table.hold(0, heldFrame(uint64(FrameTypeReq), 0)); err != nil {
+				t.Fatalf("a bare REQ fits: %v", err)
+			}
+			var settlement peerSettlement
+			switch r.Bringing {
+			case "provided":
+				settlement = peerProvided()
+			case "refused":
+				settlement = peerRefused(refusal)
+			case "expired":
+				settlement = peerExpired(refusal)
+			default:
+				t.Fatalf("the model's table names no bringing '%s'", r.Bringing)
+			}
+			request, errFrame := table.settle(rid, settlement)
+			fate := "neither"
+			switch {
+			case request != nil && errFrame == nil && len(request.frames) == 1:
+				fate = "replay"
+			case request != nil && errFrame != nil && errFrame.FrameType == FrameTypeErr:
+				fate = "fail"
+			}
+			if fate != r.Fate || table.isHeld(0, rid) {
+				wrong = append(wrong, fmt.Sprintf("%+v: %s", r, fate))
+			}
+		case "script":
+			table := newPeerHoldTable(PeerHoldBound{Frames: r.Bound.Frames, Bytes: r.Bound.Bytes, Deadline: time.Second})
+			var kept [2]uint64
+			ended := false
+			for i, arrival := range r.Arrivals {
+				frame := heldFrame(arrival.Frame, arrival.Size)
+				var errFrame *Frame
+				if i == 0 {
+					errFrame = table.hold(0, frame)
+				} else {
+					errFrame = table.arrive(frame)
+				}
+				got := "kept"
+				if errFrame != nil {
+					switch {
+					case errFrame.FrameType != FrameTypeErr:
+						got = "an answer that is not an ERR"
+					case errFrame.ErrorCode() == PeerHoldOverflow:
+						got = "overflow"
+					case frame.FrameType == FrameTypeCancel:
+						got = "cancel"
+					default:
+						got = fmt.Sprintf("ERR %s", errFrame.ErrorCode())
+					}
+				}
+				var step struct {
+					Kept *size `json:"kept"`
+				}
+				want := ""
+				if err := json.Unmarshal(r.Steps[i], &want); err == nil {
+					ended = true
+				} else if err := json.Unmarshal(r.Steps[i], &step); err == nil && step.Kept != nil {
+					want = "kept"
+					kept = [2]uint64{step.Kept.Frames, step.Kept.Bytes}
+				} else {
+					t.Fatalf("the model's table has a hold step that is neither kept nor an end: %s", r.Steps[i])
+				}
+				if got != want {
+					wrong = append(wrong, fmt.Sprintf("%+v: step %d %s", r, i, got))
+					continue rows
+				}
+			}
+			if ended {
+				if table.isHeld(0, rid) {
+					wrong = append(wrong, fmt.Sprintf("%+v: still held after it ended", r))
+				}
+				continue
+			}
+			request, errFrame := table.settle(rid, peerProvided())
+			if request == nil || errFrame != nil || keptSize(request.frames) != kept || request.frames[0].FrameType != FrameTypeReq {
+				wrong = append(wrong, fmt.Sprintf("%+v: replays %v", r, request))
+			}
+		default:
+			t.Fatalf("the model's table names no hold row '%s'", r.Kind)
+		}
+	}
+	conclude(t, "hold", len(rows), wrong)
+}

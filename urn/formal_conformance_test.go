@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -148,4 +149,47 @@ func Test12596_AnArgumentOutlivesACollectionDuringTheCall(t *testing.T) {
 	for i := 0; i < 20000; i++ {
 		require.Equal(t, want, CapQueryFromPattern(c).Admits(q), "call %d", i)
 	}
+}
+
+// TEST7123: the cap URN parser refuses a cap exactly when the model says it
+// cannot be declared, and for the reason the model gives: the bare top form,
+// or an effect=none cap whose input is not inside its output. Every other cap
+// over every effect — patch included — parses.
+func Test7123_AdmissibilityIsTheModels(t *testing.T) {
+	raw, err := os.ReadFile("../../formal/conformance.json")
+	require.NoError(t, err, "the model's table")
+	var table struct {
+		Admissible []struct {
+			Cap     string  `json:"cap"`
+			Illegal *string `json:"illegal"`
+		} `json:"admissible"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &table))
+	require.Len(t, table.Admissible, 500, "every cap over the directions, cap-tags and effects")
+
+	var wrong []string
+	for _, r := range table.Admissible {
+		_, err := NewCapUrnFromString(r.Cap)
+		got := "parses"
+		if err != nil {
+			got = fmt.Sprintf("refused: %v", err)
+			if capErr, ok := err.(*CapUrnError); ok && capErr.Code == ErrorIllegalDeclaration {
+				switch {
+				case strings.HasPrefix(capErr.Message, "illegal bare top cap"):
+					got = "bare_top"
+				case strings.HasPrefix(capErr.Message, "effect=none requires declared input"):
+					got = "none_not_inside"
+				}
+			}
+		}
+		want := "parses"
+		if r.Illegal != nil {
+			want = *r.Illegal
+		}
+		if got != want {
+			wrong = append(wrong, fmt.Sprintf("%s: model %s, got %s", r.Cap, want, got))
+		}
+	}
+	require.Empty(t, wrong, "%d of %d row(s) differ from the model, e.g. %v",
+		len(wrong), len(table.Admissible), wrong[:min(len(wrong), 8)])
 }
