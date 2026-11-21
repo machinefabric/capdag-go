@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/machinefabric/capdag-go/cap"
@@ -1195,16 +1196,18 @@ func (h *CartridgeHost) Run(relayRead io.Reader, relayWrite io.Writer, resourceF
 	// loop never blocks behind a slow relay reader.
 	out := &relayOutbound{ch: make(chan *Frame, 256)}
 	writerDone := make(chan struct{})
-	// A frame the relay could not take ends the session (below): it is
-	// lost, and every frame after it would be too, so the engine would wait
-	// on answers this host can no longer give. Mirrors the reference run
-	// loop, which ends with the failed write.
+	// A frame the relay could not take ends the session (below). An engine
+	// that hung up closed the relay, and the session ends as it does when the
+	// relay's read side ends; any other failure ends it with the failed
+	// write: the frame is lost, and every frame after it would be too, so the
+	// engine would wait on answers this host can no longer give. Mirrors the
+	// reference run loop.
 	relayWriteFailed := make(chan error, 1)
 	go func() {
 		defer close(writerDone)
 		for frame := range out.ch {
 			if err := relayWriter.WriteFrame(frame); err != nil {
-				relayWriteFailed <- fmt.Errorf("relay write failed: %v for %v could not be written: %w", frame.FrameType, frame.Id, err)
+				relayWriteFailed <- fmt.Errorf("relay write failed: %v for %s could not be written: %w", frame.FrameType, frame.Id.ToString(), err)
 				// Drain remaining queued frames without writing so
 				// WriteFrame senders never block, then exit when the
 				// channel is closed at teardown.
@@ -1242,6 +1245,9 @@ func (h *CartridgeHost) Run(relayRead io.Reader, relayWrite io.Writer, resourceF
 			h.killAllCartridges()
 			close(out.ch)
 			<-writerDone
+			if relayHungUp(werr) {
+				return nil
+			}
 			return werr
 
 		case frame, ok := <-relayCh:
@@ -1297,6 +1303,17 @@ func (h *CartridgeHost) Run(relayRead io.Reader, relayWrite io.Writer, resourceF
 			h.mu.Unlock()
 		}
 	}
+}
+
+// relayHungUp reports whether a failed relay write says the engine hung up:
+// the connection's far end is closed (EPIPE, ECONNRESET, or an in-process
+// pipe whose reader is closed) or gone (ENOTCONN). Mirrors the reference
+// relay_hung_up.
+func relayHungUp(err error) bool {
+	return errors.Is(err, syscall.EPIPE) ||
+		errors.Is(err, syscall.ECONNRESET) ||
+		errors.Is(err, syscall.ENOTCONN) ||
+		errors.Is(err, io.ErrClosedPipe)
 }
 
 // syncRegisteredRoster replaces the live registered-dir roster with a
