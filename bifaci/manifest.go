@@ -306,7 +306,7 @@ func (cm *CapManifest) Validate() error {
 
 	hasIdentity := false
 	for _, c := range cm.AllCaps() {
-		if c.Urn != nil && identityUrn.ConformsTo(c.Urn) {
+		if c.Urn != nil && c.Urn.IsEquivalent(identityUrn) {
 			hasIdentity = true
 			break
 		}
@@ -338,7 +338,7 @@ func (cm *CapManifest) EnsureIdentity() *CapManifest {
 	}
 
 	for _, c := range cm.AllCaps() {
-		if c.Urn != nil && c.Urn.Equals(identityUrn) {
+		if c.Urn != nil && c.Urn.IsEquivalent(identityUrn) {
 			return cm // Already has identity
 		}
 	}

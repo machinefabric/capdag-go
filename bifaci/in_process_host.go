@@ -409,11 +409,12 @@ func inProcessIdentityCap() cap.Cap {
 // with out-of-process hosts: the engine reads cap_groups from
 // installed_cartridges and derives the flat cap list itself.
 func (h *InProcessCartridgeHost) BuildManifest() []byte {
-	// Collect all handler caps; prepend CAP_IDENTITY exactly once.
-	caps := []cap.Cap{inProcessIdentityCap()}
+	// Collect all handler caps; prepend the identity cap exactly once.
+	identity := inProcessIdentityCap()
+	caps := []cap.Cap{identity}
 	for _, entry := range h.handlers {
 		for _, c := range entry.caps {
-			if c.Urn.String() != standard.CapIdentity {
+			if !c.Urn.IsEquivalent(identity.Urn) {
 				caps = append(caps, c)
 			}
 		}
@@ -660,10 +661,17 @@ readLoop:
 				continue
 			}
 			capUrn := *frame.Cap
+			parsedCap, err := urn.NewCapUrnFromString(capUrn)
+			if err != nil {
+				errFrame := NewErr(rid, "INVALID_REQUEST", AttributionClassInternal,
+					fmt.Sprintf("REQ cap '%s' is no cap URN: %v", capUrn, err), nil)
+				errFrame.RoutingId = xid
+				writeTx <- *errFrame
+				continue
+			}
 
-			// Identity cap is CAP_IDENTITY / `cap:effect=none` — exact string
-			// match, NOT conforms_to.
-			isIdentity := capUrn == standard.CapIdentity
+			// The identity cap, by equivalence.
+			isIdentity := parsedCap.IsEquivalent(inProcessIdentityCap().Urn)
 
 			// Nothing but the identity check is served before the switch's
 			// policy (12.2 §Policy): the switch sends one before anything it

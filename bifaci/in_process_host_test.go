@@ -313,6 +313,67 @@ func Test6749_IdentityVerification(t *testing.T) {
 	require.NoError(t, <-hostDone)
 }
 
+// TEST7197: The identity cap is recognised by equivalence, not by its text: a
+// REQ for the identity spelled with its directions written out, sent before
+// any policy, is served as the identity (the only request served before a
+// policy), and a REQ whose cap is no cap URN is refused as an invalid request
+// naming it.
+func Test7197_IdentityRequestRecognisedByEquivalence(t *testing.T) {
+	host := NewInProcessCartridgeHost(InProcessHostIdentityForTest("in-process-test"), nil)
+
+	hostConn, testConn := createSocketPair(t)
+	defer hostConn.Close()
+	defer testConn.Close()
+
+	hostDone := make(chan error, 1)
+	go func() { hostDone <- host.Run(hostConn, hostConn) }()
+
+	reader := NewFrameReader(testConn)
+	writer := NewFrameWriter(testConn)
+	_, err := reader.ReadFrame()
+	require.NoError(t, err)
+
+	rid := NewMessageIdRandom()
+	req := NewReq(rid, "cap:effect=none;in=media:;out=media:", []byte{}, "application/cbor")
+	xid := NewMessageIdFromUint(0)
+	req.RoutingId = &xid
+	require.NoError(t, writer.WriteFrame(req))
+	nonce := identityNonce()
+	require.NoError(t, writer.WriteFrame(NewStreamStart(rid, "identity-verify", "media:", nil)))
+	require.NoError(t, writer.WriteFrame(NewChunk(rid, "identity-verify", 0, nonce, 0, ComputeChecksum(nonce))))
+	require.NoError(t, writer.WriteFrame(NewStreamEnd(rid, "identity-verify", 1)))
+	require.NoError(t, writer.WriteFrame(NewEnd(rid, nil)))
+
+	first, err := reader.ReadFrame()
+	require.NoError(t, err)
+	require.Equal(t, FrameTypeStreamStart, first.FrameType,
+		"the identity spelled out is served before any policy, got %s %s", first.ErrorCode(), first.ErrorMessage())
+	echoed, err := reader.ReadFrame()
+	require.NoError(t, err)
+	assert.Equal(t, nonce, echoed.Payload)
+	se, err := reader.ReadFrame()
+	require.NoError(t, err)
+	assert.Equal(t, FrameTypeStreamEnd, se.FrameType)
+	end, err := reader.ReadFrame()
+	require.NoError(t, err)
+	assert.Equal(t, FrameTypeEnd, end.FrameType)
+
+	bad := NewMessageIdRandom()
+	badReq := NewReq(bad, "cap:in=", []byte{}, "application/cbor")
+	badXid := NewMessageIdFromUint(1)
+	badReq.RoutingId = &badXid
+	require.NoError(t, writer.WriteFrame(badReq))
+	errFrame, err := reader.ReadFrame()
+	require.NoError(t, err)
+	assert.Equal(t, FrameTypeErr, errFrame.FrameType)
+	assert.True(t, errFrame.Id.Equals(bad))
+	assert.Equal(t, "INVALID_REQUEST", errFrame.ErrorCode())
+	assert.Contains(t, errFrame.ErrorMessage(), "cap:in=")
+
+	testConn.Close()
+	require.NoError(t, <-hostDone)
+}
+
 // TEST6750: InProcessCartridgeHost returns NO_HANDLER for unregistered cap
 func Test6750_NoHandlerReturnsErr(t *testing.T) {
 	host := NewInProcessCartridgeHost(InProcessHostIdentityForTest("in-process-test"), nil)
