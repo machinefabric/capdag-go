@@ -631,7 +631,49 @@ type Cap struct {
 	MetadataJSON        any           `json:"metadata_json,omitempty"`
 	RegisteredBy        *RegisteredBy `json:"registered_by,omitempty"`
 	SupportedModelTypes []string      `json:"supported_model_types,omitempty"`
-	DefaultModelSpec    *string       `json:"default_model_spec,omitempty"`
+}
+
+// ModelSpecArg is the cap's model-spec argument: the one whose media URN
+// conforms to standard.MediaModelSpec, or nil when the cap takes no model
+// spec. A cap that declares two is an error naming it. Matches Rust:
+// Cap::model_spec_arg
+func (c *Cap) ModelSpecArg() (*CapArg, error) {
+	modelSpec, err := urn.NewMediaUrnFromString(standard.MediaModelSpec)
+	if err != nil {
+		return nil, fmt.Errorf("MediaModelSpec is a media URN: %w", err)
+	}
+	var found *CapArg
+	for i := range c.Args {
+		arg := &c.Args[i]
+		argURN, err := urn.NewMediaUrnFromString(arg.MediaUrn)
+		if err != nil {
+			return nil, fmt.Errorf("cap '%s' argument '%s' has a media URN that does not parse: %w", c.Urn.String(), arg.MediaUrn, err)
+		}
+		if !argURN.ConformsTo(modelSpec) {
+			continue
+		}
+		if found != nil {
+			return nil, fmt.Errorf("cap '%s' declares two model-spec arguments, '%s' and '%s'", c.Urn.String(), found.MediaUrn, arg.MediaUrn)
+		}
+		found = arg
+	}
+	return found, nil
+}
+
+// DefaultModelSpec is the model a run of the cap uses when none is named: its
+// model-spec argument's default value, the value a run applies. Nil when the
+// cap takes no model spec, or its model-spec argument declares no default.
+// Matches Rust: Cap::default_model_spec
+func (c *Cap) DefaultModelSpec() (*string, error) {
+	arg, err := c.ModelSpecArg()
+	if err != nil || arg == nil || arg.DefaultValue == nil {
+		return nil, err
+	}
+	spec, ok := arg.DefaultValue.(string)
+	if !ok {
+		return nil, fmt.Errorf("cap '%s' model-spec argument '%s' declares a default that is not a string", c.Urn.String(), arg.MediaUrn)
+	}
+	return &spec, nil
 }
 
 // NewCap creates a new cap
@@ -1272,10 +1314,6 @@ func (c *Cap) MarshalJSON() ([]byte, error) {
 		capData["supported_model_types"] = c.SupportedModelTypes
 	}
 
-	if c.DefaultModelSpec != nil {
-		capData["default_model_spec"] = *c.DefaultModelSpec
-	}
-
 	return json.Marshal(capData)
 }
 
@@ -1418,10 +1456,6 @@ func (c *Cap) UnmarshalJSON(data []byte) error {
 			return fmt.Errorf("failed to unmarshal supported_model_types: %w", err)
 		}
 		c.SupportedModelTypes = supportedModelTypes
-	}
-
-	if defaultModelSpec, ok := raw["default_model_spec"].(string); ok {
-		c.DefaultModelSpec = &defaultModelSpec
 	}
 
 	return nil
