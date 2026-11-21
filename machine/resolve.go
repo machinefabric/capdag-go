@@ -27,10 +27,12 @@ import (
 // gathers, and only a sequence arg may be gathered into. A constant is held to
 // the validation of the arg's media definition.
 //
-// A node some step of the strand produces holds what that step gives, a
-// complete thing, so it fits a type it satisfies: what it does not mention it
-// does not have. A node nothing produces (an input of the machine) holds the
-// type the text or an input anchor wrote, and fits a type it conforms to.
+// A node some step of the strand produces from a declared output holds what
+// that step gives, a complete thing, so it fits a type it satisfies: what it
+// does not mention it does not have. Any other node holds a type, and fits a
+// type it conforms to: an input of the machine, which the text or an input
+// anchor wrote, and the main output of an effect=none or effect=patch cap,
+// which says how what it gives follows from what it takes.
 //
 // The members that name no arg are matched by type over the args no name
 // bound, by minimum-cost assignment in two phases of strict precedence:
@@ -268,8 +270,11 @@ func resolveWirings(
 	// what it is from outside the map is IterationStructure's to say.) An
 	// input of the machine is one value: notation has no run shape.
 	//
-	// A node some wiring produces holds what that step gives, a complete
-	// thing; every other node holds a type the text or an input anchor wrote.
+	// A node some wiring produces from a declared output holds what that step
+	// gives, a complete thing. The main output of an effect=none or
+	// effect=patch cap says how what it gives follows from what it takes, not
+	// what it gives, so a node it produces holds a type, as every node nothing
+	// produces does: one the text or an input anchor wrote.
 	nodeIsSequence := make([]bool, len(nodes))
 	nodeIsGiven := make([]bool, len(nodes))
 	definitions := make([]*cap.Cap, len(wirings))
@@ -304,7 +309,7 @@ func resolveWirings(
 				}
 			}
 			nodeIsSequence[target.node] = output.IsSequence
-			nodeIsGiven[target.node] = true
+			nodeIsGiven[target.node] = mainOutputIsGiven(definition) || !isMainOutput(definition, output)
 			outputs = append(outputs, EdgeOutput{
 				OutputMediaUrn: outputMediaUrn,
 				OutputName:     output.Name,
@@ -658,6 +663,21 @@ type matchFailure struct {
 type undecidedSource struct {
 	source int
 	args   []int
+}
+
+// mainOutputIsGiven says whether a cap's main output says what the cap gives,
+// so that what it produces there is a complete thing: it does unless the
+// cap's effect is none or patch, whose main output says how what it gives
+// follows from what it takes (07 §What a cap gives).
+func mainOutputIsGiven(definition *cap.Cap) bool {
+	effect := definition.Urn.Effect()
+	return effect != urn.CapEffectNone && effect != urn.CapEffectPatch
+}
+
+// isMainOutput says whether output is the cap's main output.
+func isMainOutput(definition *cap.Cap, output *cap.CapOutput) bool {
+	main := definition.MainOutput()
+	return main != nil && main.Name == output.Name
 }
 
 // sourceFits says whether a source fits a type an arg accepts. A source that

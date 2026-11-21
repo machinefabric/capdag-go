@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TEST307: Test model_availability_urn builds valid cap URN with correct op and media defs
@@ -141,7 +142,7 @@ func Test850_all_format_conversion_paths_build_valid_urns(t *testing.T) {
 	assert.True(t, len(paths) > 0, "Format conversion paths must not be empty")
 
 	for _, p := range paths {
-		urnStr := FormatConversionUrn(p.InMedia, p.OutMedia)
+		urnStr := FormatConversionUrn(p.InMedia, p.OutMedia, p.Patch)
 		assert.True(t, strings.HasPrefix(urnStr, "cap:"),
 			"Format conversion URN must be a cap URN, got %s", urnStr)
 		assert.True(t, strings.Contains(urnStr, "convert-format"),
@@ -151,11 +152,39 @@ func Test850_all_format_conversion_paths_build_valid_urns(t *testing.T) {
 
 // TEST851: format_conversion_urn in/out specs match the input constants
 func Test851_format_conversion_urn_specs(t *testing.T) {
-	urnStr := FormatConversionUrn(MediaJSONRecord, MediaYAMLRecord)
+	urnStr := FormatConversionUrn(MediaJSONValue, MediaYAMLContent, true)
 	assert.True(t, strings.Contains(urnStr, "convert-format"), "must have convert-format")
 	assert.True(t, strings.Contains(urnStr, "in="), "must have in spec")
 	assert.True(t, strings.Contains(urnStr, "out="), "must have out spec")
+	assert.True(t, strings.Contains(urnStr, "effect=patch"), "a JSON to YAML conversion is a patch")
 	assert.True(t, strings.HasPrefix(urnStr, "cap:"), "must be a cap URN")
+}
+
+// TEST7220: converting between JSON and YAML keeps the shape it is given: the
+// conversion is one patch each way, and no path converts JSON to YAML of one
+// fixed shape.
+func Test7220_json_yaml_conversion_keeps_the_shape_it_is_given(t *testing.T) {
+	var patches []FormatConversionPath
+	for _, p := range AllFormatConversionPaths() {
+		if p.Patch {
+			patches = append(patches, p)
+		}
+	}
+	require.Len(t, patches, 2, "one patch each way between JSON and YAML")
+	assert.Equal(t, MediaJSONValue, patches[0].InMedia)
+	assert.Equal(t, MediaYAMLContent, patches[0].OutMedia)
+	assert.Equal(t, MediaYAMLValue, patches[1].InMedia)
+	assert.Equal(t, MediaJSONContent, patches[1].OutMedia)
+	assert.Len(t, AllFormatConversionPaths(), 12)
+}
+
+// TEST7221: a coercion to an object gives a JSON object, not any record.
+func Test7221_coercion_to_an_object_gives_a_json_object(t *testing.T) {
+	for _, pair := range AllCoercionPaths() {
+		if pair[1] == "json-object" {
+			assert.Contains(t, CoercionUrn(pair[0], pair[1]), `out="`+MediaJSONRecord+`"`, "%s to an object", pair[0])
+		}
+	}
 }
 
 // TEST1271: MEDIA_ADAPTER_SELECTION constant parses and has expected tags

@@ -896,3 +896,49 @@ func Test12867_render_payload_marks_the_main_input_and_output(t *testing.T) {
 	}
 	assert.Equal(t, map[string]bool{"comparison": true, "residuals": false}, outputs)
 }
+
+// TEST7222: the node a patch cap produces holds what the cap gives for the
+// node it is sent, not its declared output: a series (a JSON list of records)
+// converted to YAML is a YAML list of records, so a step that takes YAML lists
+// of records takes it, whichever order the text writes the steps in.
+func Test7222_a_patch_output_node_holds_what_the_cap_gives(t *testing.T) {
+	const yamlRecords = "media:enc=utf8;fmt=yaml;list;record"
+	toYamlUrn := `cap:effect=patch;in="media:enc=utf8;fmt=json";json-to-yaml;out="media:enc=utf8;fmt=yaml;!ext"`
+	countUrn := `cap:in="` + yamlRecords + `";count;out="media:count;numeric"`
+	registry := notationRegistry()
+	registry.AddCapsToCache([]*cap.Cap{
+		definition(toYamlUrn, "to-yaml",
+			[]cap.CapArg{stdinArg("media:enc=utf8;fmt=json", "input")},
+			[]cap.CapOutput{outputOf("media:enc=utf8;fmt=yaml;!ext", "output", "YAML")}),
+		definition(countUrn, "count",
+			[]cap.CapArg{stdinArg(yamlRecords, "rows")},
+			[]cap.CapOutput{outputOf("media:count;numeric", "count", "How many")}),
+	})
+	headers := notationHeaders + "[to_yaml " + toYamlUrn + "][count " + countUrn + "]"
+	want := mediaUrn("media:enc=utf8;fmt=yaml;list;record;time-series;!ext")
+	for _, wirings := range []string{
+		`[(reference="a") -> fetch -> s][s -> to_yaml -> y][y -> count -> n]`,
+		`[y -> count -> n][s -> to_yaml -> y][(reference="a") -> fetch -> s]`,
+	} {
+		m, names, err := ParseMachineWithNodeNames(headers+wirings, registry)
+		require.Nil(t, err, "%s must resolve: %v", wirings, err)
+		strand := m.Strands()[0]
+		y := strand.NodeUrn(names[0]["y"])
+		assert.True(t, y.IsEquivalent(want), "%s: the YAML node is what the patch gives for the series, got %s", wirings, y)
+		assert.Len(t, strand.Edges(), 3, wirings)
+	}
+
+	// An input of the machine converted for a step that takes YAML lists of
+	// records is a JSON list of records: what that step takes, read back
+	// through the patch.
+	for _, wirings := range []string{"[x -> to_yaml -> y][y -> count -> n]", "[y -> count -> n][x -> to_yaml -> y]"} {
+		m, names, err := ParseMachineWithNodeNames(headers+wirings, registry)
+		require.Nil(t, err, "%s must resolve: %v", wirings, err)
+		strand := m.Strands()[0]
+		x := strand.NodeUrn(names[0]["x"])
+		assert.True(t, x.IsEquivalent(mediaUrn("media:enc=utf8;fmt=json;list;record")),
+			"%s: the input is what the step after the patch takes, read back, got %s", wirings, x)
+		y := strand.NodeUrn(names[0]["y"])
+		assert.True(t, y.IsEquivalent(mediaUrn("media:enc=utf8;fmt=yaml;list;record;!ext")), "%s: got %s", wirings, y)
+	}
+}
