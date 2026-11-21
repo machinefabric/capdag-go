@@ -803,13 +803,16 @@ func (c *CapUrn) WithoutTag(key string) *CapUrn {
 }
 
 // Accepts reports whether cap fits this cap read as a PATTERN over caps — what a
-// search asks: cap's input is within this pattern's, its output covers the
-// pattern's, its effect is the pattern's (a pattern's ?effect fits any), and its
-// cap-tags — complete: a cap has the tags it has — satisfy the pattern's.
+// search asks: cap's input is within this pattern's, its output is within the
+// pattern's — everything it gives is of the type the pattern names, its declared
+// output read complete — its effect is the pattern's (a pattern's ?effect fits
+// any), and its cap-tags — complete: a cap has the tags it has — satisfy the
+// pattern's. `cap:out="media:ext=pdf"` fits caps giving media:ext=pdf or
+// media:document;ext=pdf, and not one giving media:, which gives a thing with no
+// tags.
 //
-// A side the pattern leaves open is not asked about. `cap:candle` fits every cap
-// tagged candle, whatever it takes and gives: its open output is "not
-// established", not the type "anything".
+// An output the pattern leaves open asks nothing. `cap:candle` fits every cap
+// tagged candle, whatever it gives.
 //
 // Decided by the proved model (CapDAG.Exec.accepts, which is CapDAG.fits). For a
 // question no cap URN can spell — "what gives this, whatever it takes" — ask a
@@ -829,15 +832,18 @@ func (c *CapUrn) ConformsTo(pattern *CapUrn) bool {
 // IsDispatchable reports whether this candidate SERVES request — the predicate
 // routing and dispatch act on.
 //
-// The candidate takes at least what the request sends, gives at least what the
-// request needs, has the effect asked for unless the request says ?effect, and
-// has the cap-tags asked for — its own tags being complete, so a request for
-// `!x` is served by a candidate that does not mention x, and a candidate may
-// carry tags the request does not ask about.
+// The request is a call: it sends what its input says and asks for its output.
+// The candidate takes at least what the call sends; what it gives for that is
+// inside what the call asks for; it has the effect asked for unless the call
+// says ?effect; and it has the cap-tags asked for — its own tags being complete,
+// so a request for `!x` is served by a candidate that does not mention x, and a
+// candidate may carry tags the request does not ask about.
 //
-// An input the request leaves open is not established: the caller has not said
-// what it will send, and every candidate passes that side. That is "some input",
-// not "any input" — media: on a CANDIDATE's input does mean it takes anything.
+// What the candidate gives is what its effect says: a declared output, read
+// complete — what it does not mention, the candidate does not give — or, for
+// effect=none and effect=patch, what the call sends with the effect applied.
+// A call always says what it sends: one whose input is media: (or omitted)
+// sends anything, and only a candidate that takes anything serves it.
 //
 // This is a guarantee. What only could serve does not; see MayDispatch and
 // CapQuery.Grade. Decided by the proved model (CapDAG.Exec.dispatch, which is

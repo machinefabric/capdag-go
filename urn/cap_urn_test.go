@@ -1375,16 +1375,12 @@ func Test824_dispatch_contravariant_input(t *testing.T) {
 	assert.True(t, candidate.IsDispatchable(request))
 }
 
-// TEST825: a request that leaves its input open has not said what it will
-// send, and is served whatever the candidate takes
+// TEST825: a call always says what it sends: one that sends media: sends
+// anything, and only a candidate that takes anything serves it
 //
-// The open input is unknown — "some input" — not the type "anything": the
-// request is served by exactly the candidates that serve SOME typed call it
-// could become (capdag/formal, serves_unknown_iff). Read as "anything" it was
-// served only by a candidate that takes anything, and asking the fabric "what
-// gives me this?" found nothing. What a candidate cannot do is stand in for
-// the request AS A DESCRIPTION — that relation is typed and composes
-// (Legacy.wildcard_input_not_transitive is why the two were never one).
+// A call that did not say what it sent was routed to a candidate that might not
+// take it (capdag/formal, Legacy.wildcard_input_is_not_serves). An unknown input
+// is a search's (CapQueryProducing), never a call's.
 func Test825_dispatch_request_unconstrained_input(t *testing.T) {
 	pdfOnly, err := NewCapUrnFromString(`cap:in="media:document;ext=pdf";analyze;out="media:record;enc=utf8"`)
 	require.NoError(t, err)
@@ -1392,8 +1388,8 @@ func Test825_dispatch_request_unconstrained_input(t *testing.T) {
 	require.NoError(t, err)
 	request, err := NewCapUrnFromString(`cap:in="media:";analyze;out="media:record;enc=utf8"`)
 	require.NoError(t, err)
-	assert.True(t, pdfOnly.IsDispatchable(request),
-		"the request has not said what it sends: a PDF-only candidate serves it")
+	assert.False(t, pdfOnly.IsDispatchable(request),
+		"the call sends anything: a PDF-only candidate does not take it")
 	assert.True(t, acceptsAnything.IsDispatchable(request))
 	// A request that DOES say what it sends is held to it.
 	pngRequest, err := NewCapUrnFromString(`cap:in="media:ext=png";analyze;out="media:record;enc=utf8"`)
@@ -2203,9 +2199,9 @@ func Test0128_effect_dispatch_requires_explicit_wildcard(t *testing.T) {
 	assert.True(t, noneCandidate.IsDispatchable(anyRequest))
 }
 
-// TEST8121: IsConformantRuntimeOutput — effect=declared accepts a more
-// specific emission, rejects a more generic one
-func Test8121_effect_conformance_declared_asymmetry(t *testing.T) {
+// TEST8121: IsConformantRuntimeOutput — effect=declared holds an emission to the
+// declared output read complete: what it does not mention, the cap does not give
+func Test8121_effect_conformance_declared_output_is_complete(t *testing.T) {
 	capUrn, err := NewCapUrnFromString(`cap:extract;in="media:document;ext=pdf";out="media:record"`)
 	require.NoError(t, err)
 	input, err := NewMediaUrnFromString("media:document;ext=pdf")
@@ -2217,11 +2213,11 @@ func Test8121_effect_conformance_declared_asymmetry(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, ok, "emitting exactly the declared out is conformant")
 
-	moreSpecific, err := NewMediaUrnFromString("media:enc=utf8;fmt=json;record")
+	saysMore, err := NewMediaUrnFromString("media:enc=utf8;fmt=json;record")
 	require.NoError(t, err)
-	ok, err = capUrn.IsConformantRuntimeOutput(input, moreSpecific)
+	ok, err = capUrn.IsConformantRuntimeOutput(input, saysMore)
 	require.NoError(t, err)
-	assert.True(t, ok, "a more specific emission than the declared out is conformant")
+	assert.False(t, ok, "an emission saying more than the declared out is not what the cap gives")
 
 	moreGeneric, err := NewMediaUrnFromString("media:")
 	require.NoError(t, err)
@@ -2291,4 +2287,62 @@ func Test8123_effect_conformance_patch_requires_patched_input(t *testing.T) {
 	ok, err = capUrn.IsConformantRuntimeOutput(input, input)
 	require.NoError(t, err)
 	assert.False(t, ok, "emitting the unpatched input type is a violation")
+}
+
+func mustCap(t *testing.T, s string) *CapUrn {
+	t.Helper()
+	c, err := NewCapUrnFromString(s)
+	require.NoError(t, err, s)
+	return c
+}
+
+// TEST7213: a declared output says what the cap gives, read complete: a cap
+// declaring out=media: gives a thing with no tags, so it serves no call that
+// needs some ext and could not; an effect=none cap gives what it is sent, so it
+// could
+func Test7213_DeclaredOutputIsReadCompleteInDispatch(t *testing.T) {
+	declared := mustCap(t, "cap:op=a")
+	call := mustCap(t, `cap:op=a;out="media:ext"`)
+	assert.False(t, declared.IsDispatchable(call))
+	assert.False(t, declared.MayDispatch(call))
+
+	passesThrough := mustCap(t, "cap:effect=none;op=a")
+	anyEffect := mustCap(t, `cap:?effect;op=a;out="media:ext"`)
+	assert.False(t, passesThrough.IsDispatchable(anyEffect), "it is sent anything")
+	assert.True(t, passesThrough.MayDispatch(anyEffect), "what it is sent may have an ext")
+}
+
+// TEST7214: what a cap gives is what its effect makes of what the call sends:
+// the identity gives what it is sent, a patch converter keeps the shape it is
+// sent, and an identity on pdfs cannot give a png
+func Test7214_DispatchComparesWhatTheCapGivesForWhatIsSent(t *testing.T) {
+	identity := mustCap(t, "cap:effect=none;op=a")
+	assert.True(t, identity.IsDispatchable(mustCap(t, `cap:effect=none;in="media:ext";op=a;out="media:ext"`)))
+
+	jsonToYaml := mustCap(t, `cap:effect=patch;in="media:enc=utf8;fmt=json";op=a;out="media:enc=utf8;fmt=yaml"`)
+	listCall := mustCap(t, `cap:effect=patch;in="media:enc=utf8;fmt=json;list";op=a;out="media:enc=utf8;fmt=yaml;list"`)
+	assert.True(t, jsonToYaml.IsDispatchable(listCall), "a list converted is a list")
+
+	pdfIdentity := mustCap(t, `cap:effect=none;in="media:ext=pdf";op=a`)
+	pngCall := mustCap(t, `cap:?effect;in="media:ext";op=a;out="media:ext=png"`)
+	assert.False(t, pdfIdentity.MayDispatch(pngCall), "what it gives is a pdf")
+}
+
+// TEST7215: a pattern over caps fits a cap when everything the cap gives is of
+// the type the pattern's output names; a pattern that names no output asks
+// nothing of it
+func Test7215_APatternFitsWhatACapGives(t *testing.T) {
+	givesPdf := mustCap(t, `cap:op=a;out="media:ext=pdf"`)
+	givesPdfDocument := mustCap(t, `cap:op=a;out="media:document;ext=pdf"`)
+	givesAnything := mustCap(t, "cap:op=a")
+
+	wantsPdf := mustCap(t, `cap:op=a;out="media:ext=pdf"`)
+	assert.True(t, wantsPdf.Accepts(givesPdf))
+	assert.True(t, wantsPdf.Accepts(givesPdfDocument))
+	assert.False(t, wantsPdf.Accepts(givesAnything), "a thing with no tags is no pdf")
+
+	any := mustCap(t, "cap:op=a")
+	for _, c := range []*CapUrn{givesPdf, givesPdfDocument, givesAnything} {
+		assert.True(t, any.Accepts(c), c.String())
+	}
 }
