@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/google/uuid"
@@ -27,41 +28,42 @@ const DefaultMaxChunk int = 262_144
 // Hard limit on frame size (16 MB) - prevents DoS
 const MaxFrameHardLimit int = 16_777_216
 
-// FrameType represents the type of CBOR frame
+// FrameType represents the type of CBOR frame. The constants' values are
+// identities, not wire numbers: a frame type's wire number is the proved
+// model's (FrameType.Code and FrameTypeOfCode, model.go).
 type FrameType uint8
 
 const (
-	FrameTypeHello FrameType = 0 // MUST be 0 - matches Rust
-	FrameTypeReq   FrameType = 1
-	// Res = 2 REMOVED - old single-response protocol no longer supported
-	FrameTypeChunk       FrameType = 3
-	FrameTypeEnd         FrameType = 4
-	FrameTypeLog         FrameType = 5 // MUST be 5 - matches Rust
-	FrameTypeErr         FrameType = 6 // MUST be 6 - matches Rust
-	FrameTypeHeartbeat   FrameType = 7
-	FrameTypeStreamStart FrameType = 8  // Announce new stream for a request (multiplexed streaming)
-	FrameTypeStreamEnd   FrameType = 9  // End a specific stream (multiplexed streaming)
-	FrameTypeRelayNotify FrameType = 10 // Relay capability advertisement (slave → master)
-	FrameTypeRelayState  FrameType = 11 // Relay host system resources + cap demands (master → slave)
-	FrameTypeCancel      FrameType = 12 // Cancel a running request
-	// FrameTypeCredit grants per-stream flow-control credit (protocol v4, L9/L10).
+	FrameTypeHello FrameType = iota
+	FrameTypeReq
+	FrameTypeChunk
+	FrameTypeEnd
+	FrameTypeLog
+	FrameTypeErr
+	FrameTypeHeartbeat
+	// FrameTypeStreamStart announces a new stream for a request (multiplexed streaming).
+	FrameTypeStreamStart
+	// FrameTypeStreamEnd ends a specific stream (multiplexed streaming).
+	FrameTypeStreamEnd
+	// FrameTypeRelayNotify is the relay capability advertisement (slave → master).
+	FrameTypeRelayNotify
+	// FrameTypeRelayState carries relay host system resources + cap demands (master → slave).
+	FrameTypeRelayState
+	// FrameTypeCancel cancels a running request.
+	FrameTypeCancel
+	// FrameTypeCredit grants per-stream flow-control credit (L9/L10).
 	// Non-flow (see IsFlowFrame): bypasses seq assignment and the reorder buffer.
-	// NOTE: wire-level CBOR encode/decode support (including HELLO's negotiated
-	// initial_credit and the protocol v4 version bump) is ported by the frame/codec
-	// subsystem task, not here; this credit-subsystem port only needs the
-	// in-memory discriminant, the credit_dir/credit accessors, and the constructor
-	// that the CreditRouter and its parity tests exercise directly on Frame values.
-	FrameTypeCredit FrameType = 13
+	FrameTypeCredit
 	// FrameTypeCloseStream closes a request's live input stream(s) — the
 	// tap-off (15.2 §Runs Stop). The receiving runtime closes the request's
 	// open feed taps; the request drains and ends NATURALLY with END and
 	// complete outputs. Not a cancel: host-side request state is untouched.
 	// StreamId names one stream; absent means every live feed the request holds.
-	FrameTypeCloseStream FrameType = 14
+	FrameTypeCloseStream
 	// FrameTypePolicy says what the host allows its cartridges to do, as it
 	// stands now (12.2 §Policy): host → cartridge only, after the handshake
 	// and on every change. Non-flow, id 0; meta.network is required.
-	FrameTypePolicy FrameType = 15
+	FrameTypePolicy
 )
 
 // FrameTypeAll is all variants, for counter arrays and snapshot
@@ -128,7 +130,6 @@ func (ft FrameType) String() string {
 	switch ft {
 	case FrameTypeReq:
 		return "REQ"
-	// Res REMOVED - old protocol no longer supported
 	case FrameTypeChunk:
 		return "CHUNK"
 	case FrameTypeEnd:
@@ -851,6 +852,26 @@ func NewErr(id MessageId, code string, class AttributionClass, message string, a
 	return frame
 }
 
+// NewStreamErr is an ERR scoped to one stream of a request: the error of that
+// stream alone, as a receiver hands it to a handler that reads raw frames when
+// the stream breaks and the request goes on (L12). It names the stream in
+// stream_id and is never written to the wire: a request's terminal ERR names
+// no stream.
+func NewStreamErr(id MessageId, streamId string, code string, message string) *Frame {
+	frame := NewErr(id, code, AttributionClassInternal, message, nil)
+	frame.StreamId = &streamId
+	return frame
+}
+
+// ErrStream is the stream a stream-scoped ERR (NewStreamErr) breaks, and false
+// for any other frame, a request's terminal ERR included.
+func (f *Frame) ErrStream() (string, bool) {
+	if f.FrameType != FrameTypeErr || f.StreamId == nil {
+		return "", false
+	}
+	return *f.StreamId, true
+}
+
 // NewLog creates a LOG frame (matches Rust Frame::log)
 // level and message are stored in the Meta map
 func NewLog(id MessageId, level string, class AttributionClass, message string, argUrn *string) *Frame {
@@ -1144,35 +1165,85 @@ func (f *Frame) LogProgress() (float32, bool) {
 	}
 }
 
-// RelayNotifyManifest extracts manifest bytes from RelayNotify metadata.
-// Returns nil if not a RelayNotify frame or no manifest present.
-func (f *Frame) RelayNotifyManifest() []byte {
-	if f.FrameType != FrameTypeRelayNotify || f.Meta == nil {
-		return nil
+// RelayNotifyManifest is the manifest a RelayNotify carries. Every RelayNotify
+// carries one: a frame of another type, a RelayNotify with no meta, no
+// manifest, or a manifest that is not a byte string, is an error naming it.
+func (f *Frame) RelayNotifyManifest() ([]byte, error) {
+	meta, err := f.relayNotifyMeta()
+	if err != nil {
+		return nil, err
 	}
-	if manifest, ok := f.Meta["manifest"].([]byte); ok {
-		return manifest
+	value, present := meta["manifest"]
+	if !present {
+		return nil, errors.New("RelayNotify carries no manifest")
 	}
-	return nil
+	manifest, ok := value.([]byte)
+	if !ok {
+		return nil, errors.New("RelayNotify manifest is not a byte string")
+	}
+	return manifest, nil
 }
 
-// RelayNotifyLimits extracts Limits from RelayNotify metadata.
-// Returns nil if not a RelayNotify frame or limits are missing.
-func (f *Frame) RelayNotifyLimits() *Limits {
-	if f.FrameType != FrameTypeRelayNotify || f.Meta == nil {
-		return nil
+// RelayNotifyLimits is the four limits a RelayNotify carries. Every
+// RelayNotify carries all four, each a positive integer: one missing, or one
+// that is not a positive integer, is an error naming the key.
+func (f *Frame) RelayNotifyLimits() (Limits, error) {
+	meta, err := f.relayNotifyMeta()
+	if err != nil {
+		return Limits{}, err
 	}
-	maxFrame := extractIntFromMeta(f.Meta, "max_frame")
-	maxChunk := extractIntFromMeta(f.Meta, "max_chunk")
-	if maxFrame <= 0 || maxChunk <= 0 {
-		return nil
+	var limits Limits
+	for _, field := range []struct {
+		key string
+		set func(int)
+	}{
+		{"max_frame", func(n int) { limits.MaxFrame = n }},
+		{"max_chunk", func(n int) { limits.MaxChunk = n }},
+		{"max_reorder_buffer", func(n int) { limits.MaxReorderBuffer = n }},
+		{"initial_credit", func(n int) { limits.InitialCredit = n }},
+	} {
+		n, err := positiveLimit(meta, field.key)
+		if err != nil {
+			return Limits{}, err
+		}
+		field.set(n)
 	}
-	maxReorderBuffer := extractIntFromMeta(f.Meta, "max_reorder_buffer")
-	initialCredit := extractIntFromMeta(f.Meta, "initial_credit")
-	if maxReorderBuffer <= 0 || initialCredit <= 0 {
-		return nil
+	return limits, nil
+}
+
+// relayNotifyMeta is a RelayNotify's meta, or the error saying why there is none.
+func (f *Frame) relayNotifyMeta() (map[string]interface{}, error) {
+	if f.FrameType != FrameTypeRelayNotify {
+		return nil, fmt.Errorf("a RelayNotify field read from a %s frame", f.FrameType)
 	}
-	return &Limits{MaxFrame: maxFrame, MaxChunk: maxChunk, MaxReorderBuffer: maxReorderBuffer, InitialCredit: initialCredit}
+	if f.Meta == nil {
+		return nil, errors.New("RelayNotify carries no meta")
+	}
+	return f.Meta, nil
+}
+
+// positiveLimit is one limit of a RelayNotify: present, an integer, greater
+// than zero and within an int; anything else is an error naming the key.
+func positiveLimit(meta map[string]interface{}, key string) (int, error) {
+	value, present := meta[key]
+	if !present {
+		return 0, fmt.Errorf("RelayNotify limits: '%s' is missing", key)
+	}
+	switch n := value.(type) {
+	case uint64:
+		if n > 0 && n <= math.MaxInt {
+			return int(n), nil
+		}
+	case int64:
+		if n > 0 {
+			return int(n), nil
+		}
+	case int:
+		if n > 0 {
+			return n, nil
+		}
+	}
+	return 0, fmt.Errorf("RelayNotify limits: '%s' is %v, not a positive integer", key, value)
 }
 
 // extractIntFromMeta extracts an integer from a meta map, handling CBOR type variance.

@@ -1202,6 +1202,10 @@ func (pr *CartridgeRuntime) Run() error {
 type incomingStream struct {
 	mediaUrn string
 	complete bool
+	// broken is set once a chunk beyond the window has broken this stream
+	// (L12): its error has gone to the handler as a stream-scoped ERR, and
+	// its later CHUNK and STREAM_END frames are not forwarded.
+	broken bool
 
 	// seq is non-nil for a sequence-mode stream (is_sequence=true on
 	// STREAM_START). CHUNK payloads on such a stream are raw RFC 8742
@@ -1702,15 +1706,56 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 			// deferred by dispatchOrQueue, but frames still flow into
 			// liveFrames without blocking this read loop (unboundedFrameChan
 			// never blocks on Send).
-			liveFrames := newUnboundedFrameChan()
-			pendingIncomingMu.Lock()
-			pendingIncoming[frame.Id.ToString()] = &pendingIncomingRequest{
+			incoming := &pendingIncomingRequest{
 				capUrn:    capUrn,
 				routingId: frame.RoutingId, // Preserve XID for response routing
 				streams:   make(map[string]*incomingStream),
-				frames:    liveFrames,
 				ended:     false,
 			}
+			// Input credit is granted as the handler TAKES each chunk, and
+			// everything taken is flushed before the channel waits on an
+			// empty queue (L10): the window, not this queue, bounds what the
+			// sender may have in flight.
+			requestID := frame.Id
+			grant := func(streamID string, n uint64) {
+				grantFrame := NewCredit(requestID, &streamID, n, CreditDirectionRequest)
+				grantFrame.RoutingId = incoming.routingId
+				if err := writer.WriteFrame(grantFrame); err != nil {
+					fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write CREDIT grant: %v\n", err)
+				}
+			}
+			liveFrames := newUnboundedFrameChanWith(
+				func(taken Frame) {
+					if taken.FrameType != FrameTypeChunk || taken.StreamId == nil {
+						return
+					}
+					pendingIncomingMu.Lock()
+					stream := incoming.streams[*taken.StreamId]
+					pendingIncomingMu.Unlock()
+					if stream == nil {
+						return
+					}
+					if n := stream.window.Consumed(); n > 0 {
+						grant(*taken.StreamId, n)
+					}
+				},
+				func() {
+					pendingIncomingMu.Lock()
+					windows := make(map[string]*CreditWindow, len(incoming.streams))
+					for id, stream := range incoming.streams {
+						windows[id] = stream.window
+					}
+					pendingIncomingMu.Unlock()
+					for id, window := range windows {
+						if n := window.Flush(); n > 0 {
+							grant(id, n)
+						}
+					}
+				},
+			)
+			incoming.frames = liveFrames
+			pendingIncomingMu.Lock()
+			pendingIncoming[frame.Id.ToString()] = incoming
 			pendingIncomingMu.Unlock()
 			fmt.Fprintf(os.Stderr, "[CartridgeRuntime] REQ: req_id=%s cap=%s - dispatching live\n", frame.Id.ToString(), capUrn)
 			dispatchOrQueue(&liveHandlerRequest{
@@ -1807,30 +1852,31 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 					continue
 				}
 
-				// Credit-violation check (protocol v4, L12): a chunk beyond
-				// the granted window is a fatal protocol error for this
-				// request — the demux itself never blocks, so this
-				// accounting is the only thing keeping a misbehaving sender
-				// from exceeding what it was granted.
-				if !foundStream.window.Arrive() {
-					delete(pendingIncoming, frame.Id.ToString())
-					// The refused request's input ends here: its handler sees its
-					// frames stop before END and returns, instead of waiting for
-					// input that will never come.
-					pendingReq.frames.Close()
+				// A broken stream forwards nothing more: its error has been
+				// delivered and the request goes on without it (L12).
+				if foundStream.broken {
 					pendingIncomingMu.Unlock()
+					continue
+				}
+
+				// Credit-violation check (L12): a chunk arriving with nothing
+				// left of its window is a CREDIT_VIOLATION: that stream is
+				// broken and delivers the error to whoever reads it; the
+				// request goes on. The handler reads raw frames, so the error
+				// reaches it as an ERR scoped to the stream (StreamErr); the
+				// request, its other streams and its pendingIncoming entry
+				// stay, and no ERR is written to the host.
+				if !foundStream.window.Arrive() {
+					foundStream.broken = true
 					total := pr.dropCounters.Record(DropReasonCreditViolation, frame.FrameType)
-					errFrame := NewErr(
-						frame.Id,
-						"CREDIT_VIOLATION",
-						AttributionClassInternal,
-						fmt.Sprintf("chunk received beyond the granted window on stream %s (L12)", streamID),
-						nil,
-					)
 					fmt.Fprintf(os.Stderr, "[CartridgeRuntime] CREDIT_VIOLATION on stream %s (credit_violation_total=%d)\n", streamID, total)
-					if err := writer.WriteFrame(errFrame); err != nil {
-						fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", err)
-					}
+					pendingReq.frames.Send(*NewStreamErr(
+						frame.Id,
+						streamID,
+						"CREDIT_VIOLATION",
+						fmt.Sprintf("chunk received beyond the granted window on stream %s (L12)", streamID),
+					))
+					pendingIncomingMu.Unlock()
 					continue
 				}
 
@@ -1841,12 +1887,26 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 				// unchanged.
 				if frame.Payload != nil {
 					if foundStream.seq != nil {
+						completedItem := false
 						feedErr := foundStream.seq.feed(frame.Payload, frame.Meta, func(itemBytes []byte, itemMeta map[string]interface{}) {
+							completedItem = true
 							checksum := ComputeChecksum(itemBytes)
 							itemFrame := NewChunk(frame.Id, streamID, 0, itemBytes, 0, checksum)
 							itemFrame.Meta = itemMeta
 							pendingReq.frames.Send(*itemFrame)
 						})
+						if feedErr == nil && !completedItem {
+							// A fragment that completes no item is credited back
+							// at once: the handler takes items, so it never takes
+							// this frame (Rust's InputGrantEmitter::continued).
+							if n := foundStream.window.Continued(); n > 0 {
+								grantFrame := NewCredit(frame.Id, &streamID, n, CreditDirectionRequest)
+								grantFrame.RoutingId = pendingReq.routingId
+								if err := writer.WriteFrame(grantFrame); err != nil {
+									fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write CREDIT grant: %v\n", err)
+								}
+							}
+						}
 						if feedErr != nil {
 							// Hard decode error (not valid CBOR at all, as
 							// opposed to a mere fragment-boundary prefix) —
@@ -1861,23 +1921,6 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 					}
 				}
 
-				// Batched CREDIT grant (protocol v4, L10): once a batch of
-				// physical chunks has been accepted, extend the sender's
-				// window by exactly what was consumed. This counts wire frames
-				// (including sequence continuation fragments), independent of
-				// how many logical items were delivered to the handler for
-				// them — see TEST1302. Since this demux never blocks
-				// (everything is accepted eagerly), acceptance and
-				// grant-worthiness are the same event — there is no separate
-				// "handler drained it" phase to wait for.
-				if n := foundStream.window.Consumed(); n > 0 {
-					grantFrame := NewCredit(frame.Id, &streamID, n, CreditDirectionRequest)
-					grantFrame.RoutingId = pendingReq.routingId
-					if err := writer.WriteFrame(grantFrame); err != nil {
-						fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write CREDIT grant: %v\n", err)
-					}
-				}
-
 				pendingIncomingMu.Unlock()
 				continue // Wait for more chunks or STREAM_END
 			}
@@ -1888,30 +1931,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 			idKey := frame.Id.ToString()
 			if pending, ok := pendingPeerRequests.Load(idKey); ok {
 				pendingReq := pending.(*pendingPeerRequest)
-				pendingReq.sender <- *frame
-
-				// Peer-response consumption grants (protocol v4, L10/L14):
-				// as this cartridge consumes the responding peer's OUTPUT
-				// stream, replenish the peer's output window with batched
-				// Response-direction CREDIT grants — otherwise a responder
-				// whose output exceeds the negotiated initial window stalls
-				// forever waiting on credit this caller never sends. Mirrors
-				// Rust demux_single_stream's InputGrantEmitter (Response
-				// direction, stream-less single-response grants, batch =
-				// initial_credit/2 min 1); grant-on-forward matches this
-				// mirror's eager crediting model (see the incoming
-				// FrameTypeChunk path above — checksum was already verified
-				// before this branch, so every chunk here is real
-				// consumption). A Response grant carries no routing_id
-				// (Rust's xid = None) and NAMES ITS STREAM: a callee answers
-				// on one stream per output, and a grant that names none
-				// reaches a callee with several only by guessing (L11).
-				if n := pendingReq.window(streamID, uint64(negotiatedLimits.InitialCredit)).Consumed(); n > 0 {
-					grantFrame := NewCredit(frame.Id, &streamID, n, CreditDirectionResponse)
-					if err := writer.WriteFrame(grantFrame); err != nil {
-						fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write peer-response CREDIT grant: %v\n", err)
-					}
-				}
+				pendingReq.frames.Send(*frame)
 			}
 
 		case FrameTypeEnd:
@@ -1940,8 +1960,8 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 			idKey := frame.Id.ToString()
 			if pending, ok := pendingPeerRequests.LoadAndDelete(idKey); ok {
 				pendingReq := pending.(*pendingPeerRequest)
-				pendingReq.sender <- *frame
-				close(pendingReq.sender)
+				pendingReq.frames.Send(*frame)
+				pendingReq.frames.Close()
 			}
 			// Release any credit waiters still parked on this peer request's
 			// arg-stream gates (protocol v4, L13) — a peer call that ended
@@ -2023,7 +2043,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 				if err := writer.WriteFrame(NewCancelFrame(peer.rid, reason)); err != nil {
 					fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write peer Cancel: %v\n", err)
 				}
-				close(peer.sender)
+				peer.frames.Close()
 				return true
 			})
 			fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Cancelled in-flight request (cooperative): req_id=%s\n", key)
@@ -2034,8 +2054,8 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 			idKey := frame.Id.ToString()
 			if pending, ok := pendingPeerRequests.LoadAndDelete(idKey); ok {
 				pendingReq := pending.(*pendingPeerRequest)
-				pendingReq.sender <- *frame
-				close(pendingReq.sender)
+				pendingReq.frames.Send(*frame)
+				pendingReq.frames.Close()
 			}
 			// Release any credit waiters still parked on this peer request's
 			// arg-stream gates (protocol v4, L13) — an errored peer call must
@@ -2050,7 +2070,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 			idKey := frame.Id.ToString()
 			if pending, ok := pendingPeerRequests.Load(idKey); ok {
 				pendingReq := pending.(*pendingPeerRequest)
-				pendingReq.sender <- *frame
+				pendingReq.frames.Send(*frame)
 			}
 
 		case FrameTypeStreamStart:
@@ -2160,7 +2180,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 				pendingReq := pending.(*pendingPeerRequest)
 				pendingReq.streams[streamID] = mediaUrn
 				// Forward bare STREAM_START frame to handler
-				pendingReq.sender <- *frame
+				pendingReq.frames.Send(*frame)
 			} else {
 				fmt.Fprintf(os.Stderr, "[CartridgeRuntime] STREAM_START for unknown request_id: %s\n", frame.Id.ToString())
 			}
@@ -2201,6 +2221,13 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 				foundStream.complete = true
 				fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Incoming stream marked complete: %s\n", streamID)
 
+				// A broken stream ended with its error; its STREAM_END is
+				// not forwarded (L12).
+				if foundStream.broken {
+					pendingIncomingMu.Unlock()
+					continue
+				}
+
 				// A sequence stream ending mid-item is a truncation — surface
 				// it as a hard decode error, never silently drop the partial
 				// item (protocol v4; see seqReassembly.atEnd / TEST1301).
@@ -2227,7 +2254,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 			if pending, ok := pendingPeerRequests.Load(idKey); ok {
 				pendingReq := pending.(*pendingPeerRequest)
 				// Forward bare STREAM_END frame to handler
-				pendingReq.sender <- *frame
+				pendingReq.frames.Send(*frame)
 			} else {
 				fmt.Fprintf(os.Stderr, "[CartridgeRuntime] STREAM_END for unknown request_id: %s\n", frame.Id.ToString())
 			}
@@ -2255,6 +2282,23 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 			pr.policy.Set(policy)
 		}
 	}
+	// The host's frames have ended: every request whose input is still open,
+	// and every peer call still waiting on its response, is cut short. Its
+	// frames stop before their END, so its reader sees the input end
+	// unfinished and returns, rather than waiting for frames that will never
+	// come (as the Rust runtime drops each request's channel).
+	pendingIncomingMu.Lock()
+	for key, incoming := range pendingIncoming {
+		incoming.frames.Close()
+		delete(pendingIncoming, key)
+	}
+	pendingIncomingMu.Unlock()
+	pendingPeerRequests.Range(func(key, value interface{}) bool {
+		pendingPeerRequests.Delete(key)
+		value.(*pendingPeerRequest).frames.Close()
+		return true
+	})
+
 	if err := feed.Err(); err != nil {
 		return err
 	}
@@ -3878,7 +3922,10 @@ func (e *cliStreamEmitter) Finish(progress float32, message string) {}
 // pendingPeerRequest tracks a pending peer request.
 // The reader loop forwards response frames to the channel.
 type pendingPeerRequest struct {
-	sender  chan Frame        // Channel to send response frames to handler
+	// frames carries the response frames to the calling handler, crediting
+	// each response CHUNK back to the responder as the handler takes it (L10),
+	// so the read loop never blocks on a slow consumer.
+	frames  *unboundedFrameChan
 	streams map[string]string // stream_id → media_urn mapping
 	ended   bool              // true after END frame (close channel)
 	// rid is this call's own request id.
@@ -3893,14 +3940,18 @@ type pendingPeerRequest struct {
 	// the window has been consumed, at least 1, so a large peer response
 	// cannot stall the responding cartridge on credit. They batch only —
 	// arrivals are not checked here, because the responder's window was
-	// negotiated on another link. Only touched from the single-threaded main
-	// read loop. (matches Rust PeerGrantSource::for_stream)
+	// negotiated on another link. Taken from the frame channel's goroutine as
+	// the handler consumes, so guarded by windowsMu. (matches Rust
+	// PeerGrantSource::for_stream)
+	windowsMu       sync.Mutex
 	responseWindows map[string]*CreditWindow
 }
 
 // window is the grant batcher of one stream of the peer response, opened on
 // that stream's first chunk at this link's negotiated initial credit.
 func (p *pendingPeerRequest) window(streamID string, initialCredit uint64) *CreditWindow {
+	p.windowsMu.Lock()
+	defer p.windowsMu.Unlock()
 	if p.responseWindows == nil {
 		p.responseWindows = map[string]*CreditWindow{}
 	}
@@ -3941,17 +3992,47 @@ func (p *peerInvokerImpl) Invoke(capUrn string, arguments []cap.CapArgumentValue
 	// Generate a new message ID for this request
 	requestID := NewMessageIdRandom()
 
-	// Create a buffered channel for response frames
-	sender := make(chan Frame, 64)
-
-	// Register the pending request before sending
-	p.pendingRequests.Store(requestID.ToString(), &pendingPeerRequest{
+	// Register the pending request before sending. Its response frames reach
+	// the handler through an unbounded channel that credits each response
+	// CHUNK back as the handler takes it, and flushes what it took before it
+	// waits (L10). A Response grant carries no routing id and names its
+	// stream (L11).
+	pending := &pendingPeerRequest{
 		rid:     requestID,
 		origin:  p.origin,
-		sender:  sender,
 		streams: make(map[string]string),
 		ended:   false,
-	})
+	}
+	grant := func(streamID string, n uint64) {
+		grantFrame := NewCredit(requestID, &streamID, n, CreditDirectionResponse)
+		if err := p.writer.WriteFrame(grantFrame); err != nil {
+			fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write peer-response CREDIT grant: %v\n", err)
+		}
+	}
+	pending.frames = newUnboundedFrameChanWith(
+		func(taken Frame) {
+			if taken.FrameType != FrameTypeChunk || taken.StreamId == nil {
+				return
+			}
+			if n := pending.window(*taken.StreamId, p.initialCredit).Consumed(); n > 0 {
+				grant(*taken.StreamId, n)
+			}
+		},
+		func() {
+			pending.windowsMu.Lock()
+			windows := make(map[string]*CreditWindow, len(pending.responseWindows))
+			for id, window := range pending.responseWindows {
+				windows[id] = window
+			}
+			pending.windowsMu.Unlock()
+			for id, window := range windows {
+				if n := window.Flush(); n > 0 {
+					grant(id, n)
+				}
+			}
+		},
+	)
+	p.pendingRequests.Store(requestID.ToString(), pending)
 
 	maxChunk := p.maxChunk
 
@@ -4041,7 +4122,7 @@ func (p *peerInvokerImpl) Invoke(capUrn string, arguments []cap.CapArgumentValue
 		return nil, fmt.Errorf("failed to send END: %w", err)
 	}
 
-	return sender, nil
+	return pending.frames.Chan(), nil
 }
 
 // noPeerInvoker is a no-op PeerInvoker that always returns an error

@@ -12,7 +12,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	cbor2 "github.com/fxamacker/cbor/v2"
 	"github.com/machinefabric/capdag-go/standard"
 	"github.com/machinefabric/capdag-go/urn"
 )
@@ -624,19 +623,19 @@ func NewRelaySwitch(sockets []SocketPair, policy HostPolicy) (*RelaySwitch, erro
 			}
 		}
 
-		manifest := frame.RelayNotifyManifest()
-		if manifest == nil {
+		manifest, err := frame.RelayNotifyManifest()
+		if err != nil {
 			return nil, &RelaySwitchError{
 				Type:    RelaySwitchErrorTypeProtocol,
-				Message: "RelayNotify missing manifest",
+				Message: fmt.Sprintf("master %d: %v", masterIdx, err),
 			}
 		}
 
-		limits := frame.RelayNotifyLimits()
-		if limits == nil {
+		limits, err := frame.RelayNotifyLimits()
+		if err != nil {
 			return nil, &RelaySwitchError{
 				Type:    RelaySwitchErrorTypeProtocol,
-				Message: "RelayNotify missing limits",
+				Message: fmt.Sprintf("master %d: %v", masterIdx, err),
 			}
 		}
 
@@ -682,7 +681,7 @@ func NewRelaySwitch(sockets []SocketPair, policy HostPolicy) (*RelaySwitch, erro
 			id:                  sockPair.ID,
 			socketWriter:        socketWriter,
 			manifest:            manifest,
-			limits:              *limits,
+			limits:              limits,
 			caps:                caps,
 			installedCartridges: payload.InstalledCartridges,
 			hostProtocolStats:   payload.HostProtocolStats,
@@ -849,18 +848,18 @@ func (sw *RelaySwitch) AddMaster(sockPair SocketPair) (int, error) {
 			Message: fmt.Sprintf("AddMaster: expected RelayNotify, got %d", frame.FrameType),
 		}
 	}
-	manifest := frame.RelayNotifyManifest()
-	if manifest == nil {
+	manifest, err := frame.RelayNotifyManifest()
+	if err != nil {
 		return 0, &RelaySwitchError{
 			Type:    RelaySwitchErrorTypeProtocol,
-			Message: "AddMaster: RelayNotify missing manifest",
+			Message: fmt.Sprintf("AddMaster: %v", err),
 		}
 	}
-	limits := frame.RelayNotifyLimits()
-	if limits == nil {
+	limits, err := frame.RelayNotifyLimits()
+	if err != nil {
 		return 0, &RelaySwitchError{
 			Type:    RelaySwitchErrorTypeProtocol,
-			Message: "AddMaster: RelayNotify missing limits",
+			Message: fmt.Sprintf("AddMaster: %v", err),
 		}
 	}
 	payload, err := parseRelayNotifyPayload(manifest)
@@ -924,7 +923,7 @@ func (sw *RelaySwitch) AddMaster(sockPair SocketPair) (int, error) {
 			id:                  sockPair.ID,
 			socketWriter:        socketWriter,
 			manifest:            manifest,
-			limits:              *limits,
+			limits:              limits,
 			caps:                caps,
 			installedCartridges: payload.InstalledCartridges,
 			hostProtocolStats:   payload.HostProtocolStats,
@@ -947,7 +946,7 @@ func (sw *RelaySwitch) AddMaster(sockPair SocketPair) (int, error) {
 		// cancellable; we rely on the natural EOF exit).
 		slot.socketWriter = socketWriter
 		slot.manifest = manifest
-		slot.limits = *limits
+		slot.limits = limits
 		slot.caps = caps
 		slot.installedCartridges = payload.InstalledCartridges
 		slot.hostProtocolStats = payload.HostProtocolStats
@@ -1183,13 +1182,6 @@ func (sw *RelaySwitch) runIdentityProbeViaRelay(masterIdx int) error {
 	xid := NewMessageIdFromUint(atomic.AddUint64(&sw.xidCounter, 1))
 	key := RequestKey{Xid: xid, Rid: rid}
 
-	nonce := identityNonce()
-	cborNonce, err := cbor2.Marshal(nonce)
-	if err != nil {
-		return fmt.Errorf("BUG: failed to CBOR-encode identity nonce: %w", err)
-	}
-	streamID := "identity-verify-runtime"
-
 	// Buffered so handleMasterFrame's delivery (under sw.mu) never blocks
 	// for the bounded probe response (REQ echo is STREAM_START + CHUNK +
 	// STREAM_END + END, or a single ERR).
@@ -1218,25 +1210,9 @@ func (sw *RelaySwitch) runIdentityProbeViaRelay(masterIdx int) error {
 	writer := sw.masters[masterIdx].socketWriter
 
 	seq := NewSeqAssigner()
-	req := NewReq(rid, standard.CapIdentity, []byte{}, "application/cbor")
-	req.RoutingId = &xid
-	seq.Assign(req)
-	ss := NewStreamStart(rid, streamID, "media:", nil)
-	ss.RoutingId = &xid
-	seq.Assign(ss)
-	checksum := ComputeChecksum(cborNonce)
-	chunk := NewChunk(rid, streamID, 0, cborNonce, 0, checksum)
-	chunk.RoutingId = &xid
-	seq.Assign(chunk)
-	se := NewStreamEnd(rid, streamID, 1)
-	se.RoutingId = &xid
-	seq.Assign(se)
-	end := NewEnd(rid, nil)
-	end.RoutingId = &xid
-	seq.Assign(end)
-
 	var sendErr error
-	for _, fr := range []*Frame{req, ss, chunk, se, end} {
+	for _, fr := range identityProbeFrames(rid, xid) {
+		seq.Assign(fr)
 		if werr := writer.WriteFrame(fr); werr != nil {
 			sendErr = werr
 			break
@@ -1250,7 +1226,7 @@ func (sw *RelaySwitch) runIdentityProbeViaRelay(masterIdx int) error {
 		}
 
 		timeout := time.After(probeTimeout)
-		var accumulated []byte
+		var echo identityEcho
 		for {
 			select {
 			case <-timeout:
@@ -1259,44 +1235,12 @@ func (sw *RelaySwitch) runIdentityProbeViaRelay(masterIdx int) error {
 				if !ok {
 					return fmt.Errorf("runtime identity probe channel closed before END")
 				}
-				switch fr.FrameType {
-				case FrameTypeStreamStart, FrameTypeStreamEnd:
-					// no-op
-				case FrameTypeChunk:
-					if fr.Payload != nil {
-						var decoded []byte
-						if derr := cbor2.Unmarshal(fr.Payload, &decoded); derr != nil {
-							return fmt.Errorf("identity probe: failed to decode CBOR chunk: %w", derr)
-						}
-						accumulated = append(accumulated, decoded...)
-					}
-				case FrameTypeEnd:
-					if !bytesEqual(accumulated, nonce) {
-						return fmt.Errorf(
-							"identity probe payload mismatch (expected %d bytes, got %d)",
-							len(nonce), len(accumulated),
-						)
-					}
+				done, err := echo.accept(&fr)
+				if err != nil {
+					return err
+				}
+				if done {
 					return nil
-				case FrameTypeErr:
-					code := fr.ErrorCode()
-					if code == "" {
-						code = "UNKNOWN"
-					}
-					msg := fr.ErrorMessage()
-					if msg == "" {
-						msg = "no message"
-					}
-					return fmt.Errorf("identity probe failed: [%s] %s", code, msg)
-				case FrameTypeLog, FrameTypeCredit, FrameTypeHeartbeat:
-					// Control/side-channel frames are legal ANYWHERE during
-					// the probe (spec 12.4: LOG interleaves without affecting
-					// data flow; CREDIT/HEARTBEAT are the control plane the
-					// writer gate itself exempts, L4). A v4 cartridge
-					// crediting its probe input as it consumes (L10) must
-					// not fail identity verification.
-				default:
-					return fmt.Errorf("identity probe: unexpected frame type %v", fr.FrameType)
 				}
 			}
 		}
@@ -2430,12 +2374,22 @@ func (sw *RelaySwitch) handleMasterFrame(sourceIdx int, frame *Frame) (*Frame, e
 		return nil, nil
 
 	case FrameTypeRelayNotify:
-		// Capability update from host — update our cap table
-		manifest := frame.RelayNotifyManifest()
-		if manifest == nil {
+		// Capability update from host — update our cap table. The manifest
+		// and the limits are both read before anything is changed: a
+		// RelayNotify missing either, or with a limit that is not a positive
+		// integer, ends the master and leaves what it last said.
+		manifest, err := frame.RelayNotifyManifest()
+		if err != nil {
 			return nil, &RelaySwitchError{
 				Type:    RelaySwitchErrorTypeProtocol,
-				Message: "RelayNotify has no payload",
+				Message: fmt.Sprintf("master %d: %v", sourceIdx, err),
+			}
+		}
+		newLimits, err := frame.RelayNotifyLimits()
+		if err != nil {
+			return nil, &RelaySwitchError{
+				Type:    RelaySwitchErrorTypeProtocol,
+				Message: fmt.Sprintf("master %d: %v", sourceIdx, err),
 			}
 		}
 
@@ -2477,9 +2431,7 @@ func (sw *RelaySwitch) handleMasterFrame(sourceIdx int, frame *Frame) (*Frame, e
 		}
 		sw.masters[sourceIdx].hostProtocolStats = payload.HostProtocolStats
 		sw.masters[sourceIdx].manifest = manifest
-		if limits := frame.RelayNotifyLimits(); limits != nil {
-			sw.masters[sourceIdx].limits = *limits
-		}
+		sw.masters[sourceIdx].limits = newLimits
 		if probeRequired {
 			sw.masters[sourceIdx].healthy = false
 			msg := "runtime identity probe pending — caps held back from routing"

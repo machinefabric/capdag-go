@@ -19,6 +19,8 @@ import (
 	"github.com/machinefabric/capdag-go/cap"
 	"github.com/machinefabric/capdag-go/standard"
 	"github.com/machinefabric/capdag-go/urn"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const testManifest = `{"name":"TestCartridge","version":"1.0.0","channel":"release","registry_url":null,"description":"Test cartridge","cap_groups":[{"name":"default","caps":[{"urn":"cap:effect=none","title":"Identity","aliases":["identity"],"args":[{"media_urn":"media:","name":"input","required":true,"sources":[{"stdin":"media:"}]}],"outputs":[{"media_urn":"media:","name":"output","output_description":"output"}]},{"urn":"cap:in=\"media:void\";test;out=\"media:void\"","title":"Test","aliases":["test"]}]}]}`
@@ -3824,6 +3826,42 @@ func Test540_output_stream_close_sends_stream_end(t *testing.T) {
 	}
 }
 
+// TEST7189: An array emitted after bytes still in the coalescing buffer does
+// not overtake them: the bytes ship first, then the array's elements, each its
+// own chunk, and STREAM_END counts all three.
+func Test7189_array_emission_is_an_ordering_barrier(t *testing.T) {
+	frames := outputEmitterCapture(t, "stream-1", "media:test", 256000, func(e *threadSafeEmitter) {
+		_ = e.EmitCbor([]byte("abc"))
+		_ = e.EmitCbor([]interface{}{1, 2})
+	})
+	var payloads []interface{}
+	var streamEnd *Frame
+	for i := range frames {
+		switch frames[i].FrameType {
+		case FrameTypeChunk:
+			var value interface{}
+			if err := cborlib.Unmarshal(frames[i].Payload, &value); err != nil {
+				t.Fatalf("a chunk payload is one CBOR value: %v", err)
+			}
+			payloads = append(payloads, value)
+		case FrameTypeStreamEnd:
+			streamEnd = &frames[i]
+		}
+	}
+	if len(payloads) != 3 {
+		t.Fatalf("the bytes, then two element chunks, got %#v", payloads)
+	}
+	if b, ok := payloads[0].([]byte); !ok || string(b) != "abc" {
+		t.Fatalf("the buffered bytes ship first, got %#v", payloads)
+	}
+	if payloads[1] != uint64(1) || payloads[2] != uint64(2) {
+		t.Fatalf("then the array's elements, got %#v", payloads)
+	}
+	if streamEnd == nil || streamEnd.ChunkCount == nil || *streamEnd.ChunkCount != 3 {
+		t.Fatalf("STREAM_END counts all three chunks, got %v", streamEnd)
+	}
+}
+
 // TEST8119: the coalescing AGE bound — an emission arriving after the
 // buffer's oldest byte crossed CoalesceMaxAge flushes the accumulated batch,
 // so steady token emission lags the wire by at most one write-gap; the tail
@@ -4522,123 +4560,369 @@ func drainingHandler(frames <-chan Frame, emitter StreamEmitter, peer PeerInvoke
 	return nil
 }
 
-// TEST7063 (Rust/Swift: "a receiver flushes pending sub-batch grants before
-// blocking on an empty input") has no analog in this mirror and is
-// deliberately not ported. The scenario it guards against — a receiver
-// parked in recv() on an empty channel, holding a sub-batch-threshold count
-// of already-consumed-but-ungranted chunks that only a flush-before-block
-// releases — requires a receiver whose grant emission is decoupled from, and
-// lags behind, chunk arrival. This mirror's demux has no such receiver: a
-// CREDIT grant is computed and written synchronously in the SAME
-// read-process cycle that accepts the chunk (see TEST7052's comment), so
-// there is never a "pending" grant sitting unflushed while something blocks
-// on empty input — the analogous deadlock-freedom property (L10) holds here
-// unconditionally rather than needing a flush-before-block corollary.
+// sendChunks writes n CBOR byte-string chunks on stream s1 of request rid,
+// numbered from first.
+func sendChunks(t *testing.T, hostWriter *FrameWriter, rid MessageId, first, n uint64) {
+	t.Helper()
+	for i := first; i < first+n; i++ {
+		payload, err := cborlib.Marshal([]byte{byte(i)})
+		require.NoError(t, err)
+		require.NoError(t, hostWriter.WriteFrame(NewChunk(rid, "s1", i, payload, i, ComputeChecksum(payload))))
+	}
+}
 
-// TEST7052: Input consumption emits batched CREDIT grants — one grant per
-// half-window of chunks accepted, not one per chunk. This mirror's live
-// per-request demux (see runCBORModeIO's FrameTypeChunk handling) grants on
-// wire ACCEPTANCE, not on the handler actually reading the chunk off its live
-// frame channel — acceptance IS consumption for crediting purposes — so
-// grants fire deterministically as chunks arrive, with no dependency on
-// handler scheduling.
-func Test7052_input_grants_are_batched(t *testing.T) {
-	rt, err := NewCartridgeRuntime([]byte(testManifest))
-	if err != nil {
-		t.Fatalf("failed to create runtime: %v", err)
-	}
-	rt.Register(testCapUrn, drainingHandler)
-
-	hostWriter, outFrames, negotiated := startTestCartridge(t, rt, 8)
-	if negotiated.InitialCredit != 8 {
-		t.Fatalf("expected negotiated initial_credit 8, got %d", negotiated.InitialCredit)
-	}
-
-	rid := NewMessageIdRandom()
-	if err := hostWriter.WriteFrame(NewReq(rid, testCapUrn, nil, "application/cbor")); err != nil {
-		t.Fatalf("REQ: %v", err)
-	}
-	if err := hostWriter.WriteFrame(NewStreamStart(rid, "s1", "media:enc=utf8", boolPtr(false))); err != nil {
-		t.Fatalf("STREAM_START: %v", err)
-	}
-	for i := uint64(0); i < 16; i++ {
-		payload, encErr := cborlib.Marshal([]byte{byte(i)})
-		if encErr != nil {
-			t.Fatalf("cbor encode: %v", encErr)
-		}
-		checksum := ComputeChecksum(payload)
-		if err := hostWriter.WriteFrame(NewChunk(rid, "s1", i, payload, i, checksum)); err != nil {
-			t.Fatalf("CHUNK %d: %v", i, err)
-		}
-	}
-	if err := hostWriter.WriteFrame(NewStreamEnd(rid, "s1", 16)); err != nil {
-		t.Fatalf("STREAM_END: %v", err)
-	}
-	if err := hostWriter.WriteFrame(NewEnd(rid, nil)); err != nil {
-		t.Fatalf("END: %v", err)
-	}
-
+// grantsWithin collects the CREDIT grants for stream s1 that arrive within d.
+func grantsWithin(outFrames <-chan Frame, d time.Duration) []uint64 {
 	var grants []uint64
-	deadline := time.After(3 * time.Second)
-collect:
+	deadline := time.After(d)
 	for {
 		select {
 		case f, ok := <-outFrames:
 			if !ok {
-				t.Fatal("output closed before END")
+				return grants
 			}
 			if f.FrameType == FrameTypeCredit && f.StreamId != nil && *f.StreamId == "s1" {
 				if cc := f.CreditCount(); cc != nil {
 					grants = append(grants, *cc)
 				}
 			}
-			if f.FrameType == FrameTypeEnd && f.Id.Equals(rid) {
-				break collect
-			}
 		case <-deadline:
-			t.Fatal("timed out waiting for END")
-		}
-	}
-
-	if len(grants) != 4 {
-		t.Fatalf("expected 4 batched grants (window/2 = 4 each), got %v", grants)
-	}
-	for i, g := range grants {
-		if g != 4 {
-			t.Errorf("grant %d: expected 4, got %d", i, g)
+			return grants
 		}
 	}
 }
 
-// TEST7053 (Rust/Swift: "a chunk received beyond the granted window is a
-// fatal CREDIT_VIOLATION", exercised by sending 3 chunks against a window of
-// 2 with nothing consumed) is NOT reachable as an end-to-end wire test in
-// this mirror and is deliberately not ported as a false pass.
-//
-// This mirror's live per-request demux (see the live-input-model port: frames
-// are forwarded to the handler's channel as they arrive, replacing the
-// former buffer-then-dispatch design) deliberately keeps crediting keyed to
-// wire ACCEPTANCE, not to the handler actually reading a frame off its live
-// channel (see TEST7052's comment above) — every accepted chunk immediately
-// re-grants once its half-window batch threshold is crossed, synchronously,
-// in the same read-process cycle. For any wire-negotiable initial_credit
-// (>= 1 — both this mirror's HandshakeAccept and the Rust reference's
-// hello_initial_credit() treat a non-positive value identically to an absent
-// field and substitute DEFAULT_INITIAL_CREDIT, so 0 is not a negotiable
-// window either language honors) the window is therefore bounded below by
-// initial_credit - batch >= 0 and cannot go negative under any single-stream
-// chunk sequence a real sender can produce over this mirror's synchronous
-// one-frame-at-a-time transport: there is no decoupled "handler hasn't
-// consumed yet" phase to exploit the way the Rust/Swift live-streaming
-// demux's TEST7053 does (it stalls consumption by never calling recv()) —
-// unlike Rust/Swift, this mirror's crediting is intentionally NOT wired to
-// handler consumption, only to live delivery.
-//
-// The credit-violation MECHANISM itself (window decrement, `< 0` check,
-// CREDIT_VIOLATION ERR, counted CreditViolation drop) is still exercised by
-// inspection of runCBORModeIO's FrameTypeChunk handling and remains intact;
-// only the wire-reachable trigger for it does not exist in this
-// architecture at any negotiable window size.
+// openRequest starts request rid on the test capability with one scalar
+// stream s1.
+func openRequest(t *testing.T, hostWriter *FrameWriter, rid MessageId) {
+	t.Helper()
+	require.NoError(t, hostWriter.WriteFrame(NewReq(rid, testCapUrn, nil, "application/cbor")))
+	require.NoError(t, hostWriter.WriteFrame(NewStreamStart(rid, "s1", "media:enc=utf8", boolPtr(false))))
+}
+
+// TEST7063: a receiver grants what its handler has taken before it waits on
+// empty input: a handler that has taken fewer chunks than half the window and
+// then waits for more has had them granted back.
+func Test7063_grants_flushed_before_waiting_on_empty_input(t *testing.T) {
+	rt, err := NewCartridgeRuntime([]byte(testManifest))
+	require.NoError(t, err)
+	rt.Register(testCapUrn, drainingHandler)
+	hostWriter, outFrames, negotiated := startTestCartridge(t, rt, 8)
+	require.Equal(t, 8, negotiated.InitialCredit)
+
+	rid := NewMessageIdRandom()
+	openRequest(t, hostWriter, rid)
+	sendChunks(t, hostWriter, rid, 0, 3)
+
+	grants := grantsWithin(outFrames, 2*time.Second)
+	var total uint64
+	for _, g := range grants {
+		total += g
+	}
+	assert.Equal(t, uint64(3), total, "the three chunks taken are granted before the handler waits, got %v", grants)
+}
+
+// TEST7052: input credit follows the handler's reads: every chunk the handler
+// takes is granted back, in grants of at most half the window, and a handler
+// that takes nothing produces no grant.
+func Test7052_input_grants_are_batched(t *testing.T) {
+	rt, err := NewCartridgeRuntime([]byte(testManifest))
+	require.NoError(t, err)
+	rt.Register(testCapUrn, drainingHandler)
+	hostWriter, outFrames, negotiated := startTestCartridge(t, rt, 8)
+	require.Equal(t, 8, negotiated.InitialCredit)
+
+	rid := NewMessageIdRandom()
+	openRequest(t, hostWriter, rid)
+	sendChunks(t, hostWriter, rid, 0, 8)
+	// The first window is taken and granted before the next one is sent.
+	first := grantsWithin(outFrames, 2*time.Second)
+	sendChunks(t, hostWriter, rid, 8, 8)
+	second := grantsWithin(outFrames, 2*time.Second)
+	var total uint64
+	for _, g := range append(first, second...) {
+		assert.LessOrEqual(t, g, uint64(4), "a grant is at most half the window")
+		total += g
+	}
+	assert.Equal(t, uint64(16), total, "every chunk taken is granted back: %v %v", first, second)
+
+	release := make(chan struct{})
+	defer close(release)
+	idle, err := NewCartridgeRuntime([]byte(testManifest))
+	require.NoError(t, err)
+	idle.Register(testCapUrn, func(frames <-chan Frame, emitter StreamEmitter, peer PeerInvoker) error {
+		<-release
+		return nil
+	})
+	idleWriter, idleFrames, _ := startTestCartridge(t, idle, 8)
+	idleRid := NewMessageIdRandom()
+	openRequest(t, idleWriter, idleRid)
+	sendChunks(t, idleWriter, idleRid, 0, 8)
+	assert.Empty(t, grantsWithin(idleFrames, 500*time.Millisecond), "a handler that takes nothing produces no grant")
+}
+
+// sendChunkAt writes one CBOR byte-string chunk on stream of request rid,
+// saying chunk_index index.
+func sendChunkAt(t *testing.T, hostWriter *FrameWriter, rid MessageId, stream string, index uint64) {
+	t.Helper()
+	payload, err := cborlib.Marshal([]byte{byte(index)})
+	require.NoError(t, err)
+	require.NoError(t, hostWriter.WriteFrame(NewChunk(rid, stream, index, payload, index, ComputeChecksum(payload))))
+}
+
+// TEST7053: a chunk received beyond the granted window is a CREDIT_VIOLATION
+// error on that stream; the request goes on: another stream of the same
+// request is still delivered whole, and no ERR reaches the host (L12).
+func Test7053_over_window_chunk_is_credit_violation(t *testing.T) {
+	release := make(chan struct{})
+	barrier := make(chan struct{})
+	seen := make(chan []Frame, 1)
+	var calls int32
+	var callsMu sync.Mutex
+	rt, err := NewCartridgeRuntime([]byte(testManifest))
+	require.NoError(t, err)
+	rt.Register(testCapUrn, func(frames <-chan Frame, emitter StreamEmitter, peer PeerInvoker) error {
+		callsMu.Lock()
+		calls++
+		first := calls == 1
+		callsMu.Unlock()
+		if !first {
+			// The second request's REQ is read after every frame of the
+			// first, so the first request's frames have all arrived.
+			close(barrier)
+			for range frames {
+			}
+			return nil
+		}
+		// Nothing is taken until every frame has arrived, so no grant can
+		// extend the window: the third chunk on s1 is a violation by
+		// construction, not by timing.
+		<-release
+		var got []Frame
+		for f := range frames {
+			got = append(got, f)
+		}
+		seen <- got
+		return nil
+	})
+	hostWriter, outFrames, _ := startTestCartridge(t, rt, 2)
+
+	rid := NewMessageIdRandom()
+	require.NoError(t, hostWriter.WriteFrame(NewReq(rid, testCapUrn, nil, "application/cbor")))
+	for _, stream := range []string{"s1", "s2"} {
+		require.NoError(t, hostWriter.WriteFrame(NewStreamStart(rid, stream, "media:enc=utf8", boolPtr(false))))
+	}
+	for i := uint64(0); i < 3; i++ {
+		sendChunkAt(t, hostWriter, rid, "s1", i)
+	}
+	for i := uint64(0); i < 2; i++ {
+		sendChunkAt(t, hostWriter, rid, "s2", i)
+	}
+	require.NoError(t, hostWriter.WriteFrame(NewStreamEnd(rid, "s1", 3)))
+	require.NoError(t, hostWriter.WriteFrame(NewStreamEnd(rid, "s2", 2)))
+	require.NoError(t, hostWriter.WriteFrame(NewEnd(rid, nil)))
+
+	other := NewMessageIdRandom()
+	require.NoError(t, hostWriter.WriteFrame(NewReq(other, testCapUrn, nil, "application/cbor")))
+	require.NoError(t, hostWriter.WriteFrame(NewEnd(other, nil)))
+	select {
+	case <-barrier:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the second request was never dispatched")
+	}
+	close(release)
+
+	var got []Frame
+	select {
+	case got = <-seen:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the handler never finished reading its input")
+	}
+	chunks := map[string]int{}
+	ended := map[string]bool{}
+	var streamErr *Frame
+	sawEnd := false
+	for i := range got {
+		f := got[i]
+		switch f.FrameType {
+		case FrameTypeChunk:
+			chunks[*f.StreamId]++
+		case FrameTypeStreamEnd:
+			ended[*f.StreamId] = true
+		case FrameTypeErr:
+			streamErr = &f
+		case FrameTypeEnd:
+			sawEnd = true
+		}
+	}
+	require.NotNil(t, streamErr, "the violation must reach the handler, saw %v", got)
+	stream, scoped := streamErr.ErrStream()
+	assert.True(t, scoped, "the violation is s1's error, not the request's")
+	assert.Equal(t, "s1", stream)
+	assert.Equal(t, "CREDIT_VIOLATION", streamErr.ErrorCode())
+	assert.Equal(t, "chunk received beyond the granted window on stream s1 (L12)", streamErr.ErrorMessage())
+	assert.Equal(t, 2, chunks["s1"], "s1's chunks within the window are delivered")
+	assert.False(t, ended["s1"], "the broken stream ends with its error")
+	assert.Equal(t, 2, chunks["s2"], "the request goes on: s2 is delivered whole")
+	assert.True(t, ended["s2"])
+	assert.True(t, sawEnd, "the request reaches its END")
+
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case f, ok := <-outFrames:
+			require.True(t, ok, "output closed before the request ended")
+			if !f.Id.Equals(rid) {
+				continue
+			}
+			require.NotEqual(t, FrameTypeErr, f.FrameType, "no ERR reaches the host: %s %s", f.ErrorCode(), f.ErrorMessage())
+			if f.FrameType == FrameTypeEnd {
+				return
+			}
+		case <-deadline:
+			t.Fatal("the request never ended")
+		}
+	}
+}
+
+// responseGrants collects the Response-direction CREDIT grants for peer
+// request rid that arrive within d, and their total.
+func responseGrants(outFrames <-chan Frame, rid MessageId, d time.Duration) uint64 {
+	var total uint64
+	deadline := time.After(d)
+	for {
+		select {
+		case f, ok := <-outFrames:
+			if !ok {
+				return total
+			}
+			if f.FrameType != FrameTypeCredit || !f.Id.Equals(rid) {
+				continue
+			}
+			if dir := f.CreditDirectionValue(); dir == nil || *dir != CreditDirectionResponse {
+				continue
+			}
+			if cc := f.CreditCount(); cc != nil {
+				total += *cc
+			}
+		case <-deadline:
+			return total
+		}
+	}
+}
+
+// TEST7202: a caller that does not read a peer's response grants nothing
+// beyond the initial window; the chunks it then reads are granted back.
+func Test7202_unread_peer_response_is_not_granted(t *testing.T) {
+	const peerCap = `cap:in="media:void";peer-test;out="media:void"`
+	release := make(chan struct{})
+	read := make(chan int, 1)
+	rt, err := NewCartridgeRuntime([]byte(testManifest))
+	require.NoError(t, err)
+	rt.Register(testCapUrn, func(frames <-chan Frame, emitter StreamEmitter, peer PeerInvoker) error {
+		response, err := peer.Invoke(peerCap, nil)
+		if err != nil {
+			return err
+		}
+		<-release
+		chunks := 0
+		for f := range response {
+			if f.FrameType == FrameTypeChunk {
+				chunks++
+			}
+		}
+		read <- chunks
+		for range frames {
+		}
+		return nil
+	})
+	hostWriter, outFrames, _ := startTestCartridge(t, rt, 4)
+	rid := NewMessageIdRandom()
+	require.NoError(t, hostWriter.WriteFrame(NewReq(rid, testCapUrn, nil, "application/cbor")))
+	require.NoError(t, hostWriter.WriteFrame(NewEnd(rid, nil)))
+
+	var peerRid MessageId
+	deadline := time.After(5 * time.Second)
+	for found := false; !found; {
+		select {
+		case f, ok := <-outFrames:
+			require.True(t, ok, "output closed before the peer call")
+			if f.FrameType == FrameTypeReq {
+				peerRid = f.Id
+				found = true
+			}
+		case <-deadline:
+			t.Fatal("the handler's peer call never arrived")
+		}
+	}
+	require.NoError(t, hostWriter.WriteFrame(NewStreamStart(peerRid, "r", "media:enc=utf8", boolPtr(false))))
+	for i := uint64(0); i < 4; i++ {
+		sendChunkAt(t, hostWriter, peerRid, "r", i)
+	}
+	require.NoError(t, hostWriter.WriteFrame(NewStreamEnd(peerRid, "r", 4)))
+	require.NoError(t, hostWriter.WriteFrame(NewEnd(peerRid, nil)))
+
+	assert.Zero(t, responseGrants(outFrames, peerRid, 500*time.Millisecond),
+		"a response nobody has read is granted nothing beyond the initial window")
+	close(release)
+	assert.Equal(t, uint64(4), responseGrants(outFrames, peerRid, 2*time.Second),
+		"the chunks the caller reads are granted back")
+	select {
+	case n := <-read:
+		assert.Equal(t, 4, n, "the caller reads the whole response")
+	case <-time.After(2 * time.Second):
+		t.Fatal("the caller never finished reading the response")
+	}
+}
+
+// TEST8214: when the host's frames end with a request's input still open,
+// the request is cut short: its handler sees its frames stop without their
+// END, and the runtime returns rather than waiting for input that will never
+// come.
+func Test8214_input_cut_short_when_the_host_frames_end(t *testing.T) {
+	rt, err := NewCartridgeRuntime([]byte(testManifest))
+	require.NoError(t, err)
+	sawEnd := make(chan bool, 1)
+	rt.Register(testCapUrn, func(frames <-chan Frame, emitter StreamEmitter, peer PeerInvoker) error {
+		ended := false
+		for f := range frames {
+			if f.FrameType == FrameTypeEnd {
+				ended = true
+			}
+		}
+		sawEnd <- ended
+		return nil
+	})
+	inR, inW := io.Pipe()
+	outR, outW := io.Pipe()
+	done := make(chan error, 1)
+	go func() { done <- rt.runCBORModeIO(inR, outW) }()
+	hostWriter := NewFrameWriter(inW)
+	hostReader := NewFrameReader(outR)
+	require.NoError(t, hostWriter.WriteFrame(NewHello(DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit)))
+	hello, err := hostReader.ReadFrame()
+	require.NoError(t, err)
+	require.Equal(t, FrameTypeHello, hello.FrameType)
+	require.NoError(t, hostWriter.WriteFrame(NewPolicyFrame(HostPolicy{Network: NetworkPolicyFull})))
+	go func() { _, _ = io.Copy(io.Discard, outR) }()
+
+	rid := NewMessageIdRandom()
+	openRequest(t, hostWriter, rid)
+	sendChunks(t, hostWriter, rid, 0, 1)
+	require.NoError(t, inW.Close())
+
+	select {
+	case ended := <-sawEnd:
+		assert.False(t, ended, "the handler's input stops without its END")
+	case <-time.After(5 * time.Second):
+		t.Fatal("the handler's input must end when the host's frames do")
+	}
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the runtime must return once the host's frames end")
+	}
+}
 
 // TestPoolCapacityQueuesRequestsBeyondLimit: with the `all` pool declared
 // at capacity 1 (see pools.go), a second request arriving while the first

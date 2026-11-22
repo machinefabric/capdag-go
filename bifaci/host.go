@@ -2474,7 +2474,7 @@ func parseCapGroupsFromManifest(manifest []byte) ([]CapGroup, error) {
 	for _, group := range parsed.CapGroups {
 		for i := range group.Caps {
 			capUrn := group.Caps[i].Urn
-			if capUrn != nil && identityUrn.ConformsTo(capUrn) {
+			if capUrn != nil && capUrn.IsEquivalent(identityUrn) {
 				hasIdentity = true
 				break
 			}

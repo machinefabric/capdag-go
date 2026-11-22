@@ -220,19 +220,19 @@ func ConnectRelayMaster(socketReader *FrameReader) (*RelayMaster, error) {
 		}
 	}
 
-	manifest := frame.RelayNotifyManifest()
-	if manifest == nil {
-		return nil, &RelayError{Type: RelayErrorTypeProtocol, Message: "RelayNotify missing manifest"}
+	manifest, err := frame.RelayNotifyManifest()
+	if err != nil {
+		return nil, &RelayError{Type: RelayErrorTypeProtocol, Message: err.Error()}
 	}
 
-	limits := frame.RelayNotifyLimits()
-	if limits == nil {
-		return nil, &RelayError{Type: RelayErrorTypeProtocol, Message: "RelayNotify missing limits"}
+	limits, err := frame.RelayNotifyLimits()
+	if err != nil {
+		return nil, &RelayError{Type: RelayErrorTypeProtocol, Message: err.Error()}
 	}
 
 	return &RelayMaster{
 		manifest: manifest,
-		limits:   *limits,
+		limits:   limits,
 	}, nil
 }
 
@@ -267,13 +267,19 @@ func (rm *RelayMaster) ReadFrame(socketReader *FrameReader) (*Frame, error) {
 		}
 
 		if frame.FrameType == FrameTypeRelayNotify {
-			// Intercept: update manifest and limits
-			if m := frame.RelayNotifyManifest(); m != nil {
-				rm.manifest = m
+			// Intercept: update manifest and limits. Both are read before
+			// either is kept: a RelayNotify missing one is refused and leaves
+			// what was last said.
+			manifest, err := frame.RelayNotifyManifest()
+			if err != nil {
+				return nil, err
 			}
-			if l := frame.RelayNotifyLimits(); l != nil {
-				rm.limits = *l
+			limits, err := frame.RelayNotifyLimits()
+			if err != nil {
+				return nil, err
 			}
+			rm.manifest = manifest
+			rm.limits = limits
 			continue // Don't return relay frames to caller
 		} else if frame.FrameType == FrameTypeRelayState {
 			// RelayState from slave? Protocol error — drop

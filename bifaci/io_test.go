@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/fxamacker/cbor/v2"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func assertUintMetaValue(t *testing.T, meta map[string]interface{}, key string, expected uint64) {
@@ -568,7 +570,7 @@ func Test226_decode_missing_version(t *testing.T) {
 	// Build CBOR map with frame_type and id but missing version
 	// Map with keys 1 (frame_type) and 2 (id) but no key 0 (version)
 	m := make(map[int]interface{})
-	m[keyFrameType] = uint8(FrameTypeReq)
+	m[keyFrameType] = FrameTypeReq.Code()
 	m[keyId] = uint64(0)
 
 	encoded, _ := cbor.Marshal(m)
@@ -581,7 +583,7 @@ func Test226_decode_missing_version(t *testing.T) {
 // TEST227: Test decode_frame rejects CBOR map with invalid frame_type value
 func Test227_decode_invalid_frame_type_value(t *testing.T) {
 	m := make(map[int]interface{})
-	m[keyVersion] = uint8(1)
+	m[keyVersion] = uint8(ProtocolVersion)
 	m[keyFrameType] = uint8(99) // invalid frame type
 	m[keyId] = uint64(0)
 
@@ -592,11 +594,50 @@ func Test227_decode_invalid_frame_type_value(t *testing.T) {
 	}
 }
 
+// handBuiltFrame is a frame of the given version and frame type with an id
+// and nothing else, as bytes.
+func handBuiltFrame(t *testing.T, version, frameType int64) []byte {
+	t.Helper()
+	m := map[int]interface{}{keyVersion: version, keyFrameType: frameType, keyId: uint64(0)}
+	encoded, err := cbor.Marshal(m)
+	require.NoError(t, err)
+	return encoded
+}
+
+// TEST7188: Every frame is of this protocol version: DecodeFrame refuses a
+// frame of another version, naming both, and a version beyond a byte is
+// refused rather than read as the byte it wraps to (262 is not 6).
+func Test7188_decode_refuses_another_protocol_version(t *testing.T) {
+	heartbeat := int64(FrameTypeHeartbeat.Code())
+	_, err := DecodeFrame(handBuiltFrame(t, 5, heartbeat))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ours 6")
+	assert.Contains(t, err.Error(), "theirs 5")
+
+	_, err = DecodeFrame(handBuiltFrame(t, 262, heartbeat))
+	require.Error(t, err, "version 262 must be refused, not read as 6")
+	assert.Contains(t, err.Error(), "262")
+
+	ours, err := DecodeFrame(handBuiltFrame(t, int64(ProtocolVersion), heartbeat))
+	require.NoError(t, err)
+	assert.Equal(t, ProtocolVersion, ours.Version)
+}
+
+// TEST7200: A frame type is read whole: DecodeFrame refuses 257, 259 and -255,
+// each naming the value, rather than reading them as the byte they wrap to.
+func Test7200_decode_refuses_frame_type_beyond_a_byte(t *testing.T) {
+	for _, frameType := range []int64{257, 259, -255} {
+		_, err := DecodeFrame(handBuiltFrame(t, int64(ProtocolVersion), frameType))
+		require.Error(t, err, "frame type %d must be refused", frameType)
+		assert.Contains(t, err.Error(), fmt.Sprintf("%d", frameType))
+	}
+}
+
 // TEST228: Test decode_frame rejects CBOR map missing required id field
 func Test228_decode_missing_id(t *testing.T) {
 	m := make(map[int]interface{})
-	m[keyVersion] = uint8(1)
-	m[keyFrameType] = uint8(FrameTypeReq)
+	m[keyVersion] = uint8(ProtocolVersion)
+	m[keyFrameType] = FrameTypeReq.Code()
 	// No ID field
 
 	encoded, _ := cbor.Marshal(m)
@@ -612,7 +653,7 @@ func Test228_decode_missing_id(t *testing.T) {
 func Test7003_decode_rejects_malformed_id_wrong_length(t *testing.T) {
 	m := make(map[int]interface{})
 	m[keyVersion] = uint8(ProtocolVersion)
-	m[keyFrameType] = uint8(FrameTypeReq)
+	m[keyFrameType] = FrameTypeReq.Code()
 	m[keyId] = []byte{1, 2, 3, 4, 5} // 5 bytes -- not a valid UUID length
 
 	encoded, err := cbor.Marshal(m)
@@ -633,7 +674,7 @@ func Test7003_decode_rejects_malformed_id_wrong_length(t *testing.T) {
 func Test7004_decode_rejects_malformed_id_wrong_type(t *testing.T) {
 	m := make(map[int]interface{})
 	m[keyVersion] = uint8(ProtocolVersion)
-	m[keyFrameType] = uint8(FrameTypeReq)
+	m[keyFrameType] = FrameTypeReq.Code()
 	m[keyId] = "not-an-id" // text string is neither bytes[16] nor uint
 
 	encoded, err := cbor.Marshal(m)
@@ -655,7 +696,7 @@ func Test7005_decode_rejects_malformed_routing_id(t *testing.T) {
 	base := func() map[int]interface{} {
 		m := make(map[int]interface{})
 		m[keyVersion] = uint8(ProtocolVersion)
-		m[keyFrameType] = uint8(FrameTypeReq)
+		m[keyFrameType] = FrameTypeReq.Code()
 		m[keyId] = uint64(1)
 		return m
 	}
@@ -1050,17 +1091,17 @@ func Test848_relay_notify_roundtrip(t *testing.T) {
 		t.Errorf("Expected RELAY_NOTIFY, got %v", decoded.FrameType)
 	}
 
-	extractedManifest := decoded.RelayNotifyManifest()
-	if extractedManifest == nil {
-		t.Fatal("RelayNotifyManifest() returned nil after roundtrip")
+	extractedManifest, err := decoded.RelayNotifyManifest()
+	if err != nil {
+		t.Fatalf("RelayNotifyManifest() failed after roundtrip: %v", err)
 	}
 	if string(extractedManifest) != string(manifest) {
 		t.Errorf("Manifest mismatch after roundtrip: got %s", string(extractedManifest))
 	}
 
-	extractedLimits := decoded.RelayNotifyLimits()
-	if extractedLimits == nil {
-		t.Fatal("RelayNotifyLimits() returned nil after roundtrip")
+	extractedLimits, err := decoded.RelayNotifyLimits()
+	if err != nil {
+		t.Fatalf("RelayNotifyLimits() failed after roundtrip: %v", err)
 	}
 	if extractedLimits.MaxFrame != maxFrame {
 		t.Errorf("MaxFrame mismatch: expected %d, got %d", maxFrame, extractedLimits.MaxFrame)
@@ -1707,6 +1748,64 @@ func Test481_verify_identity_succeeds(t *testing.T) {
 	hostWrite.Close()
 	cartridgeRead.Close()
 	cartridgeWrite.Close()
+}
+
+// TEST7194: identity verification judges the echo by its value, not its
+// bytes on the wire: the nonce echoed as two CBOR byte strings (3 and 4 bytes)
+// passes, and a CBOR text "bifaci" fails, naming "Expected bytes chunk".
+func Test7194_identity_echo_judged_by_value(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		echo   func(nonce []byte) []interface{}
+		passes bool
+	}{
+		{"split bytes", func(nonce []byte) []interface{} { return []interface{}{nonce[:3], nonce[3:]} }, true},
+		{"text", func([]byte) []interface{} { return []interface{}{"bifaci"} }, false},
+	} {
+		hostRead, cartridgeWrite := net.Pipe()
+		cartridgeRead, hostWrite := net.Pipe()
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			reader := NewFrameReader(cartridgeRead)
+			writer := NewFrameWriter(cartridgeWrite)
+			req, payload := drainIdentityRequest(t, reader)
+			var nonce []byte
+			if err := cbor.Unmarshal(payload, &nonce); err != nil {
+				t.Errorf("%s: the probe carries its nonce as a byte string: %v", c.name, err)
+				return
+			}
+			pieces := c.echo(nonce)
+			frames := []*Frame{NewStreamStart(req.Id, "echo", "media:", boolPtr(false))}
+			for i, piece := range pieces {
+				encoded, err := cbor.Marshal(piece)
+				if err != nil {
+					t.Errorf("%s: encode: %v", c.name, err)
+					return
+				}
+				frames = append(frames, NewChunk(req.Id, "echo", uint64(i), encoded, uint64(i), ComputeChecksum(encoded)))
+			}
+			frames = append(frames, NewStreamEnd(req.Id, "echo", uint64(len(pieces))), NewEnd(req.Id, nil))
+			for _, f := range frames {
+				f.RoutingId = req.RoutingId
+				if err := writer.WriteFrame(f); err != nil {
+					return
+				}
+			}
+		}()
+		err := VerifyIdentity(NewFrameReader(hostRead), NewFrameWriter(hostWrite))
+		if c.passes {
+			assert.NoError(t, err, c.name)
+		} else {
+			require.Error(t, err, c.name)
+			assert.Contains(t, err.Error(), "Expected bytes chunk", c.name)
+		}
+		hostRead.Close()
+		hostWrite.Close()
+		cartridgeRead.Close()
+		cartridgeWrite.Close()
+		<-done
+	}
 }
 
 // TEST482: verify_identity fails when cartridge returns ERR on identity call

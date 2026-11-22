@@ -46,8 +46,8 @@ func saturated(n *big.Int) uint64 {
 	return n.Uint64()
 }
 
-// model is the model's frame type for this one. The mapping is by hand; that
-// each type is the one the model means by its wire number is TEST12375.
+// model is the model's frame type for this one; frameTypeFromModel is its
+// exact inverse.
 func (ft FrameType) model() model.FrameType {
 	switch ft {
 	case FrameTypeHello:
@@ -85,10 +85,63 @@ func (ft FrameType) model() model.FrameType {
 	}
 }
 
+// frameTypeFromModel is the frame type the model names, the exact inverse of
+// model.
+func frameTypeFromModel(m model.FrameType) FrameType {
+	switch m.(type) {
+	case model.FrameTypeHello:
+		return FrameTypeHello
+	case model.FrameTypeReq:
+		return FrameTypeReq
+	case model.FrameTypeChunk:
+		return FrameTypeChunk
+	case model.FrameTypeFin:
+		return FrameTypeEnd
+	case model.FrameTypeLog:
+		return FrameTypeLog
+	case model.FrameTypeErr:
+		return FrameTypeErr
+	case model.FrameTypeHeartbeat:
+		return FrameTypeHeartbeat
+	case model.FrameTypeStreamStart:
+		return FrameTypeStreamStart
+	case model.FrameTypeStreamEnd:
+		return FrameTypeStreamEnd
+	case model.FrameTypeRelayNotify:
+		return FrameTypeRelayNotify
+	case model.FrameTypeRelayState:
+		return FrameTypeRelayState
+	case model.FrameTypeCancel:
+		return FrameTypeCancel
+	case model.FrameTypeCredit:
+		return FrameTypeCredit
+	case model.FrameTypeCloseStream:
+		return FrameTypeCloseStream
+	case model.FrameTypePolicy:
+		return FrameTypePolicy
+	default:
+		panic(fmt.Sprintf("BUG: the model's frame type %#v has no runtime type", m))
+	}
+}
+
+// FrameTypeOfCode is the frame type a wire number names, by the model's
+// FrameType.ofCode; false for a number that names none.
+func FrameTypeOfCode(code uint64) (FrameType, bool) {
+	named := decided(model.OfCode(nat(code)))
+	if !named.Valid {
+		return 0, false
+	}
+	return frameTypeFromModel(named.Value), true
+}
+
+// Code is this frame type's wire number, by the model's FrameType.code.
+func (ft FrameType) Code() uint64 { return ft.facts().code }
+
 // frameFacts is what the model says of one frame type.
 type frameFacts struct {
 	flow     bool
 	terminal bool
+	code     uint64
 }
 
 // frameFactsByType is the model's answers for every frame type, asked once:
@@ -99,6 +152,7 @@ var frameFactsByType = sync.OnceValue(func() map[FrameType]frameFacts {
 		facts[ft] = frameFacts{
 			flow:     decided(model.IsFlow(ft.model())),
 			terminal: decided(model.IsTerminal(ft.model())),
+			code:     count(decided(model.Code(ft.model()))),
 		}
 	}
 	return facts

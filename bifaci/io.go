@@ -326,58 +326,15 @@ func identityNonce() []byte {
 // Must be called after handshake, before any other traffic.
 // (matches Rust verify_identity)
 func VerifyIdentity(reader *FrameReader, writer *FrameWriter) error {
-	nonce := identityNonce()
-	reqId := NewMessageIdRandom()
-	streamId := "identity-verify"
-	xid := NewMessageIdFromUint(0)
 	seq := NewSeqAssigner()
-
-	// Send REQ (empty payload) with XID + seq
-	req := NewReq(reqId, standard.CapIdentity, []byte{}, "application/cbor")
-	req.RoutingId = &xid
-	seq.Assign(req)
-	if err := writer.WriteFrame(req); err != nil {
-		return err
+	for _, frame := range identityProbeFrames(NewMessageIdRandom(), NewMessageIdFromUint(0)) {
+		seq.Assign(frame)
+		if err := writer.WriteFrame(frame); err != nil {
+			return err
+		}
 	}
 
-	// Send request body: STREAM_START → CHUNK → STREAM_END → END
-	streamStart := NewStreamStart(reqId, streamId, "media:", nil)
-	streamStart.RoutingId = &xid
-	seq.Assign(streamStart)
-	if err := writer.WriteFrame(streamStart); err != nil {
-		return err
-	}
-
-	// CBOR-encode nonce before checksumming (protocol v2: CHUNK payload = CBOR-encoded data)
-	cborNonce, err := cbor2.Marshal(nonce)
-	if err != nil {
-		return fmt.Errorf("BUG: failed to CBOR-encode nonce: %w", err)
-	}
-	checksum := ComputeChecksum(cborNonce)
-	chunk := NewChunk(reqId, streamId, 0, cborNonce, 0, checksum)
-	chunk.RoutingId = &xid
-	seq.Assign(chunk)
-	if err := writer.WriteFrame(chunk); err != nil {
-		return err
-	}
-
-	streamEnd := NewStreamEnd(reqId, streamId, 1)
-	streamEnd.RoutingId = &xid
-	seq.Assign(streamEnd)
-	if err := writer.WriteFrame(streamEnd); err != nil {
-		return err
-	}
-
-	end := NewEnd(reqId, nil)
-	end.RoutingId = &xid
-	seq.Assign(end)
-	if err := writer.WriteFrame(end); err != nil {
-		return err
-	}
-
-	// Read response — expect STREAM_START → CHUNK(s) → STREAM_END → END
-	// Each CHUNK payload is CBOR-encoded (protocol v2), decode each and concatenate
-	var cborChunks [][]byte
+	var echo identityEcho
 	for {
 		frame, err := reader.ReadFrame()
 		if err != nil {
@@ -386,53 +343,93 @@ func VerifyIdentity(reader *FrameReader, writer *FrameWriter) error {
 			}
 			return err
 		}
-
-		switch frame.FrameType {
-		case FrameTypeStreamStart:
-			// no-op
-		case FrameTypeChunk:
-			if frame.Payload != nil {
-				var decoded []byte
-				if err := cbor2.Unmarshal(frame.Payload, &decoded); err != nil {
-					return fmt.Errorf("Failed to decode CBOR chunk: %w", err)
-				}
-				cborChunks = append(cborChunks, decoded)
-			}
-		case FrameTypeStreamEnd:
-			// no-op
-		case FrameTypeEnd:
-			// Concatenate all decoded chunks
-			var accumulated []byte
-			for _, c := range cborChunks {
-				accumulated = append(accumulated, c...)
-			}
-			if !bytesEqual(accumulated, nonce) {
-				return fmt.Errorf(
-					"Identity verification failed: payload mismatch (expected %d bytes, got %d)",
-					len(nonce), len(accumulated),
-				)
-			}
-			return nil
-		case FrameTypeErr:
-			code := frame.ErrorCode()
-			if code == "" {
-				code = "UNKNOWN"
-			}
-			msg := frame.ErrorMessage()
-			if msg == "" {
-				msg = "no message"
-			}
-			return fmt.Errorf("Identity verification failed: [%s] %s", code, msg)
-		case FrameTypeLog, FrameTypeCredit, FrameTypeHeartbeat:
-			// Control/side-channel frames are legal ANYWHERE during the
-			// probe (spec 12.4: LOG interleaves without affecting data
-			// flow; CREDIT/HEARTBEAT are the control plane the writer
-			// gate itself exempts, L4). A v4 cartridge crediting its
-			// probe input as it consumes (L10) must not fail identity
-			// verification.
-		default:
-			return fmt.Errorf("Identity verification: unexpected frame type %v", frame.FrameType)
+		done, err := echo.accept(frame)
+		if err != nil {
+			return err
 		}
+		if done {
+			return nil
+		}
+	}
+}
+
+// identityProbeFrames is the identity probe for request rid on routing id
+// xid: REQ(CAP_IDENTITY), STREAM_START, one CHUNK carrying the nonce wrapped
+// as one CBOR byte string, STREAM_END(1) and END. The handshake's
+// verification and every relay-switch probe send exactly these; the caller
+// assigns their seq.
+func identityProbeFrames(rid MessageId, xid MessageId) []*Frame {
+	const streamID = "identity-verify"
+	cborNonce, err := cbor2.Marshal(identityNonce())
+	if err != nil {
+		panic(fmt.Sprintf("BUG: failed to CBOR-encode the identity nonce: %v", err))
+	}
+	scalar := false
+	frames := []*Frame{
+		NewReq(rid, standard.CapIdentity, []byte{}, "application/cbor"),
+		NewStreamStart(rid, streamID, "media:", &scalar),
+		NewChunk(rid, streamID, 0, cborNonce, 0, ComputeChecksum(cborNonce)),
+		NewStreamEnd(rid, streamID, 1),
+		NewEnd(rid, nil),
+	}
+	for _, frame := range frames {
+		routing := xid
+		frame.RoutingId = &routing
+	}
+	return frames
+}
+
+// identityEcho judges an identity echo frame by frame: each CHUNK must carry a
+// CBOR byte string, their concatenation at END must be the nonce, and an ERR
+// is the probe failing. The handshake's verification and every relay-switch
+// probe judge the echo the same way.
+type identityEcho struct {
+	bytes []byte
+}
+
+// accept takes the next frame of the echo: done when the echo is complete and
+// right, an error naming what is wrong otherwise.
+func (e *identityEcho) accept(frame *Frame) (bool, error) {
+	switch frame.FrameType {
+	case FrameTypeChunk:
+		var value interface{}
+		if err := cbor2.Unmarshal(frame.Payload, &value); err != nil {
+			return false, fmt.Errorf("Failed to decode CBOR chunk: %w", err)
+		}
+		bytes, ok := value.([]byte)
+		if !ok {
+			return false, fmt.Errorf("Expected bytes chunk, got %#v", value)
+		}
+		e.bytes = append(e.bytes, bytes...)
+		return false, nil
+	case FrameTypeEnd:
+		nonce := identityNonce()
+		if !bytesEqual(e.bytes, nonce) {
+			return false, fmt.Errorf(
+				"Identity verification failed: payload mismatch (expected %d bytes, got %d)",
+				len(nonce), len(e.bytes),
+			)
+		}
+		return true, nil
+	case FrameTypeErr:
+		code := frame.ErrorCode()
+		if code == "" {
+			return false, errors.New("ERR frame missing required text code")
+		}
+		msg := frame.ErrorMessage()
+		if msg == "" {
+			return false, errors.New("ERR frame missing required text message")
+		}
+		return false, fmt.Errorf("Identity verification failed: [%s] %s", code, msg)
+	case FrameTypeStreamStart, FrameTypeStreamEnd, FrameTypeLog, FrameTypeCredit, FrameTypeHeartbeat:
+		// Control/side-channel frames are legal ANYWHERE during the probe
+		// (12.4: LOG interleaves without affecting data flow; CREDIT and
+		// HEARTBEAT are the control plane the writer gate itself exempts,
+		// L4). A cartridge crediting its probe input as it consumes (L10)
+		// must not fail identity verification.
+		return false, nil
+	default:
+		return false, fmt.Errorf("Identity verification: unexpected frame type %v", frame.FrameType)
 	}
 }
 

@@ -44,17 +44,17 @@ func Test404_slave_sends_relay_notify_on_connect(t *testing.T) {
 		t.Errorf("Expected RELAY_NOTIFY, got %v", frame.FrameType)
 	}
 
-	extractedManifest := frame.RelayNotifyManifest()
-	if extractedManifest == nil {
-		t.Fatal("RelayNotifyManifest() returned nil")
+	extractedManifest, err := frame.RelayNotifyManifest()
+	if err != nil {
+		t.Fatalf("RelayNotifyManifest() failed: %v", err)
 	}
 	if string(extractedManifest) != string(manifest) {
 		t.Errorf("Manifest mismatch: got %s", string(extractedManifest))
 	}
 
-	extractedLimits := frame.RelayNotifyLimits()
-	if extractedLimits == nil {
-		t.Fatal("RelayNotifyLimits() returned nil")
+	extractedLimits, err := frame.RelayNotifyLimits()
+	if err != nil {
+		t.Fatalf("RelayNotifyLimits() failed: %v", err)
 	}
 	if extractedLimits.MaxFrame != limits.MaxFrame {
 		t.Errorf("MaxFrame mismatch: expected %d, got %d", limits.MaxFrame, extractedLimits.MaxFrame)
@@ -419,8 +419,8 @@ func Test409_slave_injects_relay_notify_midstream(t *testing.T) {
 	if f1.FrameType != FrameTypeRelayNotify {
 		t.Errorf("Expected RELAY_NOTIFY, got %v", f1.FrameType)
 	}
-	if string(f1.RelayNotifyManifest()) != `{"caps":["cap:test"]}` {
-		t.Errorf("Initial manifest mismatch: got %s", string(f1.RelayNotifyManifest()))
+	if string(mustRelayNotifyManifest(t, f1)) != `{"caps":["cap:test"]}` {
+		t.Errorf("Initial manifest mismatch: got %s", string(mustRelayNotifyManifest(t, f1)))
 	}
 
 	// Read CHUNK (passed through)
@@ -440,8 +440,8 @@ func Test409_slave_injects_relay_notify_midstream(t *testing.T) {
 	if f3.FrameType != FrameTypeRelayNotify {
 		t.Errorf("Expected RELAY_NOTIFY, got %v", f3.FrameType)
 	}
-	if string(f3.RelayNotifyManifest()) != `{"caps":["cap:test","cap:convert"]}` {
-		t.Errorf("Updated manifest mismatch: got %s", string(f3.RelayNotifyManifest()))
+	if string(mustRelayNotifyManifest(t, f3)) != `{"caps":["cap:test","cap:convert"]}` {
+		t.Errorf("Updated manifest mismatch: got %s", string(mustRelayNotifyManifest(t, f3)))
 	}
 
 	masterSocketRead.Close()
@@ -786,8 +786,8 @@ func Test414_relay_slave_forwards_host_relay_notify(t *testing.T) {
 	if f2.FrameType != FrameTypeRelayNotify {
 		t.Fatalf("expected forwarded RELAY_NOTIFY (RelayState must be dropped), got %v", f2.FrameType)
 	}
-	if string(f2.RelayNotifyManifest()) != `{"installed_cartridges":[{"id":"CartA"}]}` {
-		t.Fatalf("forwarded manifest mismatch: %s", string(f2.RelayNotifyManifest()))
+	if string(mustRelayNotifyManifest(t, f2)) != `{"installed_cartridges":[{"id":"CartA"}]}` {
+		t.Fatalf("forwarded manifest mismatch: %s", string(mustRelayNotifyManifest(t, f2)))
 	}
 
 	routerSock.Close()

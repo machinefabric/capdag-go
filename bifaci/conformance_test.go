@@ -89,11 +89,20 @@ func sameText(a, b *string) bool {
 // TEST12375: every frame type is the type the model means by its number, part
 // of a flow exactly when the model says, and an end exactly when the model
 // says. The runtime's own FrameType is mapped onto the model's by hand; a
-// type mapped to the wrong one would be numbered, ordered and gated as
-// another.
+// type mapped to the wrong one would be ordered and gated as another.
+// frameTypeOfRow is the frame type a table row names by its wire number.
+func frameTypeOfRow(t *testing.T, code uint64) FrameType {
+	t.Helper()
+	ft, named := FrameTypeOfCode(code)
+	if !named {
+		t.Fatalf("wire number %d names no frame type", code)
+	}
+	return ft
+}
+
 func Test12375_frame_types_are_the_models(t *testing.T) {
 	type row struct {
-		Code     uint8   `json:"code"`
+		Code     uint64  `json:"code"`
 		Flow     bool    `json:"flow"`
 		Terminal bool    `json:"terminal"`
 		Ends     *string `json:"ends"`
@@ -104,17 +113,13 @@ func Test12375_frame_types_are_the_models(t *testing.T) {
 	}
 	var wrong []string
 	for _, r := range rows {
-		frameType := FrameType(r.Code)
-		known := false
-		for _, ft := range FrameTypeAll {
-			known = known || ft == frameType
-		}
-		if !known {
+		frameType, named := FrameTypeOfCode(r.Code)
+		if !named {
 			wrong = append(wrong, fmt.Sprintf("wire number %d names no frame type here", r.Code))
 			continue
 		}
-		if code := decided(model.Code(frameType.model())); count(code) != uint64(r.Code) {
-			wrong = append(wrong, fmt.Sprintf("%v (%d) is mapped to the model's type %s", frameType, r.Code, code))
+		if frameType.Code() != r.Code {
+			wrong = append(wrong, fmt.Sprintf("%v (%d) is numbered %d", frameType, r.Code, frameType.Code()))
 		}
 		if frameType.IsFlow() != r.Flow {
 			wrong = append(wrong, fmt.Sprintf("%v: flow is %v", frameType, frameType.IsFlow()))
@@ -401,7 +406,7 @@ func Test12381_the_writer_gate_follows_the_model(t *testing.T) {
 		written := make([]bool, 0, len(s.Frames))
 		for _, code := range s.Frames {
 			before := wire.Len()
-			if err := writer.WriteFrame(frameOf(t, FrameType(code), rid)); err != nil {
+			if err := writer.WriteFrame(frameOf(t, frameTypeOfRow(t, uint64(code)), rid)); err != nil {
 				t.Fatalf("a write to memory failed: %v", err)
 			}
 			written = append(written, wire.Len() > before)
@@ -515,10 +520,10 @@ func Test12382_request_table_follows_the_model(t *testing.T) {
 		rid := NewMessageIdFromUint(9)
 		stream := "s"
 		var frame *Frame
-		if FrameType(r.Frame) == FrameTypeCredit {
+		if frameTypeOfRow(t, uint64(r.Frame)) == FrameTypeCredit {
 			frame = NewCredit(rid, &stream, r.Granted, CreditDirectionResponse)
 		} else {
-			frame = NewFrame(FrameType(r.Frame), rid)
+			frame = NewFrame(frameTypeOfRow(t, uint64(r.Frame)), rid)
 			frame.StreamId = &stream
 		}
 		table := NewRequestTable()

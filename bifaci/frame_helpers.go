@@ -85,6 +85,7 @@ func CollectArgsByMediaUrn(frames <-chan Frame, mediaUrnPattern string) ([]inter
 	var currentStreamID string
 	var currentChunks [][]byte
 	var currentMediaUrn string
+	streamMedia := make(map[string]string) // stream_id → media_urn, for stream-scoped errors
 
 	for frame := range frames {
 		switch frame.FrameType {
@@ -107,6 +108,7 @@ func CollectArgsByMediaUrn(frames <-chan Frame, mediaUrnPattern string) ([]inter
 			currentStreamID = *frame.StreamId
 			currentMediaUrn = *frame.MediaUrn
 			currentChunks = [][]byte{}
+			streamMedia[currentStreamID] = currentMediaUrn
 
 		case FrameTypeChunk:
 			if frame.StreamId == nil || *frame.StreamId != currentStreamID {
@@ -156,6 +158,20 @@ func CollectArgsByMediaUrn(frames <-chan Frame, mediaUrnPattern string) ([]inter
 			return results, nil
 
 		case FrameTypeErr:
+			// A broken stream fails the collection only if it is one the
+			// pattern asks for (L12); a request's ERR always does.
+			if stream, scoped := frame.ErrStream(); scoped {
+				streamUrn, parseErr := taggedurn.NewTaggedUrnFromString(streamMedia[stream])
+				if parseErr != nil {
+					return nil, errorFromErrFrame(&frame)
+				}
+				if comparable, _ := pattern.IsComparable(streamUrn); !comparable {
+					if stream == currentStreamID {
+						currentStreamID = ""
+					}
+					continue
+				}
+			}
 			return nil, errorFromErrFrame(&frame)
 		}
 	}
@@ -200,11 +216,15 @@ func CollectFirstArg(frames <-chan Frame) ([]byte, error) {
 				for _, chunk := range chunks {
 					fullData = append(fullData, chunk...)
 				}
-				// Drain remaining frames until END
+				// Drain remaining frames until END; another stream's
+				// error is not this collection's (L12).
 				for frame := range frames {
 					if frame.FrameType == FrameTypeEnd {
 						return fullData, nil
 					} else if frame.FrameType == FrameTypeErr {
+						if _, scoped := frame.ErrStream(); scoped {
+							continue
+						}
 						return nil, errorFromErrFrame(&frame)
 					}
 				}
@@ -220,6 +240,11 @@ func CollectFirstArg(frames <-chan Frame) ([]byte, error) {
 			return fullData, nil
 
 		case FrameTypeErr:
+			// Only the first stream's own error, or the request's, fails
+			// this collection (L12).
+			if stream, scoped := frame.ErrStream(); scoped && (!foundFirst || stream != firstStreamID) {
+				continue
+			}
 			return nil, errorFromErrFrame(&frame)
 		}
 	}

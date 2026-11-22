@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"strings"
 	"sync/atomic"
@@ -13,6 +14,8 @@ import (
 	"github.com/machinefabric/capdag-go/cap"
 	"github.com/machinefabric/capdag-go/standard"
 	"github.com/machinefabric/capdag-go/urn"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // testManifestWithCaps builds a RelayNotify-shaped manifest JSON map
@@ -137,7 +140,14 @@ func expectPolicy(t *testing.T, reader *FrameReader) bool {
 
 func serveRelayHandshake(t *testing.T, reader *FrameReader, writer *FrameWriter, capURNs []string) bool {
 	t.Helper()
-	manifest := testManifestWithCaps(capURNs)
+	return serveRelayHandshakeWith(t, reader, writer, testManifestWithCaps(capURNs), len(capURNs) > 0)
+}
+
+// serveRelayHandshakeWith is serveRelayHandshake for a manifest built by the
+// caller; hasCaps says whether it advertises any cap, and so whether the
+// switch probes the master's identity.
+func serveRelayHandshakeWith(t *testing.T, reader *FrameReader, writer *FrameWriter, manifest map[string]interface{}, hasCaps bool) bool {
+	t.Helper()
 	manifestJSON, _ := json.Marshal(manifest)
 	if err := SendNotify(writer, manifestJSON, DefaultLimits()); err != nil {
 		t.Errorf("serveRelayHandshake: SendNotify: %v", err)
@@ -150,7 +160,7 @@ func serveRelayHandshake(t *testing.T, reader *FrameReader, writer *FrameWriter,
 		t.Errorf("serveRelayHandshake: the frame after RelayNotify must be the switch's policy: %v %v", policy, err)
 		return false
 	}
-	if len(capURNs) == 0 {
+	if !hasCaps {
 		// No caps advertised — production skips the identity probe.
 		return true
 	}
@@ -211,6 +221,160 @@ func serveRelayHandshake(t *testing.T, reader *FrameReader, writer *FrameWriter,
 		return false
 	}
 	return true
+}
+
+// TEST7199: Every RelayNotify carries all four limits as positive integers: a
+// master whose first RelayNotify says max_chunk 0 is not taken (NewRelaySwitch
+// fails naming max_chunk), and a later RelayNotify missing initial_credit is a
+// protocol error naming it, leaving the limits the master last announced.
+func Test7199_relay_notify_limits_required_every_time(t *testing.T) {
+	notifyWith := func(change func(map[string]interface{})) *Frame {
+		manifest, _ := json.Marshal(testManifestWithCaps(nil))
+		frame := NewRelayNotify(manifest, DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit)
+		change(frame.Meta)
+		return frame
+	}
+
+	engineRead, slaveWrite := net.Pipe()
+	slaveRead, engineWrite := net.Pipe()
+	go func() {
+		writer := NewFrameWriter(slaveWrite)
+		_ = writer.WriteFrame(notifyWith(func(m map[string]interface{}) { m["max_chunk"] = 0 }))
+		_, _ = io.Copy(io.Discard, slaveRead)
+	}()
+	_, err := NewRelaySwitch([]SocketPair{{ID: "m0", Read: engineRead, Write: engineWrite}}, HostPolicy{Network: NetworkPolicyFull})
+	require.Error(t, err, "a master announcing max_chunk 0 must not be taken")
+	assert.Contains(t, err.Error(), "max_chunk")
+	engineRead.Close()
+	engineWrite.Close()
+
+	engineRead, slaveWrite = net.Pipe()
+	slaveRead, engineWrite = net.Pipe()
+	sent := make(chan struct{})
+	go func() {
+		reader := NewFrameReader(slaveRead)
+		writer := NewFrameWriter(slaveWrite)
+		if !serveRelayHandshake(t, reader, writer, nil) {
+			return
+		}
+		_ = writer.WriteFrame(notifyWith(func(m map[string]interface{}) { delete(m, "initial_credit") }))
+		close(sent)
+		_, _ = io.Copy(io.Discard, slaveRead)
+	}()
+	sw, err := NewRelaySwitch([]SocketPair{{ID: "m0", Read: engineRead, Write: engineWrite}}, HostPolicy{Network: NetworkPolicyFull})
+	require.NoError(t, err, "a master announcing every limit is taken")
+	announced := sw.Limits()
+	<-sent
+	_, err = sw.ReadFromMasters()
+	require.Error(t, err, "a RelayNotify missing initial_credit must be a protocol error")
+	assert.Contains(t, err.Error(), "initial_credit")
+	assert.Equal(t, announced, sw.Limits(), "the limits last announced are kept")
+	engineRead.Close()
+	engineWrite.Close()
+}
+
+// TEST7193: a peer request takes no router admission permit. With the serving
+// cartridge's `all` pool at capacity one and that one permit held by an engine
+// call, a peer REQ for the same cap from another master's cartridge still
+// reaches the serving master at once, while a second engine call stays queued.
+func Test7193_peer_request_takes_no_admission_permit(t *testing.T) {
+	const served = `cap:in="media:void";test;out="media:void"`
+	engineRead0, slaveWrite0 := net.Pipe()
+	slaveRead0, engineWrite0 := net.Pipe()
+	engineRead1, slaveWrite1 := net.Pipe()
+	slaveRead1, engineWrite1 := net.Pipe()
+	engineSeen := make(chan struct{})
+	peerSeen := make(chan *Frame, 1)
+	sendPeer := make(chan struct{})
+
+	go func() {
+		reader := NewFrameReader(slaveRead0)
+		writer := NewFrameWriter(slaveWrite0)
+		capacityOne := testManifestWithCaps([]string{testCapIdentity, served})
+		stats := capacityOne["installed_cartridges"].([]interface{})[0].(map[string]interface{})["runtime_stats"].(map[string]interface{})
+		stats["pools"].(map[string]interface{})[PoolAll] = map[string]interface{}{"declared": 1, "configured": 1, "active": 0, "queued": 0}
+		if !serveRelayHandshakeWith(t, reader, writer, capacityOne, true) {
+			return
+		}
+		reqs := 0
+		for {
+			frame, err := reader.ReadFrame()
+			if err != nil || frame == nil {
+				return
+			}
+			if frame.FrameType != FrameTypeReq {
+				continue
+			}
+			reqs++
+			switch reqs {
+			case 1:
+				close(engineSeen)
+			case 2:
+				peerSeen <- frame
+			}
+		}
+	}()
+	go func() {
+		reader := NewFrameReader(slaveRead1)
+		writer := NewFrameWriter(slaveWrite1)
+		if !serveRelayHandshake(t, reader, writer, []string{testCapIdentity}) {
+			return
+		}
+		<-sendPeer
+		if err := writer.WriteFrame(NewReq(NewMessageIdRandom(), served, nil, "application/cbor")); err != nil {
+			t.Errorf("the peer REQ could not be written: %v", err)
+			return
+		}
+		_, _ = io.Copy(io.Discard, slaveRead1)
+	}()
+
+	sw, err := NewRelaySwitch([]SocketPair{
+		{ID: "server", Read: engineRead0, Write: engineWrite0},
+		{ID: "caller", Read: engineRead1, Write: engineWrite1},
+	}, HostPolicy{Network: NetworkPolicyFull})
+	require.NoError(t, err)
+	// The switch routes a peer REQ as it reads the masters.
+	go func() {
+		for {
+			if _, err := sw.ReadFromMasters(); err != nil {
+				return
+			}
+		}
+	}()
+
+	require.NoError(t, sw.SendToMaster(NewReq(NewMessageIdRandom(), served, nil, "application/cbor"), nil))
+	select {
+	case <-engineSeen:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the first engine call never reached the serving master")
+	}
+	secondDone := make(chan error, 1)
+	go func() {
+		secondDone <- sw.SendToMaster(NewReq(NewMessageIdRandom(), served, nil, "application/cbor"), nil)
+	}()
+	select {
+	case err := <-secondDone:
+		t.Fatalf("the second engine call must wait for the one permit, it returned %v", err)
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	close(sendPeer)
+	select {
+	case peer := <-peerSeen:
+		require.NotNil(t, peer.Cap, "the peer REQ reaches the serving master")
+		peerCap, err := urn.NewCapUrnFromString(*peer.Cap)
+		require.NoError(t, err)
+		servedCap, err := urn.NewCapUrnFromString(served)
+		require.NoError(t, err)
+		assert.True(t, peerCap.IsEquivalent(servedCap), "the peer REQ names the served cap: %s", *peer.Cap)
+	case <-time.After(2 * time.Second):
+		t.Fatal("a peer request must not wait for an admission permit")
+	}
+	select {
+	case err := <-secondDone:
+		t.Fatalf("the second engine call is still queued, it returned %v", err)
+	default:
+	}
 }
 
 // TEST426: Single master REQ/response routing

@@ -145,13 +145,30 @@ type unboundedFrameChan struct {
 	// gone is closed by Discard: nobody will ever read out.
 	gone      chan struct{}
 	discarded bool
+
+	// onTaken, when set, is called with each frame once its reader has taken
+	// it: out is unbuffered, so the send completes only then. onIdle, when
+	// set, is called just before the pump waits on an empty queue. Credit is
+	// granted from these as the reader consumes (L10), never as frames arrive,
+	// so the queue never holds more than was granted. Both are fixed before
+	// the pump starts.
+	onTaken func(Frame)
+	onIdle  func()
 }
 
 func newUnboundedFrameChan() *unboundedFrameChan {
+	return newUnboundedFrameChanWith(nil, nil)
+}
+
+// newUnboundedFrameChanWith is an unbounded channel that reports each frame
+// its reader takes (onTaken) and each moment it runs dry (onIdle).
+func newUnboundedFrameChanWith(onTaken func(Frame), onIdle func()) *unboundedFrameChan {
 	u := &unboundedFrameChan{
-		signal: make(chan struct{}, 1),
-		out:    make(chan Frame),
-		gone:   make(chan struct{}),
+		signal:  make(chan struct{}, 1),
+		out:     make(chan Frame),
+		gone:    make(chan struct{}),
+		onTaken: onTaken,
+		onIdle:  onIdle,
 	}
 	go u.pump()
 	return u
@@ -162,11 +179,19 @@ func (u *unboundedFrameChan) pump() {
 		u.mu.Lock()
 		for len(u.queue) == 0 && !u.closed {
 			u.mu.Unlock()
+			if u.onIdle != nil {
+				u.onIdle()
+			}
 			<-u.signal
 			u.mu.Lock()
 		}
 		if len(u.queue) == 0 && u.closed {
 			u.mu.Unlock()
+			// The reader has taken everything: what it took and was not yet
+			// granted is granted now, as when the queue runs dry while open.
+			if u.onIdle != nil {
+				u.onIdle()
+			}
 			close(u.out)
 			return
 		}
@@ -175,6 +200,9 @@ func (u *unboundedFrameChan) pump() {
 		u.mu.Unlock()
 		select {
 		case u.out <- f:
+			if u.onTaken != nil {
+				u.onTaken(f)
+			}
 		case <-u.gone:
 			return
 		}

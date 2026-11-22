@@ -11,108 +11,41 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TEST171: Test all FrameType discriminants roundtrip through u8 conversion preserving identity
+// TEST171: Every frame type's wire number, by the model, names it again
 func Test171_frame_type_roundtrip(t *testing.T) {
-	types := []FrameType{
-		FrameTypeReq,
-		// Res REMOVED - old protocol no longer supported
-		FrameTypeChunk,
-		FrameTypeEnd,
-		FrameTypeErr,
-		FrameTypeLog,
-		FrameTypeHeartbeat,
-		FrameTypeHello,
-		FrameTypeStreamStart,
-		FrameTypeStreamEnd,
-		FrameTypeCancel,
-		FrameTypeCredit,
-	}
-
-	for _, ft := range types {
-		asUint := uint8(ft)
-		backToType := FrameType(asUint)
-		if backToType != ft {
-			t.Errorf("FrameType %v roundtrip failed: got %v", ft, backToType)
+	for _, ft := range FrameTypeAll {
+		back, named := FrameTypeOfCode(ft.Code())
+		if !named || back != ft {
+			t.Errorf("FrameType %v roundtrip failed: got %v (named %v)", ft, back, named)
 		}
 	}
 }
 
-// TEST172: Test FrameType::from_u8 returns None for values outside the valid discriminant range
+// TEST172: A wire number that names no frame type is no frame type
 func Test172_frame_type_valid_range(t *testing.T) {
-	validTypes := map[uint8]bool{
-		0:  true,  // HELLO
-		1:  true,  // REQ
-		2:  false, // RES REMOVED - old protocol no longer supported
-		3:  true,  // CHUNK
-		4:  true,  // END
-		5:  true,  // LOG
-		6:  true,  // ERR
-		7:  true,  // HEARTBEAT
-		8:  true,  // STREAM_START
-		9:  true,  // STREAM_END
-		10: true,  // RELAY_NOTIFY
-		11: true,  // RELAY_STATE
-		12: true,  // CANCEL
-		13: true,  // CREDIT (protocol v4)
-		14: true,  // CLOSE_STREAM (the tap-off)
-		15: true,  // POLICY (protocol v6)
-	}
-
-	for i := uint8(0); i <= 15; i++ {
-		if expected, exists := validTypes[i]; exists && expected {
-			ft := FrameType(i)
-			if ft.String() == fmt.Sprintf("UNKNOWN(%d)", i) {
-				t.Errorf("Expected %d to be a valid FrameType", i)
-			}
-		}
-	}
-	// 15 is Policy; 16 is one past it — must be invalid
-	if FrameType(15) != FrameTypePolicy {
-		t.Errorf("Expected 15 to be Policy, got %s", FrameType(15).String())
-	}
-	if FrameType(16).String() != "UNKNOWN(16)" {
-		t.Errorf("Expected 16 to be invalid, got %s", FrameType(16).String())
-	}
-	if FrameType(100).String() != "UNKNOWN(100)" {
-		t.Errorf("Expected 100 to be invalid")
-	}
-	if FrameType(255).String() != "UNKNOWN(255)" {
-		t.Errorf("Expected 255 to be invalid")
+	ft, named := FrameTypeOfCode(14)
+	assert.True(t, named)
+	assert.Equal(t, FrameTypeCloseStream, ft)
+	ft, named = FrameTypeOfCode(15)
+	assert.True(t, named)
+	assert.Equal(t, FrameTypePolicy, ft)
+	for _, code := range []uint64{2, 16, 255, ^uint64(0)} {
+		_, named := FrameTypeOfCode(code)
+		assert.False(t, named, "%d names no frame type", code)
 	}
 }
 
-// TEST173: Test FrameType discriminant values match the wire protocol specification exactly
+// TEST173: Each frame type's wire number is the one the wire protocol specifies
 func Test173_frame_type_wire_protocol_values(t *testing.T) {
-	if uint8(FrameTypeHello) != 0 {
-		t.Errorf("HELLO must be 0, got %d", FrameTypeHello)
+	want := map[FrameType]uint64{
+		FrameTypeHello: 0, FrameTypeReq: 1, FrameTypeChunk: 3, FrameTypeEnd: 4,
+		FrameTypeLog: 5, FrameTypeErr: 6, FrameTypeHeartbeat: 7, FrameTypeStreamStart: 8,
+		FrameTypeStreamEnd: 9, FrameTypeRelayNotify: 10, FrameTypeRelayState: 11,
+		FrameTypeCancel: 12, FrameTypeCredit: 13, FrameTypeCloseStream: 14, FrameTypePolicy: 15,
 	}
-	if uint8(FrameTypeReq) != 1 {
-		t.Errorf("REQ must be 1, got %d", FrameTypeReq)
-	}
-	// Res = 2 REMOVED - old protocol no longer supported
-	if uint8(FrameTypeChunk) != 3 {
-		t.Errorf("CHUNK must be 3, got %d", FrameTypeChunk)
-	}
-	if uint8(FrameTypeEnd) != 4 {
-		t.Errorf("END must be 4, got %d", FrameTypeEnd)
-	}
-	if uint8(FrameTypeLog) != 5 {
-		t.Errorf("LOG must be 5, got %d", FrameTypeLog)
-	}
-	if uint8(FrameTypeErr) != 6 {
-		t.Errorf("ERR must be 6, got %d", FrameTypeErr)
-	}
-	if uint8(FrameTypeHeartbeat) != 7 {
-		t.Errorf("HEARTBEAT must be 7, got %d", FrameTypeHeartbeat)
-	}
-	if uint8(FrameTypeStreamStart) != 8 {
-		t.Errorf("STREAM_START must be 8, got %d", FrameTypeStreamStart)
-	}
-	if uint8(FrameTypeStreamEnd) != 9 {
-		t.Errorf("STREAM_END must be 9, got %d", FrameTypeStreamEnd)
-	}
-	if uint8(FrameTypeCancel) != 12 {
-		t.Errorf("CANCEL must be 12, got %d", FrameTypeCancel)
+	assert.Equal(t, len(FrameTypeAll), len(want))
+	for ft, code := range want {
+		assert.Equal(t, code, ft.Code(), "%s", ft)
 	}
 }
 
@@ -762,30 +695,20 @@ func Test368_stream_start_with_empty_media_urn(t *testing.T) {
 	}
 }
 
-// TEST399: Verify RelayNotify frame type discriminant roundtrips through u8 (value 10)
+// TEST399: Verify RelayNotify's wire number roundtrips (value 10)
 func Test399_relay_notify_discriminant_roundtrip(t *testing.T) {
-	ft := FrameTypeRelayNotify
-	asUint := uint8(ft)
-	if asUint != 10 {
-		t.Errorf("RELAY_NOTIFY must be 10, got %d", asUint)
-	}
-	backToType := FrameType(asUint)
-	if backToType != FrameTypeRelayNotify {
-		t.Errorf("FrameType(10) must be RELAY_NOTIFY, got %v", backToType)
-	}
+	assert.Equal(t, uint64(10), FrameTypeRelayNotify.Code())
+	back, named := FrameTypeOfCode(10)
+	assert.True(t, named)
+	assert.Equal(t, FrameTypeRelayNotify, back)
 }
 
-// TEST400: Verify RelayState frame type discriminant roundtrips through u8 (value 11)
+// TEST400: Verify RelayState's wire number roundtrips (value 11)
 func Test400_relay_state_discriminant_roundtrip(t *testing.T) {
-	ft := FrameTypeRelayState
-	asUint := uint8(ft)
-	if asUint != 11 {
-		t.Errorf("RELAY_STATE must be 11, got %d", asUint)
-	}
-	backToType := FrameType(asUint)
-	if backToType != FrameTypeRelayState {
-		t.Errorf("FrameType(11) must be RELAY_STATE, got %v", backToType)
-	}
+	assert.Equal(t, uint64(11), FrameTypeRelayState.Code())
+	back, named := FrameTypeOfCode(11)
+	assert.True(t, named)
+	assert.Equal(t, FrameTypeRelayState, back)
 }
 
 // TEST401: Verify relay_notify factory stores manifest and limits, and accessors extract them
@@ -801,18 +724,18 @@ func Test401_relay_notify_factory_and_accessors(t *testing.T) {
 	}
 
 	// Test manifest accessor
-	extractedManifest := frame.RelayNotifyManifest()
-	if extractedManifest == nil {
-		t.Fatal("RelayNotifyManifest() returned nil")
+	extractedManifest, err := frame.RelayNotifyManifest()
+	if err != nil {
+		t.Fatalf("RelayNotifyManifest() failed: %v", err)
 	}
 	if string(extractedManifest) != string(manifest) {
 		t.Errorf("Manifest mismatch: got %s", string(extractedManifest))
 	}
 
 	// Test limits accessor
-	extractedLimits := frame.RelayNotifyLimits()
-	if extractedLimits == nil {
-		t.Fatal("RelayNotifyLimits() returned nil")
+	extractedLimits, err := frame.RelayNotifyLimits()
+	if err != nil {
+		t.Fatalf("RelayNotifyLimits() failed: %v", err)
 	}
 	if extractedLimits.MaxFrame != maxFrame {
 		t.Errorf("MaxFrame mismatch: expected %d, got %d", maxFrame, extractedLimits.MaxFrame)
@@ -823,11 +746,11 @@ func Test401_relay_notify_factory_and_accessors(t *testing.T) {
 
 	// Test accessors on wrong frame type return nil
 	req := NewReq(NewMessageIdRandom(), "cap:test", []byte{}, "text/plain")
-	if req.RelayNotifyManifest() != nil {
-		t.Error("RelayNotifyManifest on REQ must return nil")
+	if _, err := req.RelayNotifyManifest(); err == nil {
+		t.Error("RelayNotifyManifest on REQ must be an error")
 	}
-	if req.RelayNotifyLimits() != nil {
-		t.Error("RelayNotifyLimits on REQ must return nil")
+	if _, err := req.RelayNotifyLimits(); err == nil {
+		t.Error("RelayNotifyLimits on REQ must be an error")
 	}
 }
 
@@ -845,27 +768,16 @@ func Test402_relay_state_factory_and_payload(t *testing.T) {
 	}
 }
 
-// TEST403: Verify from_u8 returns None for values past the last valid frame type
+// TEST403: Verify from_code returns None for values past the last valid frame type
 func Test403_frame_type_one_past_cancel(t *testing.T) {
-	if FrameType(12) != FrameTypeCancel {
-		t.Errorf("12 must be Cancel, got %s", FrameType(12).String())
+	for code, want := range map[uint64]FrameType{12: FrameTypeCancel, 13: FrameTypeCredit, 14: FrameTypeCloseStream, 15: FrameTypePolicy} {
+		got, named := FrameTypeOfCode(code)
+		assert.True(t, named, "%d names a frame type", code)
+		assert.Equal(t, want, got)
 	}
-	if FrameType(13) != FrameTypeCredit {
-		t.Errorf("13 must be Credit (v3), got %s", FrameType(13).String())
-	}
-	if FrameType(14) != FrameTypeCloseStream {
-		t.Errorf("FrameType(14) must be CloseStream, got %s", FrameType(14).String())
-	}
-	if FrameType(15) != FrameTypePolicy {
-		t.Errorf("FrameType(15) must be Policy, got %s", FrameType(15).String())
-	}
-	ft := FrameType(16)
-	if ft.String() != fmt.Sprintf("UNKNOWN(%d)", 16) {
-		t.Errorf("FrameType(16) must be unknown (past the last valid frame type), got %s", ft.String())
-	}
-	ft2 := FrameType(2)
-	if ft2.String() != fmt.Sprintf("UNKNOWN(%d)", 2) {
-		t.Errorf("FrameType(2) (old Res) must be permanently retired, got %s", ft2.String())
+	for _, code := range []uint64{16, 2} {
+		_, named := FrameTypeOfCode(code)
+		assert.False(t, named, "%d names no frame type", code)
 	}
 }
 
@@ -1932,6 +1844,38 @@ func Test520_reorder_buffer_per_flow_limit(t *testing.T) {
 	assert.Error(t, errB, "flow B also overflows")
 }
 
+// TEST7198: RelayNotifyLimits refuses a RelayNotify whose limits are not all
+// present and positive integers, naming the key: initial_credit missing,
+// max_chunk zero, max_frame text. RelayNotifyManifest refuses a RelayNotify
+// with no manifest.
+func Test7198_relay_notify_limits_are_read_strictly(t *testing.T) {
+	withMeta := func(change func(map[string]interface{})) *Frame {
+		frame := NewRelayNotify([]byte("{}"), DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit)
+		change(frame.Meta)
+		return frame
+	}
+	cases := []struct {
+		key    string
+		change func(map[string]interface{})
+	}{
+		{"initial_credit", func(m map[string]interface{}) { delete(m, "initial_credit") }},
+		{"max_chunk", func(m map[string]interface{}) { m["max_chunk"] = uint64(0) }},
+		{"max_frame", func(m map[string]interface{}) { m["max_frame"] = "big" }},
+	}
+	for _, c := range cases {
+		_, err := withMeta(c.change).RelayNotifyLimits()
+		require.Error(t, err, "%s: a broken limit must be refused", c.key)
+		assert.Contains(t, err.Error(), c.key)
+	}
+	_, err := withMeta(func(m map[string]interface{}) { delete(m, "manifest") }).RelayNotifyManifest()
+	require.Error(t, err, "a RelayNotify without a manifest must be refused")
+	assert.Contains(t, err.Error(), "manifest")
+
+	whole, err := withMeta(func(map[string]interface{}) {}).RelayNotifyLimits()
+	require.NoError(t, err)
+	assert.Equal(t, DefaultInitialCredit, whole.InitialCredit)
+}
+
 // TEST521: RelayNotify CBOR roundtrip preserves manifest and limits
 func Test521_relay_notify_cbor_roundtrip(t *testing.T) {
 	manifest := []byte(`{"name":"Test","version":"1.0","description":"Test","cap_groups":[{"name":"default","caps":[{"urn":"cap:in=\"media:void\";convert;out=\"media:image\"","title":"Convert","aliases":["convert"],"outputs":[{"media_urn":"media:image","name":"output","output_description":"output"}]}]}]}`)
@@ -1943,10 +1887,10 @@ func Test521_relay_notify_cbor_roundtrip(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, FrameTypeRelayNotify, decoded.FrameType)
-	assert.Equal(t, manifest, decoded.RelayNotifyManifest(), "manifest must roundtrip")
+	assert.Equal(t, manifest, mustRelayNotifyManifest(t, decoded), "manifest must roundtrip")
 
-	limits := decoded.RelayNotifyLimits()
-	require.NotNil(t, limits)
+	limits, err := decoded.RelayNotifyLimits()
+	require.NoError(t, err)
 	assert.Equal(t, 3_000_000, limits.MaxFrame)
 	assert.Equal(t, 256_000, limits.MaxChunk)
 	assert.Equal(t, 128, limits.MaxReorderBuffer)
@@ -1985,7 +1929,7 @@ func Test524_relay_state_not_flow_frame(t *testing.T) {
 func Test525_relay_notify_empty_manifest(t *testing.T) {
 	frame := NewRelayNotify([]byte{}, DefaultMaxFrame, DefaultMaxChunk, DefaultMaxReorderBuffer, DefaultInitialCredit)
 	assert.Equal(t, FrameTypeRelayNotify, frame.FrameType)
-	assert.Equal(t, []byte{}, frame.RelayNotifyManifest())
+	assert.Equal(t, []byte{}, mustRelayNotifyManifest(t, frame))
 }
 
 // TEST526: RelayState with empty payload is valid
@@ -2009,7 +1953,7 @@ func Test527_relay_notify_large_manifest(t *testing.T) {
 	decoded, err := DecodeFrame(encoded)
 	require.NoError(t, err)
 
-	assert.Equal(t, []byte(largeManifest), decoded.RelayNotifyManifest())
+	assert.Equal(t, []byte(largeManifest), mustRelayNotifyManifest(t, decoded))
 }
 
 // TEST528: RelayNotify and RelayState use MessageId::Uint(0)
@@ -2566,4 +2510,13 @@ func Test12718_stream_start_names_its_output(t *testing.T) {
 	_, err = DecodeFrame(malformed)
 	require.Error(t, err, "key 21 must be text")
 	assert.Contains(t, err.Error(), "text")
+}
+
+// mustRelayNotifyManifest is the manifest a RelayNotify carries, failing the
+// test when it carries none.
+func mustRelayNotifyManifest(t *testing.T, f *Frame) []byte {
+	t.Helper()
+	manifest, err := f.RelayNotifyManifest()
+	require.NoError(t, err)
+	return manifest
 }

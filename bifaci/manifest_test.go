@@ -343,6 +343,31 @@ func Test476_validate_fails_without_identity(t *testing.T) {
 	assert.Contains(t, err.Error(), "CAP_IDENTITY")
 }
 
+// TEST7195: Validate recognises the identity cap by equivalence: a wider
+// pattern the identity refines (`cap:?effect`) is not the identity, and the
+// identity spelled with its directions written out is.
+func Test7195_validate_recognises_identity_by_equivalence(t *testing.T) {
+	transformUrn, err := urn.NewCapUrnFromString(manifestTestUrn("convert"))
+	require.NoError(t, err)
+	transform := cap.NewCap(transformUrn, "Convert", []string{"convert"})
+	transform.AddOutput(*cap.NewCapOutput("media:enc=utf8;fmt=json;record", "record", "The record"))
+
+	wideUrn, err := urn.NewCapUrnFromString("cap:?effect")
+	require.NoError(t, err)
+	wide := cap.NewCap(wideUrn, "Any effect", []string{"any-effect"})
+	manifest := NewCapManifest("TestCartridge", "1.0.0", "release", nil, "Test", []CapGroup{DefaultGroup([]cap.Cap{*wide, *transform})})
+	err = manifest.Validate()
+	require.Error(t, err, "a wider pattern is not the identity")
+	assert.Contains(t, err.Error(), "CAP_IDENTITY")
+
+	spelled, err := cap.IdentityCap()
+	require.NoError(t, err)
+	spelled.Urn, err = urn.NewCapUrnFromString("cap:effect=none;in=media:;out=media:")
+	require.NoError(t, err)
+	manifest = NewCapManifest("TestCartridge", "1.0.0", "release", nil, "Test", []CapGroup{DefaultGroup([]cap.Cap{*spelled, *transform})})
+	assert.NoError(t, manifest.Validate(), "the identity spelled out is the identity")
+}
+
 // TEST1284: Cap group with adapter URNs serializes and deserializes correctly
 func Test1284_cap_group_with_adapter_urns(t *testing.T) {
 	id, err := urn.NewCapUrnFromString(manifestTestUrn("convert"))

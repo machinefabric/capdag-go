@@ -43,7 +43,7 @@ func EncodeFrame(frame *Frame) ([]byte, error) {
 	m[keyVersion] = uint8(ProtocolVersion)
 
 	// 1: frame_type
-	m[keyFrameType] = uint8(frame.FrameType)
+	m[keyFrameType] = frame.FrameType.Code()
 
 	// 2: id (bytes[16] for UUID, uint64 for uint variant).
 	// Rust's MessageId is a total enum (always Uuid or Uint); Go's struct can be
@@ -180,10 +180,15 @@ func DecodeFrame(data []byte) (*Frame, error) {
 		return nil, errors.New("missing version (key 0)")
 	}
 	if ver, ok := verVal.(uint64); ok {
-		frame.Version = uint8(ver)
-		if frame.Version != ProtocolVersion {
-			return nil, fmt.Errorf("invalid version %d, expected %d", frame.Version, ProtocolVersion)
+		if ver > 255 {
+			return nil, fmt.Errorf("version: %d is not a protocol version", ver)
 		}
+		if uint8(ver) != ProtocolVersion {
+			return nil, fmt.Errorf("protocol version mismatch: ours %d, theirs %d", ProtocolVersion, ver)
+		}
+		frame.Version = uint8(ver)
+	} else if ver, ok := verVal.(int64); ok {
+		return nil, fmt.Errorf("version: %d is not a protocol version", ver)
 	} else {
 		return nil, errors.New("version must be uint")
 	}
@@ -194,16 +199,13 @@ func DecodeFrame(data []byte) (*Frame, error) {
 		return nil, errors.New("missing frame_type (key 1)")
 	}
 	if ft, ok := ftVal.(uint64); ok {
-		frameType := FrameType(ft)
-		// Validate frame type is in valid range (0-15, excluding removed value 2)
-		if frameType < FrameTypeHello || frameType > FrameTypePolicy {
+		frameType, named := FrameTypeOfCode(ft)
+		if !named {
 			return nil, fmt.Errorf("invalid frame_type %d", ft)
 		}
-		// Reject old RES frame type (2) - permanently retired
-		if frameType == 2 {
-			return nil, fmt.Errorf("frame_type 2 (RES) is permanently retired, not supported in protocol v4")
-		}
 		frame.FrameType = frameType
+	} else if ft, ok := ftVal.(int64); ok {
+		return nil, fmt.Errorf("invalid frame_type %d", ft)
 	} else {
 		return nil, errors.New("frame_type must be uint")
 	}

@@ -39,7 +39,8 @@ func readNotifyIDs(t *testing.T, r *FrameReader) []string {
 		if frame.FrameType != FrameTypeRelayNotify {
 			continue
 		}
-		manifest := frame.RelayNotifyManifest()
+		manifest, err := frame.RelayNotifyManifest()
+		require.NoError(t, err)
 		var payload RelayNotifyCapabilitiesPayload
 		require.NoError(t, json.Unmarshal(manifest, &payload))
 		ids := make([]string, 0, len(payload.InstalledCartridges))

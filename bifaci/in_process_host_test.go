@@ -53,6 +53,64 @@ func cborBytesPayload(t *testing.T, data []byte) []byte {
 	return buf
 }
 
+// TEST7201: every response stream the in-process host opens states its
+// cardinality: a handler's response stream and the identity echo each open
+// with is_sequence false, so the engine's output audit can hold them to the
+// declared shape.
+func Test7201_ResponseStreamsStateIsSequence(t *testing.T) {
+	capUrn := `cap:in="media:text";echo;out="media:text"`
+	handlers := []HandlerRegistration{{Name: "echo", Caps: []cap.Cap{makeTestCap(t, capUrn)}, Handler: echoHandler{}}}
+	host := NewInProcessCartridgeHost(InProcessHostIdentityForTest("in-process-test"), handlers)
+	hostConn, testConn := createSocketPair(t)
+	defer hostConn.Close()
+	defer testConn.Close()
+	hostDone := make(chan error, 1)
+	go func() { hostDone <- host.Run(hostConn, hostConn) }()
+	reader := NewFrameReader(testConn)
+	writer := NewFrameWriter(testConn)
+	require.NoError(t, writer.WriteFrame(NewPolicyFrame(HostPolicy{Network: NetworkPolicyFull})))
+	_, err := reader.ReadFrame()
+	require.NoError(t, err)
+
+	cases := []struct {
+		xid     uint64
+		cap     string
+		stream  string
+		media   string
+		payload []byte
+	}{
+		{1, capUrn, "arg0", "media:text", cborBytesPayload(t, []byte("hello"))},
+		{2, standard.CapIdentity, "identity-verify", "media:", identityNonce()},
+	}
+	for _, c := range cases {
+		rid := NewMessageIdRandom()
+		req := NewReq(rid, c.cap, []byte{}, "application/cbor")
+		xid := NewMessageIdFromUint(c.xid)
+		req.RoutingId = &xid
+		require.NoError(t, writer.WriteFrame(req))
+		require.NoError(t, writer.WriteFrame(NewStreamStart(rid, c.stream, c.media, nil)))
+		require.NoError(t, writer.WriteFrame(NewChunk(rid, c.stream, 0, c.payload, 0, ComputeChecksum(c.payload))))
+		require.NoError(t, writer.WriteFrame(NewStreamEnd(rid, c.stream, 1)))
+		require.NoError(t, writer.WriteFrame(NewEnd(rid, nil)))
+
+		start, err := reader.ReadFrame()
+		require.NoError(t, err)
+		require.Equal(t, FrameTypeStreamStart, start.FrameType, c.cap)
+		require.NotNil(t, start.IsSequence, "%s: the response stream states its cardinality", c.cap)
+		assert.False(t, *start.IsSequence, "%s: the response stream is scalar", c.cap)
+		for {
+			f, err := reader.ReadFrame()
+			require.NoError(t, err)
+			if f.FrameType == FrameTypeEnd {
+				break
+			}
+		}
+	}
+
+	testConn.Close()
+	require.NoError(t, <-hostDone)
+}
+
 // TEST6748: InProcessCartridgeHost routes REQ to matching handler and returns response
 func Test6748_RoutesReqToHandler(t *testing.T) {
 	capUrn := `cap:in="media:text";echo;out="media:text"`
@@ -81,8 +139,8 @@ func Test6748_RoutesReqToHandler(t *testing.T) {
 	notify, err := reader.ReadFrame()
 	require.NoError(t, err)
 	assert.Equal(t, FrameTypeRelayNotify, notify.FrameType)
-	manifest := notify.RelayNotifyManifest()
-	require.NotNil(t, manifest)
+	manifest, err := notify.RelayNotifyManifest()
+	require.NoError(t, err)
 	var payload RelayNotifyCapabilitiesPayload
 	require.NoError(t, json.Unmarshal(manifest, &payload))
 	caps := payload.CapURNs()
@@ -308,6 +366,67 @@ func Test6749_IdentityVerification(t *testing.T) {
 	respEnd, err := reader.ReadFrame()
 	require.NoError(t, err)
 	assert.Equal(t, FrameTypeEnd, respEnd.FrameType)
+
+	testConn.Close()
+	require.NoError(t, <-hostDone)
+}
+
+// TEST7197: The identity cap is recognised by equivalence, not by its text: a
+// REQ for the identity spelled with its directions written out, sent before
+// any policy, is served as the identity (the only request served before a
+// policy), and a REQ whose cap is no cap URN is refused as an invalid request
+// naming it.
+func Test7197_IdentityRequestRecognisedByEquivalence(t *testing.T) {
+	host := NewInProcessCartridgeHost(InProcessHostIdentityForTest("in-process-test"), nil)
+
+	hostConn, testConn := createSocketPair(t)
+	defer hostConn.Close()
+	defer testConn.Close()
+
+	hostDone := make(chan error, 1)
+	go func() { hostDone <- host.Run(hostConn, hostConn) }()
+
+	reader := NewFrameReader(testConn)
+	writer := NewFrameWriter(testConn)
+	_, err := reader.ReadFrame()
+	require.NoError(t, err)
+
+	rid := NewMessageIdRandom()
+	req := NewReq(rid, "cap:effect=none;in=media:;out=media:", []byte{}, "application/cbor")
+	xid := NewMessageIdFromUint(0)
+	req.RoutingId = &xid
+	require.NoError(t, writer.WriteFrame(req))
+	nonce := identityNonce()
+	require.NoError(t, writer.WriteFrame(NewStreamStart(rid, "identity-verify", "media:", nil)))
+	require.NoError(t, writer.WriteFrame(NewChunk(rid, "identity-verify", 0, nonce, 0, ComputeChecksum(nonce))))
+	require.NoError(t, writer.WriteFrame(NewStreamEnd(rid, "identity-verify", 1)))
+	require.NoError(t, writer.WriteFrame(NewEnd(rid, nil)))
+
+	first, err := reader.ReadFrame()
+	require.NoError(t, err)
+	require.Equal(t, FrameTypeStreamStart, first.FrameType,
+		"the identity spelled out is served before any policy, got %s %s", first.ErrorCode(), first.ErrorMessage())
+	echoed, err := reader.ReadFrame()
+	require.NoError(t, err)
+	assert.Equal(t, nonce, echoed.Payload)
+	se, err := reader.ReadFrame()
+	require.NoError(t, err)
+	assert.Equal(t, FrameTypeStreamEnd, se.FrameType)
+	end, err := reader.ReadFrame()
+	require.NoError(t, err)
+	assert.Equal(t, FrameTypeEnd, end.FrameType)
+
+	bad := NewMessageIdRandom()
+	badReq := NewReq(bad, "cap:in=", []byte{}, "application/cbor")
+	badXid := NewMessageIdFromUint(1)
+	badReq.RoutingId = &badXid
+	require.NoError(t, writer.WriteFrame(badReq))
+	errFrame, err := reader.ReadFrame()
+	require.NoError(t, err)
+	assert.Equal(t, FrameTypeErr, errFrame.FrameType)
+	assert.True(t, errFrame.Id.Equals(bad))
+	assert.Equal(t, "INVALID_REQUEST", errFrame.ErrorCode())
+	assert.Contains(t, errFrame.ErrorMessage(), "cap:in=")
 
 	testConn.Close()
 	require.NoError(t, <-hostDone)
