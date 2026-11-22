@@ -147,13 +147,15 @@ type unboundedFrameChan struct {
 	discarded bool
 
 	// onTaken, when set, is called with each frame once its reader has taken
-	// it: out is unbuffered, so the send completes only then. onIdle, when
-	// set, is called just before the pump waits on an empty queue. Credit is
-	// granted from these as the reader consumes (L10), never as frames arrive,
-	// so the queue never holds more than was granted. Both are fixed before
-	// the pump starts.
+	// it: out is unbuffered, so the send completes only then. onFlush, when
+	// set, grants what was taken and not yet granted; it is called just before
+	// the pump waits on an empty queue, and just before it hands over the
+	// frame that ends the flow, so a reader that acts on its flow's end never
+	// overtakes a grant for what it read. Credit is granted from these as the
+	// reader consumes (L10), never as frames arrive, so the queue never holds
+	// more than was granted. Both are fixed before the pump starts.
 	onTaken func(Frame)
-	onIdle  func()
+	onFlush func()
 }
 
 func newUnboundedFrameChan() *unboundedFrameChan {
@@ -161,17 +163,32 @@ func newUnboundedFrameChan() *unboundedFrameChan {
 }
 
 // newUnboundedFrameChanWith is an unbounded channel that reports each frame
-// its reader takes (onTaken) and each moment it runs dry (onIdle).
-func newUnboundedFrameChanWith(onTaken func(Frame), onIdle func()) *unboundedFrameChan {
+// its reader takes (onTaken) and each moment what it took must be granted
+// (onFlush): when it runs dry, and before the frame that ends the flow.
+func newUnboundedFrameChanWith(onTaken func(Frame), onFlush func()) *unboundedFrameChan {
 	u := &unboundedFrameChan{
 		signal:  make(chan struct{}, 1),
 		out:     make(chan Frame),
 		gone:    make(chan struct{}),
 		onTaken: onTaken,
-		onIdle:  onIdle,
+		onFlush: onFlush,
 	}
 	go u.pump()
 	return u
+}
+
+// endsFlow reports whether a reader that takes f has its flow's end: END, or
+// an ERR for the whole flow. A stream's own ERR leaves the flow going.
+func endsFlow(f Frame) bool {
+	switch f.FrameType {
+	case FrameTypeEnd:
+		return true
+	case FrameTypeErr:
+		_, scoped := f.ErrStream()
+		return !scoped
+	default:
+		return false
+	}
 }
 
 func (u *unboundedFrameChan) pump() {
@@ -179,8 +196,8 @@ func (u *unboundedFrameChan) pump() {
 		u.mu.Lock()
 		for len(u.queue) == 0 && !u.closed {
 			u.mu.Unlock()
-			if u.onIdle != nil {
-				u.onIdle()
+			if u.onFlush != nil {
+				u.onFlush()
 			}
 			<-u.signal
 			u.mu.Lock()
@@ -189,8 +206,8 @@ func (u *unboundedFrameChan) pump() {
 			u.mu.Unlock()
 			// The reader has taken everything: what it took and was not yet
 			// granted is granted now, as when the queue runs dry while open.
-			if u.onIdle != nil {
-				u.onIdle()
+			if u.onFlush != nil {
+				u.onFlush()
 			}
 			close(u.out)
 			return
@@ -198,6 +215,13 @@ func (u *unboundedFrameChan) pump() {
 		f := u.queue[0]
 		u.queue = u.queue[1:]
 		u.mu.Unlock()
+		// Everything before the flow's end has been taken and reported by
+		// now (onTaken runs before the next frame is offered): it is granted
+		// before the reader can see the end and act on it — a handler that
+		// returns sends its request's END after the grants for what it read.
+		if u.onFlush != nil && endsFlow(f) {
+			u.onFlush()
+		}
 		select {
 		case u.out <- f:
 			if u.onTaken != nil {

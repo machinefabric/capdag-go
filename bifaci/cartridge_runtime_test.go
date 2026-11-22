@@ -4913,6 +4913,68 @@ func Test8214_input_cut_short_when_the_host_frames_end(t *testing.T) {
 	}
 }
 
+// TEST8215: a reader is handed its flow's END only once everything it took
+// before it has been granted, so a handler that returns on its input's END —
+// and so has its request's END sent — never overtakes the grant for the last
+// chunks it read.
+func Test8215_what_was_taken_is_granted_before_the_end_is_handed_over(t *testing.T) {
+	var mu sync.Mutex
+	var events []string
+	record := func(event string) {
+		mu.Lock()
+		events = append(events, event)
+		mu.Unlock()
+	}
+	taken := 0
+	readerHasEnd := make(chan struct{})
+	frames := newUnboundedFrameChanWith(
+		func(f Frame) {
+			if f.FrameType == FrameTypeChunk {
+				mu.Lock()
+				taken++
+				mu.Unlock()
+			}
+		},
+		func() {
+			mu.Lock()
+			n := taken
+			taken = 0
+			mu.Unlock()
+			if n == 0 {
+				return
+			}
+			// A grant made once the reader has its END comes after it
+			// whatever the scheduling: wait until the reader shows it has END,
+			// or until it plainly cannot, being held for this grant.
+			select {
+			case <-readerHasEnd:
+			case <-time.After(200 * time.Millisecond):
+			}
+			record(fmt.Sprintf("granted %d", n))
+		},
+	)
+	rid := NewMessageIdRandom()
+	// Everything is queued before the reader starts, so the queue never runs
+	// dry before END: only the end of the flow can bring the grant.
+	for i := uint64(0); i < 2; i++ {
+		payload, err := cborlib.Marshal([]byte{byte(i)})
+		require.NoError(t, err)
+		frames.Send(*NewChunk(rid, "s", i, payload, i, ComputeChecksum(payload)))
+	}
+	frames.Send(*NewEnd(rid, nil))
+	frames.Close()
+
+	for f := range frames.Chan() {
+		if f.FrameType == FrameTypeEnd {
+			record("reader has END")
+			close(readerHasEnd)
+		}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, []string{"granted 2", "reader has END"}, events)
+}
+
 // orderBreach sends request rid's stream s1 with one chunk per index given,
 // then STREAM_END saying count and END, and returns the ERR the host is sent
 // for it and the number of chunks the handler was given.
