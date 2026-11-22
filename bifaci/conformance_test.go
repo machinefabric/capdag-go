@@ -1167,3 +1167,105 @@ rows:
 	}
 	conclude(t, "hold", len(rows), wrong)
 }
+
+// emissionFrame is a frame of an emission row as a receiver takes it in: REQ
+// and LOG are what the model calls other, and a LOG stands for them.
+type emissionFrame struct {
+	Frame  string  `json:"frame"`
+	Stream *string `json:"stream"`
+	Index  *uint64 `json:"index"`
+	Count  *uint64 `json:"count"`
+}
+
+func (e emissionFrame) frame(t *testing.T) *Frame {
+	t.Helper()
+	var frameType FrameType
+	switch e.Frame {
+	case "stream_start":
+		frameType = FrameTypeStreamStart
+	case "chunk":
+		frameType = FrameTypeChunk
+	case "stream_end":
+		frameType = FrameTypeStreamEnd
+	case "end":
+		frameType = FrameTypeEnd
+	case "err":
+		frameType = FrameTypeErr
+	case "other":
+		frameType = FrameTypeLog
+	default:
+		t.Fatalf("the model's table names no emitted frame '%s'", e.Frame)
+	}
+	frame := NewFrame(frameType, NewMessageIdFromUint(1))
+	frame.StreamId = e.Stream
+	if frameType == FrameTypeChunk {
+		frame.ChunkIndex = e.Index
+	}
+	if frameType == FrameTypeStreamEnd {
+		frame.ChunkCount = e.Count
+	}
+	return frame
+}
+
+// emissionViolation is the first frame out of order, as the model names it.
+type emissionViolation struct {
+	Kind     string `json:"kind"`
+	Stream   string `json:"stream"`
+	Expected uint64 `json:"expected"`
+	Got      uint64 `json:"got"`
+	Sent     uint64 `json:"sent"`
+	Said     uint64 `json:"said"`
+}
+
+func (v *emissionViolation) text(t *testing.T) string {
+	t.Helper()
+	if v == nil {
+		return ""
+	}
+	switch v.Kind {
+	case "after_end":
+		return "a frame after the call's END or ERR"
+	case "stream_restarted":
+		return fmt.Sprintf("stream %s started twice", v.Stream)
+	case "stream_not_open":
+		return fmt.Sprintf("a chunk or end for stream %s, which is not open", v.Stream)
+	case "chunk_out_of_place":
+		return fmt.Sprintf("chunk out of place on stream %s: expected %d, got %d", v.Stream, v.Expected, v.Got)
+	case "chunk_count_wrong":
+		return fmt.Sprintf("chunk count wrong on stream %s: sent %d, said %d", v.Stream, v.Sent, v.Said)
+	case "end_with_open_stream":
+		return fmt.Sprintf("END with stream %s still open", v.Stream)
+	default:
+		t.Fatalf("the model's table names no violation '%s'", v.Kind)
+		return ""
+	}
+}
+
+// TEST7126: a receiver takes a call's frames in order as the model does: it
+// refuses the first frame of every short flow that the model finds out of
+// order — a stream started twice, a chunk or an end for a stream not open, a
+// chunk out of its place, a count that is not what was sent, END with a stream
+// open, anything after END or ERR — naming what is wrong, and refuses nothing
+// in a flow the model finds in order.
+func Test7126_a_received_flow_is_checked_as_the_model_does(t *testing.T) {
+	type row struct {
+		Frames    []emissionFrame    `json:"frames"`
+		Violation *emissionViolation `json:"violation"`
+	}
+	rows := bifaciRows[row](t, "emission")
+	var wrong []string
+	for _, r := range rows {
+		flow := NewReceivedFlow()
+		refused := ""
+		for _, f := range r.Frames {
+			if err := flow.Receive(f.frame(t)); err != nil {
+				refused = err.Error()
+				break
+			}
+		}
+		if refused != r.Violation.text(t) {
+			wrong = append(wrong, fmt.Sprintf("%+v: refused %q", r, refused))
+		}
+	}
+	conclude(t, "emission", len(rows), wrong)
+}
