@@ -399,6 +399,24 @@ func (m *MediaUrn) WithoutTag(key string) *MediaUrn {
 	return &MediaUrn{inner: m.inner.WithoutTag(key)}
 }
 
+// ReferenceBase is the published media definition this URN, written as a
+// reference, resolves to: the URN without every tag that lets its key be absent
+// (`!k`, `?k`, `k?=v`). Such a tag names no value — `!k` says the dim has none,
+// `?k` leaves it open — so it refines a published type rather than naming
+// another: `media:enc=utf8;fmt=json;!ext` and
+// `media:enc=utf8;fmt=json;?list;?record` both resolve to
+// `media:enc=utf8;fmt=json`. Which tags go is decided from the parsed
+// constraint by tagged-urn's model (TaggedUrn.AdmitsAbsence).
+func (m *MediaUrn) ReferenceBase() *MediaUrn {
+	base := m.inner
+	for key := range m.inner.AllTags() {
+		if m.inner.AdmitsAbsence(key) {
+			base = base.WithoutTag(key)
+		}
+	}
+	return &MediaUrn{inner: base}
+}
+
 // LeastUpperBound is the most specific media type every one of urns conforms
 // to: their common denominator, as a gather's element type or the meeting point
 // where branches of different media converge.

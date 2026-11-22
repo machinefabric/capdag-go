@@ -257,14 +257,18 @@ func NormalizeCapURN(s string) (string, error) {
 	return parsed.String(), nil
 }
 
-// NormalizeMediaURN returns a media URN's canonical string form. See
-// NormalizeCapURN for the rationale on malformed input.
+// NormalizeMediaURN returns the key the registry holds the media definition s
+// resolves to under: the canonical string of its ReferenceBase. A URN that
+// refines a published type by an absence or an open key
+// (`media:enc=utf8;fmt=json;!ext`, `…;?list;?record`) names that published
+// definition, and a published definition writes no such tag, so it is its own
+// key. See NormalizeCapURN for the rationale on malformed input.
 func NormalizeMediaURN(s string) (string, error) {
 	parsed, err := urn.NewMediaUrnFromString(s)
 	if err != nil {
 		return "", &Error{Kind: ErrParse, Message: fmt.Sprintf("malformed media URN '%s'", s), Err: err}
 	}
-	return parsed.String(), nil
+	return parsed.ReferenceBase().String(), nil
 }
 
 // ---------------------------------------------------------------------------
