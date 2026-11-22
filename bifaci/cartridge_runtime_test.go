@@ -4924,6 +4924,70 @@ func Test8214_input_cut_short_when_the_host_frames_end(t *testing.T) {
 	}
 }
 
+// orderBreach sends request rid's stream s1 with one chunk per index given,
+// then STREAM_END saying count and END, and returns the ERR the host is sent
+// for it and the number of chunks the handler was given.
+func orderBreach(t *testing.T, indices []uint64, count uint64) (*Frame, int) {
+	t.Helper()
+	delivered := make(chan int, 1)
+	rt, err := NewCartridgeRuntime([]byte(testManifest))
+	require.NoError(t, err)
+	rt.Register(testCapUrn, func(frames <-chan Frame, emitter StreamEmitter, peer PeerInvoker) error {
+		n := 0
+		for f := range frames {
+			if f.FrameType == FrameTypeChunk {
+				n++
+			}
+		}
+		delivered <- n
+		return nil
+	})
+	hostWriter, outFrames, _ := startTestCartridge(t, rt, 8)
+	rid := NewMessageIdRandom()
+	openRequest(t, hostWriter, rid)
+	for _, i := range indices {
+		sendChunkAt(t, hostWriter, rid, "s1", i)
+	}
+	require.NoError(t, hostWriter.WriteFrame(NewStreamEnd(rid, "s1", count)))
+	require.NoError(t, hostWriter.WriteFrame(NewEnd(rid, nil)))
+
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case f, ok := <-outFrames:
+			require.True(t, ok, "output closed before the breach was reported")
+			if f.FrameType == FrameTypeErr && f.Id.Equals(rid) {
+				select {
+				case n := <-delivered:
+					return &f, n
+				case <-time.After(5 * time.Second):
+					t.Fatal("the handler's input never ended")
+				}
+			}
+		case <-deadline:
+			t.Fatal("the breach must be refused with an ERR")
+		}
+	}
+}
+
+// TEST7191: a request stream whose CHUNKs carry chunk_index 0 then 2 is a
+// protocol error naming the chunk out of place, the stream, and the index
+// expected and the one received; only the chunk in place reaches the handler.
+func Test7191_chunk_out_of_place_is_a_protocol_error(t *testing.T) {
+	errFrame, delivered := orderBreach(t, []uint64{0, 2}, 2)
+	assert.Equal(t, "PROTOCOL_ERROR", errFrame.ErrorCode())
+	assert.Contains(t, errFrame.ErrorMessage(), "chunk out of place on stream s1: expected 1, got 2")
+	assert.Equal(t, 1, delivered, "only the chunk in place is delivered")
+}
+
+// TEST7192: a stream of two CHUNKs ended by a STREAM_END whose chunk_count is
+// 3 is a protocol error naming the count wrong: sent 2, said 3.
+func Test7192_chunk_count_wrong_is_a_protocol_error(t *testing.T) {
+	errFrame, _ := orderBreach(t, []uint64{0, 1}, 3)
+	assert.Equal(t, "PROTOCOL_ERROR", errFrame.ErrorCode())
+	assert.Contains(t, errFrame.ErrorMessage(), "chunk count wrong on stream s1: sent 2, said 3")
+}
+
 // TestPoolCapacityQueuesRequestsBeyondLimit: with the `all` pool declared
 // at capacity 1 (see pools.go), a second request arriving while the first
 // is still running is queued (LOG level="queued") instead of dispatched;

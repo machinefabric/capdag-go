@@ -1427,7 +1427,7 @@ func (rb *ReorderBuffer) Accept(frame *Frame) ([]*Frame, error) {
 	state, exists := rb.flows[key]
 	if !exists {
 		state = &flowState{
-			order:  decided(model.Start()),
+			order:  decided(model.ReorderStart()),
 			buffer: make(map[uint64]*Frame),
 		}
 		rb.flows[key] = state

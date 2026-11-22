@@ -1574,67 +1574,64 @@ func (t patienceDescriptor) Decode(r *lungo.Reader) (Patience, error) {
 	return nil, lungo.Malformed("constructor index %d of CapDAG.Bifaci.Pools.Patience", c)
 }
 
-// Phase is Lean's CapDAG.Bifaci.Request.Phase: one of PhaseCreated, PhaseStreaming.
-type Phase interface{ isPhase() }
-
-// PhaseCreated is Lean's CapDAG.Bifaci.Request.Phase.created.
-type PhaseCreated struct{}
-
-func (PhaseCreated) isPhase() {}
-
-// PhaseStreaming is Lean's CapDAG.Bifaci.Request.Phase.streaming.
-type PhaseStreaming struct{}
-
-func (PhaseStreaming) isPhase() {}
-
-// PhaseFingerprint is the layout fingerprint of Lean's CapDAG.Bifaci.Request.Phase: a package using Phase from this one checks it.
-const PhaseFingerprint = "7407437b58ce033618bf82341b13aaa9661d29a5a9b0f1bf1547ea0bfcfd8374"
-
-type phaseDescriptor struct{}
-
-// PhaseType describes CapDAG.Bifaci.Request.Phase for polymorphic functions.
-func PhaseType() lungo.Type[Phase] {
-	return phaseDescriptor{}
+// Emission is Lean's CapDAG.Bifaci.Request.Emission.
+type Emission struct {
+	Streams []lungo.Pair[string, *big.Int]
+	Ended   []string
+	Over    bool
 }
 
-func (t phaseDescriptor) Expr() []byte { return lungo.InductiveExpr(18) }
+// EmissionFingerprint is the layout fingerprint of Lean's CapDAG.Bifaci.Request.Emission: a package using Emission from this one checks it.
+const EmissionFingerprint = "ed86e54f20b38d926597dacf88c3de65ae68867ee18db71faed8192cf879afca"
 
-func (t phaseDescriptor) Encode(w *lungo.Writer, v Phase) error {
-	switch x := v.(type) {
-	case PhaseCreated:
-		w.U32(0)
-		return nil
-	case *PhaseCreated:
-		if x == nil {
-			return lungo.Malformed("a nil *PhaseCreated")
-		}
-		return t.Encode(w, *x)
-	case PhaseStreaming:
-		w.U32(1)
-		return nil
-	case *PhaseStreaming:
-		if x == nil {
-			return lungo.Malformed("a nil *PhaseStreaming")
-		}
-		return t.Encode(w, *x)
+type emissionDescriptor struct{}
+
+// EmissionType describes CapDAG.Bifaci.Request.Emission for polymorphic functions.
+func EmissionType() lungo.Type[Emission] {
+	return emissionDescriptor{}
+}
+
+func (t emissionDescriptor) Expr() []byte { return lungo.InductiveExpr(18) }
+
+func (t emissionDescriptor) Encode(w *lungo.Writer, v Emission) error {
+	w.U32(0)
+	if err := lungo.ListType(lungo.PairType(lungo.StringType, lungo.NatType)).Encode(w, v.Streams); err != nil {
+		return err
 	}
-	return lungo.Malformed("a nil Phase")
+	if err := lungo.ListType(lungo.StringType).Encode(w, v.Ended); err != nil {
+		return err
+	}
+	if err := lungo.BoolType.Encode(w, v.Over); err != nil {
+		return err
+	}
+	return nil
 }
 
-func (t phaseDescriptor) Decode(r *lungo.Reader) (Phase, error) {
+func (t emissionDescriptor) Decode(r *lungo.Reader) (Emission, error) {
+	var v Emission
 	c, err := r.U32()
 	if err != nil {
-		return nil, err
+		return v, err
 	}
-	switch c {
-	case 0:
-		var v PhaseCreated
-		return v, nil
-	case 1:
-		var v PhaseStreaming
-		return v, nil
+	if c != 0 {
+		return v, lungo.Malformed("constructor index %d of CapDAG.Bifaci.Request.Emission", c)
 	}
-	return nil, lungo.Malformed("constructor index %d of CapDAG.Bifaci.Request.Phase", c)
+	f0, err := lungo.ListType(lungo.PairType(lungo.StringType, lungo.NatType)).Decode(r)
+	if err != nil {
+		return v, err
+	}
+	v.Streams = f0
+	f1, err := lungo.ListType(lungo.StringType).Decode(r)
+	if err != nil {
+		return v, err
+	}
+	v.Ended = f1
+	f2, err := lungo.BoolType.Decode(r)
+	if err != nil {
+		return v, err
+	}
+	v.Over = f2
+	return v, nil
 }
 
 // Emitted is Lean's CapDAG.Bifaci.Request.Emitted: one of EmittedStreamStart, EmittedChunk, EmittedStreamEnd, EmittedFin, EmittedErr, EmittedOther.
@@ -2025,6 +2022,69 @@ func (t violationDescriptor) Decode(r *lungo.Reader) (Violation, error) {
 	return nil, lungo.Malformed("constructor index %d of CapDAG.Bifaci.Request.Violation", c)
 }
 
+// Phase is Lean's CapDAG.Bifaci.Request.Phase: one of PhaseCreated, PhaseStreaming.
+type Phase interface{ isPhase() }
+
+// PhaseCreated is Lean's CapDAG.Bifaci.Request.Phase.created.
+type PhaseCreated struct{}
+
+func (PhaseCreated) isPhase() {}
+
+// PhaseStreaming is Lean's CapDAG.Bifaci.Request.Phase.streaming.
+type PhaseStreaming struct{}
+
+func (PhaseStreaming) isPhase() {}
+
+// PhaseFingerprint is the layout fingerprint of Lean's CapDAG.Bifaci.Request.Phase: a package using Phase from this one checks it.
+const PhaseFingerprint = "7407437b58ce033618bf82341b13aaa9661d29a5a9b0f1bf1547ea0bfcfd8374"
+
+type phaseDescriptor struct{}
+
+// PhaseType describes CapDAG.Bifaci.Request.Phase for polymorphic functions.
+func PhaseType() lungo.Type[Phase] {
+	return phaseDescriptor{}
+}
+
+func (t phaseDescriptor) Expr() []byte { return lungo.InductiveExpr(21) }
+
+func (t phaseDescriptor) Encode(w *lungo.Writer, v Phase) error {
+	switch x := v.(type) {
+	case PhaseCreated:
+		w.U32(0)
+		return nil
+	case *PhaseCreated:
+		if x == nil {
+			return lungo.Malformed("a nil *PhaseCreated")
+		}
+		return t.Encode(w, *x)
+	case PhaseStreaming:
+		w.U32(1)
+		return nil
+	case *PhaseStreaming:
+		if x == nil {
+			return lungo.Malformed("a nil *PhaseStreaming")
+		}
+		return t.Encode(w, *x)
+	}
+	return lungo.Malformed("a nil Phase")
+}
+
+func (t phaseDescriptor) Decode(r *lungo.Reader) (Phase, error) {
+	c, err := r.U32()
+	if err != nil {
+		return nil, err
+	}
+	switch c {
+	case 0:
+		var v PhaseCreated
+		return v, nil
+	case 1:
+		var v PhaseStreaming
+		return v, nil
+	}
+	return nil, lungo.Malformed("constructor index %d of CapDAG.Bifaci.Request.Phase", c)
+}
+
 // Disposition is Lean's CapDAG.Bifaci.Request.Disposition: one of DispositionRoute, DispositionStraggler, DispositionNoRoute.
 type Disposition interface{ isDisposition() }
 
@@ -2053,7 +2113,7 @@ func DispositionType() lungo.Type[Disposition] {
 	return dispositionDescriptor{}
 }
 
-func (t dispositionDescriptor) Expr() []byte { return lungo.InductiveExpr(21) }
+func (t dispositionDescriptor) Expr() []byte { return lungo.InductiveExpr(22) }
 
 func (t dispositionDescriptor) Encode(w *lungo.Writer, v Disposition) error {
 	switch x := v.(type) {
@@ -2137,7 +2197,7 @@ func TerminalType() lungo.Type[Terminal] {
 	return terminalDescriptor{}
 }
 
-func (t terminalDescriptor) Expr() []byte { return lungo.InductiveExpr(22) }
+func (t terminalDescriptor) Expr() []byte { return lungo.InductiveExpr(23) }
 
 func (t terminalDescriptor) Encode(w *lungo.Writer, v Terminal) error {
 	switch x := v.(type) {
@@ -2224,7 +2284,7 @@ func WriteType() lungo.Type[Write] {
 	return writeDescriptor{}
 }
 
-func (t writeDescriptor) Expr() []byte { return lungo.InductiveExpr(23) }
+func (t writeDescriptor) Expr() []byte { return lungo.InductiveExpr(24) }
 
 func (t writeDescriptor) Encode(w *lungo.Writer, v Write) error {
 	switch x := v.(type) {
@@ -2279,7 +2339,7 @@ func extWfType() lungo.Type[formal.Wf] {
 	return extWfDescriptor{}
 }
 
-func (t extWfDescriptor) Expr() []byte { return lungo.InductiveExpr(24) }
+func (t extWfDescriptor) Expr() []byte { return lungo.InductiveExpr(25) }
 func (t extWfDescriptor) Encode(w *lungo.Writer, v formal.Wf) error {
 	return formal.WfType().Encode(w, v)
 }
@@ -2303,7 +2363,7 @@ func CandidateType() lungo.Type[Candidate] {
 	return candidateDescriptor{}
 }
 
-func (t candidateDescriptor) Expr() []byte { return lungo.InductiveExpr(25) }
+func (t candidateDescriptor) Expr() []byte { return lungo.InductiveExpr(26) }
 
 func (t candidateDescriptor) Encode(w *lungo.Writer, v Candidate) error {
 	w.U32(0)
@@ -2356,7 +2416,7 @@ func WfCapType() lungo.Type[WfCap] {
 	return wfCapDescriptor{}
 }
 
-func (t wfCapDescriptor) Expr() []byte { return lungo.InductiveExpr(26) }
+func (t wfCapDescriptor) Expr() []byte { return lungo.InductiveExpr(27) }
 
 func (t wfCapDescriptor) Encode(w *lungo.Writer, v WfCap) error {
 	w.U32(0)
@@ -2430,7 +2490,7 @@ func IllegalType() lungo.Type[Illegal] {
 	return illegalDescriptor{}
 }
 
-func (t illegalDescriptor) Expr() []byte { return lungo.InductiveExpr(27) }
+func (t illegalDescriptor) Expr() []byte { return lungo.InductiveExpr(28) }
 
 func (t illegalDescriptor) Encode(w *lungo.Writer, v Illegal) error {
 	switch x := v.(type) {
@@ -2503,7 +2563,7 @@ func EffectType() lungo.Type[Effect] {
 	return effectDescriptor{}
 }
 
-func (t effectDescriptor) Expr() []byte { return lungo.InductiveExpr(28) }
+func (t effectDescriptor) Expr() []byte { return lungo.InductiveExpr(29) }
 
 func (t effectDescriptor) Encode(w *lungo.Writer, v Effect) error {
 	switch x := v.(type) {
@@ -2583,7 +2643,7 @@ func WfQueryType() lungo.Type[WfQuery] {
 	return wfQueryDescriptor{}
 }
 
-func (t wfQueryDescriptor) Expr() []byte { return lungo.InductiveExpr(29) }
+func (t wfQueryDescriptor) Expr() []byte { return lungo.InductiveExpr(30) }
 
 func (t wfQueryDescriptor) Encode(w *lungo.Writer, v WfQuery) error {
 	w.U32(0)
@@ -2667,7 +2727,7 @@ func GradeType() lungo.Type[Grade] {
 	return gradeDescriptor{}
 }
 
-func (t gradeDescriptor) Expr() []byte { return lungo.InductiveExpr(30) }
+func (t gradeDescriptor) Expr() []byte { return lungo.InductiveExpr(31) }
 
 func (t gradeDescriptor) Encode(w *lungo.Writer, v Grade) error {
 	switch x := v.(type) {
@@ -2762,7 +2822,7 @@ func RunPhaseType() lungo.Type[RunPhase] {
 	return runPhaseDescriptor{}
 }
 
-func (t runPhaseDescriptor) Expr() []byte { return lungo.InductiveExpr(31) }
+func (t runPhaseDescriptor) Expr() []byte { return lungo.InductiveExpr(32) }
 
 func (t runPhaseDescriptor) Encode(w *lungo.Writer, v RunPhase) error {
 	switch x := v.(type) {
@@ -2862,7 +2922,7 @@ func RunOutcomeType() lungo.Type[RunOutcome] {
 	return runOutcomeDescriptor{}
 }
 
-func (t runOutcomeDescriptor) Expr() []byte { return lungo.InductiveExpr(32) }
+func (t runOutcomeDescriptor) Expr() []byte { return lungo.InductiveExpr(33) }
 
 func (t runOutcomeDescriptor) Encode(w *lungo.Writer, v RunOutcome) error {
 	switch x := v.(type) {
@@ -2973,7 +3033,7 @@ func RunAskType() lungo.Type[RunAsk] {
 	return runAskDescriptor{}
 }
 
-func (t runAskDescriptor) Expr() []byte { return lungo.InductiveExpr(33) }
+func (t runAskDescriptor) Expr() []byte { return lungo.InductiveExpr(34) }
 
 func (t runAskDescriptor) Encode(w *lungo.Writer, v RunAsk) error {
 	switch x := v.(type) {
@@ -3062,7 +3122,7 @@ func RunNextType() lungo.Type[RunNext] {
 	return runNextDescriptor{}
 }
 
-func (t runNextDescriptor) Expr() []byte { return lungo.InductiveExpr(34) }
+func (t runNextDescriptor) Expr() []byte { return lungo.InductiveExpr(35) }
 
 func (t runNextDescriptor) Encode(w *lungo.Writer, v RunNext) error {
 	w.U32(0)
@@ -3150,7 +3210,7 @@ func StepStateType() lungo.Type[StepState] {
 	return stepStateDescriptor{}
 }
 
-func (t stepStateDescriptor) Expr() []byte { return lungo.InductiveExpr(35) }
+func (t stepStateDescriptor) Expr() []byte { return lungo.InductiveExpr(36) }
 
 func (t stepStateDescriptor) Encode(w *lungo.Writer, v StepState) error {
 	switch x := v.(type) {
@@ -3299,7 +3359,7 @@ func StepReportType() lungo.Type[StepReport] {
 	return stepReportDescriptor{}
 }
 
-func (t stepReportDescriptor) Expr() []byte { return lungo.InductiveExpr(36) }
+func (t stepReportDescriptor) Expr() []byte { return lungo.InductiveExpr(37) }
 
 func (t stepReportDescriptor) Encode(w *lungo.Writer, v StepReport) error {
 	switch x := v.(type) {
@@ -3450,7 +3510,7 @@ func ConstraintType() lungo.Type[Constraint] {
 	return constraintDescriptor{}
 }
 
-func (t constraintDescriptor) Expr() []byte { return lungo.InductiveExpr(37) }
+func (t constraintDescriptor) Expr() []byte { return lungo.InductiveExpr(38) }
 
 func (t constraintDescriptor) Encode(w *lungo.Writer, v Constraint) error {
 	switch x := v.(type) {
@@ -3586,7 +3646,7 @@ func PoolType() lungo.Type[Pool] {
 	return poolDescriptor{}
 }
 
-func (t poolDescriptor) Expr() []byte { return lungo.InductiveExpr(38) }
+func (t poolDescriptor) Expr() []byte { return lungo.InductiveExpr(39) }
 
 func (t poolDescriptor) Encode(w *lungo.Writer, v Pool) error {
 	w.U32(0)
@@ -3657,7 +3717,7 @@ func RulesType() lungo.Type[Rules] {
 	return rulesDescriptor{}
 }
 
-func (t rulesDescriptor) Expr() []byte { return lungo.InductiveExpr(39) }
+func (t rulesDescriptor) Expr() []byte { return lungo.InductiveExpr(40) }
 
 func (t rulesDescriptor) Encode(w *lungo.Writer, v Rules) error {
 	switch x := v.(type) {
@@ -3747,7 +3807,7 @@ func WfAskType() lungo.Type[WfAsk] {
 	return wfAskDescriptor{}
 }
 
-func (t wfAskDescriptor) Expr() []byte { return lungo.InductiveExpr(40) }
+func (t wfAskDescriptor) Expr() []byte { return lungo.InductiveExpr(41) }
 
 func (t wfAskDescriptor) Encode(w *lungo.Writer, v WfAsk) error {
 	switch x := v.(type) {
@@ -3871,7 +3931,7 @@ func RunActType() lungo.Type[RunAct] {
 	return runActDescriptor{}
 }
 
-func (t runActDescriptor) Expr() []byte { return lungo.InductiveExpr(41) }
+func (t runActDescriptor) Expr() []byte { return lungo.InductiveExpr(42) }
 
 func (t runActDescriptor) Encode(w *lungo.Writer, v RunAct) error {
 	switch x := v.(type) {
@@ -4141,8 +4201,8 @@ func Accept(r_ Reorder, seq *big.Int, limit *big.Int) (result Accepted, err erro
 	return lungo.DecodeValue(program(), status, out, AcceptedType())
 }
 
-// Start is Lean's CapDAG.Bifaci.Flow.Reorder.start : CapDAG.Bifaci.Flow.Reorder
-func Start() (result Reorder, err error) {
+// ReorderStart is Lean's CapDAG.Bifaci.Flow.Reorder.start : CapDAG.Bifaci.Flow.Reorder
+func ReorderStart() (result Reorder, err error) {
 	w := lungo.NewCall(program())
 	defer w.Release()
 	status, out := call(C.lungo_entry(C.capdagFormal__call_l_CapDAG_dBifaci_dFlow_dReorder_dstart), w.Bytes())
@@ -4410,6 +4470,28 @@ func PoolsPatience(unavailableFor lungo.Option[*big.Int], grace *big.Int) (resul
 	}
 	status, out := call(C.lungo_entry(C.capdagFormal__call_l_CapDAG_dBifaci_dPools_dpatience), w.Bytes())
 	return lungo.DecodeValue(program(), status, out, PatienceType())
+}
+
+// EmissionStart is Lean's CapDAG.Bifaci.Request.Emission.start : CapDAG.Bifaci.Request.Emission
+func EmissionStart() (result Emission, err error) {
+	w := lungo.NewCall(program())
+	defer w.Release()
+	status, out := call(C.lungo_entry(C.capdagFormal__call_l_CapDAG_dBifaci_dRequest_dEmission_dstart), w.Bytes())
+	return lungo.DecodeValue(program(), status, out, EmissionType())
+}
+
+// Step is Lean's CapDAG.Bifaci.Request.Emission.step : CapDAG.Bifaci.Request.Emission →   CapDAG.Bifaci.Request.Emitted → Except CapDAG.Bifaci.Request.Violation CapDAG.Bifaci.Request.Emission
+func Step(e Emission, frame Emitted) (result lungo.Except[Violation, Emission], err error) {
+	w := lungo.NewCall(program())
+	defer w.Release()
+	if err = EmissionType().Encode(w, e); err != nil {
+		return
+	}
+	if err = EmittedType().Encode(w, frame); err != nil {
+		return
+	}
+	status, out := call(C.lungo_entry(C.capdagFormal__call_l_CapDAG_dBifaci_dRequest_dEmission_dstep), w.Bytes())
+	return lungo.DecodeValue(program(), status, out, lungo.ExceptType(ViolationType(), EmissionType()))
 }
 
 // After is Lean's CapDAG.Bifaci.Request.Phase.after : CapDAG.Bifaci.Request.Phase → CapDAG.Bifaci.Flow.FrameType → CapDAG.Bifaci.Request.Phase

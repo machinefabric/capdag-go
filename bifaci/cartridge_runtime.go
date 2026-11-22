@@ -1467,6 +1467,8 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 		streams   map[string]*incomingStream // stream_id → live demux state
 		frames    *unboundedFrameChan
 		ended     bool // True after END frame - any stream activity after is FATAL
+		// flow checks the call's frames in order with the proved model (12.4).
+		flow *ReceivedFlow
 	}
 	pendingIncoming := make(map[string]*pendingIncomingRequest)
 	pendingIncomingMu := &sync.Mutex{}
@@ -1642,6 +1644,34 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 	for received := range feed.Frames() {
 		frame := &received
 
+		// Every call's frames are checked in order with the proved model
+		// (12.4): a frame out of order breaks that call, naming what is
+		// wrong — a handler's input is refused as a protocol error, and a
+		// peer response reaches its caller as one.
+		if frame.FrameType != FrameTypeReq && frame.IsFlowFrame() {
+			idKey := frame.Id.ToString()
+			pendingIncomingMu.Lock()
+			if incoming, exists := pendingIncoming[idKey]; exists {
+				if err := incoming.flow.Receive(frame); err != nil {
+					abortRequest(frame.Id, incoming.routingId, incoming, "PROTOCOL_ERROR", err.Error())
+					pendingIncomingMu.Unlock()
+					continue
+				}
+				pendingIncomingMu.Unlock()
+			} else {
+				pendingIncomingMu.Unlock()
+				if pending, ok := pendingPeerRequests.Load(idKey); ok {
+					peer := pending.(*pendingPeerRequest)
+					if err := peer.flow.Receive(frame); err != nil {
+						pendingPeerRequests.Delete(idKey)
+						peer.frames.Send(*NewErr(frame.Id, "PROTOCOL_ERROR", AttributionClassInternal, err.Error(), nil))
+						peer.frames.Close()
+						continue
+					}
+				}
+			}
+		}
+
 		switch frame.FrameType {
 		case FrameTypeReq:
 			// Extract routing_id (XID) FIRST — all error paths must include it
@@ -1711,6 +1741,7 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 				routingId: frame.RoutingId, // Preserve XID for response routing
 				streams:   make(map[string]*incomingStream),
 				ended:     false,
+				flow:      NewReceivedFlow(),
 			}
 			// Input credit is granted as the handler TAKES each chunk, and
 			// everything taken is flushed before the channel waits on an
@@ -3925,7 +3956,9 @@ type pendingPeerRequest struct {
 	// frames carries the response frames to the calling handler, crediting
 	// each response CHUNK back to the responder as the handler takes it (L10),
 	// so the read loop never blocks on a slow consumer.
-	frames  *unboundedFrameChan
+	frames *unboundedFrameChan
+	// flow checks the response's frames in order with the proved model (12.4).
+	flow    *ReceivedFlow
 	streams map[string]string // stream_id → media_urn mapping
 	ended   bool              // true after END frame (close channel)
 	// rid is this call's own request id.
@@ -4000,6 +4033,7 @@ func (p *peerInvokerImpl) Invoke(capUrn string, arguments []cap.CapArgumentValue
 	pending := &pendingPeerRequest{
 		rid:     requestID,
 		origin:  p.origin,
+		flow:    NewReceivedFlow(),
 		streams: make(map[string]string),
 		ended:   false,
 	}

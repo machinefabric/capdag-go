@@ -175,3 +175,78 @@ func (ft FrameType) IsFlow() bool { return ft.facts().flow }
 
 // IsTerminal reports whether a frame of this type ends its flow: END or ERR.
 func (ft FrameType) IsTerminal() bool { return ft.facts().terminal }
+
+// ReceivedFlow is the order of one call's frames as a receiver takes them in,
+// checked frame by frame with the proved model (formal/CapDAG/Bifaci/Request.lean,
+// Emission.step; stepping is check, step_is_check): a stream started twice, a
+// chunk or an end for a stream that is not open, a chunk_index other than the
+// number of chunks received on its stream, a chunk_count that differs from it,
+// END with a stream open, and any frame after END or ERR are each refused,
+// naming what is wrong. Frames that are not of the flow are not passed to the
+// model.
+type ReceivedFlow struct {
+	state model.Emission
+}
+
+// NewReceivedFlow is a call's flow before its first frame.
+func NewReceivedFlow() *ReceivedFlow {
+	return &ReceivedFlow{state: decided(model.EmissionStart())}
+}
+
+// Receive takes in the next frame of the call. On a violation the flow is
+// broken: the error says what is wrong, and the state is left where the last
+// frame in order put it.
+func (r *ReceivedFlow) Receive(frame *Frame) error {
+	if !frame.IsFlowFrame() {
+		return nil
+	}
+	var emitted model.Emitted
+	switch frame.FrameType {
+	case FrameTypeStreamStart, FrameTypeChunk, FrameTypeStreamEnd:
+		if frame.StreamId == nil {
+			return fmt.Errorf("%s frame names no stream", frame.FrameType)
+		}
+		switch frame.FrameType {
+		case FrameTypeStreamStart:
+			emitted = model.EmittedStreamStart{Stream: *frame.StreamId}
+		case FrameTypeChunk:
+			if frame.ChunkIndex == nil {
+				return fmt.Errorf("chunk on stream %s carries no chunk_index", *frame.StreamId)
+			}
+			emitted = model.EmittedChunk{Stream: *frame.StreamId, Index: nat(*frame.ChunkIndex)}
+		default:
+			emitted = model.EmittedStreamEnd{Stream: *frame.StreamId, Count: optionalNat(frame.ChunkCount)}
+		}
+	case FrameTypeEnd:
+		emitted = model.EmittedFin{}
+	case FrameTypeErr:
+		emitted = model.EmittedErr{}
+	default:
+		emitted = model.EmittedOther{}
+	}
+	stepped := decided(model.Step(r.state, emitted))
+	if !stepped.Ok {
+		return fmt.Errorf("%s", describeViolation(stepped.Error))
+	}
+	r.state = stepped.Value
+	return nil
+}
+
+func describeViolation(v model.Violation) string {
+	switch v := v.(type) {
+	case model.ViolationAfterEnd:
+		return "a frame after the call's END or ERR"
+	case model.ViolationStreamRestarted:
+		return fmt.Sprintf("stream %s started twice", v.Stream)
+	case model.ViolationStreamNotOpen:
+		return fmt.Sprintf("a chunk or end for stream %s, which is not open", v.Stream)
+	case model.ViolationChunkOutOfPlace:
+		return fmt.Sprintf("chunk out of place on stream %s: expected %s, got %s", v.Stream, v.Expected, v.Got)
+	case model.ViolationChunkCountWrong:
+		return fmt.Sprintf("chunk count wrong on stream %s: sent %s, said %s", v.Stream, v.Sent, v.Said)
+	case model.ViolationEndWithOpenStream:
+		return fmt.Sprintf("END with stream %s still open", v.Stream)
+	default:
+		panic(fmt.Sprintf("BUG: the model's violation %#v has no description", v))
+	}
+}
