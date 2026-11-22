@@ -343,6 +343,28 @@ size_t capdagFormal__l_USize_dofNatLT(lungo_obj x_1, lungo_obj x_2) {
     return r;
 }
 
+/* Lean: instBEqOfDecidableEq._redArg._lam_0 */
+/* Compiled from: instBEqOfDecidableEq */
+/* Source: <lean>/Init/Prelude.lean:1069:1 */
+uint8_t capdagFormal__l_instBEqOfDecidableEq_d__redArg_d__lam__0(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3) {
+    lungo_obj x_4;
+    uint8_t x_5;
+    x_4 = lungo_apply_2(x_1, x_2, x_3);
+    x_5 = (uint8_t)lungo_unbox(x_4);
+    return x_5;
+}
+
+/* Lean: instBEqOfDecidableEq._redArg._lam_0._boxed */
+/* Compiled from: instBEqOfDecidableEq */
+/* Source: <lean>/Init/Prelude.lean:1069:1 */
+lungo_obj capdagFormal__l_instBEqOfDecidableEq_d__redArg_d__lam__0_d__boxed(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3) {
+    uint8_t x_4;
+    lungo_obj x_5;
+    x_4 = capdagFormal__l_instBEqOfDecidableEq_d__redArg_d__lam__0(x_1, x_2, x_3);
+    x_5 = lungo_box((size_t)x_4);
+    return x_5;
+}
+
 /* Lean: instDecidableEqList._redArg */
 /* Compiled from: instDecidableEqList */
 /* Source: <lean>/Init/Prelude.lean:3006:1 */
