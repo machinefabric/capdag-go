@@ -2380,7 +2380,7 @@ func AdapterChoiceType() lungo.Type[AdapterChoice] {
 	return adapterChoiceDescriptor{}
 }
 
-func (t adapterChoiceDescriptor) Expr() []byte { return lungo.InductiveExpr(25) }
+func (t adapterChoiceDescriptor) Expr() []byte { return lungo.InductiveExpr(26) }
 
 func (t adapterChoiceDescriptor) Encode(w *lungo.Writer, v AdapterChoice) error {
 	switch x := v.(type) {
@@ -2471,7 +2471,7 @@ func CandidateType() lungo.Type[Candidate] {
 	return candidateDescriptor{}
 }
 
-func (t candidateDescriptor) Expr() []byte { return lungo.InductiveExpr(26) }
+func (t candidateDescriptor) Expr() []byte { return lungo.InductiveExpr(27) }
 
 func (t candidateDescriptor) Encode(w *lungo.Writer, v Candidate) error {
 	w.U32(0)
@@ -2524,7 +2524,7 @@ func WfCapType() lungo.Type[WfCap] {
 	return wfCapDescriptor{}
 }
 
-func (t wfCapDescriptor) Expr() []byte { return lungo.InductiveExpr(27) }
+func (t wfCapDescriptor) Expr() []byte { return lungo.InductiveExpr(28) }
 
 func (t wfCapDescriptor) Encode(w *lungo.Writer, v WfCap) error {
 	w.U32(0)
@@ -2598,7 +2598,7 @@ func IllegalType() lungo.Type[Illegal] {
 	return illegalDescriptor{}
 }
 
-func (t illegalDescriptor) Expr() []byte { return lungo.InductiveExpr(28) }
+func (t illegalDescriptor) Expr() []byte { return lungo.InductiveExpr(29) }
 
 func (t illegalDescriptor) Encode(w *lungo.Writer, v Illegal) error {
 	switch x := v.(type) {
@@ -2671,7 +2671,7 @@ func EffectType() lungo.Type[Effect] {
 	return effectDescriptor{}
 }
 
-func (t effectDescriptor) Expr() []byte { return lungo.InductiveExpr(29) }
+func (t effectDescriptor) Expr() []byte { return lungo.InductiveExpr(30) }
 
 func (t effectDescriptor) Encode(w *lungo.Writer, v Effect) error {
 	switch x := v.(type) {
@@ -2751,7 +2751,7 @@ func WfQueryType() lungo.Type[WfQuery] {
 	return wfQueryDescriptor{}
 }
 
-func (t wfQueryDescriptor) Expr() []byte { return lungo.InductiveExpr(30) }
+func (t wfQueryDescriptor) Expr() []byte { return lungo.InductiveExpr(31) }
 
 func (t wfQueryDescriptor) Encode(w *lungo.Writer, v WfQuery) error {
 	w.U32(0)
@@ -2835,7 +2835,7 @@ func GradeType() lungo.Type[Grade] {
 	return gradeDescriptor{}
 }
 
-func (t gradeDescriptor) Expr() []byte { return lungo.InductiveExpr(31) }
+func (t gradeDescriptor) Expr() []byte { return lungo.InductiveExpr(32) }
 
 func (t gradeDescriptor) Encode(w *lungo.Writer, v Grade) error {
 	switch x := v.(type) {
@@ -2930,7 +2930,7 @@ func RunPhaseType() lungo.Type[RunPhase] {
 	return runPhaseDescriptor{}
 }
 
-func (t runPhaseDescriptor) Expr() []byte { return lungo.InductiveExpr(32) }
+func (t runPhaseDescriptor) Expr() []byte { return lungo.InductiveExpr(33) }
 
 func (t runPhaseDescriptor) Encode(w *lungo.Writer, v RunPhase) error {
 	switch x := v.(type) {
@@ -3030,7 +3030,7 @@ func RunOutcomeType() lungo.Type[RunOutcome] {
 	return runOutcomeDescriptor{}
 }
 
-func (t runOutcomeDescriptor) Expr() []byte { return lungo.InductiveExpr(33) }
+func (t runOutcomeDescriptor) Expr() []byte { return lungo.InductiveExpr(34) }
 
 func (t runOutcomeDescriptor) Encode(w *lungo.Writer, v RunOutcome) error {
 	switch x := v.(type) {
@@ -3141,7 +3141,7 @@ func RunAskType() lungo.Type[RunAsk] {
 	return runAskDescriptor{}
 }
 
-func (t runAskDescriptor) Expr() []byte { return lungo.InductiveExpr(34) }
+func (t runAskDescriptor) Expr() []byte { return lungo.InductiveExpr(35) }
 
 func (t runAskDescriptor) Encode(w *lungo.Writer, v RunAsk) error {
 	switch x := v.(type) {
@@ -3230,7 +3230,7 @@ func RunNextType() lungo.Type[RunNext] {
 	return runNextDescriptor{}
 }
 
-func (t runNextDescriptor) Expr() []byte { return lungo.InductiveExpr(35) }
+func (t runNextDescriptor) Expr() []byte { return lungo.InductiveExpr(36) }
 
 func (t runNextDescriptor) Encode(w *lungo.Writer, v RunNext) error {
 	w.U32(0)
@@ -3318,7 +3318,7 @@ func StepStateType() lungo.Type[StepState] {
 	return stepStateDescriptor{}
 }
 
-func (t stepStateDescriptor) Expr() []byte { return lungo.InductiveExpr(36) }
+func (t stepStateDescriptor) Expr() []byte { return lungo.InductiveExpr(37) }
 
 func (t stepStateDescriptor) Encode(w *lungo.Writer, v StepState) error {
 	switch x := v.(type) {
@@ -3467,7 +3467,7 @@ func StepReportType() lungo.Type[StepReport] {
 	return stepReportDescriptor{}
 }
 
-func (t stepReportDescriptor) Expr() []byte { return lungo.InductiveExpr(37) }
+func (t stepReportDescriptor) Expr() []byte { return lungo.InductiveExpr(38) }
 
 func (t stepReportDescriptor) Encode(w *lungo.Writer, v StepReport) error {
 	switch x := v.(type) {
@@ -3618,7 +3618,7 @@ func ConstraintType() lungo.Type[Constraint] {
 	return constraintDescriptor{}
 }
 
-func (t constraintDescriptor) Expr() []byte { return lungo.InductiveExpr(38) }
+func (t constraintDescriptor) Expr() []byte { return lungo.InductiveExpr(39) }
 
 func (t constraintDescriptor) Encode(w *lungo.Writer, v Constraint) error {
 	switch x := v.(type) {
@@ -3754,7 +3754,7 @@ func PoolType() lungo.Type[Pool] {
 	return poolDescriptor{}
 }
 
-func (t poolDescriptor) Expr() []byte { return lungo.InductiveExpr(39) }
+func (t poolDescriptor) Expr() []byte { return lungo.InductiveExpr(40) }
 
 func (t poolDescriptor) Encode(w *lungo.Writer, v Pool) error {
 	w.U32(0)
@@ -3825,7 +3825,7 @@ func RulesType() lungo.Type[Rules] {
 	return rulesDescriptor{}
 }
 
-func (t rulesDescriptor) Expr() []byte { return lungo.InductiveExpr(40) }
+func (t rulesDescriptor) Expr() []byte { return lungo.InductiveExpr(41) }
 
 func (t rulesDescriptor) Encode(w *lungo.Writer, v Rules) error {
 	switch x := v.(type) {
@@ -3915,7 +3915,7 @@ func WfAskType() lungo.Type[WfAsk] {
 	return wfAskDescriptor{}
 }
 
-func (t wfAskDescriptor) Expr() []byte { return lungo.InductiveExpr(41) }
+func (t wfAskDescriptor) Expr() []byte { return lungo.InductiveExpr(42) }
 
 func (t wfAskDescriptor) Encode(w *lungo.Writer, v WfAsk) error {
 	switch x := v.(type) {
@@ -4039,7 +4039,7 @@ func RunActType() lungo.Type[RunAct] {
 	return runActDescriptor{}
 }
 
-func (t runActDescriptor) Expr() []byte { return lungo.InductiveExpr(42) }
+func (t runActDescriptor) Expr() []byte { return lungo.InductiveExpr(43) }
 
 func (t runActDescriptor) Encode(w *lungo.Writer, v RunAct) error {
 	switch x := v.(type) {

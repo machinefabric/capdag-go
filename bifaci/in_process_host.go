@@ -618,10 +618,7 @@ readLoop:
 			if isIdentity {
 				handler = identity
 			} else {
-				idx, ok := 0, false
-				if request, err := urn.NewCapUrnFromString(capUrn); err == nil {
-					idx, ok = findHandlerForCap(caps, owners, request)
-				}
+				idx, ok := findHandlerForCap(caps, owners, parsedCap)
 				if !ok {
 					// No registered handler for a dispatched cap is a
 					// deployment mismatch — Environment.
