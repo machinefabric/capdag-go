@@ -4674,39 +4674,25 @@ func sendChunkAt(t *testing.T, hostWriter *FrameWriter, rid MessageId, stream st
 // error on that stream; the request goes on: another stream of the same
 // request is still delivered whole, and no ERR reaches the host (L12).
 func Test7053_over_window_chunk_is_credit_violation(t *testing.T) {
-	release := make(chan struct{})
-	barrier := make(chan struct{})
-	seen := make(chan []Frame, 1)
-	var calls int32
-	var callsMu sync.Mutex
 	rt, err := NewCartridgeRuntime([]byte(testManifest))
 	require.NoError(t, err)
+	// One request runs at a time, so the request under test waits in line
+	// behind a holder and its handler takes nothing until the holder ends.
+	_, err = rt.manifest.WithPoolDeclarations(PoolDeclarations{Capacities: map[string]uint64{PoolAll: 1}})
+	require.NoError(t, err)
+	inputs := make(chan []Frame, 2)
 	rt.Register(testCapUrn, func(frames <-chan Frame, emitter StreamEmitter, peer PeerInvoker) error {
-		callsMu.Lock()
-		calls++
-		first := calls == 1
-		callsMu.Unlock()
-		if !first {
-			// The second request's REQ is read after every frame of the
-			// first, so the first request's frames have all arrived.
-			close(barrier)
-			for range frames {
-			}
-			return nil
-		}
-		// Nothing is taken until every frame has arrived, so no grant can
-		// extend the window: the third chunk on s1 is a violation by
-		// construction, not by timing.
-		<-release
 		var got []Frame
 		for f := range frames {
 			got = append(got, f)
 		}
-		seen <- got
+		inputs <- got
 		return nil
 	})
 	hostWriter, outFrames, _ := startTestCartridge(t, rt, 2)
 
+	holder := NewMessageIdRandom()
+	require.NoError(t, hostWriter.WriteFrame(NewReq(holder, testCapUrn, nil, "application/cbor")))
 	rid := NewMessageIdRandom()
 	require.NoError(t, hostWriter.WriteFrame(NewReq(rid, testCapUrn, nil, "application/cbor")))
 	for _, stream := range []string{"s1", "s2"} {
@@ -4721,23 +4707,26 @@ func Test7053_over_window_chunk_is_credit_violation(t *testing.T) {
 	require.NoError(t, hostWriter.WriteFrame(NewStreamEnd(rid, "s1", 3)))
 	require.NoError(t, hostWriter.WriteFrame(NewStreamEnd(rid, "s2", 2)))
 	require.NoError(t, hostWriter.WriteFrame(NewEnd(rid, nil)))
+	// The holder's END is read after every frame of the request under test,
+	// and that request's handler starts only once the holder's has returned:
+	// nothing was taken before the third chunk on s1 arrived, so no grant
+	// extended the window and that chunk is a violation by construction.
+	require.NoError(t, hostWriter.WriteFrame(NewEnd(holder, nil)))
 
-	other := NewMessageIdRandom()
-	require.NoError(t, hostWriter.WriteFrame(NewReq(other, testCapUrn, nil, "application/cbor")))
-	require.NoError(t, hostWriter.WriteFrame(NewEnd(other, nil)))
-	select {
-	case <-barrier:
-	case <-time.After(5 * time.Second):
-		t.Fatal("the second request was never dispatched")
+	// Each handler's input is told apart by its request, never by which
+	// handler started first.
+	byRequest := map[string][]Frame{}
+	for len(byRequest) < 2 {
+		select {
+		case input := <-inputs:
+			require.NotEmpty(t, input, "every request's input reaches its END")
+			byRequest[input[0].Id.ToString()] = input
+		case <-time.After(5 * time.Second):
+			t.Fatalf("only %d of the two handlers finished reading their input", len(byRequest))
+		}
 	}
-	close(release)
-
-	var got []Frame
-	select {
-	case got = <-seen:
-	case <-time.After(5 * time.Second):
-		t.Fatal("the handler never finished reading its input")
-	}
+	require.Len(t, byRequest[holder.ToString()], 1, "the holder's input is its END")
+	got := byRequest[rid.ToString()]
 	chunks := map[string]int{}
 	ended := map[string]bool{}
 	var streamErr *Frame
