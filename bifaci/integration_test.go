@@ -817,11 +817,11 @@ func Test293_CartridgeRuntimeHandlerRegistration(t *testing.T) {
 		})
 
 	// Exact match
-	assert.NotNil(t, runtime.FindHandler(standard.CapIdentity))
-	assert.NotNil(t, runtime.FindHandler(`cap:in="media:void";transform;out="media:void"`))
+	assert.NotNil(t, mustFindHandler(t, runtime, standard.CapIdentity))
+	assert.NotNil(t, mustFindHandler(t, runtime, `cap:in="media:void";transform;out="media:void"`))
 
 	// Non-existent
-	assert.Nil(t, runtime.FindHandler(`cap:in="media:void";unknown;out="media:void"`))
+	assert.Nil(t, mustFindHandler(t, runtime, `cap:in="media:void";unknown;out="media:void"`))
 }
 
 // Mirror-specific coverage: Test cartridge-initiated heartbeat mid-stream is handled transparently by host

@@ -109,6 +109,17 @@ func bytesToFrameChannel(payload []byte) <-chan Frame {
 	return ch
 }
 
+// mustFindHandler is FindHandler for a request that parses: a parse error
+// fails the test.
+func mustFindHandler(t *testing.T, rt *CartridgeRuntime, capUrn string) HandlerFunc {
+	t.Helper()
+	handler, err := rt.FindHandler(capUrn)
+	if err != nil {
+		t.Fatalf("FindHandler(%q): %v", capUrn, err)
+	}
+	return handler
+}
+
 // TEST248: Test register_op and find_handler by exact cap URN
 func Test248_register_and_find_handler(t *testing.T) {
 	runtime, err := NewCartridgeRuntime([]byte(testManifest))
@@ -121,7 +132,7 @@ func Test248_register_and_find_handler(t *testing.T) {
 			return emitter.EmitCbor("result")
 		})
 
-	handler := runtime.FindHandler(`cap:in="media:void";test;out="media:void"`)
+	handler := mustFindHandler(t, runtime, `cap:in="media:void";test;out="media:void"`)
 	if handler == nil {
 		t.Fatal("Expected to find handler, got nil")
 	}
@@ -144,7 +155,7 @@ func Test249_raw_handler(t *testing.T) {
 			return emitter.EmitCbor(payload)
 		})
 
-	handler := runtime.FindHandler(`cap:in="media:void";raw;out="media:void"`)
+	handler := mustFindHandler(t, runtime, `cap:in="media:void";raw;out="media:void"`)
 	if handler == nil {
 		t.Fatal("Expected to find handler")
 	}
@@ -189,7 +200,7 @@ func Test250_typed_handler_deserialization(t *testing.T) {
 			return emitter.EmitCbor(value.(string))
 		})
 
-	handler := runtime.FindHandler(`cap:in="media:void";test;out="media:void"`)
+	handler := mustFindHandler(t, runtime, `cap:in="media:void";test;out="media:void"`)
 	emitter := &mockStreamEmitter{}
 	peer := &noPeerInvoker{}
 	err = handler(bytesToFrameChannel([]byte(`{"key":"hello"}`)), emitter, peer)
@@ -225,7 +236,7 @@ func Test251_typed_handler_rejects_invalid_json(t *testing.T) {
 			return emitter.EmitCbor([]byte{})
 		})
 
-	handler := runtime.FindHandler(`cap:in="media:void";test;out="media:void"`)
+	handler := mustFindHandler(t, runtime, `cap:in="media:void";test;out="media:void"`)
 	emitter := &mockStreamEmitter{}
 	peer := &noPeerInvoker{}
 	err = handler(bytesToFrameChannel([]byte("not json {{{{")), emitter, peer)
@@ -241,7 +252,7 @@ func Test252_find_handler_unknown_cap(t *testing.T) {
 		t.Fatalf("Failed to create runtime: %v", err)
 	}
 
-	handler := runtime.FindHandler(`cap:in="media:void";nonexistent;out="media:void"`)
+	handler := mustFindHandler(t, runtime, `cap:in="media:void";nonexistent;out="media:void"`)
 	if handler != nil {
 		t.Fatal("Expected nil for unknown cap, got handler")
 	}
@@ -259,7 +270,7 @@ func Test253_handler_is_send_sync(t *testing.T) {
 			return emitter.EmitCbor("done")
 		})
 
-	handler := runtime.FindHandler(`cap:in="media:void";threaded;out="media:void"`)
+	handler := mustFindHandler(t, runtime, `cap:in="media:void";threaded;out="media:void"`)
 	if handler == nil {
 		t.Fatal("Expected handler")
 	}
@@ -499,7 +510,7 @@ func Test270_multiple_handlers(t *testing.T) {
 	peer := &noPeerInvoker{}
 
 	emitterA := &mockStreamEmitter{}
-	hAlpha := runtime.FindHandler(`cap:in="media:void";alpha;out="media:void"`)
+	hAlpha := mustFindHandler(t, runtime, `cap:in="media:void";alpha;out="media:void"`)
 	_ = hAlpha(bytesToFrameChannel([]byte{}), emitterA, peer)
 	var resultA string
 	cborlib.Unmarshal(emitterA.GetAllData(), &resultA)
@@ -508,7 +519,7 @@ func Test270_multiple_handlers(t *testing.T) {
 	}
 
 	emitterB := &mockStreamEmitter{}
-	hBeta := runtime.FindHandler(`cap:in="media:void";beta;out="media:void"`)
+	hBeta := mustFindHandler(t, runtime, `cap:in="media:void";beta;out="media:void"`)
 	_ = hBeta(bytesToFrameChannel([]byte{}), emitterB, peer)
 	var resultB string
 	cborlib.Unmarshal(emitterB.GetAllData(), &resultB)
@@ -517,7 +528,7 @@ func Test270_multiple_handlers(t *testing.T) {
 	}
 
 	emitterG := &mockStreamEmitter{}
-	hGamma := runtime.FindHandler(`cap:in="media:void";gamma;out="media:void"`)
+	hGamma := mustFindHandler(t, runtime, `cap:in="media:void";gamma;out="media:void"`)
 	_ = hGamma(bytesToFrameChannel([]byte{}), emitterG, peer)
 	var resultG string
 	cborlib.Unmarshal(emitterG.GetAllData(), &resultG)
@@ -542,7 +553,7 @@ func Test271_handler_replacement(t *testing.T) {
 			return emitter.EmitCbor("second")
 		})
 
-	handler := runtime.FindHandler(`cap:in="media:void";test;out="media:void"`)
+	handler := mustFindHandler(t, runtime, `cap:in="media:void";test;out="media:void"`)
 	emitter := &mockStreamEmitter{}
 	peer := &noPeerInvoker{}
 	_ = handler(bytesToFrameChannel([]byte{}), emitter, peer)
@@ -928,7 +939,7 @@ func Test336_FilePathReadsFilePassesBytes(t *testing.T) {
 		t.Fatalf("Failed to extract payload: %v", err)
 	}
 
-	handler := runtime.FindHandler(firstCap(manifest).UrnString())
+	handler := mustFindHandler(t, runtime, firstCap(manifest).UrnString())
 	emitter := &mockStreamEmitter{}
 	peerInvoker := &noPeerInvoker{}
 	err = handler(effectiveCborToFrameChannel(t, payload), emitter, peerInvoker)
@@ -1631,7 +1642,7 @@ func Test350_FullCLIModeWithFilePathIntegration(t *testing.T) {
 		t.Fatalf("Failed to extract payload: %v", err)
 	}
 
-	handler := runtime.FindHandler(firstCap(manifest).UrnString())
+	handler := mustFindHandler(t, runtime, firstCap(manifest).UrnString())
 	emitter := &mockStreamEmitter{}
 	peerInvoker := &noPeerInvoker{}
 	err = handler(effectiveCborToFrameChannel(t, payload), emitter, peerInvoker)
@@ -2463,7 +2474,7 @@ func Test363_CBORModeChunkedContent(t *testing.T) {
 	}
 
 	// Simulate streaming: chunk payload and send via channel
-	handlerFunc := runtime.FindHandler(capDef.UrnString())
+	handlerFunc := mustFindHandler(t, runtime, capDef.UrnString())
 	if handlerFunc == nil {
 		t.Fatal("Handler not found")
 	}
@@ -3215,7 +3226,7 @@ func Test1282_adapter_selection_auto_registered(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewCartridgeRuntimeWithManifest failed: %v", err)
 	}
-	handler := rt.FindHandler(standard.CapAdapterSelection)
+	handler := mustFindHandler(t, rt, standard.CapAdapterSelection)
 	if handler == nil {
 		t.Fatal("CartridgeRuntime must auto-register adapter selection handler")
 	}
@@ -3231,7 +3242,7 @@ func Test1283_adapter_selection_custom_override(t *testing.T) {
 	}
 
 	// Verify default is registered
-	if rt.FindHandler(standard.CapAdapterSelection) == nil {
+	if mustFindHandler(t, rt, standard.CapAdapterSelection) == nil {
 		t.Fatal("Default adapter selection handler must be registered")
 	}
 
@@ -3244,7 +3255,7 @@ func Test1283_adapter_selection_custom_override(t *testing.T) {
 	rt.Register(standard.CapAdapterSelection, customHandler)
 
 	// Must still find a handler (the custom one)
-	if rt.FindHandler(standard.CapAdapterSelection) == nil {
+	if mustFindHandler(t, rt, standard.CapAdapterSelection) == nil {
 		t.Fatal("Custom adapter selection handler must be findable after override")
 	}
 }
@@ -3383,19 +3394,19 @@ func Test478_auto_registers_identity_handler(t *testing.T) {
 	}
 
 	// Identity handler must be registered at exact CAP_IDENTITY URN
-	if runtime.FindHandler(standard.CapIdentity) == nil {
+	if mustFindHandler(t, runtime, standard.CapIdentity) == nil {
 		t.Fatal("CartridgeRuntime must auto-register identity handler")
 	}
 
 	// Discard handler must be registered at exact CAP_DISCARD URN
-	if runtime.FindHandler(standard.CapDiscard) == nil {
+	if mustFindHandler(t, runtime, standard.CapDiscard) == nil {
 		t.Fatal("CartridgeRuntime must auto-register discard handler")
 	}
 
 	// Standard handlers must NOT match arbitrary specific requests
 	// (request is pattern, registered cap is instance — broad caps don't
 	// satisfy specific patterns).
-	if runtime.FindHandler(`cap:in="media:void";nonexistent;out="media:void"`) != nil {
+	if mustFindHandler(t, runtime, `cap:in="media:void";nonexistent;out="media:void"`) != nil {
 		t.Fatal("Standard handlers must not catch arbitrary specific requests")
 	}
 }
@@ -3408,7 +3419,7 @@ func Test479_custom_identity_overrides_default(t *testing.T) {
 	}
 
 	// Auto-registered identity handler must exist
-	if runtime.FindHandler(standard.CapIdentity) == nil {
+	if mustFindHandler(t, runtime, standard.CapIdentity) == nil {
 		t.Fatal("Auto-registered identity must exist before override")
 	}
 
@@ -3425,7 +3436,7 @@ func Test479_custom_identity_overrides_default(t *testing.T) {
 		return fmt.Errorf("custom identity")
 	})
 
-	// Handler count must not change (map insert replaces, doesn't add).
+	// Handler count must not change (an equivalent registration replaces, doesn't add).
 	runtime.mu.RLock()
 	handlersAfter := len(runtime.handlers)
 	runtime.mu.RUnlock()
@@ -3434,14 +3445,52 @@ func Test479_custom_identity_overrides_default(t *testing.T) {
 	}
 
 	// The handler at CAP_IDENTITY must still be findable.
-	if runtime.FindHandler(standard.CapIdentity) == nil {
+	if mustFindHandler(t, runtime, standard.CapIdentity) == nil {
 		t.Fatal("Identity handler must be findable after override")
 	}
 
 	// Discard was NOT affected by the override.
-	if runtime.FindHandler(standard.CapDiscard) == nil {
+	if mustFindHandler(t, runtime, standard.CapDiscard) == nil {
 		t.Fatal("Discard handler must still be present after overriding identity")
 	}
+}
+
+// TEST6757: Of handlers that rank alike for a request, the first registered serves, in
+// every runtime; an equivalent registration replaces, and an unparsable one is refused
+func Test6757_handler_ties_go_to_first_registered(t *testing.T) {
+	noop := func(frames <-chan Frame, emitter StreamEmitter, peer PeerInvoker) error { return nil }
+	canonical := func(s string) string {
+		u, err := urn.NewCapUrnFromString(s)
+		require.NoError(t, err)
+		return u.String()
+	}
+	x := canonical("cap:op;x=a")
+	y := canonical("cap:op;y=b")
+
+	for _, order := range [][2]string{{x, y}, {y, x}} {
+		for i := 0; i < 64; i++ {
+			rt, err := NewCartridgeRuntime([]byte(testManifest))
+			require.NoError(t, err)
+			rt.Register(order[0], noop)
+			rt.Register(order[1], noop)
+			handler, pattern, err := rt.FindHandlerWithPattern("cap:op")
+			require.NoError(t, err)
+			require.NotNil(t, handler, "both handlers serve cap:op")
+			require.Equal(t, order[0], pattern, "the first registered of two alike handlers must serve")
+		}
+	}
+
+	rt, err := NewCartridgeRuntime([]byte(testManifest))
+	require.NoError(t, err)
+	before := len(rt.handlers)
+	rt.Register("cap:op;x=a", noop)
+	rt.Register("cap:x=a;op", noop)
+	require.Equal(t, before+1, len(rt.handlers), "two spellings of one cap must be one entry")
+
+	require.Panics(t, func() { rt.Register("cap:op;x=", noop) }, "an unparsable cap must be refused when registered")
+
+	_, _, err = rt.FindHandlerWithPattern("op;x=a")
+	require.Error(t, err, "an unparsable request must be reported, not read as no handler")
 }
 
 // =========================================================================

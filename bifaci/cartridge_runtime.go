@@ -784,7 +784,9 @@ func (h *PoolHandle) Set(available uint64) error {
 // level="dequeued") and dispatched. (matches
 // Rust CartridgeRuntime pools)
 type CartridgeRuntime struct {
-	handlers     map[string]HandlerFunc
+	// handlers in registration order: of handlers that rank alike for a
+	// request, the first registered serves
+	handlers     []capHandler
 	manifestData []byte
 	manifest     *CapManifest
 	limits       Limits
@@ -833,7 +835,6 @@ func NewCartridgeRuntime(manifestJSON []byte) (*CartridgeRuntime, error) {
 	parseErr := json.Unmarshal(manifestJSON, &manifest)
 
 	runtime := &CartridgeRuntime{
-		handlers:          make(map[string]HandlerFunc),
 		manifestData:      manifestJSON,
 		limits:            DefaultLimits(),
 		pools:             &poolsCell{},
@@ -887,7 +888,6 @@ func NewCartridgeRuntimeWithManifest(manifest *CapManifest) (*CartridgeRuntime, 
 	}
 
 	runtime := &CartridgeRuntime{
-		handlers:          make(map[string]HandlerFunc),
 		manifestData:      manifestData,
 		manifest:          manifest,
 		limits:            DefaultLimits(),
@@ -915,9 +915,9 @@ func (pr *CartridgeRuntime) autoRegisterIdentity() {
 	defer pr.mu.Unlock()
 
 	// Check if identity handler already registered
-	if _, exists := pr.handlers[standard.CapIdentity]; !exists {
+	if !pr.hasEquivalentHandlerLocked(standard.CapIdentity) {
 		// Register default identity handler (echo - returns input as-is)
-		pr.handlers[standard.CapIdentity] = func(input <-chan Frame, output StreamEmitter, peer PeerInvoker) error {
+		pr.registerLocked(standard.CapIdentity, func(input <-chan Frame, output StreamEmitter, peer PeerInvoker) error {
 			// Collect all incoming frames
 			var chunks []interface{}
 			for frame := range input {
@@ -968,7 +968,7 @@ func (pr *CartridgeRuntime) autoRegisterIdentity() {
 					return output.EmitCbor(chunks)
 				}
 			}
-		}
+		})
 	}
 }
 
@@ -980,8 +980,8 @@ func (pr *CartridgeRuntime) autoRegisterDiscard() {
 	pr.mu.Lock()
 	defer pr.mu.Unlock()
 
-	if _, exists := pr.handlers[standard.CapDiscard]; !exists {
-		pr.handlers[standard.CapDiscard] = func(input <-chan Frame, output StreamEmitter, peer PeerInvoker) error {
+	if !pr.hasEquivalentHandlerLocked(standard.CapDiscard) {
+		pr.registerLocked(standard.CapDiscard, func(input <-chan Frame, output StreamEmitter, peer PeerInvoker) error {
 			// Drain all input frames, verifying chunk integrity as we go.
 			for frame := range input {
 				if frame.FrameType == FrameTypeChunk {
@@ -992,7 +992,7 @@ func (pr *CartridgeRuntime) autoRegisterDiscard() {
 			}
 			// Terminal morphism — produce nothing.
 			return nil
-		}
+		})
 	}
 }
 
@@ -1004,22 +1004,65 @@ func (pr *CartridgeRuntime) autoRegisterAdapterSelection() {
 	pr.mu.Lock()
 	defer pr.mu.Unlock()
 
-	if _, exists := pr.handlers[capAdapterSelection]; !exists {
-		pr.handlers[capAdapterSelection] = func(input <-chan Frame, output StreamEmitter, peer PeerInvoker) error {
+	if !pr.hasEquivalentHandlerLocked(capAdapterSelection) {
+		pr.registerLocked(capAdapterSelection, func(input <-chan Frame, output StreamEmitter, peer PeerInvoker) error {
 			// Drain input frames
 			for range input {
 			}
 			// Return empty END (no adapter match)
 			return nil
-		}
+		})
 	}
 }
 
-// Register registers a handler for a cap URN
+// capHandler is a registered handler and the cap it was registered for.
+type capHandler struct {
+	urn     *urn.CapUrn
+	handler HandlerFunc
+}
+
+// Register registers a handler for a cap URN.
+//
+// Panics if capUrn does not parse. Registering a cap equivalent to one
+// already registered replaces its handler.
 func (pr *CartridgeRuntime) Register(capUrn string, handler HandlerFunc) {
 	pr.mu.Lock()
 	defer pr.mu.Unlock()
-	pr.handlers[capUrn] = handler
+	pr.registerLocked(capUrn, handler)
+}
+
+// registerLocked adds handler under capUrn, or replaces the handler of a
+// registered cap equivalent to it, keeping that cap's place in registration
+// order. The caller holds pr.mu.
+func (pr *CartridgeRuntime) registerLocked(capUrn string, handler HandlerFunc) {
+	registered := mustParseRegisteredCap(capUrn)
+	for i := range pr.handlers {
+		if pr.handlers[i].urn.IsEquivalent(registered) {
+			pr.handlers[i].handler = handler
+			return
+		}
+	}
+	pr.handlers = append(pr.handlers, capHandler{urn: registered, handler: handler})
+}
+
+// hasEquivalentHandlerLocked says whether a cap equivalent to capUrn is
+// registered. The caller holds pr.mu.
+func (pr *CartridgeRuntime) hasEquivalentHandlerLocked(capUrn string) bool {
+	registered := mustParseRegisteredCap(capUrn)
+	for _, entry := range pr.handlers {
+		if entry.urn.IsEquivalent(registered) {
+			return true
+		}
+	}
+	return false
+}
+
+func mustParseRegisteredCap(capUrn string) *urn.CapUrn {
+	registered, err := urn.NewCapUrnFromString(capUrn)
+	if err != nil {
+		panic(fmt.Sprintf("cannot register a handler for '%s': %v", capUrn, err))
+	}
+	return registered
 }
 
 // PoolHandle returns a self-report handle for one pool (a registered cap
@@ -1080,7 +1123,7 @@ type CapOp interface {
 	Perform(req *Request) error
 }
 
-// RegisterOp registers a CapOp for a cap URN.
+// RegisterOp registers a CapOp for a cap URN, as Register does.
 // Bridges the struct-based CapOp interface to the function-based HandlerFunc.
 func (pr *CartridgeRuntime) RegisterOp(capUrn string, op CapOp) {
 	pr.Register(capUrn, func(frames <-chan Frame, emitter StreamEmitter, peer PeerInvoker) error {
@@ -1088,95 +1131,39 @@ func (pr *CartridgeRuntime) RegisterOp(capUrn string, op CapOp) {
 	})
 }
 
-// FindHandler finds a handler for a cap URN (exact match or is_dispatchable pattern match).
-//
-// Uses is_dispatchable(candidate, request): can this registered handler dispatch
-// the incoming request? Mirrors Rust exactly:
-//
-//	registered_urn.is_dispatchable(&request_urn)
-//
-// Ranks by: non-negative signed distance (refinement/exact) first,
-// then by smallest absolute distance. This prevents identity handlers
-// from stealing routes from specific handlers.
-func (pr *CartridgeRuntime) FindHandler(capUrn string) HandlerFunc {
-	handler, _ := pr.FindHandlerWithPattern(capUrn)
-	return handler
+// FindHandler finds a handler for a cap URN: nil when no registered cap
+// serves it, an error when capUrn does not parse. See FindHandlerWithPattern.
+// (matches Rust find_handler)
+func (pr *CartridgeRuntime) FindHandler(capUrn string) (HandlerFunc, error) {
+	handler, _, err := pr.FindHandlerWithPattern(capUrn)
+	return handler, err
 }
 
 // FindHandlerWithPattern finds the best handler for a cap URN and returns
 // it together with the CANONICAL registered pattern that won — the
-// request's singleton pool and pool-chain key. (matches Rust
-// find_handler_with_pattern)
-func (pr *CartridgeRuntime) FindHandlerWithPattern(capUrn string) (HandlerFunc, string) {
+// request's singleton pool and pool-chain key.
+//
+// The proved ranking chooses (urn.Select) among the registered caps that
+// serve the request; of handlers that rank alike, the first registered
+// serves. (matches Rust find_handler_with_pattern)
+func (pr *CartridgeRuntime) FindHandlerWithPattern(capUrn string) (HandlerFunc, string, error) {
+	request, err := urn.NewCapUrnFromString(capUrn)
+	if err != nil {
+		return nil, "", err
+	}
+
 	pr.mu.RLock()
 	defer pr.mu.RUnlock()
 
-	// First try exact match
-	if handler, ok := pr.handlers[capUrn]; ok {
-		if parsed, err := urn.NewCapUrnFromString(capUrn); err == nil {
-			return handler, parsed.String()
-		}
-		return handler, capUrn
+	caps := make([]*urn.CapUrn, len(pr.handlers))
+	for i, entry := range pr.handlers {
+		caps[i] = entry.urn
 	}
-
-	// Then try pattern matching via CapUrn
-	requestUrn, err := urn.NewCapUrnFromString(capUrn)
-	if err != nil {
-		return nil, ""
+	i, ok := urn.Select(caps, request)
+	if !ok {
+		return nil, "", nil
 	}
-
-	requestSpecificity := requestUrn.Specificity()
-
-	type handlerMatch struct {
-		handler        HandlerFunc
-		pattern        string
-		signedDistance int
-	}
-	var matches []handlerMatch
-
-	for pattern, handler := range pr.handlers {
-		registeredUrn, err := urn.NewCapUrnFromString(pattern)
-		if err != nil {
-			continue
-		}
-		// Use is_dispatchable: can this candidate handle this request?
-		if registeredUrn.IsDispatchable(requestUrn) {
-			specificity := registeredUrn.Specificity()
-			signedDistance := specificity - requestSpecificity
-			matches = append(matches, handlerMatch{handler, registeredUrn.String(), signedDistance})
-		}
-	}
-
-	if len(matches) == 0 {
-		return nil, ""
-	}
-
-	// Rank: non-negative distance (refinement/exact) before negative (fallback),
-	// then by smallest absolute distance
-	sort.SliceStable(matches, func(i, j int) bool {
-		iGroup := 0
-		if matches[i].signedDistance < 0 {
-			iGroup = 1
-		}
-		jGroup := 0
-		if matches[j].signedDistance < 0 {
-			jGroup = 1
-		}
-		if iGroup != jGroup {
-			return iGroup < jGroup
-		}
-		iAbs := matches[i].signedDistance
-		if iAbs < 0 {
-			iAbs = -iAbs
-		}
-		jAbs := matches[j].signedDistance
-		if jAbs < 0 {
-			jAbs = -jAbs
-		}
-		return iAbs < jAbs
-	})
-
-	return matches[0].handler, matches[0].pattern
+	return pr.handlers[i].handler, pr.handlers[i].urn.String(), nil
 }
 
 // Run runs the cartridge runtime (automatic mode detection)
@@ -1413,11 +1400,10 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 	// cartridge-author bug surfaced right here, at startup.
 	pr.mu.RLock()
 	patterns := make([]string, 0, len(pr.handlers))
-	for pattern := range pr.handlers {
-		patterns = append(patterns, pattern)
+	for _, entry := range pr.handlers {
+		patterns = append(patterns, entry.urn.String())
 	}
 	pr.mu.RUnlock()
-	sort.Strings(patterns)
 	declarations := &PoolDeclarations{}
 	if pr.manifest != nil && pr.manifest.PoolDeclarations != nil {
 		declarations = pr.manifest.PoolDeclarations
@@ -1715,7 +1701,15 @@ func (pr *CartridgeRuntime) runCBORModeIO(in io.Reader, out io.Writer) error {
 
 			// Find handler and the registered pattern that won — the
 			// request's singleton pool and pool-chain key.
-			handler, pattern := pr.FindHandlerWithPattern(capUrn)
+			handler, pattern, findErr := pr.FindHandlerWithPattern(capUrn)
+			if findErr != nil {
+				errFrame := NewErr(frame.Id, "INVALID_REQUEST", AttributionClassInternal, fmt.Sprintf("Request cap URN '%s' does not parse: %v", capUrn, findErr), nil)
+				errFrame.RoutingId = routingId
+				if writeErr := writer.WriteFrame(errFrame); writeErr != nil {
+					fmt.Fprintf(os.Stderr, "[CartridgeRuntime] Failed to write error: %v\n", writeErr)
+				}
+				continue
+			}
 			if handler == nil {
 				// A dispatched cap this binary doesn't handle is a
 				// deployment/manifest mismatch — Environment.
@@ -2382,7 +2376,10 @@ func (pr *CartridgeRuntime) runCLIMode(args []string) error {
 	}
 
 	// Find handler
-	handler := pr.FindHandler(cap.UrnString())
+	handler, err := pr.FindHandler(cap.UrnString())
+	if err != nil {
+		return fmt.Errorf("cap '%s' does not parse: %w", cap.UrnString(), err)
+	}
 	if handler == nil {
 		return fmt.Errorf("no handler registered for cap '%s'", cap.UrnString())
 	}
