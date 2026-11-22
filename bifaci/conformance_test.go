@@ -1021,7 +1021,10 @@ func Test12389_handshake_refuses_a_zero_credit_window(t *testing.T) {
 // and a payload of size bytes. The REQ names its cap and has been given its
 // routing id, as a switch hands it to its holds.
 func heldFrame(code uint64, size uint64) *Frame {
-	frameType := FrameType(code)
+	frameType, named := FrameTypeOfCode(code)
+	if !named {
+		panic(fmt.Sprintf("wire number %d names no frame type", code))
+	}
 	frame := NewFrame(frameType, NewMessageIdFromUint(1))
 	if size > 0 {
 		frame.Payload = make([]byte, size)
