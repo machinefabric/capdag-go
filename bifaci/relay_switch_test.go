@@ -235,42 +235,48 @@ func Test7199_relay_notify_limits_required_every_time(t *testing.T) {
 		return frame
 	}
 
-	engineRead, slaveWrite := net.Pipe()
-	slaveRead, engineWrite := net.Pipe()
+	// Each master has pipes of its own: a master's goroutine reads only the
+	// pipe it was given, never one a later master was given.
+	refusedRead, refusedSlaveWrite := net.Pipe()
+	refusedSlaveRead, refusedWrite := net.Pipe()
 	go func() {
-		writer := NewFrameWriter(slaveWrite)
+		writer := NewFrameWriter(refusedSlaveWrite)
 		_ = writer.WriteFrame(notifyWith(func(m map[string]interface{}) { m["max_chunk"] = 0 }))
-		_, _ = io.Copy(io.Discard, slaveRead)
+		_, _ = io.Copy(io.Discard, refusedSlaveRead)
 	}()
-	_, err := NewRelaySwitch([]SocketPair{{ID: "m0", Read: engineRead, Write: engineWrite}}, HostPolicy{Network: NetworkPolicyFull})
+	_, err := NewRelaySwitch([]SocketPair{{ID: "m0", Read: refusedRead, Write: refusedWrite}}, HostPolicy{Network: NetworkPolicyFull})
 	require.Error(t, err, "a master announcing max_chunk 0 must not be taken")
 	assert.Contains(t, err.Error(), "max_chunk")
-	engineRead.Close()
-	engineWrite.Close()
+	refusedRead.Close()
+	refusedWrite.Close()
 
-	engineRead, slaveWrite = net.Pipe()
-	slaveRead, engineWrite = net.Pipe()
+	takenRead, takenSlaveWrite := net.Pipe()
+	takenSlaveRead, takenWrite := net.Pipe()
 	sent := make(chan struct{})
 	go func() {
-		reader := NewFrameReader(slaveRead)
-		writer := NewFrameWriter(slaveWrite)
+		reader := NewFrameReader(takenSlaveRead)
+		writer := NewFrameWriter(takenSlaveWrite)
 		if !serveRelayHandshake(t, reader, writer, nil) {
 			return
 		}
 		_ = writer.WriteFrame(notifyWith(func(m map[string]interface{}) { delete(m, "initial_credit") }))
 		close(sent)
-		_, _ = io.Copy(io.Discard, slaveRead)
+		_, _ = io.Copy(io.Discard, takenSlaveRead)
 	}()
-	sw, err := NewRelaySwitch([]SocketPair{{ID: "m0", Read: engineRead, Write: engineWrite}}, HostPolicy{Network: NetworkPolicyFull})
+	sw, err := NewRelaySwitch([]SocketPair{{ID: "m0", Read: takenRead, Write: takenWrite}}, HostPolicy{Network: NetworkPolicyFull})
 	require.NoError(t, err, "a master announcing every limit is taken")
 	announced := sw.Limits()
-	<-sent
+	select {
+	case <-sent:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the master never sent its second RelayNotify")
+	}
 	_, err = sw.ReadFromMasters()
 	require.Error(t, err, "a RelayNotify missing initial_credit must be a protocol error")
 	assert.Contains(t, err.Error(), "initial_credit")
 	assert.Equal(t, announced, sw.Limits(), "the limits last announced are kept")
-	engineRead.Close()
-	engineWrite.Close()
+	takenRead.Close()
+	takenWrite.Close()
 }
 
 // TEST7193: a peer request takes no router admission permit. With the serving
