@@ -233,6 +233,31 @@ lungo_obj capdagFormal__l_TaggedUrn_dinstDecidableSorted_d__lam__0_d__boxed(lung
     return x_4;
 }
 
+/* Lean: TaggedUrn.lookup */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Sorted.lean:20:1 */
+lungo_obj capdagFormal__l_TaggedUrn_dlookup(lungo_obj x_1, lungo_obj x_2) {
+    lungo_obj x_3;
+    lungo_obj x_4;
+    lungo_obj x_5;
+    lungo_obj x_6;
+    x_3 = capdagFormal__l_List_dfind_x3f__d__at___dTaggedUrn_dUrn_dtag_dspec__0(x_2, x_1);
+    switch (lungo_obj_tag(x_3)) {
+        case 0: {
+            x_4 = lungo_box(0);
+            return x_4;
+        }
+        default: {
+            x_5 = lungo_ctor_get(x_3, 0);
+            lungo_inc(x_5);
+            lungo_dec_ref(x_3);
+            x_6 = lungo_ctor_get(x_5, 1);
+            lungo_inc(x_6);
+            lungo_dec(x_5);
+            return x_6;
+        }
+    }
+}
+
 /* Lean: TaggedUrn.mergeTags */
 /* Source: <package:tagged_urn_formal>/TaggedUrn/Sorted.lean:81:1 */
 uint8_t capdagFormal__l_TaggedUrn_dmergeTags(lungo_obj x_1, lungo_obj x_2) {
@@ -488,6 +513,33 @@ uint8_t capdagFormal__l_TaggedUrn_dmergeWith(lungo_obj x_1, lungo_obj x_2, lungo
             }
         }
     }
+}
+
+/* Lean: TaggedUrn.tagMatchBothClosed */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Sorted.lean:338:1 */
+uint8_t capdagFormal__l_TaggedUrn_dtagMatchBothClosed(lungo_obj x_1, lungo_obj x_2) {
+    lungo_obj x_3;
+    lungo_obj x_4;
+    uint8_t x_5;
+    x_3 = capdagFormal__l_TaggedUrn_dConstraint_dclosed(x_1);
+    x_4 = capdagFormal__l_TaggedUrn_dConstraint_dclosed(x_2);
+    x_5 = capdagFormal__l_TaggedUrn_dtagMatch(x_3, x_4);
+    lungo_dec(x_4);
+    lungo_dec(x_3);
+    return x_5;
+}
+
+/* Lean: TaggedUrn.tagMatchBothClosed._boxed */
+/* Compiled from: TaggedUrn.tagMatchBothClosed */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Sorted.lean:338:1 */
+lungo_obj capdagFormal__l_TaggedUrn_dtagMatchBothClosed_d__boxed(lungo_obj x_1, lungo_obj x_2) {
+    uint8_t x_3;
+    lungo_obj x_4;
+    x_3 = capdagFormal__l_TaggedUrn_dtagMatchBothClosed(x_1, x_2);
+    lungo_dec(x_2);
+    lungo_dec(x_1);
+    x_4 = lungo_box((size_t)x_3);
+    return x_4;
 }
 
 /* Lean: TaggedUrn.tagMatchClosed */

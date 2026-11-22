@@ -18,6 +18,49 @@ lungo_obj capdagFormal__l_TaggedUrn_dConstraint_dclosed(lungo_obj x_1) {
     }
 }
 
+/* Lean: TaggedUrn.Constraint.val */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:87:1 */
+lungo_obj capdagFormal__l_TaggedUrn_dConstraint_dval(lungo_obj x_1) {
+    lungo_obj x_2;
+    lungo_obj x_3;
+    lungo_obj x_4;
+    lungo_obj x_5;
+    switch (lungo_obj_tag(x_1)) {
+        case 2: {
+            x_2 = lungo_ctor_get(x_1, 0);
+            lungo_inc_ref(x_2);
+            return x_2;
+        }
+        case 4: {
+            x_3 = lungo_ctor_get(x_1, 0);
+            lungo_inc_ref(x_3);
+            return x_3;
+        }
+        case 5: {
+            x_4 = lungo_ctor_get(x_1, 0);
+            lungo_inc_ref(x_4);
+            return x_4;
+        }
+        default: {
+            x_5 = capdagFormal__l_TaggedUrn_dConstraint_dval_d__closed__0();
+            return x_5;
+        }
+    }
+}
+
+/* Lean: TaggedUrn.Constraint.val._closed_0 */
+/* Compiled from: TaggedUrn.Constraint.val */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:87:1 */
+static lungo_obj capdagFormal__l_TaggedUrn_dConstraint_dval_d__closed__0__init(void) {
+    lungo_obj x_1;
+    x_1 = lungo_mk_string_unchecked((const uint8_t *)"", 0, 0);
+    return x_1;
+}
+static lungo_lazy_obj capdagFormal__l_TaggedUrn_dConstraint_dval_d__closed__0__cell;
+lungo_obj capdagFormal__l_TaggedUrn_dConstraint_dval_d__closed__0(void) {
+    return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dConstraint_dval_d__closed__0__cell, capdagFormal__l_TaggedUrn_dConstraint_dval_d__closed__0__init);
+}
+
 /* Lean: TaggedUrn.instDecidableEqConstraint */
 /* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:26:12 */
 uint8_t capdagFormal__l_TaggedUrn_dinstDecidableEqConstraint(lungo_obj x_1, lungo_obj x_2) {
@@ -267,6 +310,52 @@ uint8_t capdagFormal__l_TaggedUrn_dinstDecidableEqConstraint_ddecEq(lungo_obj x_
                 default: {
                     x_34 = (uint8_t)0u;
                     return x_34;
+                }
+            }
+        }
+    }
+}
+
+/* Lean: TaggedUrn.instDecidableEqKeyState.decEq */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:32:12 */
+uint8_t capdagFormal__l_TaggedUrn_dinstDecidableEqKeyState_ddecEq(lungo_obj x_1, lungo_obj x_2) {
+    uint8_t x_3;
+    uint8_t x_4;
+    lungo_obj x_5;
+    uint8_t x_6;
+    lungo_obj x_7;
+    uint8_t x_8;
+    switch (lungo_obj_tag(x_1)) {
+        case 0: {
+            switch (lungo_obj_tag(x_2)) {
+                case 0: {
+                    x_3 = (uint8_t)1u;
+                    return x_3;
+                }
+                default: {
+                    x_4 = (uint8_t)0u;
+                    return x_4;
+                }
+            }
+        }
+        default: {
+            x_5 = lungo_ctor_get(x_1, 0);
+            x_6 = (uint8_t)0u;
+            switch (lungo_obj_tag(x_2)) {
+                case 0: {
+                    return x_6;
+                }
+                default: {
+                    x_7 = lungo_ctor_get(x_2, 0);
+                    x_8 = capdagFormal__l_String_ddecEq(x_5, x_7);
+                    switch (x_8) {
+                        case 0: {
+                            return x_6;
+                        }
+                        default: {
+                            return x_8;
+                        }
+                    }
                 }
             }
         }

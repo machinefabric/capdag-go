@@ -102,6 +102,58 @@ lungo_obj capdagFormal__l_List_ddrop_d__redArg(lungo_obj x_1, lungo_obj x_2) {
     }
 }
 
+/* Lean: List.elem._redArg */
+/* Compiled from: List.elem */
+/* Source: <lean>/Init/Data/List/Basic.lean:783:1 */
+uint8_t capdagFormal__l_List_delem_d__redArg(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3) {
+    uint8_t x_4;
+    lungo_obj x_5;
+    lungo_obj x_6;
+    lungo_obj x_7;
+    uint8_t x_8;
+    uint8_t x_10;
+    _start:
+    switch (lungo_obj_tag(x_3)) {
+        case 0: {
+            lungo_dec(x_2);
+            lungo_dec_ref(x_1);
+            x_4 = (uint8_t)0u;
+            return x_4;
+        }
+        default: {
+            x_5 = lungo_ctor_get(x_3, 0);
+            lungo_inc(x_5);
+            x_6 = lungo_ctor_get(x_3, 1);
+            lungo_inc(x_6);
+            lungo_dec_ref(x_3);
+            lungo_inc_ref(x_1);
+            lungo_inc(x_2);
+            x_7 = lungo_apply_2(x_1, x_2, x_5);
+            x_8 = (uint8_t)lungo_unbox(x_7);
+            switch (x_8) {
+                case 0: {
+                    {
+                        lungo_obj t_0 = x_1;
+                        lungo_obj t_1 = x_2;
+                        lungo_obj t_2 = x_6;
+                        x_1 = t_0;
+                        x_2 = t_1;
+                        x_3 = t_2;
+                        goto _start;
+                    }
+                }
+                default: {
+                    lungo_dec(x_6);
+                    lungo_dec(x_2);
+                    lungo_dec_ref(x_1);
+                    x_10 = (uint8_t)lungo_unbox(x_7);
+                    return x_10;
+                }
+            }
+        }
+    }
+}
+
 /* Lean: List.head?._redArg */
 /* Compiled from: List.head? */
 /* Source: <lean>/Init/Data/List/Basic.lean:371:1 */
