@@ -563,6 +563,32 @@ func includeMachines(
 		}
 	}
 
+	// A node a cap produces from a declared output holds what that step gives,
+	// a complete thing. Every other node holds a type: the one the text wrote,
+	// the main output of an effect=none or effect=patch cap (which says how
+	// what it gives follows from what it takes), or an output of a machine step.
+	produced := map[string]bool{}
+	for _, w := range wirings {
+		if _, isMachine := machines[w.capAlias]; isMachine {
+			continue
+		}
+		capUrn := aliasMap[w.capAlias].capUrn
+		definition, err := registry.GetCachedCap(capUrn.String())
+		if err != nil {
+			return nil, abstractionParseError(definitionLookupError(capUrn.String(), err,
+				func() *MachineAbstractionError { return unknownCapError(capUrn.String()) }))
+		}
+		for _, target := range w.targets {
+			isMain := !target.hasName
+			if main := definition.MainOutput(); target.hasName && main != nil {
+				isMain = main.Name == target.name
+			}
+			if !isMain || mainOutputIsGiven(definition) {
+				produced[target.node] = true
+			}
+		}
+	}
+
 	uses := map[string]int{}
 	written := make([]rawWiring, 0, len(wirings))
 	for index := range wirings {
@@ -599,7 +625,7 @@ func includeMachines(
 			}
 			if !member.value.isConstant {
 				held := nodeMedia[member.value.node]
-				if !held.ConformsTo(accepts) {
+				if !sourceFits(held, produced[member.value.node], accepts) {
 					return nil, abstractionParseError(sourceDoesNotConformToMachineInputError(
 						position, alias, member.name, accepts.String(), held.String()))
 				}
@@ -616,14 +642,16 @@ func includeMachines(
 				}
 			}
 			sources := make([]*urn.MediaUrn, len(unnamed))
+			given := make([]bool, len(unnamed))
 			for i, node := range unnamed {
 				sources[i] = nodeMedia[node]
+				given[i] = produced[node]
 			}
 			accepts := make([]*urn.MediaUrn, len(free))
 			for i, input := range free {
 				accepts[i] = input.media
 			}
-			pairs, failure := matchSourcesToArgs(sources, accepts, make([]bool, len(accepts)), -1)
+			pairs, failure := matchSourcesToArgs(sources, given, accepts, make([]bool, len(accepts)), -1)
 			if failure != nil {
 				if !failure.ambiguous {
 					return nil, abstractionParseError(unmatchedMachineMemberError(position, alias, sources[failure.source].String()))
@@ -968,6 +996,135 @@ func typeNodes(
 		}
 	}
 
+	// What an effect=none or effect=patch cap gives follows from what it is
+	// sent (07 §What a cap gives), so the types on either side of one are read
+	// through it, both ways:
+	//
+	//   - forward, its main output's node holds what the cap gives for the type
+	//     of the node feeding its main input, which refines the declared output
+	//     it was given above: a JSON list of records sent to a patch to YAML
+	//     gives a YAML list of records;
+	//   - backward, a step's main input says what the patches feeding it must
+	//     give, and so what the input of the machine at the start of them must
+	//     be: walked back through each, its input put back where its output
+	//     changes it. A YAML input of the machine converted to JSON for a step
+	//     that takes JSON lists of records is a YAML list of records.
+	//
+	// Read again until nothing changes, so a chain of such caps is typed
+	// whatever order it is written in.
+	type step struct {
+		wiring     *rawWiring
+		capUrn     *urn.CapUrn
+		definition *cap.Cap
+		inMedia    *urn.MediaUrn
+	}
+	var steps []step
+	patches := map[string]*step{}
+	for _, w := range wirings {
+		if _, isMachine := machines[w.capAlias]; isMachine {
+			continue
+		}
+		capUrn, definition, err := capOf(w)
+		if err != nil {
+			return nil, err
+		}
+		inMedia, err := mainInputOf(w, capUrn)
+		if err != nil {
+			return nil, err
+		}
+		steps = append(steps, step{w, capUrn, definition, inMedia})
+	}
+	for i := range steps {
+		if mainOutputIsGiven(steps[i].definition) {
+			continue
+		}
+		for _, target := range steps[i].wiring.targets {
+			if isMainTarget(steps[i].definition, target) {
+				patches[target.node] = &steps[i]
+			}
+		}
+	}
+	for range wirings {
+		changed := false
+		for i := range steps {
+			s := &steps[i]
+			if s.inMedia == nil {
+				continue
+			}
+			source := mainSource(s.wiring, s.definition, s.inMedia)
+			if source == "" {
+				continue
+			}
+
+			// Backward, from this step's main input to the input of the
+			// machine at the start of the patches feeding it.
+			required := s.inMedia
+			start := source
+			walked := 0
+			for patch, isPatch := patches[start]; isPatch && walked < len(wirings); patch, isPatch = patches[start] {
+				walked++
+				if patch.inMedia == nil {
+					break
+				}
+				patchOut, outErr := patch.capUrn.OutMediaUrn()
+				if outErr != nil {
+					return nil, syntaxParseError(invalidMediaUrnError(patch.wiring.capAlias, fmt.Sprintf("out= spec: %s", outErr)))
+				}
+				undo, deltaErr := patch.inMedia.DeltaFrom(patchOut)
+				if deltaErr != nil {
+					panic(fmt.Sprintf("a cap's in= and out= are both media URNs: %v", deltaErr))
+				}
+				undone, applyErr := required.ApplyDelta(undo)
+				if applyErr != nil {
+					panic(fmt.Sprintf("a media URN takes a delta between media URNs: %v", applyErr))
+				}
+				required = undone
+				feeding := mainSource(patch.wiring, patch.definition, patch.inMedia)
+				if feeding == "" {
+					break
+				}
+				start = feeding
+			}
+			if held, typed := nodeMedia[start]; walked > 0 && !produced[start] && typed && held.IsComparable(required) {
+				before := held.String()
+				if err := give(nodeMedia, start, required); err != nil {
+					return nil, err
+				}
+				changed = changed || before != nodeMedia[start].String()
+			}
+
+			// Forward, from what this step is sent to what it gives.
+			if mainOutputIsGiven(s.definition) {
+				continue
+			}
+			sent, typed := nodeMedia[source]
+			// A member that does not fit the input is the resolver's to refuse.
+			if !typed || !sent.Satisfies(s.inMedia) {
+				continue
+			}
+			given, inferErr := s.capUrn.InferRuntimeOutputMedia(sent)
+			if inferErr != nil {
+				return nil, abstractionParseError(runtimeMediaInferenceError(strandIndex, s.capUrn.String(), sent.String(), inferErr.Error()))
+			}
+			for _, target := range s.wiring.targets {
+				if !isMainTarget(s.definition, target) {
+					continue
+				}
+				before := ""
+				if held, ok := nodeMedia[target.node]; ok {
+					before = held.String()
+				}
+				if err := give(nodeMedia, target.node, given); err != nil {
+					return nil, err
+				}
+				changed = changed || before != nodeMedia[target.node].String()
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+
 	// A machine step has no main input: an unnamed member that nothing above
 	// gave a type has none to be matched by.
 	for _, w := range wirings {
@@ -986,6 +1143,37 @@ func typeNodes(
 	}
 
 	return nodeMedia, nil
+}
+
+// isMainTarget says whether a target, by the output name it wrote, takes the
+// cap's main output.
+func isMainTarget(definition *cap.Cap, target rawTarget) bool {
+	if !target.hasName {
+		return true
+	}
+	main := definition.MainOutput()
+	return main != nil && main.Name == target.name
+}
+
+// mainSource is the node feeding a step's main input (inMedia): the member
+// that names the main input's arg, or else the one member that names nothing.
+// Empty when neither says.
+func mainSource(w *rawWiring, definition *cap.Cap, inMedia *urn.MediaUrn) string {
+	for i := range definition.Args {
+		if !definition.Args[i].IsMainInput(inMedia) {
+			continue
+		}
+		for _, member := range w.sources {
+			if member.hasName && !member.value.isConstant && member.name == definition.Args[i].Name {
+				return member.value.node
+			}
+		}
+		break
+	}
+	if unnamed := w.unnamedNodes(); len(unnamed) == 1 {
+		return unnamed[0]
+	}
+	return ""
 }
 
 func argNames(definition *cap.Cap) []string {

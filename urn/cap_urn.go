@@ -773,13 +773,16 @@ func (c *CapUrn) WithoutTag(key string) *CapUrn {
 }
 
 // Accepts reports whether cap fits this cap read as a PATTERN over caps — what a
-// search asks: cap's input is within this pattern's, its output covers the
-// pattern's, its effect is the pattern's (a pattern's ?effect fits any), and its
-// cap-tags — complete: a cap has the tags it has — satisfy the pattern's.
+// search asks: cap's input is within this pattern's, its output is within the
+// pattern's — everything it gives is of the type the pattern names, its declared
+// output read complete — its effect is the pattern's (a pattern's ?effect fits
+// any), and its cap-tags — complete: a cap has the tags it has — satisfy the
+// pattern's. `cap:out="media:ext=pdf"` fits caps giving media:ext=pdf or
+// media:document;ext=pdf, and not one giving media:, which gives a thing with no
+// tags.
 //
-// A side the pattern leaves open is not asked about. `cap:candle` fits every cap
-// tagged candle, whatever it takes and gives: its open output is "not
-// established", not the type "anything".
+// An output the pattern leaves open asks nothing. `cap:candle` fits every cap
+// tagged candle, whatever it gives.
 //
 // Decided by the proved model (CapDAG.Exec.accepts, which is CapDAG.fits). For a
 // question no cap URN can spell — "what gives this, whatever it takes" — ask a
@@ -799,15 +802,18 @@ func (c *CapUrn) ConformsTo(pattern *CapUrn) bool {
 // IsDispatchable reports whether this candidate SERVES request — the predicate
 // routing and dispatch act on.
 //
-// The candidate takes at least what the request sends, gives at least what the
-// request needs, has the effect asked for unless the request says ?effect, and
-// has the cap-tags asked for — its own tags being complete, so a request for
-// `!x` is served by a candidate that does not mention x, and a candidate may
-// carry tags the request does not ask about.
+// The request is a call: it sends what its input says and asks for its output.
+// The candidate takes at least what the call sends; what it gives for that is
+// inside what the call asks for; it has the effect asked for unless the call
+// says ?effect; and it has the cap-tags asked for — its own tags being complete,
+// so a request for `!x` is served by a candidate that does not mention x, and a
+// candidate may carry tags the request does not ask about.
 //
-// An input the request leaves open is not established: the caller has not said
-// what it will send, and every candidate passes that side. That is "some input",
-// not "any input" — media: on a CANDIDATE's input does mean it takes anything.
+// What the candidate gives is what its effect says: a declared output, read
+// complete — what it does not mention, the candidate does not give — or, for
+// effect=none and effect=patch, what the call sends with the effect applied.
+// A call always says what it sends: one whose input is media: (or omitted)
+// sends anything, and only a candidate that takes anything serves it.
 //
 // This is a guarantee. What only could serve does not; see MayDispatch and
 // CapQuery.Grade. Decided by the proved model (CapDAG.Exec.dispatch, which is
@@ -921,24 +927,18 @@ func (c *CapUrn) InferRuntimeOutputMedia(runtimeInput *MediaUrn) (*MediaUrn, err
 		}
 	}
 
-	var runtimeOut *MediaUrn
-	switch c.Effect() {
-	case CapEffectDeclared:
-		runtimeOut = declaredOut
-	case CapEffectNone:
-		runtimeOut = runtimeInput
-	case CapEffectPatch:
-		delta, err := declaredOut.DeltaFrom(declaredIn)
-		if err != nil {
-			return nil, &CapUrnError{Code: ErrorInvalidEffectApply, Message: fmt.Sprintf("Failed to derive media delta from '%s' to '%s': %v", declaredIn, declaredOut, err)}
-		}
-		runtimeOut, err = runtimeInput.ApplyDelta(delta)
-		if err != nil {
-			return nil, &CapUrnError{Code: ErrorInvalidEffectApply, Message: fmt.Sprintf("Failed to apply media delta to runtime input '%s': %v", runtimeInput, err)}
-		}
-	case CapEffectAny:
+	if c.Effect() == CapEffectAny {
 		return nil, &CapUrnError{Code: ErrorInvalidEffectApply, Message: "Cannot infer runtime output for an unconstrained effect request"}
 	}
+	// What the cap gives for it is the proved model's (CapDAG.Exec.capGives,
+	// which is Cap.gives): its declared output, the input itself, or the input
+	// with the keys the declared input and output disagree on set to the output's.
+	given := decided(capformal.CapGives(c.formal, runtimeInput.Formal()))
+	tags := make(map[string]string, len(given))
+	for _, p := range given {
+		tags[p.First] = p.Second
+	}
+	runtimeOut := &MediaUrn{inner: taggedurn.NewTaggedUrnFromTags("media", tags)}
 
 	if !runtimeOut.Satisfies(declaredOut) {
 		return nil, &CapUrnError{
@@ -950,47 +950,36 @@ func (c *CapUrn) InferRuntimeOutputMedia(runtimeInput *MediaUrn) (*MediaUrn, err
 }
 
 // IsConformantRuntimeOutput reports whether an actually-emitted runtime
-// output satisfies this cap's declared effect contract for the given
-// runtime input.
+// output keeps this cap's effect contract for the given runtime input.
 //
-// This is THE effect-audit predicate: every check of "did the cap emit
-// what its effect promised" must go through it — never a hand-rolled
-// combination of InferRuntimeOutputMedia with equality or conformance
-// checks, so the contract has exactly one definition.
+// This is THE effect-audit predicate: every check of "did the cap emit what
+// its effect promised" goes through it, so the contract has exactly one
+// definition — the proved model's (CapDAG.Exec.audit, which is Cap.audits).
+// Both media are those of values that exist, read complete:
 //
-// The condition is deliberately asymmetric per effect:
+//   - effect=declared promises its declared out=, read complete — what it
+//     does not mention, the cap does not give — so the emission must be
+//     inside it, read complete: a cap declaring out=media:record may emit
+//     media:record, and not media:enc=utf8;fmt=json;record.
+//   - effect=none and effect=patch give exactly what their effect makes of
+//     the input (InferRuntimeOutputMedia), so the emission must be that.
 //
-//   - effect=none and effect=patch compute an EXACT runtime output type,
-//     so the emission must be tag-equivalent to the inference. A more
-//     specific emission would still be a lie: the effect promises the
-//     type is fully determined by the input.
-//   - effect=declared promises only the declared out=, so an emission
-//     that is MORE specific than the declaration is legal and desirable;
-//     the emission must conform to the declared output. A more generic
-//     emission breaks downstream plan refinement and fails.
-//
-// Errors (rather than returning false) when the inference itself is
-// impossible: the runtime input does not conform to the declared input,
-// the effect is the unconstrained request form (?effect), or the URN
-// state is internally inconsistent — those are upstream contract breaks,
-// not emission mismatches, and must surface as such.
+// Errors (rather than returning false) when the input itself is wrong: the
+// runtime input does not conform to the declared input, the effect is the
+// unconstrained request form (?effect), or the URN state is internally
+// inconsistent — those are upstream contract breaks, not emission
+// mismatches, and must surface as such.
 func (c *CapUrn) IsConformantRuntimeOutput(runtimeInput, runtimeOutput *MediaUrn) (bool, error) {
-	inferred, err := c.InferRuntimeOutputMedia(runtimeInput)
-	if err != nil {
+	if c.Effect() == CapEffectAny {
+		return false, &CapUrnError{Code: ErrorInvalidEffectApply, Message: "Cannot audit an emission against an unconstrained effect request"}
+	}
+	if _, err := c.InferRuntimeOutputMedia(runtimeInput); err != nil {
 		return false, err
 	}
 	if runtimeOutput == nil {
 		return false, &CapUrnError{Code: ErrorInvalidEffectApply, Message: "cannot audit a nil runtime output"}
 	}
-	switch c.Effect() {
-	case CapEffectNone, CapEffectPatch:
-		return runtimeOutput.IsEquivalent(inferred), nil
-	case CapEffectDeclared:
-		return runtimeOutput.Satisfies(inferred), nil
-	case CapEffectAny:
-		return false, &CapUrnError{Code: ErrorInvalidEffectApply, Message: "Cannot audit an emission against an unconstrained effect request"}
-	}
-	return false, &CapUrnError{Code: ErrorInvalidEffectApply, Message: fmt.Sprintf("unknown effect '%s'", c.Effect())}
+	return decided(capformal.Audit(c.formal, runtimeInput.Formal(), runtimeOutput.Formal())), nil
 }
 
 // Per-axis weights for cap-URN specificity. Two orders of magnitude
