@@ -67,6 +67,9 @@ func MediaUrnForType(typeName string) string {
 		return MediaBoolean
 	case "object":
 		return MediaObject
+	case "json-object":
+		// What a coercion to an object gives: a JSON object, not any record.
+		return MediaJSONRecord
 	case "string-list":
 		return MediaStringList
 	case "integer-list":
@@ -78,7 +81,7 @@ func MediaUrnForType(typeName string) string {
 	case "object-list":
 		return MediaObjectList
 	default:
-		panic(fmt.Sprintf("Unknown media type: %s. Valid types are: string, integer, number, boolean, object, string-list, integer-list, number-list, boolean-list, object-list", typeName))
+		panic(fmt.Sprintf("Unknown media type: %s. Valid types are: string, integer, number, boolean, object, json-object, string-list, integer-list, number-list, boolean-list, object-list", typeName))
 	}
 }
 
@@ -117,11 +120,11 @@ func AllCoercionPaths() [][2]string {
 		{"string", "boolean"},
 		{"integer", "boolean"},
 		{"number", "boolean"},
-		// To object (wrap in object)
-		{"string", "object"},
-		{"integer", "object"},
-		{"number", "object"},
-		{"boolean", "object"},
+		// To a JSON object (wrap in object)
+		{"string", "json-object"},
+		{"integer", "json-object"},
+		{"number", "json-object"},
+		{"boolean", "json-object"},
 	}
 }
 
@@ -188,15 +191,30 @@ func SummarizeUrn(langCode string) string {
 	return fmt.Sprintf(`cap:summarize;language=%s;constrained;in="%s";out="%s"`, langCode, MediaPlainText, MediaTXT)
 }
 
-// FormatConversionUrn builds a URN for converting between formats.
-func FormatConversionUrn(inMedia, outMedia string) string {
+// FormatConversionUrn builds a URN for converting between formats. patch makes
+// it an effect=patch cap: what it gives is what it was given, with what its
+// output changes.
+func FormatConversionUrn(inMedia, outMedia string, patch bool) string {
+	if patch {
+		return fmt.Sprintf(`cap:effect=patch;in="%s";convert-format;out="%s"`, inMedia, outMedia)
+	}
 	return fmt.Sprintf(`cap:in="%s";convert-format;out="%s"`, inMedia, outMedia)
 }
 
+// MediaYAMLContent is what converting to YAML gives: YAML content, not a file.
+const MediaYAMLContent = "media:enc=utf8;fmt=yaml;!ext"
+
+// MediaJSONContent is what converting to JSON gives: JSON content, not a file.
+const MediaJSONContent = "media:enc=utf8;fmt=json;!ext"
+
 // FormatConversionPath describes a single format conversion path.
 type FormatConversionPath struct {
-	InMedia     string
-	OutMedia    string
+	InMedia  string
+	OutMedia string
+	// Patch is set for a conversion that keeps the shape it is given (JSON ↔
+	// YAML: a list stays a list, a record a record); otherwise the output names
+	// what it gives.
+	Patch       bool
 	Title       string
 	Description string
 }
@@ -204,29 +222,23 @@ type FormatConversionPath struct {
 // AllFormatConversionPaths returns all supported format conversion paths.
 func AllFormatConversionPaths() []FormatConversionPath {
 	return []FormatConversionPath{
-		// JSON ↔ YAML
-		{MediaJSONValue, MediaYAMLValue, "JSON Value → YAML Value", "Convert a JSON scalar or object to YAML"},
-		{MediaYAMLValue, MediaJSONValue, "YAML Value → JSON Value", "Convert a YAML scalar or mapping to JSON"},
-		{MediaJSONRecord, MediaYAMLRecord, "JSON Object → YAML Mapping", "Convert a JSON object to a YAML mapping"},
-		{MediaYAMLRecord, MediaJSONRecord, "YAML Mapping → JSON Object", "Convert a YAML mapping to a JSON object"},
-		{MediaJSONList, MediaYAMLList, "JSON Array → YAML Sequence", "Convert a JSON array to a YAML sequence"},
-		{MediaYAMLList, MediaJSONList, "YAML Sequence → JSON Array", "Convert a YAML sequence to a JSON array"},
-		{MediaJSONListRecord, MediaYAMLListRecord, "JSON Array of Objects → YAML Sequence of Mappings", "Convert a JSON array of objects to a YAML sequence of mappings"},
-		{MediaYAMLListRecord, MediaJSONListRecord, "YAML Sequence of Mappings → JSON Array of Objects", "Convert a YAML sequence of mappings to a JSON array of objects"},
+		// JSON ↔ YAML: one patch each way, keeping whatever shape it is given
+		{MediaJSONValue, MediaYAMLContent, true, "Convert JSON to YAML", "Re-serialize any JSON value as YAML, keeping its shape"},
+		{MediaYAMLValue, MediaJSONContent, true, "Convert YAML to JSON", "Re-serialize any YAML value as JSON, keeping its shape"},
 		// JSON list-record ↔ CSV
-		{MediaJSONListRecord, MediaCSV, "JSON Array of Objects → CSV", "Convert a JSON array of objects to CSV with header row"},
-		{MediaCSV, MediaJSONListRecord, "CSV → JSON Array of Objects", "Convert CSV with header row to a JSON array of objects"},
+		{MediaJSONListRecord, MediaCSV, false, "JSON Array of Objects → CSV", "Convert a JSON array of objects to CSV with header row"},
+		{MediaCSV, MediaJSONListRecord, false, "CSV → JSON Array of Objects", "Convert CSV with header row to a JSON array of objects"},
 		// YAML list-record ↔ CSV
-		{MediaYAMLListRecord, MediaCSV, "YAML Sequence of Mappings → CSV", "Convert a YAML sequence of mappings to CSV with header row"},
-		{MediaCSV, MediaYAMLListRecord, "CSV → YAML Sequence of Mappings", "Convert CSV with header row to a YAML sequence of mappings"},
+		{MediaYAMLListRecord, MediaCSV, false, "YAML Sequence of Mappings → CSV", "Convert a YAML sequence of mappings to CSV with header row"},
+		{MediaCSV, MediaYAMLListRecord, false, "CSV → YAML Sequence of Mappings", "Convert CSV with header row to a YAML sequence of mappings"},
 		// String list ↔ JSON list
-		{MediaStringList, MediaJSONList, "String List → JSON Array", "Convert a list of string values to a JSON array"},
-		{MediaJSONList, MediaStringList, "JSON Array → String List", "Convert a JSON array to a list of string values"},
+		{MediaStringList, MediaJSONList, false, "String List → JSON Array", "Convert a list of string values to a JSON array"},
+		{MediaJSONList, MediaStringList, false, "JSON Array → String List", "Convert a JSON array to a list of string values"},
 		// String list ↔ YAML list
-		{MediaStringList, MediaYAMLList, "String List → YAML Sequence", "Convert a list of string values to a YAML sequence"},
-		{MediaYAMLList, MediaStringList, "YAML Sequence → String List", "Convert a YAML sequence to a list of string values"},
+		{MediaStringList, MediaYAMLList, false, "String List → YAML Sequence", "Convert a list of string values to a YAML sequence"},
+		{MediaYAMLList, MediaStringList, false, "YAML Sequence → String List", "Convert a YAML sequence to a list of string values"},
 		// String list ↔ CSV
-		{MediaStringList, MediaCSVList, "String List → CSV List", "Convert a list of string values to single-column CSV"},
-		{MediaCSVList, MediaStringList, "CSV List → String List", "Convert single-column CSV to a list of string values"},
+		{MediaStringList, MediaCSVList, false, "String List → CSV List", "Convert a list of string values to single-column CSV"},
+		{MediaCSVList, MediaStringList, false, "CSV List → String List", "Convert single-column CSV to a list of string values"},
 	}
 }

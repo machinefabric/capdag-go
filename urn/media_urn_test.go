@@ -899,3 +899,24 @@ func Test1812_marker_predicates_read_the_marker(t *testing.T) {
 		assert.True(t, p.predicate(parse("media:?"+p.marker)), "media:?%s", p.marker)
 	}
 }
+
+// TEST7212: a media URN written as a reference resolves to the published definition without every tag that lets its key be absent (!k, ?k, k?=v); a tag that requires its key (k, k=v, k!=v) stays, and a URN with none is its own base.
+func Test7212_reference_base_drops_tags_admitting_absence(t *testing.T) {
+	parse := func(s string) *MediaUrn {
+		urn, err := NewMediaUrnFromString(s)
+		require.NoError(t, err, s)
+		return urn
+	}
+	for _, c := range []struct{ reference, base string }{
+		{"media:enc=utf8;fmt=json;!ext", "media:enc=utf8;fmt=json"},
+		{"media:enc=utf8;fmt=json;?list;?record", "media:enc=utf8;fmt=json"},
+		{"media:enc=utf8;fmt=json;list;record;!ext", "media:enc=utf8;fmt=json;list;record"},
+		{"media:ext?=pdf;image", "media:image"},
+		{"media:ext!=pdf;image", "media:ext!=pdf;image"},
+		{"media:enc=utf8;fmt=json", "media:enc=utf8;fmt=json"},
+		{"media:!void", "media:"},
+		{"media:void", "media:void"},
+	} {
+		assert.Equal(t, parse(c.base).String(), parse(c.reference).ReferenceBase().String(), c.reference)
+	}
+}

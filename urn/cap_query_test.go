@@ -31,25 +31,38 @@ func queryMedia(t *testing.T, s string) *MediaUrn {
 func Test12368_AQuestionMayLeaveASideUnknown(t *testing.T) {
 	pages := queryCap(t, `cap:disbind;in="media:document;ext=pdf";out="media:enc=utf8;ext=txt;page;plain-text"`)
 	toJpeg := queryCap(t, `cap:convert-image;in="media:ext=png;image";out="media:ext=jpeg;image"`)
-	someImage := queryCap(t, `cap:render;in="media:document;ext=pdf";out="media:image"`)
+	someImage := queryCap(t, `cap:render;in="media:document;ext=pdf";out="media:ext;image"`)
 	passesThrough := queryCap(t, "cap:decimate-sequence;effect=none")
 
 	wantsJpeg, err := CapQueryProducing(queryMedia(t, "media:ext=jpeg;image"), nil)
 	require.NoError(t, err)
 	assert.Equal(t, MatchExact, wantsJpeg.Grade(toJpeg))
 	assert.True(t, wantsJpeg.Admits(toJpeg), "whatever it takes: a png here")
-	// "Some image" is not a jpeg, and not excluded: possible, never routed on.
+	// An image file of some type is not a jpeg, and not excluded: possible,
+	// never routed on.
 	assert.Equal(t, MatchPossible, wantsJpeg.Grade(someImage))
 	assert.False(t, wantsJpeg.Admits(someImage))
 	assert.True(t, wantsJpeg.MayAdmit(someImage))
 	assert.Equal(t, MatchNone, wantsJpeg.Grade(pages))
+	// A declared output says what the cap gives: one giving media:image gives
+	// an image with no file type, never a jpeg.
+	bareImage := queryCap(t, `cap:render;in="media:document;ext=pdf";out="media:image"`)
+	assert.Equal(t, MatchNone, wantsJpeg.Grade(bareImage))
 
 	// Asked for any image, a jpeg is guaranteed to be one, not exactly it.
 	wantsImage, err := CapQueryProducing(queryMedia(t, "media:image"), nil)
 	require.NoError(t, err)
 	assert.Equal(t, MatchGuaranteed, wantsImage.Grade(toJpeg))
-	assert.Equal(t, MatchExact, wantsImage.Grade(someImage))
-	assert.False(t, wantsImage.Admits(passesThrough), "media: out promises no image")
+	assert.Equal(t, MatchGuaranteed, wantsImage.Grade(someImage))
+	assert.Equal(t, MatchExact, wantsImage.Grade(bareImage))
+	wantsImageFile := CapQueryProducing(queryMedia(t, "media:ext;image"), nil)
+	assert.Equal(t, MatchExact, wantsImageFile.Grade(someImage))
+	// A cap that gives what it is sent, asked for an image whatever it takes,
+	// gives whatever it takes — not only images.
+	assert.False(t, wantsImage.Admits(passesThrough))
+	wantsPdf := CapQueryProducing(queryMedia(t, "media:document;ext=pdf"), nil)
+	assert.False(t, wantsPdf.Admits(passesThrough))
+	assert.Equal(t, MatchPossible, wantsPdf.Grade(passesThrough))
 
 	// What can a pdf become? Whatever takes a pdf — or takes anything.
 	hasPdf, err := CapQueryConsuming(queryMedia(t, "media:document;ext=pdf"), nil)
@@ -75,7 +88,7 @@ func Test12368_AQuestionMayLeaveASideUnknown(t *testing.T) {
 // no cap needs to declare; and a cap may carry tags nobody asked about.
 func Test12369_AQuerysTagsAreAskedOfTheTagsACapHas(t *testing.T) {
 	toJpeg := queryCap(t, `cap:convert-image;in="media:ext=png;image";out="media:ext=jpeg;image"`)
-	someImage := queryCap(t, `cap:render;in="media:document;ext=pdf";out="media:image"`)
+	someImage := queryCap(t, `cap:render;in="media:document;ext=pdf";out="media:ext;image"`)
 	anyImage := queryMedia(t, "media:image")
 
 	converters, err := CapQueryProducing(anyImage, map[string]taggedurn.Constraint{"convert-image": taggedurn.ConstraintPresent{}})
@@ -89,9 +102,10 @@ func Test12369_AQuerysTagsAreAskedOfTheTagsACapHas(t *testing.T) {
 	assert.False(t, notConverters.Admits(toJpeg), "it has it")
 	assert.Equal(t, MatchNone, notConverters.Grade(toJpeg))
 
-	// The same holds of a request: `!x` is served by a cap silent on x.
-	request := queryCap(t, `cap:!convert-image;out="media:image"`)
-	assert.True(t, someImage.IsDispatchable(request))
-	assert.False(t, toJpeg.IsDispatchable(request))
-	assert.Equal(t, MatchExact, CapQueryFromRequest(request).Grade(someImage))
+	// The same holds of a call: `!x` is served by a cap silent on x.
+	call := queryCap(t, `cap:!convert-image;in="media:ext=png;image";out="media:ext;image"`)
+	rendersPng := queryCap(t, `cap:render;in="media:ext=png;image";out="media:ext;image"`)
+	assert.True(t, rendersPng.IsDispatchable(call))
+	assert.False(t, toJpeg.IsDispatchable(call), "it takes a png and gives an image file, and is tagged convert-image")
+	assert.Equal(t, MatchExact, CapQueryFromCall(call).Grade(rendersPng))
 }

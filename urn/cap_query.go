@@ -3,13 +3,18 @@ package urn
 // Asking the fabric for a cap.
 //
 // A request is not a cap. A cap takes this and gives that; a request is a
-// QUESTION about caps, and may leave a side unasked: "what gives me this file,
-// whatever it takes?", "what can this input become?". Those are not cap URNs
-// with media: on a side — media: is the type "anything", a claim about every
-// input — they are queries with that side unknown.
+// QUESTION about caps. A call always says what it sends, but a search may leave
+// a side unasked: "what gives me this file, whatever it takes?", "what can this
+// input become?". Those are not cap URNs with media: on a side — media: is the
+// type "anything", a claim about every input — they are queries with that side
+// unknown.
+//
+// A query asks of what a cap GIVES for what is sent: a declared output, read
+// complete — what it does not mention, the cap does not give — or, for an
+// effect=none or effect=patch cap, what it was sent with its effect applied.
 //
 // CapQuery is such a question, and MatchGrade is how a registered cap answers
-// it. A cap URN read as a request or as a pattern is one (CapQueryFromRequest,
+// it. A cap URN read as a typed call or as a pattern is one (CapQueryFromCall,
 // CapQueryFromPattern) — which is what CapUrn.IsDispatchable and CapUrn.Accepts
 // ask — and so are the questions no cap URN can spell (CapQueryProducing,
 // CapQueryConsuming, CapQueryBetween).
@@ -67,17 +72,19 @@ func tagPattern(tags map[string]taggedurn.Constraint) (*taggedurn.TaggedUrn, err
 	return taggedurn.NewTaggedUrnFromTags("cap", tags)
 }
 
-// CapQueryFromRequest is the cap URN request, read as a request: an input it
-// leaves open is not established. What CapUrn.IsDispatchable asks.
-func CapQueryFromRequest(request *CapUrn) *CapQuery {
+// CapQueryFromCall is the cap URN call, read as a typed call: it sends what its
+// input says — media:, if it says nothing, is anything — and asks for its
+// output, tags and effect. What CapUrn.IsDispatchable asks.
+func CapQueryFromCall(call *CapUrn) *CapQuery {
 	return &CapQuery{
-		formal: decided(capformal.QueryOfRequest(request.formal)),
-		asked:  fmt.Sprintf("request %s", request),
+		formal: decided(capformal.QueryOfCall(call.formal)),
+		asked:  fmt.Sprintf("call %s", call),
 	}
 }
 
-// CapQueryFromPattern is the cap URN pattern, read as a pattern over caps: an
-// output it leaves open is not established. What CapUrn.Accepts asks.
+// CapQueryFromPattern is the cap URN pattern, read as a pattern over caps: caps
+// taking within its input, everything they give of the type its output names;
+// an output it leaves open asks nothing. What CapUrn.Accepts asks.
 func CapQueryFromPattern(pattern *CapUrn) *CapQuery {
 	return &CapQuery{
 		formal: decided(capformal.QueryOfPattern(pattern.formal)),
