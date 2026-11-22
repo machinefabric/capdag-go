@@ -1068,7 +1068,7 @@ func Test7217_a_given_node_binds_by_satisfaction_at_a_negative_distance(t *testi
 
 	// Through the resolver: a step that gives the record feeds one whose input
 	// refuses lists.
-	makeRecord := `cap:in=media:enc=utf8;make-record;out="media:enc=utf8;ext=json;fmt=json;record"`
+	makeRecord := `cap:in="media:enc=utf8";make-record;out="media:enc=utf8;ext=json;fmt=json;record"`
 	toYaml := `cap:in="media:enc=utf8;fmt=json;record;!list";to-yaml;out="media:enc=utf8;fmt=yaml;record"`
 	registry := registryWith([]*cap.Cap{
 		buildCap(makeRecord, "make", []string{"media:enc=utf8"}, "media:enc=utf8;ext=json;fmt=json;record"),

@@ -790,12 +790,14 @@ func (c *CapUrn) InferRuntimeOutputMedia(runtimeInput *MediaUrn) (*MediaUrn, err
 	// What the cap gives for it is the proved model's (CapDAG.Exec.capGives,
 	// which is Cap.gives): its declared output, the input itself, or the input
 	// with the keys the declared input and output disagree on set to the output's.
-	given := decided(capformal.CapGives(c.formal, runtimeInput.Formal()))
-	tags := make(map[string]string, len(given))
-	for _, p := range given {
-		tags[p.First] = p.Second
+	given, err := taggedurn.NewTaggedUrnFromFormal(decided(capformal.CapGives(c.formal, runtimeInput.Formal())))
+	if err != nil {
+		return nil, &CapUrnError{
+			Code:    ErrorInvalidEffectApply,
+			Message: fmt.Sprintf("What '%s' gives for runtime input '%s' is not a media URN: %v", c, runtimeInput, err),
+		}
 	}
-	runtimeOut := &MediaUrn{inner: taggedurn.NewTaggedUrnFromTags("media", tags)}
+	runtimeOut := &MediaUrn{inner: given}
 
 	if !runtimeOut.Satisfies(declaredOut) {
 		return nil, &CapUrnError{

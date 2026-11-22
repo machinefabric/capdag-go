@@ -55,12 +55,14 @@ func Test12368_AQuestionMayLeaveASideUnknown(t *testing.T) {
 	assert.Equal(t, MatchGuaranteed, wantsImage.Grade(toJpeg))
 	assert.Equal(t, MatchGuaranteed, wantsImage.Grade(someImage))
 	assert.Equal(t, MatchExact, wantsImage.Grade(bareImage))
-	wantsImageFile := CapQueryProducing(queryMedia(t, "media:ext;image"), nil)
+	wantsImageFile, err := CapQueryProducing(queryMedia(t, "media:ext;image"), nil)
+	require.NoError(t, err)
 	assert.Equal(t, MatchExact, wantsImageFile.Grade(someImage))
 	// A cap that gives what it is sent, asked for an image whatever it takes,
 	// gives whatever it takes — not only images.
 	assert.False(t, wantsImage.Admits(passesThrough))
-	wantsPdf := CapQueryProducing(queryMedia(t, "media:document;ext=pdf"), nil)
+	wantsPdf, err := CapQueryProducing(queryMedia(t, "media:document;ext=pdf"), nil)
+	require.NoError(t, err)
 	assert.False(t, wantsPdf.Admits(passesThrough))
 	assert.Equal(t, MatchPossible, wantsPdf.Grade(passesThrough))
 

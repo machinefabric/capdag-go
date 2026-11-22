@@ -2126,6 +2126,7 @@ uint8_t capdagFormal__l_TaggedUrn_dExec_dmeets(lungo_obj x_1, lungo_obj x_2);
 lungo_obj capdagFormal__l_TaggedUrn_dExec_dmeets_d__closed__0(void);
 uint8_t capdagFormal__l_TaggedUrn_dExec_dmeetsClosed(lungo_obj x_1, lungo_obj x_2);
 lungo_obj capdagFormal__l_TaggedUrn_dExec_dmeetsClosed_d__closed__0(void);
+lungo_obj capdagFormal__l_TaggedUrn_dExec_dparts(lungo_obj x_1);
 uint8_t capdagFormal__l_TaggedUrn_dExec_drefines(lungo_obj x_1, lungo_obj x_2);
 uint8_t capdagFormal__l_TaggedUrn_dExec_drefinesBothClosed(lungo_obj x_1, lungo_obj x_2);
 lungo_obj capdagFormal__l_TaggedUrn_dExec_drefinesBothClosed_d__closed__0(void);
@@ -2411,4 +2412,5 @@ int32_t capdagFormal__call_l_CapDAG_dRun_dControl_doutcome(const uint8_t *input,
 int32_t capdagFormal__call_l_CapDAG_dRun_dStep_dStepState_dfinal(const uint8_t *input, size_t len, lungo_buffer *out);
 int32_t capdagFormal__call_l_CapDAG_dRun_dStep_don(const uint8_t *input, size_t len, lungo_buffer *out);
 int32_t capdagFormal__call_l_TaggedUrn_dExec_dmake(const uint8_t *input, size_t len, lungo_buffer *out);
+int32_t capdagFormal__call_l_TaggedUrn_dExec_dparts(const uint8_t *input, size_t len, lungo_buffer *out);
 #endif /* CAPDAGFORMAL_PROGRAM_H */
