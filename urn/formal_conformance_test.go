@@ -83,7 +83,7 @@ func Test12166_TheImplementationIsTheProvedModel(t *testing.T) {
 		require.NoError(t, err)
 		q, err := NewCapUrnFromString(r.Request)
 		require.NoError(t, err)
-		request := CapQueryFromRequest(q)
+		request := CapQueryFromCall(q)
 		if got := string(request.Grade(c)); got != r.Grade {
 			wrong = append(wrong, fmt.Sprintf("grade of %s for %s: model %s, got %s", c, q, r.Grade, got))
 		}
