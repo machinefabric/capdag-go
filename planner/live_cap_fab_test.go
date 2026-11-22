@@ -771,7 +771,7 @@ func Test1150_add_cap_and_basic_traversal(t *testing.T) {
 // a type it may be a list; a JSON list does not.
 func Test7216_a_source_takes_an_edge_it_satisfies(t *testing.T) {
 	graph := NewLiveCapFab()
-	c := makeTestCapForGraph("media:enc=utf8;fmt=json;record;!list", "media:enc=utf8;fmt=yaml;record", "record_to_yaml", "Record To YAML")
+	c := makeTestCapForGraph("media:enc=utf8;fmt=json;record;!list", "media:enc=utf8;fmt=yaml;record", "record-to-yaml", "Record To YAML")
 	graph.AddCap(c)
 
 	media := func(s string) *urn.MediaUrn {

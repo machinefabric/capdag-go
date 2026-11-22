@@ -32,7 +32,7 @@ const (
 func Test7211_ACapNamingAPublishedTypeRefinedByAbsenceIsHeld(t *testing.T) {
 	capUrn, err := urn.NewCapUrnFromString(`cap:in="` + referenceContent + `";out="` + referenceAnyShape + `";reference-probe`)
 	require.NoError(t, err)
-	probe := cap.NewCap(capUrn, "Reference probe", nil)
+	probe := cap.NewCap(capUrn, "Reference probe", []string{"reference-probe"})
 	probe.Version = 1
 	stdin := referenceContent
 	probe.Args = append(probe.Args, cap.NewCapArg(referenceContent, "input", true, []cap.ArgSource{{Stdin: &stdin}}))

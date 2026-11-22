@@ -3,4 +3,4 @@
 package libversion
 
 // Version is this capdag-go release's version.
-const Version = "1.639.703"
+const Version = "1.640.726"

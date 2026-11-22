@@ -1009,8 +1009,8 @@ func Test890_direction_semantic_matching(t *testing.T) {
 		`cap:in="media:";generate-thumbnail;out="media:image"`,
 	)
 	require.NoError(t, err)
-	assert.True(t, specificOutCap.Accepts(genericOutRequest),
-		"Cap producing image;png;thumbnail must satisfy request for image")
+	assert.True(t, genericOutRequest.Accepts(specificOutCap),
+		"a pattern asking for an image fits a cap producing image;png;thumbnail")
 
 	genericOutCap, err := NewCapUrnFromString(
 		`cap:in="media:";generate-thumbnail;out="media:image"`,
@@ -1020,8 +1020,8 @@ func Test890_direction_semantic_matching(t *testing.T) {
 		`cap:in="media:";generate-thumbnail;out="media:ext=png;image;thumbnail"`,
 	)
 	require.NoError(t, err)
-	assert.False(t, genericOutCap.Accepts(specificOutRequest),
-		"Cap producing generic image must NOT satisfy request requiring image;png;thumbnail")
+	assert.False(t, specificOutRequest.Accepts(genericOutCap),
+		"a pattern requiring image;png;thumbnail does not fit a cap producing an image of no file type")
 }
 
 // TEST891: Semantic direction specificity — more constraints in either axis means a higher score under the truth-table-driven sum. media: (top, no tags) scores 0; each marker tag scores 2; each exact tag scores 4.
@@ -1291,8 +1291,8 @@ func Test6614_wildcard_accepts_specific(t *testing.T) {
 	assert.True(t, specificOut.ConformsTo(wildcard), "the same, asked from the cap's side")
 	assert.False(t, wildcard.IsDispatchable(specificOut),
 		"a media:-output candidate does not serve a request that needs text")
-	assert.True(t, specificOut.Accepts(wildcard),
-		"a pattern asking for text out is covered by a cap that gives anything")
+	assert.False(t, specificOut.Accepts(wildcard),
+		"a pattern asking for text out does not fit a cap whose declared output names no tag: it gives a thing with none")
 	assert.True(t, wildcard.Accepts(specificIn), "an open pattern fits a cap that takes text")
 	assert.True(t, specificIn.ConformsTo(wildcard))
 }
@@ -2125,8 +2125,8 @@ func Test648_wildcard_010_wildcard_accepts_specific(t *testing.T) {
 	assert.True(t, specificOut.ConformsTo(wildcard), "the same, asked from the cap's side")
 	assert.False(t, wildcard.IsDispatchable(specificOut),
 		"a media:-output candidate does not serve a request that needs text")
-	assert.True(t, specificOut.Accepts(wildcard),
-		"a pattern asking for text out is covered by a cap that gives anything")
+	assert.False(t, specificOut.Accepts(wildcard),
+		"a pattern asking for text out does not fit a cap whose declared output names no tag: it gives a thing with none")
 	assert.True(t, wildcard.Accepts(specificIn), "an open pattern fits a cap that takes text")
 	assert.True(t, specificIn.ConformsTo(wildcard))
 }
@@ -2419,13 +2419,18 @@ func Test6763_documented_ranking_examples(t *testing.T) {
 	assert.Equal(t, 2, i)
 
 	// Refinement when no exact match.
-	request = p("cap:convert")
-	a = p("cap:convert;in=media:pdf;out=media:html")
-	b = p("cap:convert;in=media:image;out=media:png")
-	c = p("cap:convert")
-	assert.Equal(t, 2, request.Specificity())
-	assert.Equal(t, []int{20202, 20202, 2}, []int{a.Specificity(), b.Specificity(), c.Specificity()})
+	request = p("cap:convert;in=media:image;out=media:image")
+	a = p(`cap:convert;in=media:image;out="media:ext=png;image"`)
+	b = p(`cap:convert;in=media:image;out="media:ext=jpeg;image"`)
+	c = p("cap:convert;in=media:image;out=media:image")
+	assert.Equal(t, 20202, request.Specificity())
+	assert.Equal(t, []int{60202, 60202, 20202}, []int{a.Specificity(), b.Specificity(), c.Specificity()})
 	caps = []*CapUrn{a, b, c}
+	for _, cap := range caps {
+		assert.True(t, cap.IsDispatchable(request), cap.String())
+	}
+	// A cap that takes only PDFs does not serve a request that sends any image.
+	assert.False(t, p("cap:convert;in=media:pdf;out=media:image").IsDispatchable(request))
 	same([]*CapUrn{c, a, b}, matcher.FindAllMatches(caps, request))
 	i, _ = Select(caps, request)
 	assert.Equal(t, 2, i)

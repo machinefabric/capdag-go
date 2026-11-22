@@ -30,7 +30,7 @@ lungo_obj capdagFormal__l_TaggedUrn_dExec_dmake(lungo_obj x_1, lungo_obj x_2) {
 }
 
 /* Lean: TaggedUrn.Exec.meets */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Exec.lean:82:1 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Exec.lean:99:1 */
 uint8_t capdagFormal__l_TaggedUrn_dExec_dmeets(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     lungo_obj x_4;
@@ -68,7 +68,7 @@ uint8_t capdagFormal__l_TaggedUrn_dExec_dmeets(lungo_obj x_1, lungo_obj x_2) {
 
 /* Lean: TaggedUrn.Exec.meets._closed_0 */
 /* Compiled from: TaggedUrn.Exec.meets */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Exec.lean:82:1 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Exec.lean:99:1 */
 static lungo_obj capdagFormal__l_TaggedUrn_dExec_dmeets_d__closed__0__init(void) {
     lungo_obj x_1;
     x_1 = lungo_alloc_closure((void *)capdagFormal__l_TaggedUrn_dtagMeets_d__boxed, 2, 0);
@@ -80,7 +80,7 @@ lungo_obj capdagFormal__l_TaggedUrn_dExec_dmeets_d__closed__0(void) {
 }
 
 /* Lean: TaggedUrn.Exec.meetsClosed */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Exec.lean:108:1 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Exec.lean:125:1 */
 uint8_t capdagFormal__l_TaggedUrn_dExec_dmeetsClosed(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     lungo_obj x_4;
@@ -118,7 +118,7 @@ uint8_t capdagFormal__l_TaggedUrn_dExec_dmeetsClosed(lungo_obj x_1, lungo_obj x_
 
 /* Lean: TaggedUrn.Exec.meetsClosed._closed_0 */
 /* Compiled from: TaggedUrn.Exec.meetsClosed */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Exec.lean:108:1 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Exec.lean:125:1 */
 static lungo_obj capdagFormal__l_TaggedUrn_dExec_dmeetsClosed_d__closed__0__init(void) {
     lungo_obj x_1;
     x_1 = lungo_alloc_closure((void *)capdagFormal__l_TaggedUrn_dtagMeetsClosed_d__boxed, 2, 0);
@@ -129,8 +129,54 @@ lungo_obj capdagFormal__l_TaggedUrn_dExec_dmeetsClosed_d__closed__0(void) {
     return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dExec_dmeetsClosed_d__closed__0__cell, capdagFormal__l_TaggedUrn_dExec_dmeetsClosed_d__closed__0__init);
 }
 
-/* Lean: TaggedUrn.Exec.refines */
+/* Lean: TaggedUrn.Exec.parts */
 /* Source: <package:tagged_urn_formal>/TaggedUrn/Exec.lean:47:1 */
+lungo_obj capdagFormal__l_TaggedUrn_dExec_dparts(lungo_obj x_1) {
+    lungo_obj x_2;
+    lungo_obj x_3;
+    lungo_obj x_5;
+    uint8_t x_6;
+    lungo_obj x_8;
+    lungo_obj x_9;
+    uint8_t x_10;
+    x_2 = lungo_ctor_get(x_1, 0);
+    x_3 = lungo_ctor_get(x_1, 1);
+    x_10 = !lungo_is_exclusive(x_1);
+    switch (x_10) {
+        case 0: {
+            x_5 = x_1;
+            x_6 = x_10;
+            goto block_4;
+        }
+        default: {
+            lungo_inc(x_3);
+            lungo_inc(x_2);
+            lungo_dec(x_1);
+            x_5 = lungo_box(0);
+            x_6 = x_10;
+            goto block_4;
+        }
+    }
+    block_4:;
+    switch (x_6) {
+        case 0: {
+            x_8 = x_5;
+            goto block_7;
+        }
+        default: {
+            x_9 = lungo_alloc_ctor(0, 2, 0);
+            lungo_ctor_set(x_9, 0, x_2);
+            lungo_ctor_set(x_9, 1, x_3);
+            x_8 = x_9;
+            goto block_7;
+        }
+    }
+    block_7:;
+    return x_8;
+}
+
+/* Lean: TaggedUrn.Exec.refines */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Exec.lean:64:1 */
 uint8_t capdagFormal__l_TaggedUrn_dExec_drefines(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     lungo_obj x_4;
@@ -155,7 +201,7 @@ uint8_t capdagFormal__l_TaggedUrn_dExec_drefines(lungo_obj x_1, lungo_obj x_2) {
 }
 
 /* Lean: TaggedUrn.Exec.refinesBothClosed */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Exec.lean:118:1 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Exec.lean:135:1 */
 uint8_t capdagFormal__l_TaggedUrn_dExec_drefinesBothClosed(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     lungo_obj x_4;
@@ -193,7 +239,7 @@ uint8_t capdagFormal__l_TaggedUrn_dExec_drefinesBothClosed(lungo_obj x_1, lungo_
 
 /* Lean: TaggedUrn.Exec.refinesBothClosed._closed_0 */
 /* Compiled from: TaggedUrn.Exec.refinesBothClosed */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Exec.lean:118:1 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Exec.lean:135:1 */
 static lungo_obj capdagFormal__l_TaggedUrn_dExec_drefinesBothClosed_d__closed__0__init(void) {
     lungo_obj x_1;
     x_1 = lungo_alloc_closure((void *)capdagFormal__l_TaggedUrn_dtagMatchBothClosed_d__boxed, 2, 0);
@@ -205,7 +251,7 @@ lungo_obj capdagFormal__l_TaggedUrn_dExec_drefinesBothClosed_d__closed__0(void) 
 }
 
 /* Lean: TaggedUrn.Exec.refinesClosed */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Exec.lean:97:1 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Exec.lean:114:1 */
 uint8_t capdagFormal__l_TaggedUrn_dExec_drefinesClosed(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     lungo_obj x_4;
@@ -243,7 +289,7 @@ uint8_t capdagFormal__l_TaggedUrn_dExec_drefinesClosed(lungo_obj x_1, lungo_obj 
 
 /* Lean: TaggedUrn.Exec.refinesClosed._closed_0 */
 /* Compiled from: TaggedUrn.Exec.refinesClosed */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Exec.lean:97:1 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Exec.lean:114:1 */
 static lungo_obj capdagFormal__l_TaggedUrn_dExec_drefinesClosed_d__closed__0__init(void) {
     lungo_obj x_1;
     x_1 = lungo_alloc_closure((void *)capdagFormal__l_TaggedUrn_dtagMatchClosed_d__boxed, 2, 0);

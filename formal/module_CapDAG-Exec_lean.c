@@ -3,7 +3,7 @@
 #include "capdagFormal_program.h"
 
 /* Lean: CapDAG.Exec.WfAsk.covers.elim */
-/* Source: CapDAG/Exec.lean:139:3 */
+/* Source: CapDAG/Exec.lean:136:3 */
 lungo_obj capdagFormal__l_CapDAG_dExec_dWfAsk_dcovers_delim(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3, lungo_obj x_4) {
     (void)x_1;
     (void)x_3;
@@ -14,7 +14,7 @@ lungo_obj capdagFormal__l_CapDAG_dExec_dWfAsk_dcovers_delim(lungo_obj x_1, lungo
 
 /* Lean: CapDAG.Exec.WfAsk.covers.elim._redArg */
 /* Compiled from: CapDAG.Exec.WfAsk.covers.elim */
-/* Source: CapDAG/Exec.lean:139:3 */
+/* Source: CapDAG/Exec.lean:136:3 */
 lungo_obj capdagFormal__l_CapDAG_dExec_dWfAsk_dcovers_delim_d__redArg(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     x_3 = capdagFormal__l_CapDAG_dExec_dWfAsk_dctorElim_d__redArg(x_1, x_2);
@@ -22,7 +22,7 @@ lungo_obj capdagFormal__l_CapDAG_dExec_dWfAsk_dcovers_delim_d__redArg(lungo_obj 
 }
 
 /* Lean: CapDAG.Exec.WfAsk.ctorElim */
-/* Source: CapDAG/Exec.lean:135:1 */
+/* Source: CapDAG/Exec.lean:132:1 */
 lungo_obj capdagFormal__l_CapDAG_dExec_dWfAsk_dctorElim(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3, lungo_obj x_4, lungo_obj x_5) {
     (void)x_1;
     (void)x_2;
@@ -34,7 +34,7 @@ lungo_obj capdagFormal__l_CapDAG_dExec_dWfAsk_dctorElim(lungo_obj x_1, lungo_obj
 
 /* Lean: CapDAG.Exec.WfAsk.ctorElim._boxed */
 /* Compiled from: CapDAG.Exec.WfAsk.ctorElim */
-/* Source: CapDAG/Exec.lean:135:1 */
+/* Source: CapDAG/Exec.lean:132:1 */
 lungo_obj capdagFormal__l_CapDAG_dExec_dWfAsk_dctorElim_d__boxed(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3, lungo_obj x_4, lungo_obj x_5) {
     lungo_obj x_6;
     x_6 = capdagFormal__l_CapDAG_dExec_dWfAsk_dctorElim(x_1, x_2, x_3, x_4, x_5);
@@ -44,7 +44,7 @@ lungo_obj capdagFormal__l_CapDAG_dExec_dWfAsk_dctorElim_d__boxed(lungo_obj x_1, 
 
 /* Lean: CapDAG.Exec.WfAsk.ctorElim._redArg */
 /* Compiled from: CapDAG.Exec.WfAsk.ctorElim */
-/* Source: CapDAG/Exec.lean:135:1 */
+/* Source: CapDAG/Exec.lean:132:1 */
 lungo_obj capdagFormal__l_CapDAG_dExec_dWfAsk_dctorElim_d__redArg(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     lungo_obj x_4;
@@ -100,7 +100,7 @@ lungo_obj capdagFormal__l_CapDAG_dExec_dWfAsk_dctorIdx_d__boxed(lungo_obj x_1) {
 }
 
 /* Lean: CapDAG.Exec.WfAsk.same.elim */
-/* Source: CapDAG/Exec.lean:140:3 */
+/* Source: CapDAG/Exec.lean:137:3 */
 lungo_obj capdagFormal__l_CapDAG_dExec_dWfAsk_dsame_delim(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3, lungo_obj x_4) {
     (void)x_1;
     (void)x_3;
@@ -111,7 +111,7 @@ lungo_obj capdagFormal__l_CapDAG_dExec_dWfAsk_dsame_delim(lungo_obj x_1, lungo_o
 
 /* Lean: CapDAG.Exec.WfAsk.same.elim._redArg */
 /* Compiled from: CapDAG.Exec.WfAsk.same.elim */
-/* Source: CapDAG/Exec.lean:140:3 */
+/* Source: CapDAG/Exec.lean:137:3 */
 lungo_obj capdagFormal__l_CapDAG_dExec_dWfAsk_dsame_delim_d__redArg(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     x_3 = capdagFormal__l_CapDAG_dExec_dWfAsk_dctorElim_d__redArg(x_1, x_2);
@@ -119,7 +119,7 @@ lungo_obj capdagFormal__l_CapDAG_dExec_dWfAsk_dsame_delim_d__redArg(lungo_obj x_
 }
 
 /* Lean: CapDAG.Exec.WfAsk.unknown.elim */
-/* Source: CapDAG/Exec.lean:137:3 */
+/* Source: CapDAG/Exec.lean:134:3 */
 lungo_obj capdagFormal__l_CapDAG_dExec_dWfAsk_dunknown_delim(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3, lungo_obj x_4) {
     (void)x_1;
     (void)x_3;
@@ -130,7 +130,7 @@ lungo_obj capdagFormal__l_CapDAG_dExec_dWfAsk_dunknown_delim(lungo_obj x_1, lung
 
 /* Lean: CapDAG.Exec.WfAsk.unknown.elim._redArg */
 /* Compiled from: CapDAG.Exec.WfAsk.unknown.elim */
-/* Source: CapDAG/Exec.lean:137:3 */
+/* Source: CapDAG/Exec.lean:134:3 */
 lungo_obj capdagFormal__l_CapDAG_dExec_dWfAsk_dunknown_delim_d__redArg(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     x_3 = capdagFormal__l_CapDAG_dExec_dWfAsk_dctorElim_d__redArg(x_1, x_2);
@@ -138,7 +138,7 @@ lungo_obj capdagFormal__l_CapDAG_dExec_dWfAsk_dunknown_delim_d__redArg(lungo_obj
 }
 
 /* Lean: CapDAG.Exec.WfAsk.within.elim */
-/* Source: CapDAG/Exec.lean:138:3 */
+/* Source: CapDAG/Exec.lean:135:3 */
 lungo_obj capdagFormal__l_CapDAG_dExec_dWfAsk_dwithin_delim(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3, lungo_obj x_4) {
     (void)x_1;
     (void)x_3;
@@ -149,7 +149,7 @@ lungo_obj capdagFormal__l_CapDAG_dExec_dWfAsk_dwithin_delim(lungo_obj x_1, lungo
 
 /* Lean: CapDAG.Exec.WfAsk.within.elim._redArg */
 /* Compiled from: CapDAG.Exec.WfAsk.within.elim */
-/* Source: CapDAG/Exec.lean:138:3 */
+/* Source: CapDAG/Exec.lean:135:3 */
 lungo_obj capdagFormal__l_CapDAG_dExec_dWfAsk_dwithin_delim_d__redArg(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     x_3 = capdagFormal__l_CapDAG_dExec_dWfAsk_dctorElim_d__redArg(x_1, x_2);
@@ -157,7 +157,7 @@ lungo_obj capdagFormal__l_CapDAG_dExec_dWfAsk_dwithin_delim_d__redArg(lungo_obj 
 }
 
 /* Lean: CapDAG.Exec.accepts */
-/* Source: CapDAG/Exec.lean:379:1 */
+/* Source: CapDAG/Exec.lean:376:1 */
 uint8_t capdagFormal__l_CapDAG_dExec_daccepts(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     uint8_t x_4;
@@ -168,7 +168,7 @@ uint8_t capdagFormal__l_CapDAG_dExec_daccepts(lungo_obj x_1, lungo_obj x_2) {
 
 /* Lean: CapDAG.Exec.accepts._boxed */
 /* Compiled from: CapDAG.Exec.accepts */
-/* Source: CapDAG/Exec.lean:379:1 */
+/* Source: CapDAG/Exec.lean:376:1 */
 lungo_obj capdagFormal__l_CapDAG_dExec_daccepts_d__boxed(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     lungo_obj x_4;
@@ -178,7 +178,7 @@ lungo_obj capdagFormal__l_CapDAG_dExec_daccepts_d__boxed(lungo_obj x_1, lungo_ob
 }
 
 /* Lean: CapDAG.Exec.audit */
-/* Source: CapDAG/Exec.lean:114:1 */
+/* Source: CapDAG/Exec.lean:111:1 */
 uint8_t capdagFormal__l_CapDAG_dExec_daudit(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3) {
     uint8_t x_4;
     lungo_obj x_5;
@@ -218,7 +218,7 @@ uint8_t capdagFormal__l_CapDAG_dExec_daudit(lungo_obj x_1, lungo_obj x_2, lungo_
 
 /* Lean: CapDAG.Exec.audit._boxed */
 /* Compiled from: CapDAG.Exec.audit */
-/* Source: CapDAG/Exec.lean:114:1 */
+/* Source: CapDAG/Exec.lean:111:1 */
 lungo_obj capdagFormal__l_CapDAG_dExec_daudit_d__boxed(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3) {
     uint8_t x_4;
     lungo_obj x_5;
@@ -231,12 +231,8 @@ lungo_obj capdagFormal__l_CapDAG_dExec_daudit_d__boxed(lungo_obj x_1, lungo_obj 
 /* Source: CapDAG/Exec.lean:92:1 */
 lungo_obj capdagFormal__l_CapDAG_dExec_dcapGives(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
-    lungo_obj x_4;
     x_3 = capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_dgivesWf(x_1, x_2);
-    x_4 = lungo_ctor_get(x_3, 1);
-    lungo_inc(x_4);
-    lungo_dec_ref(x_3);
-    return x_4;
+    return x_3;
 }
 
 /* Lean: CapDAG.Exec.capIllegal */
@@ -387,7 +383,7 @@ lungo_obj capdagFormal__l_CapDAG_dExec_dcapIllegal_d__closed__1(void) {
 }
 
 /* Lean: CapDAG.Exec.comparable */
-/* Source: CapDAG/Exec.lean:426:1 */
+/* Source: CapDAG/Exec.lean:423:1 */
 uint8_t capdagFormal__l_CapDAG_dExec_dcomparable(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     uint8_t x_4;
@@ -405,7 +401,7 @@ uint8_t capdagFormal__l_CapDAG_dExec_dcomparable(lungo_obj x_1, lungo_obj x_2) {
 
 /* Lean: CapDAG.Exec.comparable._boxed */
 /* Compiled from: CapDAG.Exec.comparable */
-/* Source: CapDAG/Exec.lean:426:1 */
+/* Source: CapDAG/Exec.lean:423:1 */
 lungo_obj capdagFormal__l_CapDAG_dExec_dcomparable_d__boxed(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     lungo_obj x_4;
@@ -417,7 +413,7 @@ lungo_obj capdagFormal__l_CapDAG_dExec_dcomparable_d__boxed(lungo_obj x_1, lungo
 }
 
 /* Lean: CapDAG.Exec.dispatch */
-/* Source: CapDAG/Exec.lean:359:1 */
+/* Source: CapDAG/Exec.lean:356:1 */
 uint8_t capdagFormal__l_CapDAG_dExec_ddispatch(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     uint8_t x_4;
@@ -428,7 +424,7 @@ uint8_t capdagFormal__l_CapDAG_dExec_ddispatch(lungo_obj x_1, lungo_obj x_2) {
 
 /* Lean: CapDAG.Exec.dispatch._boxed */
 /* Compiled from: CapDAG.Exec.dispatch */
-/* Source: CapDAG/Exec.lean:359:1 */
+/* Source: CapDAG/Exec.lean:356:1 */
 lungo_obj capdagFormal__l_CapDAG_dExec_ddispatch_d__boxed(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     lungo_obj x_4;
@@ -472,7 +468,7 @@ lungo_obj capdagFormal__l_CapDAG_dExec_deffectOk_d__boxed(lungo_obj x_1, lungo_o
 }
 
 /* Lean: CapDAG.Exec.equivalent */
-/* Source: CapDAG/Exec.lean:425:1 */
+/* Source: CapDAG/Exec.lean:422:1 */
 uint8_t capdagFormal__l_CapDAG_dExec_dequivalent(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     uint8_t x_4;
@@ -490,7 +486,7 @@ uint8_t capdagFormal__l_CapDAG_dExec_dequivalent(lungo_obj x_1, lungo_obj x_2) {
 
 /* Lean: CapDAG.Exec.equivalent._boxed */
 /* Compiled from: CapDAG.Exec.equivalent */
-/* Source: CapDAG/Exec.lean:425:1 */
+/* Source: CapDAG/Exec.lean:422:1 */
 lungo_obj capdagFormal__l_CapDAG_dExec_dequivalent_d__boxed(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     lungo_obj x_4;
@@ -502,7 +498,7 @@ lungo_obj capdagFormal__l_CapDAG_dExec_dequivalent_d__boxed(lungo_obj x_1, lungo
 }
 
 /* Lean: CapDAG.Exec.flows */
-/* Source: CapDAG/Exec.lean:462:1 */
+/* Source: CapDAG/Exec.lean:459:1 */
 uint8_t capdagFormal__l_CapDAG_dExec_dflows(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     lungo_obj x_4;
@@ -515,7 +511,7 @@ uint8_t capdagFormal__l_CapDAG_dExec_dflows(lungo_obj x_1, lungo_obj x_2) {
 
 /* Lean: CapDAG.Exec.flows._boxed */
 /* Compiled from: CapDAG.Exec.flows */
-/* Source: CapDAG/Exec.lean:462:1 */
+/* Source: CapDAG/Exec.lean:459:1 */
 lungo_obj capdagFormal__l_CapDAG_dExec_dflows_d__boxed(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     lungo_obj x_4;
@@ -527,7 +523,7 @@ lungo_obj capdagFormal__l_CapDAG_dExec_dflows_d__boxed(lungo_obj x_1, lungo_obj 
 }
 
 /* Lean: CapDAG.Exec.mayDispatch */
-/* Source: CapDAG/Exec.lean:369:1 */
+/* Source: CapDAG/Exec.lean:366:1 */
 uint8_t capdagFormal__l_CapDAG_dExec_dmayDispatch(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     uint8_t x_4;
@@ -538,7 +534,7 @@ uint8_t capdagFormal__l_CapDAG_dExec_dmayDispatch(lungo_obj x_1, lungo_obj x_2) 
 
 /* Lean: CapDAG.Exec.mayDispatch._boxed */
 /* Compiled from: CapDAG.Exec.mayDispatch */
-/* Source: CapDAG/Exec.lean:369:1 */
+/* Source: CapDAG/Exec.lean:366:1 */
 lungo_obj capdagFormal__l_CapDAG_dExec_dmayDispatch_d__boxed(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     lungo_obj x_4;
@@ -548,7 +544,7 @@ lungo_obj capdagFormal__l_CapDAG_dExec_dmayDispatch_d__boxed(lungo_obj x_1, lung
 }
 
 /* Lean: CapDAG.Exec.mayFlow */
-/* Source: CapDAG/Exec.lean:469:1 */
+/* Source: CapDAG/Exec.lean:466:1 */
 uint8_t capdagFormal__l_CapDAG_dExec_dmayFlow(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     lungo_obj x_4;
@@ -565,7 +561,7 @@ uint8_t capdagFormal__l_CapDAG_dExec_dmayFlow(lungo_obj x_1, lungo_obj x_2) {
 
 /* Lean: CapDAG.Exec.mayFlow._boxed */
 /* Compiled from: CapDAG.Exec.mayFlow */
-/* Source: CapDAG/Exec.lean:469:1 */
+/* Source: CapDAG/Exec.lean:466:1 */
 lungo_obj capdagFormal__l_CapDAG_dExec_dmayFlow_d__boxed(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     lungo_obj x_4;
@@ -575,7 +571,7 @@ lungo_obj capdagFormal__l_CapDAG_dExec_dmayFlow_d__boxed(lungo_obj x_1, lungo_ob
 }
 
 /* Lean: CapDAG.Exec.queryAdmits */
-/* Source: CapDAG/Exec.lean:300:1 */
+/* Source: CapDAG/Exec.lean:297:1 */
 uint8_t capdagFormal__l_CapDAG_dExec_dqueryAdmits(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     lungo_obj x_4;
@@ -643,7 +639,7 @@ uint8_t capdagFormal__l_CapDAG_dExec_dqueryAdmits(lungo_obj x_1, lungo_obj x_2) 
 
 /* Lean: CapDAG.Exec.queryAdmits._boxed */
 /* Compiled from: CapDAG.Exec.queryAdmits */
-/* Source: CapDAG/Exec.lean:300:1 */
+/* Source: CapDAG/Exec.lean:297:1 */
 lungo_obj capdagFormal__l_CapDAG_dExec_dqueryAdmits_d__boxed(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     lungo_obj x_4;
@@ -653,7 +649,7 @@ lungo_obj capdagFormal__l_CapDAG_dExec_dqueryAdmits_d__boxed(lungo_obj x_1, lung
 }
 
 /* Lean: CapDAG.Exec.queryBetween */
-/* Source: CapDAG/Exec.lean:182:1 */
+/* Source: CapDAG/Exec.lean:179:1 */
 lungo_obj capdagFormal__l_CapDAG_dExec_dqueryBetween(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3) {
     lungo_obj x_4;
     lungo_obj x_5;
@@ -673,7 +669,7 @@ lungo_obj capdagFormal__l_CapDAG_dExec_dqueryBetween(lungo_obj x_1, lungo_obj x_
 }
 
 /* Lean: CapDAG.Exec.queryConsuming */
-/* Source: CapDAG/Exec.lean:178:1 */
+/* Source: CapDAG/Exec.lean:175:1 */
 lungo_obj capdagFormal__l_CapDAG_dExec_dqueryConsuming(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     lungo_obj x_4;
@@ -692,7 +688,7 @@ lungo_obj capdagFormal__l_CapDAG_dExec_dqueryConsuming(lungo_obj x_1, lungo_obj 
 }
 
 /* Lean: CapDAG.Exec.queryGrade */
-/* Source: CapDAG/Exec.lean:338:1 */
+/* Source: CapDAG/Exec.lean:335:1 */
 uint8_t capdagFormal__l_CapDAG_dExec_dqueryGrade(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     uint8_t x_4;
@@ -744,7 +740,7 @@ uint8_t capdagFormal__l_CapDAG_dExec_dqueryGrade(lungo_obj x_1, lungo_obj x_2) {
 
 /* Lean: CapDAG.Exec.queryGrade._boxed */
 /* Compiled from: CapDAG.Exec.queryGrade */
-/* Source: CapDAG/Exec.lean:338:1 */
+/* Source: CapDAG/Exec.lean:335:1 */
 lungo_obj capdagFormal__l_CapDAG_dExec_dqueryGrade_d__boxed(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     lungo_obj x_4;
@@ -754,7 +750,7 @@ lungo_obj capdagFormal__l_CapDAG_dExec_dqueryGrade_d__boxed(lungo_obj x_1, lungo
 }
 
 /* Lean: CapDAG.Exec.queryMayAdmit */
-/* Source: CapDAG/Exec.lean:313:1 */
+/* Source: CapDAG/Exec.lean:310:1 */
 uint8_t capdagFormal__l_CapDAG_dExec_dqueryMayAdmit(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     lungo_obj x_4;
@@ -824,7 +820,7 @@ uint8_t capdagFormal__l_CapDAG_dExec_dqueryMayAdmit(lungo_obj x_1, lungo_obj x_2
 
 /* Lean: CapDAG.Exec.queryMayAdmit._boxed */
 /* Compiled from: CapDAG.Exec.queryMayAdmit */
-/* Source: CapDAG/Exec.lean:313:1 */
+/* Source: CapDAG/Exec.lean:310:1 */
 lungo_obj capdagFormal__l_CapDAG_dExec_dqueryMayAdmit_d__boxed(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     lungo_obj x_4;
@@ -834,7 +830,7 @@ lungo_obj capdagFormal__l_CapDAG_dExec_dqueryMayAdmit_d__boxed(lungo_obj x_1, lu
 }
 
 /* Lean: CapDAG.Exec.queryOfCall */
-/* Source: CapDAG/Exec.lean:160:1 */
+/* Source: CapDAG/Exec.lean:157:1 */
 lungo_obj capdagFormal__l_CapDAG_dExec_dqueryOfCall(lungo_obj x_1) {
     lungo_obj x_2;
     lungo_obj x_3;
@@ -895,7 +891,7 @@ lungo_obj capdagFormal__l_CapDAG_dExec_dqueryOfCall(lungo_obj x_1) {
 }
 
 /* Lean: CapDAG.Exec.queryOfPattern */
-/* Source: CapDAG/Exec.lean:165:1 */
+/* Source: CapDAG/Exec.lean:162:1 */
 lungo_obj capdagFormal__l_CapDAG_dExec_dqueryOfPattern(lungo_obj x_1) {
     lungo_obj x_2;
     lungo_obj x_3;
@@ -988,7 +984,7 @@ lungo_obj capdagFormal__l_CapDAG_dExec_dqueryOfPattern(lungo_obj x_1) {
 }
 
 /* Lean: CapDAG.Exec.queryProducing */
-/* Source: CapDAG/Exec.lean:173:1 */
+/* Source: CapDAG/Exec.lean:170:1 */
 lungo_obj capdagFormal__l_CapDAG_dExec_dqueryProducing(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     lungo_obj x_4;
@@ -1007,7 +1003,7 @@ lungo_obj capdagFormal__l_CapDAG_dExec_dqueryProducing(lungo_obj x_1, lungo_obj 
 }
 
 /* Lean: CapDAG.Exec.rankingKey */
-/* Source: CapDAG/Exec.lean:481:1 */
+/* Source: CapDAG/Exec.lean:478:1 */
 lungo_obj capdagFormal__l_CapDAG_dExec_drankingKey(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     lungo_obj x_4;
@@ -1019,7 +1015,7 @@ lungo_obj capdagFormal__l_CapDAG_dExec_drankingKey(lungo_obj x_1, lungo_obj x_2)
 }
 
 /* Lean: CapDAG.Exec.select */
-/* Source: CapDAG/Exec.lean:489:1 */
+/* Source: CapDAG/Exec.lean:486:1 */
 lungo_obj capdagFormal__l_CapDAG_dExec_dselect(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     lungo_obj x_4;
@@ -1029,7 +1025,7 @@ lungo_obj capdagFormal__l_CapDAG_dExec_dselect(lungo_obj x_1, lungo_obj x_2) {
 }
 
 /* Lean: CapDAG.Exec.specificity */
-/* Source: CapDAG/Exec.lean:476:1 */
+/* Source: CapDAG/Exec.lean:473:1 */
 lungo_obj capdagFormal__l_CapDAG_dExec_dspecificity(lungo_obj x_1) {
     lungo_obj x_2;
     lungo_obj x_3;
@@ -1277,7 +1273,7 @@ lungo_obj capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dAsk_dadmits_dmatch
 }
 
 /* Lean: _private.CapDAG.Exec.0.CapDAG.Exec.WfAsk.exactly */
-/* Source: CapDAG/Exec.lean:326:1 */
+/* Source: CapDAG/Exec.lean:323:1 */
 lungo_obj capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_dWfAsk_dexactly(lungo_obj x_1) {
     lungo_obj x_2;
     lungo_obj x_4;
@@ -1367,7 +1363,7 @@ lungo_obj capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_dWfAsk_dexact
 }
 
 /* Lean: _private.CapDAG.Exec.0.CapDAG.Exec.WfAsk.toAsk */
-/* Source: CapDAG/Exec.lean:151:1 */
+/* Source: CapDAG/Exec.lean:148:1 */
 lungo_obj capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_dWfAsk_dtoAsk(lungo_obj x_1) {
     lungo_obj x_2;
     lungo_obj x_3;
@@ -1657,7 +1653,7 @@ lungo_obj capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_dWfCap_dtoCap
 }
 
 /* Lean: _private.CapDAG.Exec.0.CapDAG.Exec.WfQuery.exactly */
-/* Source: CapDAG/Exec.lean:330:1 */
+/* Source: CapDAG/Exec.lean:327:1 */
 lungo_obj capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_dWfQuery_dexactly(lungo_obj x_1) {
     lungo_obj x_2;
     lungo_obj x_3;
@@ -1716,7 +1712,7 @@ lungo_obj capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_dWfQuery_dexa
 }
 
 /* Lean: _private.CapDAG.Exec.0.CapDAG.Exec.WfQuery.toQuery */
-/* Source: CapDAG/Exec.lean:157:1 */
+/* Source: CapDAG/Exec.lean:154:1 */
 lungo_obj capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_dWfQuery_dtoQuery(lungo_obj x_1) {
     lungo_obj x_2;
     lungo_obj x_3;
@@ -1775,7 +1771,7 @@ lungo_obj capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_dWfQuery_dtoQ
 }
 
 /* Lean: _private.CapDAG.Exec.0.CapDAG.Exec.askAdmits */
-/* Source: CapDAG/Exec.lean:214:1 */
+/* Source: CapDAG/Exec.lean:211:1 */
 uint8_t capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_daskAdmits(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     lungo_obj x_4;
@@ -1818,7 +1814,7 @@ uint8_t capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_daskAdmits(lung
 
 /* Lean: _private.CapDAG.Exec.0.CapDAG.Exec.askAdmits._boxed */
 /* Compiled from: _private.CapDAG.Exec.0.CapDAG.Exec.askAdmits */
-/* Source: CapDAG/Exec.lean:214:1 */
+/* Source: CapDAG/Exec.lean:211:1 */
 lungo_obj capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_daskAdmits_d__boxed(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     lungo_obj x_4;
@@ -1934,7 +1930,7 @@ lungo_obj capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_daskAdmits_dm
 }
 
 /* Lean: _private.CapDAG.Exec.0.CapDAG.Exec.askAdmitsComplete */
-/* Source: CapDAG/Exec.lean:224:1 */
+/* Source: CapDAG/Exec.lean:221:1 */
 uint8_t capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_daskAdmitsComplete(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     lungo_obj x_4;
@@ -1987,7 +1983,7 @@ uint8_t capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_daskAdmitsCompl
 
 /* Lean: _private.CapDAG.Exec.0.CapDAG.Exec.askAdmitsComplete._boxed */
 /* Compiled from: _private.CapDAG.Exec.0.CapDAG.Exec.askAdmitsComplete */
-/* Source: CapDAG/Exec.lean:224:1 */
+/* Source: CapDAG/Exec.lean:221:1 */
 lungo_obj capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_daskAdmitsComplete_d__boxed(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     lungo_obj x_4;
@@ -1997,7 +1993,7 @@ lungo_obj capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_daskAdmitsCom
 }
 
 /* Lean: _private.CapDAG.Exec.0.CapDAG.Exec.askGivesOk */
-/* Source: CapDAG/Exec.lean:246:1 */
+/* Source: CapDAG/Exec.lean:243:1 */
 uint8_t capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_daskGivesOk(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3) {
     uint8_t x_4;
     lungo_obj x_5;
@@ -2026,7 +2022,7 @@ uint8_t capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_daskGivesOk(lun
 
 /* Lean: _private.CapDAG.Exec.0.CapDAG.Exec.askGivesOk._boxed */
 /* Compiled from: _private.CapDAG.Exec.0.CapDAG.Exec.askGivesOk */
-/* Source: CapDAG/Exec.lean:246:1 */
+/* Source: CapDAG/Exec.lean:243:1 */
 lungo_obj capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_daskGivesOk_d__boxed(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3) {
     uint8_t x_4;
     lungo_obj x_5;
@@ -2036,7 +2032,7 @@ lungo_obj capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_daskGivesOk_d
 }
 
 /* Lean: _private.CapDAG.Exec.0.CapDAG.Exec.askMayAdmit */
-/* Source: CapDAG/Exec.lean:261:1 */
+/* Source: CapDAG/Exec.lean:258:1 */
 uint8_t capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_daskMayAdmit(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     lungo_obj x_4;
@@ -2059,7 +2055,7 @@ uint8_t capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_daskMayAdmit(lu
 
 /* Lean: _private.CapDAG.Exec.0.CapDAG.Exec.askMayAdmit._boxed */
 /* Compiled from: _private.CapDAG.Exec.0.CapDAG.Exec.askMayAdmit */
-/* Source: CapDAG/Exec.lean:261:1 */
+/* Source: CapDAG/Exec.lean:258:1 */
 lungo_obj capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_daskMayAdmit_d__boxed(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     lungo_obj x_4;
@@ -2069,7 +2065,7 @@ lungo_obj capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_daskMayAdmit_
 }
 
 /* Lean: _private.CapDAG.Exec.0.CapDAG.Exec.askMayGive */
-/* Source: CapDAG/Exec.lean:273:1 */
+/* Source: CapDAG/Exec.lean:270:1 */
 uint8_t capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_daskMayGive(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3) {
     lungo_obj x_5;
     uint8_t x_6;
@@ -2113,7 +2109,7 @@ uint8_t capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_daskMayGive(lun
 
 /* Lean: _private.CapDAG.Exec.0.CapDAG.Exec.askMayGive._boxed */
 /* Compiled from: _private.CapDAG.Exec.0.CapDAG.Exec.askMayGive */
-/* Source: CapDAG/Exec.lean:273:1 */
+/* Source: CapDAG/Exec.lean:270:1 */
 lungo_obj capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_daskMayGive_d__boxed(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3) {
     uint8_t x_4;
     lungo_obj x_5;
@@ -2123,7 +2119,7 @@ lungo_obj capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_daskMayGive_d
 }
 
 /* Lean: _private.CapDAG.Exec.0.CapDAG.Exec.given */
-/* Source: CapDAG/Exec.lean:235:1 */
+/* Source: CapDAG/Exec.lean:232:1 */
 lungo_obj capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_dgiven(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     lungo_obj x_4;
@@ -2151,7 +2147,7 @@ lungo_obj capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_dgiven(lungo_
 
 /* Lean: _private.CapDAG.Exec.0.CapDAG.Exec.given._boxed */
 /* Compiled from: _private.CapDAG.Exec.0.CapDAG.Exec.given */
-/* Source: CapDAG/Exec.lean:235:1 */
+/* Source: CapDAG/Exec.lean:232:1 */
 lungo_obj capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_dgiven_d__boxed(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     x_3 = capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_dgiven(x_1, x_2);
@@ -2244,7 +2240,7 @@ lungo_obj capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_disMediaTop_d
 }
 
 /* Lean: _private.CapDAG.Exec.0.CapDAG.Exec.mayGiveFrom */
-/* Source: CapDAG/Exec.lean:269:1 */
+/* Source: CapDAG/Exec.lean:266:1 */
 uint8_t capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_dmayGiveFrom(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3) {
     lungo_obj x_4;
     uint8_t x_5;
@@ -2255,7 +2251,7 @@ uint8_t capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_dmayGiveFrom(lu
 
 /* Lean: _private.CapDAG.Exec.0.CapDAG.Exec.mayGiveFrom._boxed */
 /* Compiled from: _private.CapDAG.Exec.0.CapDAG.Exec.mayGiveFrom */
-/* Source: CapDAG/Exec.lean:269:1 */
+/* Source: CapDAG/Exec.lean:266:1 */
 lungo_obj capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_dmayGiveFrom_d__boxed(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3) {
     uint8_t x_4;
     lungo_obj x_5;
@@ -2265,7 +2261,7 @@ lungo_obj capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_dmayGiveFrom_
 }
 
 /* Lean: _private.CapDAG.Exec.0.CapDAG.Exec.readsComplete */
-/* Source: CapDAG/Exec.lean:104:1 */
+/* Source: CapDAG/Exec.lean:101:1 */
 uint8_t capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_dreadsComplete(lungo_obj x_1) {
     uint8_t x_2;
     uint8_t x_3;
@@ -2300,7 +2296,7 @@ uint8_t capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_dreadsComplete(
 
 /* Lean: _private.CapDAG.Exec.0.CapDAG.Exec.readsComplete._boxed */
 /* Compiled from: _private.CapDAG.Exec.0.CapDAG.Exec.readsComplete */
-/* Source: CapDAG/Exec.lean:104:1 */
+/* Source: CapDAG/Exec.lean:101:1 */
 lungo_obj capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_dreadsComplete_d__boxed(lungo_obj x_1) {
     uint8_t x_2;
     lungo_obj x_3;
@@ -2311,7 +2307,7 @@ lungo_obj capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_dreadsComplet
 }
 
 /* Lean: _private.CapDAG.Exec.0.CapDAG.Exec.sameSides */
-/* Source: CapDAG/Exec.lean:398:1 */
+/* Source: CapDAG/Exec.lean:395:1 */
 uint8_t capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_dsameSides(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     lungo_obj x_4;
@@ -2384,7 +2380,7 @@ uint8_t capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_dsameSides(lung
 
 /* Lean: _private.CapDAG.Exec.0.CapDAG.Exec.sameSides._boxed */
 /* Compiled from: _private.CapDAG.Exec.0.CapDAG.Exec.sameSides */
-/* Source: CapDAG/Exec.lean:398:1 */
+/* Source: CapDAG/Exec.lean:395:1 */
 lungo_obj capdagFormal__l___private_dCapDAG_dExec_d0_dCapDAG_dExec_dsameSides_d__boxed(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     lungo_obj x_4;
