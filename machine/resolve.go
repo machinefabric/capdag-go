@@ -135,8 +135,9 @@ func resolveStrand(
 	// NodeId.
 	producerNode := make(map[planner.StepToken]NodeId)
 	// The single shared strand input anchor node, allocated on first
-	// StrandInput reference and refined to the most specific consuming
-	// FromSpec.
+	// StrandInput reference and refined to the narrower consuming FromSpec —
+	// the one inside the other; two neither of which is inside the other are
+	// an ErrAbstractionNodeMediaConflict.
 	var strandInputNode *NodeId
 
 	for _, step := range strand.Steps {
@@ -149,7 +150,13 @@ func resolveStrand(
 				case planner.ArgSourceStrandInput:
 					if strandInputNode != nil {
 						id := *strandInputNode
-						if step.FromSpec.Specificity() > nodes[id].Specificity() {
+						held := nodes[id]
+						narrower, inside := narrowerOf(held, step.FromSpec)
+						if !inside {
+							return nil, nodeMediaConflictError(
+								fmt.Sprintf("strand %d input", strandIndex), held.String(), step.FromSpec.String())
+						}
+						if narrower {
 							nodes[id] = step.FromSpec
 						}
 						sourceId = id

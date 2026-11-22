@@ -40,9 +40,8 @@ import (
 //     type of the step's main input — at most one such member per wiring, and
 //     only while no named member bound the main input
 //     (ErrAbstractionUntypedMachineInput otherwise);
-//   - URNs given to one node must be on one specialization chain
-//     (ErrAbstractionNodeMediaConflict otherwise); the node has the most
-//     specific.
+//   - of two URNs given to one node, one must be inside the other
+//     (ErrAbstractionNodeMediaConflict otherwise); the node has the narrower.
 
 // rawValue is what a member of a wiring gives its arg: a node, by the name
 // the text gives it, or a constant.
@@ -753,22 +752,41 @@ func includeMachines(
 	return written, nil
 }
 
-// give gives `node` the URN `media`, beside any URN it was already given: the
-// two must be on one specialization chain, and the node holds the more
-// specific.
+// give gives `node` the URN `media`, beside any URN it was already given: one of
+// the two must be inside the other, and the node holds the narrower. Two types
+// can score the same and still differ (`ext=a|b` and `ext=a|b|c`), so
+// specificity never decides it.
 func give(nodeMedia map[string]*urn.MediaUrn, node string, media *urn.MediaUrn) *MachineParseError {
 	existing, held := nodeMedia[node]
 	if !held {
 		nodeMedia[node] = media
 		return nil
 	}
-	if !existing.IsComparable(media) {
+	narrower, inside := narrowerOf(existing, media)
+	if !inside {
 		return abstractionParseError(nodeMediaConflictError(node, existing.String(), media.String()))
 	}
-	if media.Specificity() > existing.Specificity() {
+	if narrower {
 		nodeMedia[node] = media
 	}
 	return nil
+}
+
+// narrowerOf reports whether `given` should replace `held` as one node's type:
+// (true, true) when `given` is strictly inside `held`, (false, true) when `held`
+// is inside `given` (equivalent types included), and (false, false) when
+// neither is inside the other.
+func narrowerOf(held, given *urn.MediaUrn) (narrower bool, inside bool) {
+	givenInside := given.ConformsTo(held)
+	heldInside := held.ConformsTo(given)
+	switch {
+	case heldInside:
+		return false, true
+	case givenInside:
+		return true, true
+	default:
+		return false, false
+	}
 }
 
 // typeNodes gives every node of one strand its media URN (see the file

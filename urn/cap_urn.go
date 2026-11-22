@@ -119,6 +119,7 @@ const (
 	ErrorInvalidEffect         = 13
 	ErrorInvalidEffectApply    = 14
 	ErrorIllegalDeclaration    = 15
+	ErrorDuplicateValue        = 16
 )
 
 // writtenTag is one tag as a tagged URN writes it, for an error that names it.
@@ -138,13 +139,13 @@ func normalizeEffectValue(raw taggedurn.Constraint, present bool) (string, error
 	if !present {
 		return string(CapEffectDeclared), nil
 	}
-	switch v := raw.(type) {
-	case taggedurn.ConstraintPresent, taggedurn.ConstraintUnconstrained:
+	if taggedurn.ConstraintsEqual(raw, taggedurn.Present()) || taggedurn.ConstraintsEqual(raw, taggedurn.Unconstrained()) {
 		return string(CapEffectAny), nil
-	case taggedurn.ConstraintExact:
-		switch v.Value {
+	}
+	if value, ok := taggedurn.ExactValue(raw); ok {
+		switch value {
 		case "declared", "none", "patch":
-			return v.Value, nil
+			return value, nil
 		}
 	}
 	return "", &CapUrnError{
@@ -218,11 +219,11 @@ func processDirectionTag(tag taggedurn.Constraint, present bool, side string) (s
 	if !present {
 		return "media:", nil
 	}
-	switch v := tag.(type) {
-	case taggedurn.ConstraintPresent:
+	if taggedurn.ConstraintsEqual(tag, taggedurn.Present()) {
 		return "media:", nil
-	case taggedurn.ConstraintExact:
-		return directionMedia(side, v.Value)
+	}
+	if value, ok := taggedurn.ExactValue(tag); ok {
+		return directionMedia(side, value)
 	}
 	return "", &CapUrnError{
 		Code:    ErrorInvalidMediaUrn,
@@ -316,6 +317,7 @@ func capUrnErrorFromTaggedUrn(err error) *CapUrnError {
 		taggedurn.ErrorEmptyPrefix:           ErrorMissingCapPrefix,
 		taggedurn.ErrorPrefixMismatch:        ErrorMissingCapPrefix,
 		taggedurn.ErrorWhitespaceInInput:     ErrorInvalidCharacter,
+		taggedurn.ErrorDuplicateValue:        ErrorDuplicateValue,
 	}[taggedErr.Code]
 	if code == 0 {
 		panic(fmt.Sprintf("capdag: tagged URN error code %d has no cap URN code", taggedErr.Code))
@@ -547,8 +549,7 @@ func (c *CapUrn) GetTag(key string) (taggedurn.Constraint, bool) {
 // and whether it writes one; false when it does not mention the key or
 // constrains it in another form.
 func (c *CapUrn) ExactValue(key string) (string, bool) {
-	exact, ok := c.tags[strings.ToLower(key)].(taggedurn.ConstraintExact)
-	return exact.Value, ok
+	return taggedurn.ExactValue(c.tags[strings.ToLower(key)])
 }
 
 // Tags returns a copy of the cap-tags.
@@ -572,8 +573,8 @@ func (c *CapUrn) HasTag(key, value string) bool {
 // (written as just the key). Example: `cap:constrained;...` has marker tag
 // "constrained".
 func (c *CapUrn) HasMarkerTag(tagName string) bool {
-	_, ok := c.tags[strings.ToLower(tagName)].(taggedurn.ConstraintPresent)
-	return ok
+	tag, ok := c.tags[strings.ToLower(tagName)]
+	return ok && taggedurn.ConstraintsEqual(tag, taggedurn.Present())
 }
 
 // WithTag returns a new cap URN with a cap-tag added or replaced. The key must be
@@ -856,14 +857,14 @@ const (
 // across the three axes (out, in, y), each axis scored as a Tagged
 // URN per TaggedUrn.Specificity:
 //
-//	stored value       score   form
-//	------------------ -----   ----------------------
-//	"?"                0       no constraint
-//	starts with "?="   1       absent or not v
-//	"*"                2       must-have-any
-//	starts with "!="   3       present and not v
-//	exact value        4       exact match
-//	"!"                5       must-not-have
+//	what a tag allows                        forms                    score
+//	---------------------------------------  -----------------------  -----
+//	absence and every value                  ?x                       0
+//	absence and some values, not every one   x?=v, x?=a|b, x=a|!      1
+//	every value                              x (x=*)                  2
+//	two or more values, not every value      x!=v, x=a|b              3
+//	exactly one value                        x=v                      4
+//	only absence                             !x                       5
 //
 // Axis weighting:
 //
@@ -973,7 +974,7 @@ func (c *CapUrn) WithWildcardTag(key string) *CapUrn {
 	default:
 		if _, exists := c.tags[keyLower]; exists {
 			newTags := c.Tags()
-			newTags[keyLower] = taggedurn.ConstraintPresent{}
+			newTags[keyLower] = taggedurn.Present()
 			result, err := assemble(c.inSpec, c.outSpec, c.effect, newTags)
 			if err != nil {
 				panic(fmt.Sprintf("CapUrn::WithWildcardTag produced an illegal cap declaration: %v", err))
@@ -1030,17 +1031,17 @@ func (c *CapUrn) Merge(other *CapUrn) *CapUrn {
 func (c *CapUrn) ToString() string {
 	allTags := make(map[string]taggedurn.Constraint, len(c.tags)+3)
 	if c.inSpec != "media:" {
-		allTags["in"] = taggedurn.ConstraintExact{Value: c.inSpec}
+		allTags["in"] = taggedurn.Exact(c.inSpec)
 	}
 	if c.outSpec != "media:" {
-		allTags["out"] = taggedurn.ConstraintExact{Value: c.outSpec}
+		allTags["out"] = taggedurn.Exact(c.outSpec)
 	}
 	switch CapEffect(c.effect) {
 	case CapEffectDeclared:
 	case CapEffectAny:
-		allTags["effect"] = taggedurn.ConstraintUnconstrained{}
+		allTags["effect"] = taggedurn.Unconstrained()
 	default:
-		allTags["effect"] = taggedurn.ConstraintExact{Value: c.effect}
+		allTags["effect"] = taggedurn.Exact(c.effect)
 	}
 	for k, v := range c.tags {
 		allTags[k] = v
@@ -1221,12 +1222,12 @@ func (b *CapUrnBuilder) Constraint(key string, constraint taggedurn.Constraint) 
 
 // Tag adds a cap-tag with the exact value value, taken literally.
 func (b *CapUrnBuilder) Tag(key, value string) *CapUrnBuilder {
-	return b.Constraint(key, taggedurn.ConstraintExact{Value: value})
+	return b.Constraint(key, taggedurn.Exact(value))
 }
 
 // Marker adds a cap-tag as a marker (written as just the key).
 func (b *CapUrnBuilder) Marker(key string) *CapUrnBuilder {
-	return b.Constraint(key, taggedurn.ConstraintPresent{})
+	return b.Constraint(key, taggedurn.Present())
 }
 
 // Build creates the final CapUrn

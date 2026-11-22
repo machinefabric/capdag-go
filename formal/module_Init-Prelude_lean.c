@@ -266,6 +266,19 @@ uint8_t capdagFormal__l_String_ddecEq(lungo_obj x_1, lungo_obj x_2) {
     return r;
 }
 
+/* Lean: String.decEq._boxed */
+/* Compiled from: String.decEq */
+/* Source: <lean>/Init/Prelude.lean:3563:1 */
+lungo_obj capdagFormal__l_String_ddecEq_d__boxed(lungo_obj x_1, lungo_obj x_2) {
+    uint8_t x_3;
+    lungo_obj x_4;
+    x_3 = capdagFormal__l_String_ddecEq(x_1, x_2);
+    lungo_dec_ref(x_2);
+    lungo_dec_ref(x_1);
+    x_4 = lungo_box((size_t)x_3);
+    return x_4;
+}
+
 /* Lean: String.ofList */
 /* Source: <lean>/Init/Prelude.lean:3551:1 */
 lungo_obj capdagFormal__l_String_dofList(lungo_obj x_1) {

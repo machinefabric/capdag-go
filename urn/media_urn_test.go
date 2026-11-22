@@ -2,6 +2,7 @@ package urn
 
 import (
 	"encoding/json"
+	"sort"
 	"testing"
 
 	"github.com/machinefabric/capdag-go/standard"
@@ -666,19 +667,20 @@ func Test852_lub_identical(t *testing.T) {
 	assert.True(t, lub.IsEquivalent(pdf))
 }
 
-// TEST853: LUB promotes a shared key with differing values to "some value": both
-// inputs HAVE an ext (pdf vs png), so the bound is media:ext — the denominator
+// TEST853: LUB keeps a shared key with differing values as the set of them:
+// both inputs HAVE an ext (pdf vs png), so the bound is media:ext=pdf|png, which
 // generic caps like in="media:ext" accept — not the trivial media:. The image
 // marker is only on one side, so it is dropped.
-func Test853_lub_shared_key_promotes_to_wildcard(t *testing.T) {
+func Test853_lub_shared_key_keeps_the_values(t *testing.T) {
 	pdf, err := NewMediaUrnFromString("media:document;ext=pdf")
 	require.NoError(t, err)
 	png, err := NewMediaUrnFromString("media:ext=png;image")
 	require.NoError(t, err)
 	lub := LeastUpperBound([]*MediaUrn{pdf, png})
-	expected, err := NewMediaUrnFromString("media:ext")
+	assert.Equal(t, "media:ext=pdf|png", lub.String())
+	anyExt, err := NewMediaUrnFromString("media:ext")
 	require.NoError(t, err)
-	assert.True(t, lub.IsEquivalent(expected), "LUB of ext=pdf and ext=png;image should be media:ext but got %s", lub.String())
+	assert.True(t, lub.ConformsTo(anyExt))
 	assert.True(t, pdf.ConformsTo(lub))
 	assert.True(t, png.ConformsTo(lub))
 }
@@ -734,25 +736,57 @@ func Test858_lub_three_inputs(t *testing.T) {
 	require.NoError(t, err)
 	lub := LeastUpperBound([]*MediaUrn{a, b, c})
 	// All three are UTF-8 lists and all three HAVE a fmt (json/csv/ndjson —
-	// differing values → "some fmt"); record is on a and b only → dropped.
-	expected, err := NewMediaUrnFromString("media:enc=utf8;fmt;list")
-	require.NoError(t, err)
-	assert.True(t, lub.IsEquivalent(expected), "LUB should be media:enc=utf8;fmt;list but got %s", lub.String())
+	// differing values → one of them); record is on a and b only → dropped.
+	assert.Equal(t, "media:enc=utf8;fmt=csv|json|ndjson;list", lub.String())
 	assert.True(t, a.ConformsTo(lub))
 	assert.True(t, b.ConformsTo(lub))
 	assert.True(t, c.ConformsTo(lub))
 }
 
-// TEST859: LUB with valued tags (non-marker) that differ promotes the key
+// TEST859: LUB with valued tags (non-marker) that differ keeps both values
 func Test859_lub_valued_tags(t *testing.T) {
 	v1, err := NewMediaUrnFromString("media:ext=png;image")
 	require.NoError(t, err)
 	v2, err := NewMediaUrnFromString("media:ext=jpeg;image")
 	require.NoError(t, err)
 	lub := LeastUpperBound([]*MediaUrn{v1, v2})
-	expected, err := NewMediaUrnFromString("media:ext;image")
-	require.NoError(t, err)
-	assert.True(t, lub.IsEquivalent(expected), "LUB should promote conflicting ext to some ext, got %s", lub.String())
+	assert.Equal(t, "media:ext=jpeg|png;image", lub.String())
+}
+
+// TEST7231: a media type splits into the shapes it may have — absence apart
+// from presence, each value of a set apart — and ends on the bookends those
+// shapes are, read complete; one shape that is no bookend ends it on none.
+func Test7231_a_media_type_splits_into_its_shapes_and_ends_on_their_bookends(t *testing.T) {
+	urn := func(s string) *MediaUrn {
+		u, err := NewMediaUrnFromString(s)
+		require.NoError(t, err)
+		return u
+	}
+	texts := func(urns []*MediaUrn) []string {
+		out := make([]string, 0, len(urns))
+		for _, u := range urns {
+			out = append(out, u.String())
+		}
+		sort.Strings(out)
+		return out
+	}
+	assert.Equal(t, []string{"media:enc=utf8;fmt=json;!list", "media:enc=utf8;fmt=json;list"},
+		texts(urn("media:enc=utf8;fmt=json;?list").Splits()), "absence apart from presence")
+	assert.Equal(t, []string{"media:ext=jpeg;image", "media:ext=png;image"},
+		texts(urn("media:ext=jpeg|png;image").Splits()), "each value of the set apart")
+
+	saved := urn("media:enc=utf8;ext=json;fmt=json;?list;?record")
+	files := []*MediaUrn{
+		urn("media:enc=utf8;ext=json;fmt=json"),
+		urn("media:enc=utf8;ext=json;fmt=json;list"),
+		urn("media:enc=utf8;ext=json;fmt=json;record"),
+		urn("media:enc=utf8;ext=json;fmt=json;list;record"),
+	}
+	ends, ok := saved.EndsOn(files)
+	require.True(t, ok, "every shape is one of the bookends")
+	assert.Equal(t, texts(files), texts(ends), "one bookend for each shape")
+	_, ok = saved.EndsOn(files[1:])
+	assert.False(t, ok, "without a file type for JSON that is neither a list nor a record, one shape is no bookend")
 }
 
 // TEST628: Verify media URN constants all start with "media:" prefix
@@ -768,7 +802,7 @@ func Test555_with_tag_and_without_tag(t *testing.T) {
 	urn, err := NewMediaUrnFromString("media:string")
 	require.NoError(t, err)
 
-	withExt, err := urn.WithTag("ext", taggedurn.ConstraintExact{Value: "pdf"})
+	withExt, err := urn.WithTag("ext", taggedurn.Exact("pdf"))
 	require.NoError(t, err)
 	ext, ok := withExt.GetExtension()
 	assert.True(t, ok)

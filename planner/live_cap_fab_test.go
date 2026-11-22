@@ -15,10 +15,26 @@ import (
 
 // makeTestCapForGraph creates a minimal cap for live_cap_fab tests.
 func makeTestCapForGraph(inSpec, outSpec, op, title string) *cap.Cap {
-	capUrn := urn.NewCapUrn(inSpec, outSpec, map[string]taggedurn.Constraint{"op": taggedurn.ConstraintExact{Value: op}})
+	capUrn := urn.NewCapUrn(inSpec, outSpec, map[string]taggedurn.Constraint{"op": taggedurn.Exact(op)})
 	stdin := inSpec
 	mainArg := cap.NewCapArg(inSpec, "input", true, []cap.ArgSource{{Stdin: &stdin}})
 	return cap.NewCapWithArgs(capUrn, title, []string{"test"}, []cap.CapArg{mainArg})
+}
+
+// allBookends is a bookend set that treats every URN appearing in the given
+// caps (in or out direction) as a bookend. Tests use it when they want graph
+// reachability without an extra "filter to file formats" constraint — the
+// planner's bookend filter is exercised elsewhere (TEST7229).
+func allBookends(t *testing.T, caps ...*cap.Cap) []*urn.MediaUrn {
+	var bookends []*urn.MediaUrn
+	for _, c := range caps {
+		for _, spec := range []string{c.Urn.InSpec(), c.Urn.OutSpec()} {
+			u, err := urn.NewMediaUrnFromString(spec)
+			require.NoError(t, err)
+			bookends = append(bookends, u)
+		}
+	}
+	return bookends
 }
 
 // TEST772: Tests find_paths_to_exact_target() finds multi-step paths Verifies that paths through intermediate nodes are found correctly
@@ -70,6 +86,7 @@ func Test774_get_reachable_targets_finds_all_targets(t *testing.T) {
 
 	graph.AddCap(cap1)
 	graph.AddCap(cap2)
+	graph.SetBookends(allBookends(t, cap1, cap2))
 
 	source, err := urn.NewMediaUrnFromString("media:a")
 	require.NoError(t, err)
@@ -131,6 +148,7 @@ func Test779_get_reachable_targets_respects_type_matching(t *testing.T) {
 	pngToThumb := makeTestCapForGraph("media:ext=png;image", "media:thumbnail", "png2thumb", "PNG to Thumbnail")
 	graph.AddCap(pdfToText)
 	graph.AddCap(pngToThumb)
+	graph.SetBookends(allBookends(t, pdfToText, pngToThumb))
 
 	mediaTextable, err := urn.NewMediaUrnFromString("media:enc=utf8")
 	require.NoError(t, err)
@@ -275,7 +293,7 @@ func Test788_foreach_only_with_sequence_input(t *testing.T) {
 	graph := NewLiveCapFab()
 	disbind := makeTestCapForGraph("media:document;ext=pdf", "media:page;enc=utf8", "disbind", "Disbind PDF")
 	choose := makeTestCapForGraph("media:enc=utf8", "media:decision;enc=utf8;fmt=json;record", "choose", "Make a Decision")
-	graph.SyncFromCaps([]*cap.Cap{disbind, choose})
+	graph.SyncFromCaps([]*cap.Cap{disbind, choose}, allBookends(t, disbind, choose))
 	nodeCount, edgeCount := graph.Stats()
 	assert.Equal(t, 2, edgeCount, "Graph should contain exactly 2 Cap edges")
 	_ = nodeCount
@@ -368,7 +386,7 @@ func Test1111_foreach_for_user_provided_list_source(t *testing.T) {
 		"make_decision",
 		"Make Decision",
 	)
-	graph.SyncFromCaps([]*cap.Cap{makeDecision})
+	graph.SyncFromCaps([]*cap.Cap{makeDecision}, allBookends(t, makeDecision))
 
 	source, err := urn.NewMediaUrnFromString("media:list;txt;enc=utf8")
 	require.NoError(t, err)
@@ -407,7 +425,7 @@ func Test1112_no_collect_in_path_finding(t *testing.T) {
 		"summarize",
 		"Summarize",
 	)
-	graph.SyncFromCaps([]*cap.Cap{summarize})
+	graph.SyncFromCaps([]*cap.Cap{summarize}, allBookends(t, summarize))
 
 	source, err := urn.NewMediaUrnFromString("media:enc=utf8")
 	require.NoError(t, err)
@@ -431,7 +449,7 @@ func Test1113_multi_cap_path_no_collect(t *testing.T) {
 		"summarize",
 		"Summarize Page",
 	)
-	graph.SyncFromCaps([]*cap.Cap{disbind, summarize})
+	graph.SyncFromCaps([]*cap.Cap{disbind, summarize}, allBookends(t, disbind, summarize))
 
 	source, err := urn.NewMediaUrnFromString("media:document;ext=pdf")
 	require.NoError(t, err)
@@ -452,7 +470,7 @@ func Test1114_graph_stores_only_cap_edges(t *testing.T) {
 		makeTestCapForGraph("media:page;enc=utf8", "media:summary;enc=utf8", "summarize", "Summarize"),
 		makeTestCapForGraph("media:enc=utf8", "media:decision;enc=utf8;fmt=json;record", "decide", "Decide"),
 	}
-	graph.SyncFromCaps(caps)
+	graph.SyncFromCaps(caps, allBookends(t, caps...))
 
 	assert.Equal(t, 3, len(graph.edges), "Should have exactly 3 Cap edges")
 	for _, edge := range graph.edges {
@@ -472,7 +490,7 @@ func Test1115_dynamic_foreach_with_is_sequence(t *testing.T) {
 		"summarize",
 		"Summarize",
 	)
-	graph.SyncFromCaps([]*cap.Cap{c})
+	graph.SyncFromCaps([]*cap.Cap{c}, allBookends(t, c))
 
 	source, err := urn.NewMediaUrnFromString("media:enc=utf8")
 	require.NoError(t, err)
@@ -523,7 +541,7 @@ func Test1117_no_foreach_when_not_sequence(t *testing.T) {
 		"summarize",
 		"Summarize",
 	)
-	graph.SyncFromCaps([]*cap.Cap{c})
+	graph.SyncFromCaps([]*cap.Cap{c}, allBookends(t, c))
 
 	source, err := urn.NewMediaUrnFromString("media:enc=utf8")
 	require.NoError(t, err)
@@ -552,19 +570,22 @@ func Test1289_bfs_reachable_includes_source_roundtrip(t *testing.T) {
 	graph := NewLiveCapFab()
 
 	// textable → integer (coerce)
-	graph.AddCap(makeTestCapForGraph(
+	cap1 := makeTestCapForGraph(
 		"media:enc=utf8",
 		"media:integer;numeric",
 		"coerce_to_int",
 		"Coerce to Integer",
-	))
+	)
+	graph.AddCap(cap1)
 	// integer → textable (coerce back)
-	graph.AddCap(makeTestCapForGraph(
+	cap2 := makeTestCapForGraph(
 		"media:integer;numeric",
 		"media:enc=utf8",
 		"coerce_to_text",
 		"Coerce to Text",
-	))
+	)
+	graph.AddCap(cap2)
+	graph.SetBookends(allBookends(t, cap1, cap2))
 
 	source, err := urn.NewMediaUrnFromString("media:enc=utf8")
 	require.NoError(t, err)
@@ -651,10 +672,21 @@ func Test1291_iddfs_roundtrip_with_sequence(t *testing.T) {
 func Test1292_bfs_iddfs_roundtrip_consistency(t *testing.T) {
 	graph := NewLiveCapFab()
 
-	// Build a small graph: A→B, B→C, C→A
+	// Build a small graph: A→B, B→C, C→A. Its media are declared bookends so
+	// they are valid transmute sources/targets — GetReachableTargets filters
+	// its results down to bookends only (the production wiring populates them
+	// from the live media registry; tests do it explicitly via SetBookends).
 	graph.AddCap(makeTestCapForGraph("media:a", "media:b", "a_to_b", "A to B"))
 	graph.AddCap(makeTestCapForGraph("media:b", "media:c", "b_to_c", "B to C"))
 	graph.AddCap(makeTestCapForGraph("media:c", "media:a", "c_to_a", "C to A"))
+
+	var bookends []*urn.MediaUrn
+	for _, s := range []string{"media:a", "media:b", "media:c"} {
+		bookend, err := urn.NewMediaUrnFromString(s)
+		require.NoError(t, err)
+		bookends = append(bookends, bookend)
+	}
+	graph.SetBookends(bookends)
 
 	source, err := urn.NewMediaUrnFromString("media:a")
 	require.NoError(t, err)
@@ -686,6 +718,73 @@ func Test1292_bfs_iddfs_roundtrip_consistency(t *testing.T) {
 		}
 	}
 	assert.Equal(t, 3, shortest.TotalSteps)
+}
+
+// TEST7229: a node that may have several shapes ends on the bookends its
+// shapes are, read complete. A save that gives JSON which may or may not be a
+// list and may or may not be a record ends on the four JSON file types: each
+// is a target of a route through it, and a search for one of them finds the
+// route. A node one of whose shapes is no file type ends on none, and no
+// search ends at it.
+func Test7229_a_node_of_several_shapes_ends_on_each_bookend_it_may_be(t *testing.T) {
+	const saved = "media:enc=utf8;ext=json;fmt=json;?list;?record"
+	fileTexts := []string{
+		"media:enc=utf8;ext=json;fmt=json",
+		"media:enc=utf8;ext=json;fmt=json;list",
+		"media:enc=utf8;ext=json;fmt=json;record",
+		"media:enc=utf8;ext=json;fmt=json;list;record",
+	}
+	media := func(s string) *urn.MediaUrn {
+		u, err := urn.NewMediaUrnFromString(s)
+		require.NoError(t, err)
+		return u
+	}
+	mediaOf := func(texts []string) []*urn.MediaUrn {
+		out := make([]*urn.MediaUrn, 0, len(texts))
+		for _, s := range texts {
+			out = append(out, media(s))
+		}
+		return out
+	}
+	texts := func(urns []*urn.MediaUrn) []string {
+		out := make([]string, 0, len(urns))
+		for _, u := range urns {
+			out = append(out, u.String())
+		}
+		return out
+	}
+	graph := NewLiveCapFab()
+	graph.AddCap(makeTestCapForGraph("media:enc=utf8;fmt=json;!ext", saved, "save-as-json", "Save as JSON"))
+	source := media("media:enc=utf8;fmt=json;list;record")
+	recordFile := media("media:enc=utf8;ext=json;fmt=json;record")
+
+	graph.SetBookends(mediaOf(fileTexts))
+	files := sortedDistinctMediaUrns(mediaOf(fileTexts))
+	require.Len(t, files, 4)
+	assert.True(t, graph.IsBookend(media(saved)))
+	assert.Equal(t, texts(files), texts(graph.EndsOn(media(saved))), "one bookend for each shape")
+
+	var targets []*urn.MediaUrn
+	for _, target := range graph.GetReachableTargets(source, false, 3) {
+		assert.Equal(t, 1, target.MinPathLength, "%s is one save away", target.MediaDef)
+		targets = append(targets, target.MediaDef)
+	}
+	assert.Equal(t, texts(files), texts(sortedDistinctMediaUrns(targets)),
+		"every file type the save may give is a target")
+	assert.Len(t, targets, 4, "one target for each file type")
+
+	paths := graph.FindPathsToExactTarget(source, recordFile, false, 3, 10)
+	require.Len(t, paths, 1, "the route through the save")
+	assert.Equal(t, 1, paths[0].CapStepCount)
+	assert.True(t, paths[0].TargetMediaUrn.IsEquivalent(recordFile))
+
+	// Without a file type for JSON that is neither a list nor a record, one of
+	// the save's shapes is no file: the node ends on nothing.
+	graph.SetBookends(mediaOf(fileTexts[1:]))
+	assert.False(t, graph.IsBookend(media(saved)))
+	assert.Empty(t, graph.EndsOn(media(saved)))
+	assert.Empty(t, graph.GetReachableTargets(source, false, 3))
+	assert.Empty(t, graph.FindPathsToExactTarget(source, recordFile, false, 3, 10))
 }
 
 // TEST1293: IDDFS round-trip does not produce paths with 0 cap steps. Identity-only round trips (no real transformation) must be excluded.
@@ -743,6 +842,7 @@ func Test1150_add_cap_and_basic_traversal(t *testing.T) {
 	graph := NewLiveCapFab()
 	c := makeTestCapForGraph("media:document;ext=pdf", "media:digitized", "extract_text", "Extract Text")
 	graph.AddCap(c)
+	graph.SetBookends(allBookends(t, c))
 
 	nodeCount, edgeCount := graph.Stats()
 	assert.Equal(t, 1, edgeCount)
@@ -773,6 +873,7 @@ func Test7216_a_source_takes_an_edge_it_satisfies(t *testing.T) {
 	graph := NewLiveCapFab()
 	c := makeTestCapForGraph("media:enc=utf8;fmt=json;record;!list", "media:enc=utf8;fmt=yaml;record", "record-to-yaml", "Record To YAML")
 	graph.AddCap(c)
+	graph.SetBookends(allBookends(t, c))
 
 	media := func(s string) *urn.MediaUrn {
 		m, err := urn.NewMediaUrnFromString(s)
@@ -938,7 +1039,7 @@ func Test1154_sync_from_caps(t *testing.T) {
 		makeTestCapForGraph("media:document;ext=pdf", "media:digitized", "op1", "Op1"),
 		makeTestCapForGraph("media:digitized", "media:summary-text", "op2", "Op2"),
 	}
-	graph.SyncFromCaps(caps)
+	graph.SyncFromCaps(caps, allBookends(t, caps...))
 
 	nodeCount, edgeCount := graph.Stats()
 	assert.Equal(t, 2, edgeCount)
@@ -948,27 +1049,11 @@ func Test1154_sync_from_caps(t *testing.T) {
 	newCaps := []*cap.Cap{
 		makeTestCapForGraph("media:image", "media:digitized", "ocr", "OCR"),
 	}
-	graph.SyncFromCaps(newCaps)
+	graph.SyncFromCaps(newCaps, allBookends(t, newCaps...))
 
 	nodeCount, edgeCount = graph.Stats()
 	assert.Equal(t, 1, edgeCount)
 	assert.Equal(t, 2, nodeCount)
-}
-
-// allBookends builds the set of every in/out media URN appearing in the given
-// caps, keyed by canonical media-URN string. Mirrors the Rust test helper
-// all_bookends used by sync_from_cap_urns tests.
-func allBookends(caps []*cap.Cap) map[string]bool {
-	s := make(map[string]bool)
-	for _, c := range caps {
-		if u, err := urn.NewMediaUrnFromString(c.Urn.InSpec()); err == nil {
-			s[u.String()] = true
-		}
-		if u, err := urn.NewMediaUrnFromString(c.Urn.OutSpec()); err == nil {
-			s[u.String()] = true
-		}
-	}
-	return s
 }
 
 // TEST791: Tests sync_from_cap_urns actually adds edges
@@ -984,7 +1069,7 @@ func Test791_sync_from_cap_urns_adds_edges(t *testing.T) {
 
 	// The bookend set treats every URN appearing in either cap as eligible —
 	// this is a registry-graph sync test, not a bookend-filter test.
-	bookends := allBookends([]*cap.Cap{disbind, choose})
+	bookends := allBookends(t, disbind, choose)
 
 	graph := NewLiveCapFab()
 	graph.SyncFromCapUrns(capUrns, registry, bookends)
@@ -1020,6 +1105,7 @@ func Test12847_a_caps_other_outputs_are_reachable_by_planning(t *testing.T) {
 	graph := NewLiveCapFab()
 	graph.AddCap(split)
 	graph.AddCap(count)
+	graph.SetBookends(allBookends(t, split, count))
 	_, edgeCount := graph.Stats()
 	assert.Equal(t, 4, edgeCount, "split: head, rest, parts; count: one")
 
@@ -1074,6 +1160,7 @@ func Test12877_a_sink_is_never_a_step_of_a_path(t *testing.T) {
 	graph.AddCap(discard)
 	graph.AddCap(render)
 	graph.AddCap(thumbnail)
+	graph.SetBookends(allBookends(t, render, thumbnail))
 	_, edgeCount := graph.Stats()
 	assert.Equal(t, 2, edgeCount, "the sink adds no edge")
 

@@ -1067,7 +1067,7 @@ func Test8065_SequenceShapeUsesMainInputIdentityNotArgumentOrder(t *testing.T) {
 	capUrn := urn.NewCapUrn(
 		"media:enc=utf8",
 		"media:enc=utf8;result",
-		map[string]taggedurn.Constraint{"op": taggedurn.ConstraintExact{Value: "ordered"}},
+		map[string]taggedurn.Constraint{"op": taggedurn.Exact("ordered")},
 	)
 	secondaryStdin := "media:enc=utf8;context"
 	mainStdin := "media:enc=utf8"
@@ -1095,7 +1095,7 @@ func Test8066_VoidInputSequenceShapeIsScalarWithoutArguments(t *testing.T) {
 	capUrn := urn.NewCapUrn(
 		standard.MediaVoid,
 		"media:time",
-		map[string]taggedurn.Constraint{"op": taggedurn.ConstraintExact{Value: "clock"}},
+		map[string]taggedurn.Constraint{"op": taggedurn.Exact("clock")},
 	)
 	capDef := NewCap(capUrn, "Clock", []string{"clock"})
 

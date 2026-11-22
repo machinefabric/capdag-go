@@ -2,6 +2,53 @@
 /* Compiled Lean module Init.Data.List.Basic. */
 #include "capdagFormal_program.h"
 
+/* Lean: List.any._at_.List.eraseDupsBy.loop.spec_0._redArg */
+/* Compiled from: List.any */
+/* Source: <lean>/Init/Data/List/Basic.lean:1894:1 */
+uint8_t capdagFormal__l_List_dany_d__at___dList_deraseDupsBy_dloop_dspec__0_d__redArg(lungo_obj x_1, lungo_obj x_2) {
+    uint8_t x_3;
+    lungo_obj x_4;
+    lungo_obj x_5;
+    lungo_obj x_6;
+    uint8_t x_7;
+    uint8_t x_9;
+    _start:
+    switch (lungo_obj_tag(x_2)) {
+        case 0: {
+            lungo_dec_ref(x_1);
+            x_3 = (uint8_t)0u;
+            return x_3;
+        }
+        default: {
+            x_4 = lungo_ctor_get(x_2, 0);
+            lungo_inc(x_4);
+            x_5 = lungo_ctor_get(x_2, 1);
+            lungo_inc(x_5);
+            lungo_dec_ref(x_2);
+            lungo_inc_ref(x_1);
+            x_6 = lungo_apply_1(x_1, x_4);
+            x_7 = (uint8_t)lungo_unbox(x_6);
+            switch (x_7) {
+                case 0: {
+                    {
+                        lungo_obj t_0 = x_1;
+                        lungo_obj t_1 = x_5;
+                        x_1 = t_0;
+                        x_2 = t_1;
+                        goto _start;
+                    }
+                }
+                default: {
+                    lungo_dec(x_5);
+                    lungo_dec_ref(x_1);
+                    x_9 = (uint8_t)lungo_unbox(x_6);
+                    return x_9;
+                }
+            }
+        }
+    }
+}
+
 /* Lean: List.appendTR._redArg */
 /* Compiled from: List.appendTR */
 /* Source: <lean>/Init/Data/List/Basic.lean:588:1 */
@@ -148,6 +195,108 @@ uint8_t capdagFormal__l_List_delem_d__redArg(lungo_obj x_1, lungo_obj x_2, lungo
                     lungo_dec_ref(x_1);
                     x_10 = (uint8_t)lungo_unbox(x_7);
                     return x_10;
+                }
+            }
+        }
+    }
+}
+
+/* Lean: List.eraseDupsBy._redArg */
+/* Compiled from: List.eraseDupsBy */
+/* Source: <lean>/Init/Data/List/Basic.lean:2267:1 */
+lungo_obj capdagFormal__l_List_deraseDupsBy_d__redArg(lungo_obj x_1, lungo_obj x_2) {
+    lungo_obj x_3;
+    lungo_obj x_4;
+    x_3 = lungo_box(0);
+    x_4 = capdagFormal__l_List_deraseDupsBy_dloop_d__redArg(x_1, x_2, x_3);
+    return x_4;
+}
+
+/* Lean: List.eraseDupsBy.loop._redArg */
+/* Compiled from: List.eraseDupsBy.loop */
+/* Source: <lean>/Init/Data/List/Basic.lean:2279:3 */
+lungo_obj capdagFormal__l_List_deraseDupsBy_dloop_d__redArg(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3) {
+    lungo_obj x_4;
+    lungo_obj x_5;
+    lungo_obj x_6;
+    lungo_obj x_8;
+    uint8_t x_9;
+    lungo_obj x_10;
+    uint8_t x_11;
+    lungo_obj x_13;
+    lungo_obj x_15;
+    uint8_t x_17;
+    _start:
+    switch (lungo_obj_tag(x_2)) {
+        case 0: {
+            lungo_dec_ref(x_1);
+            x_4 = capdagFormal__l_List_dreverse_d__redArg(x_3);
+            return x_4;
+        }
+        default: {
+            x_5 = lungo_ctor_get(x_2, 0);
+            x_6 = lungo_ctor_get(x_2, 1);
+            x_17 = !lungo_is_exclusive(x_2);
+            switch (x_17) {
+                case 0: {
+                    x_8 = x_2;
+                    x_9 = x_17;
+                    goto block_7;
+                }
+                default: {
+                    lungo_inc(x_6);
+                    lungo_inc(x_5);
+                    lungo_dec(x_2);
+                    x_8 = lungo_box(0);
+                    x_9 = x_17;
+                    goto block_7;
+                }
+            }
+            block_7:;
+            lungo_inc_ref(x_1);
+            lungo_inc(x_5);
+            x_10 = lungo_apply_1(x_1, x_5);
+            lungo_inc(x_3);
+            x_11 = capdagFormal__l_List_dany_d__at___dList_deraseDupsBy_dloop_dspec__0_d__redArg(x_10, x_3);
+            switch (x_11) {
+                case 0: {
+                    switch (x_9) {
+                        case 0: {
+                            lungo_ctor_set(x_8, 1, x_3);
+                            x_13 = x_8;
+                            goto block_12;
+                        }
+                        default: {
+                            x_15 = lungo_alloc_ctor(1, 2, 0);
+                            lungo_ctor_set(x_15, 0, x_5);
+                            lungo_ctor_set(x_15, 1, x_3);
+                            x_13 = x_15;
+                            goto block_12;
+                        }
+                    }
+                    block_12:;
+                    {
+                        lungo_obj t_0 = x_1;
+                        lungo_obj t_1 = x_6;
+                        lungo_obj t_2 = x_13;
+                        x_1 = t_0;
+                        x_2 = t_1;
+                        x_3 = t_2;
+                        goto _start;
+                    }
+                }
+                default: {
+                    lungo_del_object(x_8);
+                    lungo_dec(x_5);
+                    {
+                        lungo_obj t_0 = x_1;
+                        lungo_obj t_1 = x_6;
+                        lungo_obj t_2 = x_3;
+                        x_1 = t_0;
+                        x_2 = t_1;
+                        x_3 = t_2;
+                        goto _start;
+                    }
                 }
             }
         }

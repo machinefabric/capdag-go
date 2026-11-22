@@ -2,13 +2,304 @@
 /* Compiled Lean module TaggedUrn.Constraint. */
 #include "capdagFormal_program.h"
 
+/* Lean: List.all._at_.TaggedUrn.Values.sub.spec_0 */
+/* Compiled from: List.all */
+/* Source: <lean>/Init/Data/List/Basic.lean:1915:1 */
+uint8_t capdagFormal__l_List_dall_d__at___dTaggedUrn_dValues_dsub_dspec__0(lungo_obj x_1, lungo_obj x_2) {
+    uint8_t x_3;
+    lungo_obj x_4;
+    lungo_obj x_5;
+    uint8_t x_6;
+    _start:
+    switch (lungo_obj_tag(x_2)) {
+        case 0: {
+            x_3 = (uint8_t)1u;
+            return x_3;
+        }
+        default: {
+            x_4 = lungo_ctor_get(x_2, 0);
+            x_5 = lungo_ctor_get(x_2, 1);
+            x_6 = capdagFormal__l_List_delem_d__at___dLungo_dAttr_dcheckKind_dspec__2(x_4, x_1);
+            switch (x_6) {
+                case 0: {
+                    return x_6;
+                }
+                default: {
+                    {
+                        lungo_obj t_0 = x_1;
+                        lungo_obj t_1 = x_5;
+                        x_1 = t_0;
+                        x_2 = t_1;
+                        goto _start;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/* Lean: List.all._at_.TaggedUrn.Values.sub.spec_1 */
+/* Compiled from: List.all */
+/* Source: <lean>/Init/Data/List/Basic.lean:1915:1 */
+uint8_t capdagFormal__l_List_dall_d__at___dTaggedUrn_dValues_dsub_dspec__1(lungo_obj x_1, lungo_obj x_2) {
+    uint8_t x_3;
+    lungo_obj x_4;
+    lungo_obj x_5;
+    uint8_t x_6;
+    uint8_t x_8;
+    _start:
+    switch (lungo_obj_tag(x_2)) {
+        case 0: {
+            x_3 = (uint8_t)1u;
+            return x_3;
+        }
+        default: {
+            x_4 = lungo_ctor_get(x_2, 0);
+            x_5 = lungo_ctor_get(x_2, 1);
+            x_6 = capdagFormal__l_List_delem_d__at___dLungo_dAttr_dcheckKind_dspec__2(x_4, x_1);
+            switch (x_6) {
+                case 0: {
+                    {
+                        lungo_obj t_0 = x_1;
+                        lungo_obj t_1 = x_5;
+                        x_1 = t_0;
+                        x_2 = t_1;
+                        goto _start;
+                    }
+                }
+                default: {
+                    x_8 = (uint8_t)0u;
+                    return x_8;
+                }
+            }
+        }
+    }
+}
+
+/* Lean: List.filterTR.loop._at_.TaggedUrn.Values.meet.spec_0 */
+/* Compiled from: List.filterTR.loop */
+/* Source: <lean>/Init/Data/List/Basic.lean:2472:17 */
+lungo_obj capdagFormal__l_List_dfilterTR_dloop_d__at___dTaggedUrn_dValues_dmeet_dspec__0(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3) {
+    lungo_obj x_4;
+    lungo_obj x_5;
+    lungo_obj x_6;
+    lungo_obj x_8;
+    uint8_t x_9;
+    uint8_t x_10;
+    lungo_obj x_13;
+    lungo_obj x_15;
+    uint8_t x_16;
+    _start:
+    switch (lungo_obj_tag(x_2)) {
+        case 0: {
+            x_4 = capdagFormal__l_List_dreverse_d__redArg(x_3);
+            return x_4;
+        }
+        default: {
+            x_5 = lungo_ctor_get(x_2, 0);
+            x_6 = lungo_ctor_get(x_2, 1);
+            x_16 = !lungo_is_exclusive(x_2);
+            switch (x_16) {
+                case 0: {
+                    x_8 = x_2;
+                    x_9 = x_16;
+                    goto block_7;
+                }
+                default: {
+                    lungo_inc(x_6);
+                    lungo_inc(x_5);
+                    lungo_dec(x_2);
+                    x_8 = lungo_box(0);
+                    x_9 = x_16;
+                    goto block_7;
+                }
+            }
+            block_7:;
+            x_10 = capdagFormal__l_List_delem_d__at___dLungo_dAttr_dcheckKind_dspec__2(x_5, x_1);
+            switch (x_10) {
+                case 0: {
+                    lungo_del_object(x_8);
+                    lungo_dec(x_5);
+                    {
+                        lungo_obj t_0 = x_1;
+                        lungo_obj t_1 = x_6;
+                        lungo_obj t_2 = x_3;
+                        x_1 = t_0;
+                        x_2 = t_1;
+                        x_3 = t_2;
+                        goto _start;
+                    }
+                }
+                default: {
+                    switch (x_9) {
+                        case 0: {
+                            lungo_ctor_set(x_8, 1, x_3);
+                            x_13 = x_8;
+                            goto block_12;
+                        }
+                        default: {
+                            x_15 = lungo_alloc_ctor(1, 2, 0);
+                            lungo_ctor_set(x_15, 0, x_5);
+                            lungo_ctor_set(x_15, 1, x_3);
+                            x_13 = x_15;
+                            goto block_12;
+                        }
+                    }
+                    block_12:;
+                    {
+                        lungo_obj t_0 = x_1;
+                        lungo_obj t_1 = x_6;
+                        lungo_obj t_2 = x_13;
+                        x_1 = t_0;
+                        x_2 = t_1;
+                        x_3 = t_2;
+                        goto _start;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/* Lean: List.filterTR.loop._at_.TaggedUrn.Values.meet.spec_1 */
+/* Compiled from: List.filterTR.loop */
+/* Source: <lean>/Init/Data/List/Basic.lean:2472:17 */
+lungo_obj capdagFormal__l_List_dfilterTR_dloop_d__at___dTaggedUrn_dValues_dmeet_dspec__1(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3) {
+    lungo_obj x_4;
+    lungo_obj x_5;
+    lungo_obj x_6;
+    lungo_obj x_8;
+    uint8_t x_9;
+    uint8_t x_10;
+    lungo_obj x_12;
+    lungo_obj x_14;
+    uint8_t x_16;
+    _start:
+    switch (lungo_obj_tag(x_2)) {
+        case 0: {
+            x_4 = capdagFormal__l_List_dreverse_d__redArg(x_3);
+            return x_4;
+        }
+        default: {
+            x_5 = lungo_ctor_get(x_2, 0);
+            x_6 = lungo_ctor_get(x_2, 1);
+            x_16 = !lungo_is_exclusive(x_2);
+            switch (x_16) {
+                case 0: {
+                    x_8 = x_2;
+                    x_9 = x_16;
+                    goto block_7;
+                }
+                default: {
+                    lungo_inc(x_6);
+                    lungo_inc(x_5);
+                    lungo_dec(x_2);
+                    x_8 = lungo_box(0);
+                    x_9 = x_16;
+                    goto block_7;
+                }
+            }
+            block_7:;
+            x_10 = capdagFormal__l_List_delem_d__at___dLungo_dAttr_dcheckKind_dspec__2(x_5, x_1);
+            switch (x_10) {
+                case 0: {
+                    switch (x_9) {
+                        case 0: {
+                            lungo_ctor_set(x_8, 1, x_3);
+                            x_12 = x_8;
+                            goto block_11;
+                        }
+                        default: {
+                            x_14 = lungo_alloc_ctor(1, 2, 0);
+                            lungo_ctor_set(x_14, 0, x_5);
+                            lungo_ctor_set(x_14, 1, x_3);
+                            x_12 = x_14;
+                            goto block_11;
+                        }
+                    }
+                    block_11:;
+                    {
+                        lungo_obj t_0 = x_1;
+                        lungo_obj t_1 = x_6;
+                        lungo_obj t_2 = x_12;
+                        x_1 = t_0;
+                        x_2 = t_1;
+                        x_3 = t_2;
+                        goto _start;
+                    }
+                }
+                default: {
+                    lungo_del_object(x_8);
+                    lungo_dec(x_5);
+                    {
+                        lungo_obj t_0 = x_1;
+                        lungo_obj t_1 = x_6;
+                        lungo_obj t_2 = x_3;
+                        x_1 = t_0;
+                        x_2 = t_1;
+                        x_3 = t_2;
+                        goto _start;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/* Lean: TaggedUrn.Constraint.absent */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:219:1 */
+static lungo_obj capdagFormal__l_TaggedUrn_dConstraint_dabsent__init(void) {
+    lungo_obj x_1;
+    x_1 = capdagFormal__l_TaggedUrn_dConstraint_dabsent_d__closed__1();
+    return x_1;
+}
+static lungo_lazy_obj capdagFormal__l_TaggedUrn_dConstraint_dabsent__cell;
+lungo_obj capdagFormal__l_TaggedUrn_dConstraint_dabsent(void) {
+    return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dConstraint_dabsent__cell, capdagFormal__l_TaggedUrn_dConstraint_dabsent__init);
+}
+
+/* Lean: TaggedUrn.Constraint.absent._closed_0 */
+/* Compiled from: TaggedUrn.Constraint.absent */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:219:1 */
+static lungo_obj capdagFormal__l_TaggedUrn_dConstraint_dabsent_d__closed__0__init(void) {
+    lungo_obj x_1;
+    lungo_obj x_2;
+    x_1 = lungo_box(0);
+    x_2 = lungo_alloc_ctor(0, 1, 0);
+    lungo_ctor_set(x_2, 0, x_1);
+    return x_2;
+}
+static lungo_lazy_obj capdagFormal__l_TaggedUrn_dConstraint_dabsent_d__closed__0__cell;
+lungo_obj capdagFormal__l_TaggedUrn_dConstraint_dabsent_d__closed__0(void) {
+    return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dConstraint_dabsent_d__closed__0__cell, capdagFormal__l_TaggedUrn_dConstraint_dabsent_d__closed__0__init);
+}
+
+/* Lean: TaggedUrn.Constraint.absent._closed_1 */
+/* Compiled from: TaggedUrn.Constraint.absent */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:219:1 */
+static lungo_obj capdagFormal__l_TaggedUrn_dConstraint_dabsent_d__closed__1__init(void) {
+    lungo_obj x_1;
+    uint8_t x_2;
+    lungo_obj x_3;
+    x_1 = capdagFormal__l_TaggedUrn_dConstraint_dabsent_d__closed__0();
+    x_2 = (uint8_t)1u;
+    x_3 = lungo_alloc_ctor(1, 1, 1);
+    lungo_ctor_set(x_3, 0, x_1);
+    lungo_ctor_set_uint8(x_3, 1 * sizeof(size_t), x_2);
+    return x_3;
+}
+static lungo_lazy_obj capdagFormal__l_TaggedUrn_dConstraint_dabsent_d__closed__1__cell;
+lungo_obj capdagFormal__l_TaggedUrn_dConstraint_dabsent_d__closed__1(void) {
+    return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dConstraint_dabsent_d__closed__1__cell, capdagFormal__l_TaggedUrn_dConstraint_dabsent_d__closed__1__init);
+}
+
 /* Lean: TaggedUrn.Constraint.closed */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:228:1 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:489:1 */
 lungo_obj capdagFormal__l_TaggedUrn_dConstraint_dclosed(lungo_obj x_1) {
     lungo_obj x_2;
     switch (lungo_obj_tag(x_1)) {
         case 0: {
-            x_2 = lungo_box(6);
+            x_2 = capdagFormal__l_TaggedUrn_dConstraint_dabsent();
             return x_2;
         }
         default: {
@@ -18,51 +309,440 @@ lungo_obj capdagFormal__l_TaggedUrn_dConstraint_dclosed(lungo_obj x_1) {
     }
 }
 
-/* Lean: TaggedUrn.Constraint.val */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:87:1 */
-lungo_obj capdagFormal__l_TaggedUrn_dConstraint_dval(lungo_obj x_1) {
-    lungo_obj x_2;
+/* Lean: TaggedUrn.Constraint.empty */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:319:1 */
+uint8_t capdagFormal__l_TaggedUrn_dConstraint_dempty(lungo_obj x_1) {
+    uint8_t x_2;
     lungo_obj x_3;
-    lungo_obj x_4;
-    lungo_obj x_5;
-    switch (lungo_obj_tag(x_1)) {
-        case 2: {
-            x_2 = lungo_ctor_get(x_1, 0);
-            lungo_inc_ref(x_2);
-            return x_2;
-        }
-        case 4: {
-            x_3 = lungo_ctor_get(x_1, 0);
-            lungo_inc_ref(x_3);
-            return x_3;
-        }
-        case 5: {
-            x_4 = lungo_ctor_get(x_1, 0);
-            lungo_inc_ref(x_4);
+    uint8_t x_4;
+    uint8_t x_5;
+    x_2 = capdagFormal__l_TaggedUrn_dConstraint_dmayBeAbsent(x_1);
+    switch (x_2) {
+        case 0: {
+            x_3 = capdagFormal__l_TaggedUrn_dConstraint_dvals(x_1);
+            x_4 = capdagFormal__l_TaggedUrn_dValues_dnone(x_3);
+            lungo_dec_ref(x_3);
             return x_4;
         }
         default: {
-            x_5 = capdagFormal__l_TaggedUrn_dConstraint_dval_d__closed__0();
+            x_5 = (uint8_t)0u;
             return x_5;
         }
     }
 }
 
-/* Lean: TaggedUrn.Constraint.val._closed_0 */
-/* Compiled from: TaggedUrn.Constraint.val */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:87:1 */
-static lungo_obj capdagFormal__l_TaggedUrn_dConstraint_dval_d__closed__0__init(void) {
+/* Lean: TaggedUrn.Constraint.exact */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:217:1 */
+lungo_obj capdagFormal__l_TaggedUrn_dConstraint_dexact(lungo_obj x_1) {
+    uint8_t x_2;
+    lungo_obj x_3;
+    lungo_obj x_4;
+    lungo_obj x_5;
+    lungo_obj x_6;
+    x_2 = (uint8_t)0u;
+    x_3 = lungo_box(0);
+    x_4 = lungo_alloc_ctor(1, 2, 0);
+    lungo_ctor_set(x_4, 0, x_1);
+    lungo_ctor_set(x_4, 1, x_3);
+    x_5 = lungo_alloc_ctor(0, 1, 0);
+    lungo_ctor_set(x_5, 0, x_4);
+    x_6 = lungo_alloc_ctor(1, 1, 1);
+    lungo_ctor_set(x_6, 0, x_5);
+    lungo_ctor_set_uint8(x_6, 1 * sizeof(size_t), x_2);
+    return x_6;
+}
+
+/* Lean: TaggedUrn.Constraint.mayBeAbsent */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:222:1 */
+uint8_t capdagFormal__l_TaggedUrn_dConstraint_dmayBeAbsent(lungo_obj x_1) {
+    uint8_t x_2;
+    uint8_t x_3;
+    switch (lungo_obj_tag(x_1)) {
+        case 0: {
+            x_2 = (uint8_t)1u;
+            return x_2;
+        }
+        default: {
+            x_3 = lungo_ctor_get_uint8(x_1, 1 * sizeof(size_t));
+            return x_3;
+        }
+    }
+}
+
+/* Lean: TaggedUrn.Constraint.meet */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:448:1 */
+lungo_obj capdagFormal__l_TaggedUrn_dConstraint_dmeet(lungo_obj x_1, lungo_obj x_2) {
+    uint8_t x_4;
+    lungo_obj x_5;
+    lungo_obj x_6;
+    lungo_obj x_7;
+    lungo_obj x_8;
+    uint8_t x_9;
+    uint8_t x_10;
+    x_9 = capdagFormal__l_TaggedUrn_dConstraint_dmayBeAbsent(x_1);
+    switch (x_9) {
+        case 0: {
+            x_4 = x_9;
+            goto block_3;
+        }
+        default: {
+            x_10 = capdagFormal__l_TaggedUrn_dConstraint_dmayBeAbsent(x_2);
+            x_4 = x_10;
+            goto block_3;
+        }
+    }
+    block_3:;
+    x_5 = capdagFormal__l_TaggedUrn_dConstraint_dvals(x_1);
+    x_6 = capdagFormal__l_TaggedUrn_dConstraint_dvals(x_2);
+    x_7 = capdagFormal__l_TaggedUrn_dValues_dmeet(x_5, x_6);
+    x_8 = lungo_alloc_ctor(1, 1, 1);
+    lungo_ctor_set(x_8, 0, x_7);
+    lungo_ctor_set_uint8(x_8, 1 * sizeof(size_t), x_4);
+    return x_8;
+}
+
+/* Lean: TaggedUrn.Constraint.present */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:213:1 */
+static lungo_obj capdagFormal__l_TaggedUrn_dConstraint_dpresent__init(void) {
     lungo_obj x_1;
-    x_1 = lungo_mk_string_unchecked((const uint8_t *)"", 0, 0);
+    x_1 = capdagFormal__l_TaggedUrn_dConstraint_dpresent_d__closed__0();
     return x_1;
 }
-static lungo_lazy_obj capdagFormal__l_TaggedUrn_dConstraint_dval_d__closed__0__cell;
-lungo_obj capdagFormal__l_TaggedUrn_dConstraint_dval_d__closed__0(void) {
-    return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dConstraint_dval_d__closed__0__cell, capdagFormal__l_TaggedUrn_dConstraint_dval_d__closed__0__init);
+static lungo_lazy_obj capdagFormal__l_TaggedUrn_dConstraint_dpresent__cell;
+lungo_obj capdagFormal__l_TaggedUrn_dConstraint_dpresent(void) {
+    return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dConstraint_dpresent__cell, capdagFormal__l_TaggedUrn_dConstraint_dpresent__init);
+}
+
+/* Lean: TaggedUrn.Constraint.present._closed_0 */
+/* Compiled from: TaggedUrn.Constraint.present */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:213:1 */
+static lungo_obj capdagFormal__l_TaggedUrn_dConstraint_dpresent_d__closed__0__init(void) {
+    lungo_obj x_1;
+    uint8_t x_2;
+    lungo_obj x_3;
+    x_1 = capdagFormal__l_TaggedUrn_dConstraint_dunconstrained_d__closed__0();
+    x_2 = (uint8_t)0u;
+    x_3 = lungo_alloc_ctor(1, 1, 1);
+    lungo_ctor_set(x_3, 0, x_1);
+    lungo_ctor_set_uint8(x_3, 1 * sizeof(size_t), x_2);
+    return x_3;
+}
+static lungo_lazy_obj capdagFormal__l_TaggedUrn_dConstraint_dpresent_d__closed__0__cell;
+lungo_obj capdagFormal__l_TaggedUrn_dConstraint_dpresent_d__closed__0(void) {
+    return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dConstraint_dpresent_d__closed__0__cell, capdagFormal__l_TaggedUrn_dConstraint_dpresent_d__closed__0__init);
+}
+
+/* Lean: TaggedUrn.Constraint.unconstrained._closed_0 */
+/* Compiled from: TaggedUrn.Constraint.unconstrained */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:209:1 */
+static lungo_obj capdagFormal__l_TaggedUrn_dConstraint_dunconstrained_d__closed__0__init(void) {
+    lungo_obj x_1;
+    lungo_obj x_2;
+    x_1 = lungo_box(0);
+    x_2 = lungo_alloc_ctor(1, 1, 0);
+    lungo_ctor_set(x_2, 0, x_1);
+    return x_2;
+}
+static lungo_lazy_obj capdagFormal__l_TaggedUrn_dConstraint_dunconstrained_d__closed__0__cell;
+lungo_obj capdagFormal__l_TaggedUrn_dConstraint_dunconstrained_d__closed__0(void) {
+    return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dConstraint_dunconstrained_d__closed__0__cell, capdagFormal__l_TaggedUrn_dConstraint_dunconstrained_d__closed__0__init);
+}
+
+/* Lean: TaggedUrn.Constraint.vals */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:227:1 */
+lungo_obj capdagFormal__l_TaggedUrn_dConstraint_dvals(lungo_obj x_1) {
+    lungo_obj x_2;
+    lungo_obj x_3;
+    switch (lungo_obj_tag(x_1)) {
+        case 0: {
+            x_2 = capdagFormal__l_TaggedUrn_dConstraint_dunconstrained_d__closed__0();
+            return x_2;
+        }
+        default: {
+            x_3 = lungo_ctor_get(x_1, 0);
+            lungo_inc_ref(x_3);
+            return x_3;
+        }
+    }
+}
+
+/* Lean: TaggedUrn.Values.meet */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:78:1 */
+lungo_obj capdagFormal__l_TaggedUrn_dValues_dmeet(lungo_obj x_1, lungo_obj x_2) {
+    lungo_obj x_3;
+    lungo_obj x_4;
+    lungo_obj x_6;
+    uint8_t x_7;
+    lungo_obj x_8;
+    lungo_obj x_9;
+    lungo_obj x_11;
+    lungo_obj x_12;
+    uint8_t x_13;
+    lungo_obj x_14;
+    lungo_obj x_15;
+    lungo_obj x_17;
+    uint8_t x_18;
+    lungo_obj x_19;
+    lungo_obj x_20;
+    lungo_obj x_22;
+    lungo_obj x_23;
+    uint8_t x_24;
+    lungo_obj x_25;
+    lungo_obj x_26;
+    lungo_obj x_28;
+    uint8_t x_29;
+    lungo_obj x_30;
+    lungo_obj x_31;
+    lungo_obj x_33;
+    lungo_obj x_34;
+    uint8_t x_35;
+    lungo_obj x_36;
+    lungo_obj x_37;
+    lungo_obj x_39;
+    uint8_t x_40;
+    lungo_obj x_41;
+    lungo_obj x_43;
+    lungo_obj x_44;
+    uint8_t x_45;
+    switch (lungo_obj_tag(x_1)) {
+        case 0: {
+            switch (lungo_obj_tag(x_2)) {
+                case 0: {
+                    x_3 = lungo_ctor_get(x_1, 0);
+                    lungo_inc(x_3);
+                    lungo_dec_ref(x_1);
+                    x_4 = lungo_ctor_get(x_2, 0);
+                    x_13 = !lungo_is_exclusive(x_2);
+                    switch (x_13) {
+                        case 0: {
+                            x_6 = x_2;
+                            x_7 = x_13;
+                            goto block_5;
+                        }
+                        default: {
+                            lungo_inc(x_4);
+                            lungo_dec(x_2);
+                            x_6 = lungo_box(0);
+                            x_7 = x_13;
+                            goto block_5;
+                        }
+                    }
+                    block_5:;
+                    x_8 = lungo_box(0);
+                    x_9 = capdagFormal__l_List_dfilterTR_dloop_d__at___dTaggedUrn_dValues_dmeet_dspec__0(x_4, x_3, x_8);
+                    lungo_dec(x_4);
+                    switch (x_7) {
+                        case 0: {
+                            lungo_ctor_set(x_6, 0, x_9);
+                            x_11 = x_6;
+                            goto block_10;
+                        }
+                        default: {
+                            x_12 = lungo_alloc_ctor(0, 1, 0);
+                            lungo_ctor_set(x_12, 0, x_9);
+                            x_11 = x_12;
+                            goto block_10;
+                        }
+                    }
+                    block_10:;
+                    return x_11;
+                }
+                default: {
+                    x_14 = lungo_ctor_get(x_1, 0);
+                    lungo_inc(x_14);
+                    lungo_dec_ref(x_1);
+                    x_15 = lungo_ctor_get(x_2, 0);
+                    x_24 = !lungo_is_exclusive(x_2);
+                    switch (x_24) {
+                        case 0: {
+                            x_17 = x_2;
+                            x_18 = x_24;
+                            goto block_16;
+                        }
+                        default: {
+                            lungo_inc(x_15);
+                            lungo_dec(x_2);
+                            x_17 = lungo_box(0);
+                            x_18 = x_24;
+                            goto block_16;
+                        }
+                    }
+                    block_16:;
+                    x_19 = lungo_box(0);
+                    x_20 = capdagFormal__l_List_dfilterTR_dloop_d__at___dTaggedUrn_dValues_dmeet_dspec__1(x_15, x_14, x_19);
+                    lungo_dec(x_15);
+                    switch (x_18) {
+                        case 0: {
+                            lungo_ctor_set_tag(x_17, 0);
+                            lungo_ctor_set(x_17, 0, x_20);
+                            x_22 = x_17;
+                            goto block_21;
+                        }
+                        default: {
+                            x_23 = lungo_alloc_ctor(0, 1, 0);
+                            lungo_ctor_set(x_23, 0, x_20);
+                            x_22 = x_23;
+                            goto block_21;
+                        }
+                    }
+                    block_21:;
+                    return x_22;
+                }
+            }
+        }
+        default: {
+            switch (lungo_obj_tag(x_2)) {
+                case 0: {
+                    x_25 = lungo_ctor_get(x_1, 0);
+                    lungo_inc(x_25);
+                    lungo_dec_ref(x_1);
+                    x_26 = lungo_ctor_get(x_2, 0);
+                    x_35 = !lungo_is_exclusive(x_2);
+                    switch (x_35) {
+                        case 0: {
+                            x_28 = x_2;
+                            x_29 = x_35;
+                            goto block_27;
+                        }
+                        default: {
+                            lungo_inc(x_26);
+                            lungo_dec(x_2);
+                            x_28 = lungo_box(0);
+                            x_29 = x_35;
+                            goto block_27;
+                        }
+                    }
+                    block_27:;
+                    x_30 = lungo_box(0);
+                    x_31 = capdagFormal__l_List_dfilterTR_dloop_d__at___dTaggedUrn_dValues_dmeet_dspec__1(x_25, x_26, x_30);
+                    lungo_dec(x_25);
+                    switch (x_29) {
+                        case 0: {
+                            lungo_ctor_set(x_28, 0, x_31);
+                            x_33 = x_28;
+                            goto block_32;
+                        }
+                        default: {
+                            x_34 = lungo_alloc_ctor(0, 1, 0);
+                            lungo_ctor_set(x_34, 0, x_31);
+                            x_33 = x_34;
+                            goto block_32;
+                        }
+                    }
+                    block_32:;
+                    return x_33;
+                }
+                default: {
+                    x_36 = lungo_ctor_get(x_1, 0);
+                    lungo_inc(x_36);
+                    lungo_dec_ref(x_1);
+                    x_37 = lungo_ctor_get(x_2, 0);
+                    x_45 = !lungo_is_exclusive(x_2);
+                    switch (x_45) {
+                        case 0: {
+                            x_39 = x_2;
+                            x_40 = x_45;
+                            goto block_38;
+                        }
+                        default: {
+                            lungo_inc(x_37);
+                            lungo_dec(x_2);
+                            x_39 = lungo_box(0);
+                            x_40 = x_45;
+                            goto block_38;
+                        }
+                    }
+                    block_38:;
+                    x_41 = capdagFormal__l_List_dappendTR_d__redArg(x_36, x_37);
+                    switch (x_40) {
+                        case 0: {
+                            lungo_ctor_set(x_39, 0, x_41);
+                            x_43 = x_39;
+                            goto block_42;
+                        }
+                        default: {
+                            x_44 = lungo_alloc_ctor(1, 1, 0);
+                            lungo_ctor_set(x_44, 0, x_41);
+                            x_43 = x_44;
+                            goto block_42;
+                        }
+                    }
+                    block_42:;
+                    return x_43;
+                }
+            }
+        }
+    }
+}
+
+/* Lean: TaggedUrn.Values.none */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:90:1 */
+uint8_t capdagFormal__l_TaggedUrn_dValues_dnone(lungo_obj x_1) {
+    lungo_obj x_2;
+    uint8_t x_3;
+    uint8_t x_4;
+    switch (lungo_obj_tag(x_1)) {
+        case 0: {
+            x_2 = lungo_ctor_get(x_1, 0);
+            x_3 = capdagFormal__l_List_disEmpty_d__redArg(x_2);
+            return x_3;
+        }
+        default: {
+            x_4 = (uint8_t)0u;
+            return x_4;
+        }
+    }
+}
+
+/* Lean: TaggedUrn.Values.sub */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:71:1 */
+uint8_t capdagFormal__l_TaggedUrn_dValues_dsub(lungo_obj x_1, lungo_obj x_2) {
+    lungo_obj x_3;
+    lungo_obj x_4;
+    uint8_t x_5;
+    lungo_obj x_6;
+    lungo_obj x_7;
+    uint8_t x_8;
+    uint8_t x_9;
+    lungo_obj x_10;
+    lungo_obj x_11;
+    uint8_t x_12;
+    switch (lungo_obj_tag(x_1)) {
+        case 0: {
+            switch (lungo_obj_tag(x_2)) {
+                case 0: {
+                    x_3 = lungo_ctor_get(x_1, 0);
+                    x_4 = lungo_ctor_get(x_2, 0);
+                    x_5 = capdagFormal__l_List_dall_d__at___dTaggedUrn_dValues_dsub_dspec__0(x_4, x_3);
+                    return x_5;
+                }
+                default: {
+                    x_6 = lungo_ctor_get(x_1, 0);
+                    x_7 = lungo_ctor_get(x_2, 0);
+                    x_8 = capdagFormal__l_List_dall_d__at___dTaggedUrn_dValues_dsub_dspec__1(x_7, x_6);
+                    return x_8;
+                }
+            }
+        }
+        default: {
+            switch (lungo_obj_tag(x_2)) {
+                case 0: {
+                    x_9 = (uint8_t)0u;
+                    return x_9;
+                }
+                default: {
+                    x_10 = lungo_ctor_get(x_1, 0);
+                    x_11 = lungo_ctor_get(x_2, 0);
+                    x_12 = capdagFormal__l_List_dall_d__at___dTaggedUrn_dValues_dsub_dspec__0(x_10, x_11);
+                    return x_12;
+                }
+            }
+        }
+    }
 }
 
 /* Lean: TaggedUrn.instDecidableEqConstraint */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:26:12 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:59:12 */
 uint8_t capdagFormal__l_TaggedUrn_dinstDecidableEqConstraint(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     x_3 = capdagFormal__l_TaggedUrn_dinstDecidableEqConstraint_ddecEq(x_1, x_2);
@@ -71,52 +751,26 @@ uint8_t capdagFormal__l_TaggedUrn_dinstDecidableEqConstraint(lungo_obj x_1, lung
 
 /* Lean: TaggedUrn.instDecidableEqConstraint._boxed */
 /* Compiled from: TaggedUrn.instDecidableEqConstraint */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:26:12 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:59:12 */
 lungo_obj capdagFormal__l_TaggedUrn_dinstDecidableEqConstraint_d__boxed(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     lungo_obj x_4;
     x_3 = capdagFormal__l_TaggedUrn_dinstDecidableEqConstraint(x_1, x_2);
-    lungo_dec(x_2);
-    lungo_dec(x_1);
     x_4 = lungo_box((size_t)x_3);
     return x_4;
 }
 
 /* Lean: TaggedUrn.instDecidableEqConstraint.decEq */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:26:12 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:59:12 */
 uint8_t capdagFormal__l_TaggedUrn_dinstDecidableEqConstraint_ddecEq(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     uint8_t x_4;
     uint8_t x_5;
-    uint8_t x_6;
+    lungo_obj x_6;
     uint8_t x_7;
     uint8_t x_8;
-    uint8_t x_9;
-    uint8_t x_10;
+    lungo_obj x_9;
     uint8_t x_11;
-    uint8_t x_12;
-    lungo_obj x_13;
-    uint8_t x_14;
-    lungo_obj x_15;
-    uint8_t x_16;
-    uint8_t x_17;
-    uint8_t x_18;
-    uint8_t x_19;
-    uint8_t x_20;
-    uint8_t x_21;
-    lungo_obj x_22;
-    uint8_t x_23;
-    lungo_obj x_24;
-    uint8_t x_25;
-    lungo_obj x_26;
-    uint8_t x_27;
-    lungo_obj x_28;
-    uint8_t x_29;
-    uint8_t x_30;
-    uint8_t x_31;
-    uint8_t x_32;
-    uint8_t x_33;
-    uint8_t x_34;
     switch (lungo_obj_tag(x_1)) {
         case 0: {
             switch (lungo_obj_tag(x_2)) {
@@ -124,238 +778,124 @@ uint8_t capdagFormal__l_TaggedUrn_dinstDecidableEqConstraint_ddecEq(lungo_obj x_
                     x_3 = (uint8_t)1u;
                     return x_3;
                 }
-                case 2: {
+                default: {
+                    lungo_dec_ref(x_2);
                     x_4 = (uint8_t)0u;
                     return x_4;
-                }
-                case 4: {
-                    x_5 = (uint8_t)0u;
-                    return x_5;
-                }
-                case 5: {
-                    x_6 = (uint8_t)0u;
-                    return x_6;
-                }
-                default: {
-                    x_7 = (uint8_t)0u;
-                    return x_7;
-                }
-            }
-        }
-        case 1: {
-            switch (lungo_obj_tag(x_2)) {
-                case 1: {
-                    x_8 = (uint8_t)1u;
-                    return x_8;
-                }
-                case 2: {
-                    x_9 = (uint8_t)0u;
-                    return x_9;
-                }
-                case 4: {
-                    x_10 = (uint8_t)0u;
-                    return x_10;
-                }
-                case 5: {
-                    x_11 = (uint8_t)0u;
-                    return x_11;
-                }
-                default: {
-                    x_12 = (uint8_t)0u;
-                    return x_12;
-                }
-            }
-        }
-        case 2: {
-            x_13 = lungo_ctor_get(x_1, 0);
-            x_14 = (uint8_t)0u;
-            switch (lungo_obj_tag(x_2)) {
-                case 0: {
-                    return x_14;
-                }
-                case 1: {
-                    return x_14;
-                }
-                case 2: {
-                    x_15 = lungo_ctor_get(x_2, 0);
-                    x_16 = capdagFormal__l_String_ddecEq(x_13, x_15);
-                    switch (x_16) {
-                        case 0: {
-                            return x_14;
-                        }
-                        default: {
-                            return x_16;
-                        }
-                    }
-                }
-                case 3: {
-                    return x_14;
-                }
-                case 6: {
-                    return x_14;
-                }
-                default: {
-                    return x_14;
-                }
-            }
-        }
-        case 3: {
-            switch (lungo_obj_tag(x_2)) {
-                case 2: {
-                    x_17 = (uint8_t)0u;
-                    return x_17;
-                }
-                case 3: {
-                    x_18 = (uint8_t)1u;
-                    return x_18;
-                }
-                case 4: {
-                    x_19 = (uint8_t)0u;
-                    return x_19;
-                }
-                case 5: {
-                    x_20 = (uint8_t)0u;
-                    return x_20;
-                }
-                default: {
-                    x_21 = (uint8_t)0u;
-                    return x_21;
-                }
-            }
-        }
-        case 4: {
-            x_22 = lungo_ctor_get(x_1, 0);
-            x_23 = (uint8_t)0u;
-            switch (lungo_obj_tag(x_2)) {
-                case 0: {
-                    return x_23;
-                }
-                case 1: {
-                    return x_23;
-                }
-                case 3: {
-                    return x_23;
-                }
-                case 4: {
-                    x_24 = lungo_ctor_get(x_2, 0);
-                    x_25 = capdagFormal__l_String_ddecEq(x_22, x_24);
-                    switch (x_25) {
-                        case 0: {
-                            return x_23;
-                        }
-                        default: {
-                            return x_25;
-                        }
-                    }
-                }
-                case 6: {
-                    return x_23;
-                }
-                default: {
-                    return x_23;
-                }
-            }
-        }
-        case 5: {
-            x_26 = lungo_ctor_get(x_1, 0);
-            x_27 = (uint8_t)0u;
-            switch (lungo_obj_tag(x_2)) {
-                case 0: {
-                    return x_27;
-                }
-                case 1: {
-                    return x_27;
-                }
-                case 3: {
-                    return x_27;
-                }
-                case 5: {
-                    x_28 = lungo_ctor_get(x_2, 0);
-                    x_29 = capdagFormal__l_String_ddecEq(x_26, x_28);
-                    switch (x_29) {
-                        case 0: {
-                            return x_27;
-                        }
-                        default: {
-                            return x_29;
-                        }
-                    }
-                }
-                case 6: {
-                    return x_27;
-                }
-                default: {
-                    return x_27;
                 }
             }
         }
         default: {
+            x_5 = lungo_ctor_get_uint8(x_1, 1 * sizeof(size_t));
+            x_6 = lungo_ctor_get(x_1, 0);
+            lungo_inc_ref(x_6);
+            lungo_dec_ref(x_1);
+            x_7 = (uint8_t)0u;
             switch (lungo_obj_tag(x_2)) {
-                case 2: {
-                    x_30 = (uint8_t)0u;
-                    return x_30;
-                }
-                case 4: {
-                    x_31 = (uint8_t)0u;
-                    return x_31;
-                }
-                case 5: {
-                    x_32 = (uint8_t)0u;
-                    return x_32;
-                }
-                case 6: {
-                    x_33 = (uint8_t)1u;
-                    return x_33;
+                case 0: {
+                    lungo_dec_ref(x_6);
+                    return x_7;
                 }
                 default: {
-                    x_34 = (uint8_t)0u;
-                    return x_34;
+                    x_8 = lungo_ctor_get_uint8(x_2, 1 * sizeof(size_t));
+                    x_9 = lungo_ctor_get(x_2, 0);
+                    lungo_inc_ref(x_9);
+                    lungo_dec_ref(x_2);
+                    switch (x_5) {
+                        case 0: {
+                            switch (x_8) {
+                                case 0: {
+                                    goto block_10;
+                                }
+                                default: {
+                                    lungo_dec_ref(x_9);
+                                    lungo_dec_ref(x_6);
+                                    return x_7;
+                                }
+                            }
+                        }
+                        default: {
+                            switch (x_8) {
+                                case 0: {
+                                    lungo_dec_ref(x_9);
+                                    lungo_dec_ref(x_6);
+                                    return x_7;
+                                }
+                                default: {
+                                    goto block_10;
+                                }
+                            }
+                        }
+                    }
+                    block_10:;
+                    x_11 = capdagFormal__l_TaggedUrn_dinstDecidableEqValues_ddecEq(x_6, x_9);
+                    switch (x_11) {
+                        case 0: {
+                            return x_7;
+                        }
+                        default: {
+                            return x_11;
+                        }
+                    }
                 }
             }
         }
     }
 }
 
-/* Lean: TaggedUrn.instDecidableEqKeyState.decEq */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:32:12 */
-uint8_t capdagFormal__l_TaggedUrn_dinstDecidableEqKeyState_ddecEq(lungo_obj x_1, lungo_obj x_2) {
-    uint8_t x_3;
-    uint8_t x_4;
+/* Lean: TaggedUrn.instDecidableEqValues.decEq */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:52:12 */
+uint8_t capdagFormal__l_TaggedUrn_dinstDecidableEqValues_ddecEq(lungo_obj x_1, lungo_obj x_2) {
+    lungo_obj x_3;
+    lungo_obj x_4;
     lungo_obj x_5;
     uint8_t x_6;
-    lungo_obj x_7;
+    uint8_t x_7;
     uint8_t x_8;
+    lungo_obj x_9;
+    lungo_obj x_10;
+    lungo_obj x_11;
+    uint8_t x_12;
     switch (lungo_obj_tag(x_1)) {
         case 0: {
             switch (lungo_obj_tag(x_2)) {
                 case 0: {
-                    x_3 = (uint8_t)1u;
-                    return x_3;
+                    x_3 = lungo_ctor_get(x_1, 0);
+                    lungo_inc(x_3);
+                    lungo_dec_ref(x_1);
+                    x_4 = lungo_ctor_get(x_2, 0);
+                    lungo_inc(x_4);
+                    lungo_dec_ref(x_2);
+                    x_5 = lungo_alloc_closure((void *)capdagFormal__l_instDecidableEqString_d__boxed, 2, 0);
+                    x_6 = capdagFormal__l_instDecidableEqList_d__redArg(x_5, x_3, x_4);
+                    return x_6;
                 }
                 default: {
-                    x_4 = (uint8_t)0u;
-                    return x_4;
+                    lungo_dec_ref(x_2);
+                    lungo_dec_ref(x_1);
+                    x_7 = (uint8_t)0u;
+                    return x_7;
                 }
             }
         }
         default: {
-            x_5 = lungo_ctor_get(x_1, 0);
-            x_6 = (uint8_t)0u;
             switch (lungo_obj_tag(x_2)) {
                 case 0: {
-                    return x_6;
+                    lungo_dec_ref(x_2);
+                    lungo_dec_ref(x_1);
+                    x_8 = (uint8_t)0u;
+                    return x_8;
                 }
                 default: {
-                    x_7 = lungo_ctor_get(x_2, 0);
-                    x_8 = capdagFormal__l_String_ddecEq(x_5, x_7);
-                    switch (x_8) {
-                        case 0: {
-                            return x_6;
-                        }
-                        default: {
-                            return x_8;
-                        }
-                    }
+                    x_9 = lungo_ctor_get(x_1, 0);
+                    lungo_inc(x_9);
+                    lungo_dec_ref(x_1);
+                    x_10 = lungo_ctor_get(x_2, 0);
+                    lungo_inc(x_10);
+                    lungo_dec_ref(x_2);
+                    x_11 = lungo_alloc_closure((void *)capdagFormal__l_instDecidableEqString_d__boxed, 2, 0);
+                    x_12 = capdagFormal__l_instDecidableEqList_d__redArg(x_11, x_9, x_10);
+                    return x_12;
                 }
             }
         }
@@ -363,7 +903,7 @@ uint8_t capdagFormal__l_TaggedUrn_dinstDecidableEqKeyState_ddecEq(lungo_obj x_1,
 }
 
 /* Lean: TaggedUrn.instReprConstraint.repr */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:26:25 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:59:25 */
 lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_4;
     lungo_obj x_5;
@@ -371,388 +911,123 @@ lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr(lungo_obj x_1, lun
     uint8_t x_7;
     lungo_obj x_8;
     lungo_obj x_9;
-    lungo_obj x_11;
+    lungo_obj x_10;
+    uint8_t x_11;
     lungo_obj x_12;
     lungo_obj x_13;
     uint8_t x_14;
     lungo_obj x_15;
-    lungo_obj x_16;
-    lungo_obj x_18;
-    lungo_obj x_19;
+    lungo_obj x_17;
+    uint8_t x_18;
     lungo_obj x_20;
-    uint8_t x_21;
+    lungo_obj x_21;
     lungo_obj x_22;
     lungo_obj x_23;
+    lungo_obj x_24;
     lungo_obj x_25;
     lungo_obj x_26;
     lungo_obj x_27;
-    uint8_t x_28;
+    lungo_obj x_28;
     lungo_obj x_29;
-    lungo_obj x_30;
-    lungo_obj x_31;
-    uint8_t x_32;
+    uint8_t x_30;
+    lungo_obj x_32;
     lungo_obj x_33;
     lungo_obj x_34;
     lungo_obj x_35;
     uint8_t x_36;
     lungo_obj x_37;
     lungo_obj x_38;
-    lungo_obj x_39;
-    lungo_obj x_41;
-    uint8_t x_42;
-    lungo_obj x_44;
-    lungo_obj x_45;
-    lungo_obj x_46;
-    lungo_obj x_48;
-    lungo_obj x_49;
-    lungo_obj x_50;
-    uint8_t x_51;
-    lungo_obj x_52;
-    lungo_obj x_53;
-    lungo_obj x_54;
-    lungo_obj x_55;
-    uint8_t x_56;
-    lungo_obj x_57;
-    lungo_obj x_58;
-    uint8_t x_59;
-    lungo_obj x_60;
-    uint8_t x_61;
-    lungo_obj x_62;
-    lungo_obj x_63;
-    lungo_obj x_64;
-    lungo_obj x_66;
-    uint8_t x_67;
-    lungo_obj x_69;
-    lungo_obj x_70;
-    lungo_obj x_71;
-    lungo_obj x_73;
-    lungo_obj x_74;
-    lungo_obj x_75;
-    uint8_t x_76;
-    lungo_obj x_77;
-    lungo_obj x_78;
-    lungo_obj x_79;
-    lungo_obj x_80;
-    uint8_t x_81;
-    lungo_obj x_82;
-    lungo_obj x_83;
-    uint8_t x_84;
-    lungo_obj x_85;
-    lungo_obj x_87;
-    uint8_t x_88;
-    lungo_obj x_90;
-    lungo_obj x_91;
-    lungo_obj x_92;
-    lungo_obj x_94;
-    lungo_obj x_95;
-    lungo_obj x_96;
-    uint8_t x_97;
-    lungo_obj x_98;
-    lungo_obj x_99;
-    lungo_obj x_100;
-    lungo_obj x_101;
-    uint8_t x_102;
-    lungo_obj x_103;
-    lungo_obj x_104;
-    uint8_t x_105;
-    lungo_obj x_106;
-    uint8_t x_107;
-    lungo_obj x_108;
-    lungo_obj x_109;
+    uint8_t x_39;
     switch (lungo_obj_tag(x_1)) {
         case 0: {
-            x_31 = lungo_usize_to_nat(1024u);
-            x_32 = capdagFormal__l_Nat_ddecLe(x_31, x_2);
-            switch (x_32) {
+            x_10 = lungo_usize_to_nat(1024u);
+            x_11 = capdagFormal__l_Nat_ddecLe(x_10, x_2);
+            switch (x_11) {
                 case 0: {
-                    x_33 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__8();
-                    x_11 = x_33;
-                    goto block_10;
+                    x_12 = capdagFormal__l_TaggedUrn_dinstReprKeyState_drepr_d__closed__2();
+                    x_4 = x_12;
+                    goto block_3;
                 }
                 default: {
-                    x_34 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__9();
-                    x_11 = x_34;
-                    goto block_10;
+                    x_13 = capdagFormal__l_TaggedUrn_dinstReprKeyState_drepr_d__closed__3();
+                    x_4 = x_13;
+                    goto block_3;
                 }
             }
         }
-        case 1: {
+        default: {
+            x_14 = lungo_ctor_get_uint8(x_1, 1 * sizeof(size_t));
+            x_15 = lungo_ctor_get(x_1, 0);
+            x_39 = !lungo_is_exclusive(x_1);
+            switch (x_39) {
+                case 0: {
+                    x_17 = x_1;
+                    x_18 = x_39;
+                    goto block_16;
+                }
+                default: {
+                    lungo_inc(x_15);
+                    lungo_dec(x_1);
+                    x_17 = lungo_box(0);
+                    x_18 = x_39;
+                    goto block_16;
+                }
+            }
+            block_16:;
             x_35 = lungo_usize_to_nat(1024u);
             x_36 = capdagFormal__l_Nat_ddecLe(x_35, x_2);
             switch (x_36) {
                 case 0: {
-                    x_37 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__8();
-                    x_4 = x_37;
-                    goto block_3;
+                    x_37 = capdagFormal__l_TaggedUrn_dinstReprKeyState_drepr_d__closed__2();
+                    x_20 = x_37;
+                    goto block_19;
                 }
                 default: {
-                    x_38 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__9();
-                    x_4 = x_38;
-                    goto block_3;
+                    x_38 = capdagFormal__l_TaggedUrn_dinstReprKeyState_drepr_d__closed__3();
+                    x_20 = x_38;
+                    goto block_19;
                 }
             }
-        }
-        case 2: {
-            x_39 = lungo_ctor_get(x_1, 0);
-            x_59 = !lungo_is_exclusive(x_1);
-            switch (x_59) {
+            block_19:;
+            x_21 = lungo_box(1);
+            x_22 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__4();
+            x_23 = lungo_usize_to_nat(1024u);
+            x_24 = capdagFormal__l_Bool_drepr_d__redArg(x_14);
+            x_25 = lungo_alloc_ctor(5, 2, 0);
+            lungo_ctor_set(x_25, 0, x_22);
+            lungo_ctor_set(x_25, 1, x_24);
+            x_26 = lungo_alloc_ctor(5, 2, 0);
+            lungo_ctor_set(x_26, 0, x_25);
+            lungo_ctor_set(x_26, 1, x_21);
+            x_27 = capdagFormal__l_TaggedUrn_dinstReprValues_drepr(x_15, x_23);
+            x_28 = lungo_alloc_ctor(5, 2, 0);
+            lungo_ctor_set(x_28, 0, x_26);
+            lungo_ctor_set(x_28, 1, x_27);
+            lungo_inc(x_20);
+            x_29 = lungo_alloc_ctor(4, 2, 0);
+            lungo_ctor_set(x_29, 0, x_20);
+            lungo_ctor_set(x_29, 1, x_28);
+            x_30 = (uint8_t)0u;
+            switch (x_18) {
                 case 0: {
-                    x_41 = x_1;
-                    x_42 = x_59;
-                    goto block_40;
+                    lungo_ctor_set_tag(x_17, 6);
+                    lungo_ctor_set(x_17, 0, x_29);
+                    x_32 = x_17;
+                    goto block_31;
                 }
                 default: {
-                    lungo_inc(x_39);
-                    lungo_dec(x_1);
-                    x_41 = lungo_box(0);
-                    x_42 = x_59;
-                    goto block_40;
+                    x_34 = lungo_alloc_ctor(6, 1, 1);
+                    lungo_ctor_set(x_34, 0, x_29);
+                    x_32 = x_34;
+                    goto block_31;
                 }
             }
-            block_40:;
-            x_55 = lungo_usize_to_nat(1024u);
-            x_56 = capdagFormal__l_Nat_ddecLe(x_55, x_2);
-            switch (x_56) {
-                case 0: {
-                    x_57 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__8();
-                    x_44 = x_57;
-                    goto block_43;
-                }
-                default: {
-                    x_58 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__9();
-                    x_44 = x_58;
-                    goto block_43;
-                }
-            }
-            block_43:;
-            x_45 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__12();
-            x_46 = capdagFormal__l_String_dquote(x_39);
-            switch (x_42) {
-                case 0: {
-                    lungo_ctor_set_tag(x_41, 3);
-                    lungo_ctor_set(x_41, 0, x_46);
-                    x_48 = x_41;
-                    goto block_47;
-                }
-                default: {
-                    x_54 = lungo_alloc_ctor(3, 1, 0);
-                    lungo_ctor_set(x_54, 0, x_46);
-                    x_48 = x_54;
-                    goto block_47;
-                }
-            }
-            block_47:;
-            x_49 = lungo_alloc_ctor(5, 2, 0);
-            lungo_ctor_set(x_49, 0, x_45);
-            lungo_ctor_set(x_49, 1, x_48);
-            lungo_inc(x_44);
-            x_50 = lungo_alloc_ctor(4, 2, 0);
-            lungo_ctor_set(x_50, 0, x_44);
-            lungo_ctor_set(x_50, 1, x_49);
-            x_51 = (uint8_t)0u;
-            x_52 = lungo_alloc_ctor(6, 1, 1);
-            lungo_ctor_set(x_52, 0, x_50);
-            lungo_ctor_set_uint8(x_52, 1 * sizeof(size_t), x_51);
-            x_53 = capdagFormal__l_Repr_daddAppParen(x_52, x_2);
-            return x_53;
-        }
-        case 3: {
-            x_60 = lungo_usize_to_nat(1024u);
-            x_61 = capdagFormal__l_Nat_ddecLe(x_60, x_2);
-            switch (x_61) {
-                case 0: {
-                    x_62 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__8();
-                    x_18 = x_62;
-                    goto block_17;
-                }
-                default: {
-                    x_63 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__9();
-                    x_18 = x_63;
-                    goto block_17;
-                }
-            }
-        }
-        case 4: {
-            x_64 = lungo_ctor_get(x_1, 0);
-            x_84 = !lungo_is_exclusive(x_1);
-            switch (x_84) {
-                case 0: {
-                    x_66 = x_1;
-                    x_67 = x_84;
-                    goto block_65;
-                }
-                default: {
-                    lungo_inc(x_64);
-                    lungo_dec(x_1);
-                    x_66 = lungo_box(0);
-                    x_67 = x_84;
-                    goto block_65;
-                }
-            }
-            block_65:;
-            x_80 = lungo_usize_to_nat(1024u);
-            x_81 = capdagFormal__l_Nat_ddecLe(x_80, x_2);
-            switch (x_81) {
-                case 0: {
-                    x_82 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__8();
-                    x_69 = x_82;
-                    goto block_68;
-                }
-                default: {
-                    x_83 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__9();
-                    x_69 = x_83;
-                    goto block_68;
-                }
-            }
-            block_68:;
-            x_70 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__15();
-            x_71 = capdagFormal__l_String_dquote(x_64);
-            switch (x_67) {
-                case 0: {
-                    lungo_ctor_set_tag(x_66, 3);
-                    lungo_ctor_set(x_66, 0, x_71);
-                    x_73 = x_66;
-                    goto block_72;
-                }
-                default: {
-                    x_79 = lungo_alloc_ctor(3, 1, 0);
-                    lungo_ctor_set(x_79, 0, x_71);
-                    x_73 = x_79;
-                    goto block_72;
-                }
-            }
-            block_72:;
-            x_74 = lungo_alloc_ctor(5, 2, 0);
-            lungo_ctor_set(x_74, 0, x_70);
-            lungo_ctor_set(x_74, 1, x_73);
-            lungo_inc(x_69);
-            x_75 = lungo_alloc_ctor(4, 2, 0);
-            lungo_ctor_set(x_75, 0, x_69);
-            lungo_ctor_set(x_75, 1, x_74);
-            x_76 = (uint8_t)0u;
-            x_77 = lungo_alloc_ctor(6, 1, 1);
-            lungo_ctor_set(x_77, 0, x_75);
-            lungo_ctor_set_uint8(x_77, 1 * sizeof(size_t), x_76);
-            x_78 = capdagFormal__l_Repr_daddAppParen(x_77, x_2);
-            return x_78;
-        }
-        case 5: {
-            x_85 = lungo_ctor_get(x_1, 0);
-            x_105 = !lungo_is_exclusive(x_1);
-            switch (x_105) {
-                case 0: {
-                    x_87 = x_1;
-                    x_88 = x_105;
-                    goto block_86;
-                }
-                default: {
-                    lungo_inc(x_85);
-                    lungo_dec(x_1);
-                    x_87 = lungo_box(0);
-                    x_88 = x_105;
-                    goto block_86;
-                }
-            }
-            block_86:;
-            x_101 = lungo_usize_to_nat(1024u);
-            x_102 = capdagFormal__l_Nat_ddecLe(x_101, x_2);
-            switch (x_102) {
-                case 0: {
-                    x_103 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__8();
-                    x_90 = x_103;
-                    goto block_89;
-                }
-                default: {
-                    x_104 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__9();
-                    x_90 = x_104;
-                    goto block_89;
-                }
-            }
-            block_89:;
-            x_91 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__18();
-            x_92 = capdagFormal__l_String_dquote(x_85);
-            switch (x_88) {
-                case 0: {
-                    lungo_ctor_set_tag(x_87, 3);
-                    lungo_ctor_set(x_87, 0, x_92);
-                    x_94 = x_87;
-                    goto block_93;
-                }
-                default: {
-                    x_100 = lungo_alloc_ctor(3, 1, 0);
-                    lungo_ctor_set(x_100, 0, x_92);
-                    x_94 = x_100;
-                    goto block_93;
-                }
-            }
-            block_93:;
-            x_95 = lungo_alloc_ctor(5, 2, 0);
-            lungo_ctor_set(x_95, 0, x_91);
-            lungo_ctor_set(x_95, 1, x_94);
-            lungo_inc(x_90);
-            x_96 = lungo_alloc_ctor(4, 2, 0);
-            lungo_ctor_set(x_96, 0, x_90);
-            lungo_ctor_set(x_96, 1, x_95);
-            x_97 = (uint8_t)0u;
-            x_98 = lungo_alloc_ctor(6, 1, 1);
-            lungo_ctor_set(x_98, 0, x_96);
-            lungo_ctor_set_uint8(x_98, 1 * sizeof(size_t), x_97);
-            x_99 = capdagFormal__l_Repr_daddAppParen(x_98, x_2);
-            return x_99;
-        }
-        default: {
-            x_106 = lungo_usize_to_nat(1024u);
-            x_107 = capdagFormal__l_Nat_ddecLe(x_106, x_2);
-            switch (x_107) {
-                case 0: {
-                    x_108 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__8();
-                    x_25 = x_108;
-                    goto block_24;
-                }
-                default: {
-                    x_109 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__9();
-                    x_25 = x_109;
-                    goto block_24;
-                }
-            }
+            block_31:;
+            lungo_ctor_set_uint8(x_32, 1 * sizeof(size_t), x_30);
+            x_33 = capdagFormal__l_Repr_daddAppParen(x_32, x_2);
+            return x_33;
         }
     }
-    block_24:;
-    x_26 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__7();
-    lungo_inc(x_25);
-    x_27 = lungo_alloc_ctor(4, 2, 0);
-    lungo_ctor_set(x_27, 0, x_25);
-    lungo_ctor_set(x_27, 1, x_26);
-    x_28 = (uint8_t)0u;
-    x_29 = lungo_alloc_ctor(6, 1, 1);
-    lungo_ctor_set(x_29, 0, x_27);
-    lungo_ctor_set_uint8(x_29, 1 * sizeof(size_t), x_28);
-    x_30 = capdagFormal__l_Repr_daddAppParen(x_29, x_2);
-    return x_30;
-    block_17:;
-    x_19 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__5();
-    lungo_inc(x_18);
-    x_20 = lungo_alloc_ctor(4, 2, 0);
-    lungo_ctor_set(x_20, 0, x_18);
-    lungo_ctor_set(x_20, 1, x_19);
-    x_21 = (uint8_t)0u;
-    x_22 = lungo_alloc_ctor(6, 1, 1);
-    lungo_ctor_set(x_22, 0, x_20);
-    lungo_ctor_set_uint8(x_22, 1 * sizeof(size_t), x_21);
-    x_23 = capdagFormal__l_Repr_daddAppParen(x_22, x_2);
-    return x_23;
-    block_10:;
-    x_12 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__3();
-    lungo_inc(x_11);
-    x_13 = lungo_alloc_ctor(4, 2, 0);
-    lungo_ctor_set(x_13, 0, x_11);
-    lungo_ctor_set(x_13, 1, x_12);
-    x_14 = (uint8_t)0u;
-    x_15 = lungo_alloc_ctor(6, 1, 1);
-    lungo_ctor_set(x_15, 0, x_13);
-    lungo_ctor_set_uint8(x_15, 1 * sizeof(size_t), x_14);
-    x_16 = capdagFormal__l_Repr_daddAppParen(x_15, x_2);
-    return x_16;
     block_3:;
     x_5 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__1();
     lungo_inc(x_4);
@@ -769,10 +1044,10 @@ lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr(lungo_obj x_1, lun
 
 /* Lean: TaggedUrn.instReprConstraint.repr._closed_0 */
 /* Compiled from: TaggedUrn.instReprConstraint.repr */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:26:25 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:59:25 */
 static lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__0__init(void) {
     lungo_obj x_1;
-    x_1 = lungo_mk_string_unchecked((const uint8_t *)"TaggedUrn.Constraint.unconstrained", 34, 34);
+    x_1 = lungo_mk_string_unchecked((const uint8_t *)"TaggedUrn.Constraint.missing", 28, 28);
     return x_1;
 }
 static lungo_lazy_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__0__cell;
@@ -782,7 +1057,7 @@ lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__0(void)
 
 /* Lean: TaggedUrn.instReprConstraint.repr._closed_1 */
 /* Compiled from: TaggedUrn.instReprConstraint.repr */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:26:25 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:59:25 */
 static lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__1__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -796,156 +1071,12 @@ lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__1(void)
     return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__1__cell, capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__1__init);
 }
 
-/* Lean: TaggedUrn.instReprConstraint.repr._closed_10 */
-/* Compiled from: TaggedUrn.instReprConstraint.repr */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:26:25 */
-static lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__10__init(void) {
-    lungo_obj x_1;
-    x_1 = lungo_mk_string_unchecked((const uint8_t *)"TaggedUrn.Constraint.optionalNot", 32, 32);
-    return x_1;
-}
-static lungo_lazy_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__10__cell;
-lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__10(void) {
-    return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__10__cell, capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__10__init);
-}
-
-/* Lean: TaggedUrn.instReprConstraint.repr._closed_11 */
-/* Compiled from: TaggedUrn.instReprConstraint.repr */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:26:25 */
-static lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__11__init(void) {
-    lungo_obj x_1;
-    lungo_obj x_2;
-    x_1 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__10();
-    x_2 = lungo_alloc_ctor(3, 1, 0);
-    lungo_ctor_set(x_2, 0, x_1);
-    return x_2;
-}
-static lungo_lazy_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__11__cell;
-lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__11(void) {
-    return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__11__cell, capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__11__init);
-}
-
-/* Lean: TaggedUrn.instReprConstraint.repr._closed_12 */
-/* Compiled from: TaggedUrn.instReprConstraint.repr */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:26:25 */
-static lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__12__init(void) {
-    lungo_obj x_1;
-    lungo_obj x_2;
-    lungo_obj x_3;
-    x_1 = lungo_box(1);
-    x_2 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__11();
-    x_3 = lungo_alloc_ctor(5, 2, 0);
-    lungo_ctor_set(x_3, 0, x_2);
-    lungo_ctor_set(x_3, 1, x_1);
-    return x_3;
-}
-static lungo_lazy_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__12__cell;
-lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__12(void) {
-    return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__12__cell, capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__12__init);
-}
-
-/* Lean: TaggedUrn.instReprConstraint.repr._closed_13 */
-/* Compiled from: TaggedUrn.instReprConstraint.repr */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:26:25 */
-static lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__13__init(void) {
-    lungo_obj x_1;
-    x_1 = lungo_mk_string_unchecked((const uint8_t *)"TaggedUrn.Constraint.presentNot", 31, 31);
-    return x_1;
-}
-static lungo_lazy_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__13__cell;
-lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__13(void) {
-    return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__13__cell, capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__13__init);
-}
-
-/* Lean: TaggedUrn.instReprConstraint.repr._closed_14 */
-/* Compiled from: TaggedUrn.instReprConstraint.repr */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:26:25 */
-static lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__14__init(void) {
-    lungo_obj x_1;
-    lungo_obj x_2;
-    x_1 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__13();
-    x_2 = lungo_alloc_ctor(3, 1, 0);
-    lungo_ctor_set(x_2, 0, x_1);
-    return x_2;
-}
-static lungo_lazy_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__14__cell;
-lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__14(void) {
-    return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__14__cell, capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__14__init);
-}
-
-/* Lean: TaggedUrn.instReprConstraint.repr._closed_15 */
-/* Compiled from: TaggedUrn.instReprConstraint.repr */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:26:25 */
-static lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__15__init(void) {
-    lungo_obj x_1;
-    lungo_obj x_2;
-    lungo_obj x_3;
-    x_1 = lungo_box(1);
-    x_2 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__14();
-    x_3 = lungo_alloc_ctor(5, 2, 0);
-    lungo_ctor_set(x_3, 0, x_2);
-    lungo_ctor_set(x_3, 1, x_1);
-    return x_3;
-}
-static lungo_lazy_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__15__cell;
-lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__15(void) {
-    return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__15__cell, capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__15__init);
-}
-
-/* Lean: TaggedUrn.instReprConstraint.repr._closed_16 */
-/* Compiled from: TaggedUrn.instReprConstraint.repr */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:26:25 */
-static lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__16__init(void) {
-    lungo_obj x_1;
-    x_1 = lungo_mk_string_unchecked((const uint8_t *)"TaggedUrn.Constraint.exact", 26, 26);
-    return x_1;
-}
-static lungo_lazy_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__16__cell;
-lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__16(void) {
-    return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__16__cell, capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__16__init);
-}
-
-/* Lean: TaggedUrn.instReprConstraint.repr._closed_17 */
-/* Compiled from: TaggedUrn.instReprConstraint.repr */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:26:25 */
-static lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__17__init(void) {
-    lungo_obj x_1;
-    lungo_obj x_2;
-    x_1 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__16();
-    x_2 = lungo_alloc_ctor(3, 1, 0);
-    lungo_ctor_set(x_2, 0, x_1);
-    return x_2;
-}
-static lungo_lazy_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__17__cell;
-lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__17(void) {
-    return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__17__cell, capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__17__init);
-}
-
-/* Lean: TaggedUrn.instReprConstraint.repr._closed_18 */
-/* Compiled from: TaggedUrn.instReprConstraint.repr */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:26:25 */
-static lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__18__init(void) {
-    lungo_obj x_1;
-    lungo_obj x_2;
-    lungo_obj x_3;
-    x_1 = lungo_box(1);
-    x_2 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__17();
-    x_3 = lungo_alloc_ctor(5, 2, 0);
-    lungo_ctor_set(x_3, 0, x_2);
-    lungo_ctor_set(x_3, 1, x_1);
-    return x_3;
-}
-static lungo_lazy_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__18__cell;
-lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__18(void) {
-    return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__18__cell, capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__18__init);
-}
-
 /* Lean: TaggedUrn.instReprConstraint.repr._closed_2 */
 /* Compiled from: TaggedUrn.instReprConstraint.repr */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:26:25 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:59:25 */
 static lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__2__init(void) {
     lungo_obj x_1;
-    x_1 = lungo_mk_string_unchecked((const uint8_t *)"TaggedUrn.Constraint.missing", 28, 28);
+    x_1 = lungo_mk_string_unchecked((const uint8_t *)"TaggedUrn.Constraint.written", 28, 28);
     return x_1;
 }
 static lungo_lazy_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__2__cell;
@@ -955,7 +1086,7 @@ lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__2(void)
 
 /* Lean: TaggedUrn.instReprConstraint.repr._closed_3 */
 /* Compiled from: TaggedUrn.instReprConstraint.repr */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:26:25 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:59:25 */
 static lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__3__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
@@ -971,462 +1102,336 @@ lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__3(void)
 
 /* Lean: TaggedUrn.instReprConstraint.repr._closed_4 */
 /* Compiled from: TaggedUrn.instReprConstraint.repr */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:26:25 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:59:25 */
 static lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__4__init(void) {
     lungo_obj x_1;
-    x_1 = lungo_mk_string_unchecked((const uint8_t *)"TaggedUrn.Constraint.present", 28, 28);
-    return x_1;
+    lungo_obj x_2;
+    lungo_obj x_3;
+    x_1 = lungo_box(1);
+    x_2 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__3();
+    x_3 = lungo_alloc_ctor(5, 2, 0);
+    lungo_ctor_set(x_3, 0, x_2);
+    lungo_ctor_set(x_3, 1, x_1);
+    return x_3;
 }
 static lungo_lazy_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__4__cell;
 lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__4(void) {
     return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__4__cell, capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__4__init);
 }
 
-/* Lean: TaggedUrn.instReprConstraint.repr._closed_5 */
-/* Compiled from: TaggedUrn.instReprConstraint.repr */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:26:25 */
-static lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__5__init(void) {
-    lungo_obj x_1;
-    lungo_obj x_2;
-    x_1 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__4();
-    x_2 = lungo_alloc_ctor(3, 1, 0);
-    lungo_ctor_set(x_2, 0, x_1);
-    return x_2;
-}
-static lungo_lazy_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__5__cell;
-lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__5(void) {
-    return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__5__cell, capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__5__init);
-}
-
-/* Lean: TaggedUrn.instReprConstraint.repr._closed_6 */
-/* Compiled from: TaggedUrn.instReprConstraint.repr */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:26:25 */
-static lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__6__init(void) {
-    lungo_obj x_1;
-    x_1 = lungo_mk_string_unchecked((const uint8_t *)"TaggedUrn.Constraint.absent", 27, 27);
-    return x_1;
-}
-static lungo_lazy_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__6__cell;
-lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__6(void) {
-    return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__6__cell, capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__6__init);
-}
-
-/* Lean: TaggedUrn.instReprConstraint.repr._closed_7 */
-/* Compiled from: TaggedUrn.instReprConstraint.repr */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:26:25 */
-static lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__7__init(void) {
-    lungo_obj x_1;
-    lungo_obj x_2;
-    x_1 = capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__6();
-    x_2 = lungo_alloc_ctor(3, 1, 0);
-    lungo_ctor_set(x_2, 0, x_1);
-    return x_2;
-}
-static lungo_lazy_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__7__cell;
-lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__7(void) {
-    return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__7__cell, capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__7__init);
-}
-
-/* Lean: TaggedUrn.instReprConstraint.repr._closed_8 */
-/* Compiled from: TaggedUrn.instReprConstraint.repr */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:26:25 */
-static lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__8__init(void) {
+/* Lean: TaggedUrn.instReprKeyState.repr._closed_2 */
+/* Compiled from: TaggedUrn.instReprKeyState.repr */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:44:25 */
+static lungo_obj capdagFormal__l_TaggedUrn_dinstReprKeyState_drepr_d__closed__2__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
     x_1 = lungo_usize_to_nat(2u);
     x_2 = capdagFormal__l_Int_dofNat(x_1);
     return x_2;
 }
-static lungo_lazy_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__8__cell;
-lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__8(void) {
-    return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__8__cell, capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__8__init);
+static lungo_lazy_obj capdagFormal__l_TaggedUrn_dinstReprKeyState_drepr_d__closed__2__cell;
+lungo_obj capdagFormal__l_TaggedUrn_dinstReprKeyState_drepr_d__closed__2(void) {
+    return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dinstReprKeyState_drepr_d__closed__2__cell, capdagFormal__l_TaggedUrn_dinstReprKeyState_drepr_d__closed__2__init);
 }
 
-/* Lean: TaggedUrn.instReprConstraint.repr._closed_9 */
-/* Compiled from: TaggedUrn.instReprConstraint.repr */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:26:25 */
-static lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__9__init(void) {
+/* Lean: TaggedUrn.instReprKeyState.repr._closed_3 */
+/* Compiled from: TaggedUrn.instReprKeyState.repr */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:44:25 */
+static lungo_obj capdagFormal__l_TaggedUrn_dinstReprKeyState_drepr_d__closed__3__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
     x_1 = lungo_usize_to_nat(1u);
     x_2 = capdagFormal__l_Int_dofNat(x_1);
     return x_2;
 }
-static lungo_lazy_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__9__cell;
-lungo_obj capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__9(void) {
-    return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__9__cell, capdagFormal__l_TaggedUrn_dinstReprConstraint_drepr_d__closed__9__init);
+static lungo_lazy_obj capdagFormal__l_TaggedUrn_dinstReprKeyState_drepr_d__closed__3__cell;
+lungo_obj capdagFormal__l_TaggedUrn_dinstReprKeyState_drepr_d__closed__3(void) {
+    return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dinstReprKeyState_drepr_d__closed__3__cell, capdagFormal__l_TaggedUrn_dinstReprKeyState_drepr_d__closed__3__init);
+}
+
+/* Lean: TaggedUrn.instReprValues.repr */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:52:25 */
+lungo_obj capdagFormal__l_TaggedUrn_dinstReprValues_drepr(lungo_obj x_1, lungo_obj x_2) {
+    lungo_obj x_3;
+    lungo_obj x_5;
+    lungo_obj x_6;
+    lungo_obj x_7;
+    lungo_obj x_8;
+    lungo_obj x_9;
+    uint8_t x_10;
+    lungo_obj x_11;
+    lungo_obj x_12;
+    lungo_obj x_13;
+    uint8_t x_14;
+    lungo_obj x_15;
+    lungo_obj x_16;
+    lungo_obj x_17;
+    lungo_obj x_19;
+    lungo_obj x_20;
+    lungo_obj x_21;
+    lungo_obj x_22;
+    lungo_obj x_23;
+    uint8_t x_24;
+    lungo_obj x_25;
+    lungo_obj x_26;
+    lungo_obj x_27;
+    uint8_t x_28;
+    lungo_obj x_29;
+    lungo_obj x_30;
+    switch (lungo_obj_tag(x_1)) {
+        case 0: {
+            x_3 = lungo_ctor_get(x_1, 0);
+            lungo_inc(x_3);
+            lungo_dec_ref(x_1);
+            x_13 = lungo_usize_to_nat(1024u);
+            x_14 = capdagFormal__l_Nat_ddecLe(x_13, x_2);
+            switch (x_14) {
+                case 0: {
+                    x_15 = capdagFormal__l_TaggedUrn_dinstReprKeyState_drepr_d__closed__2();
+                    x_5 = x_15;
+                    goto block_4;
+                }
+                default: {
+                    x_16 = capdagFormal__l_TaggedUrn_dinstReprKeyState_drepr_d__closed__3();
+                    x_5 = x_16;
+                    goto block_4;
+                }
+            }
+            block_4:;
+            x_6 = capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__2();
+            x_7 = capdagFormal__l_List_drepr_x27__d__at___dLean_dSyntax_dinstReprPreresolved_drepr_dspec__0_d__redArg(x_3);
+            x_8 = lungo_alloc_ctor(5, 2, 0);
+            lungo_ctor_set(x_8, 0, x_6);
+            lungo_ctor_set(x_8, 1, x_7);
+            lungo_inc(x_5);
+            x_9 = lungo_alloc_ctor(4, 2, 0);
+            lungo_ctor_set(x_9, 0, x_5);
+            lungo_ctor_set(x_9, 1, x_8);
+            x_10 = (uint8_t)0u;
+            x_11 = lungo_alloc_ctor(6, 1, 1);
+            lungo_ctor_set(x_11, 0, x_9);
+            lungo_ctor_set_uint8(x_11, 1 * sizeof(size_t), x_10);
+            x_12 = capdagFormal__l_Repr_daddAppParen(x_11, x_2);
+            return x_12;
+        }
+        default: {
+            x_17 = lungo_ctor_get(x_1, 0);
+            lungo_inc(x_17);
+            lungo_dec_ref(x_1);
+            x_27 = lungo_usize_to_nat(1024u);
+            x_28 = capdagFormal__l_Nat_ddecLe(x_27, x_2);
+            switch (x_28) {
+                case 0: {
+                    x_29 = capdagFormal__l_TaggedUrn_dinstReprKeyState_drepr_d__closed__2();
+                    x_19 = x_29;
+                    goto block_18;
+                }
+                default: {
+                    x_30 = capdagFormal__l_TaggedUrn_dinstReprKeyState_drepr_d__closed__3();
+                    x_19 = x_30;
+                    goto block_18;
+                }
+            }
+            block_18:;
+            x_20 = capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__5();
+            x_21 = capdagFormal__l_List_drepr_x27__d__at___dLean_dSyntax_dinstReprPreresolved_drepr_dspec__0_d__redArg(x_17);
+            x_22 = lungo_alloc_ctor(5, 2, 0);
+            lungo_ctor_set(x_22, 0, x_20);
+            lungo_ctor_set(x_22, 1, x_21);
+            lungo_inc(x_19);
+            x_23 = lungo_alloc_ctor(4, 2, 0);
+            lungo_ctor_set(x_23, 0, x_19);
+            lungo_ctor_set(x_23, 1, x_22);
+            x_24 = (uint8_t)0u;
+            x_25 = lungo_alloc_ctor(6, 1, 1);
+            lungo_ctor_set(x_25, 0, x_23);
+            lungo_ctor_set_uint8(x_25, 1 * sizeof(size_t), x_24);
+            x_26 = capdagFormal__l_Repr_daddAppParen(x_25, x_2);
+            return x_26;
+        }
+    }
+}
+
+/* Lean: TaggedUrn.instReprValues.repr._closed_0 */
+/* Compiled from: TaggedUrn.instReprValues.repr */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:52:25 */
+static lungo_obj capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__0__init(void) {
+    lungo_obj x_1;
+    x_1 = lungo_mk_string_unchecked((const uint8_t *)"TaggedUrn.Values.oneOf", 22, 22);
+    return x_1;
+}
+static lungo_lazy_obj capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__0__cell;
+lungo_obj capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__0(void) {
+    return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__0__cell, capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__0__init);
+}
+
+/* Lean: TaggedUrn.instReprValues.repr._closed_1 */
+/* Compiled from: TaggedUrn.instReprValues.repr */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:52:25 */
+static lungo_obj capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__1__init(void) {
+    lungo_obj x_1;
+    lungo_obj x_2;
+    x_1 = capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__0();
+    x_2 = lungo_alloc_ctor(3, 1, 0);
+    lungo_ctor_set(x_2, 0, x_1);
+    return x_2;
+}
+static lungo_lazy_obj capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__1__cell;
+lungo_obj capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__1(void) {
+    return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__1__cell, capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__1__init);
+}
+
+/* Lean: TaggedUrn.instReprValues.repr._closed_2 */
+/* Compiled from: TaggedUrn.instReprValues.repr */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:52:25 */
+static lungo_obj capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__2__init(void) {
+    lungo_obj x_1;
+    lungo_obj x_2;
+    lungo_obj x_3;
+    x_1 = lungo_box(1);
+    x_2 = capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__1();
+    x_3 = lungo_alloc_ctor(5, 2, 0);
+    lungo_ctor_set(x_3, 0, x_2);
+    lungo_ctor_set(x_3, 1, x_1);
+    return x_3;
+}
+static lungo_lazy_obj capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__2__cell;
+lungo_obj capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__2(void) {
+    return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__2__cell, capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__2__init);
+}
+
+/* Lean: TaggedUrn.instReprValues.repr._closed_3 */
+/* Compiled from: TaggedUrn.instReprValues.repr */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:52:25 */
+static lungo_obj capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__3__init(void) {
+    lungo_obj x_1;
+    x_1 = lungo_mk_string_unchecked((const uint8_t *)"TaggedUrn.Values.noneOf", 23, 23);
+    return x_1;
+}
+static lungo_lazy_obj capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__3__cell;
+lungo_obj capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__3(void) {
+    return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__3__cell, capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__3__init);
+}
+
+/* Lean: TaggedUrn.instReprValues.repr._closed_4 */
+/* Compiled from: TaggedUrn.instReprValues.repr */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:52:25 */
+static lungo_obj capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__4__init(void) {
+    lungo_obj x_1;
+    lungo_obj x_2;
+    x_1 = capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__3();
+    x_2 = lungo_alloc_ctor(3, 1, 0);
+    lungo_ctor_set(x_2, 0, x_1);
+    return x_2;
+}
+static lungo_lazy_obj capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__4__cell;
+lungo_obj capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__4(void) {
+    return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__4__cell, capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__4__init);
+}
+
+/* Lean: TaggedUrn.instReprValues.repr._closed_5 */
+/* Compiled from: TaggedUrn.instReprValues.repr */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:52:25 */
+static lungo_obj capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__5__init(void) {
+    lungo_obj x_1;
+    lungo_obj x_2;
+    lungo_obj x_3;
+    x_1 = lungo_box(1);
+    x_2 = capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__4();
+    x_3 = lungo_alloc_ctor(5, 2, 0);
+    lungo_ctor_set(x_3, 0, x_2);
+    lungo_ctor_set(x_3, 1, x_1);
+    return x_3;
+}
+static lungo_lazy_obj capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__5__cell;
+lungo_obj capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__5(void) {
+    return lungo_lazy_obj_get(&capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__5__cell, capdagFormal__l_TaggedUrn_dinstReprValues_drepr_d__closed__5__init);
 }
 
 /* Lean: TaggedUrn.tagMatch */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:46:1 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:245:1 */
 uint8_t capdagFormal__l_TaggedUrn_dtagMatch(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_4;
     lungo_obj x_5;
     uint8_t x_6;
     uint8_t x_7;
     uint8_t x_8;
-    lungo_obj x_9;
-    lungo_obj x_10;
-    uint8_t x_11;
-    lungo_obj x_12;
-    lungo_obj x_13;
-    uint8_t x_14;
-    lungo_obj x_15;
-    lungo_obj x_16;
-    uint8_t x_17;
-    uint8_t x_18;
-    uint8_t x_19;
-    uint8_t x_20;
-    uint8_t x_21;
-    uint8_t x_22;
-    lungo_obj x_23;
-    lungo_obj x_24;
-    uint8_t x_25;
-    lungo_obj x_26;
-    lungo_obj x_27;
-    uint8_t x_28;
-    lungo_obj x_29;
-    lungo_obj x_30;
-    uint8_t x_31;
-    uint8_t x_32;
-    uint8_t x_33;
-    uint8_t x_34;
-    uint8_t x_35;
-    switch (lungo_obj_tag(x_2)) {
-        case 2: {
-            switch (lungo_obj_tag(x_1)) {
-                case 2: {
-                    x_9 = lungo_ctor_get(x_2, 0);
-                    x_10 = lungo_ctor_get(x_1, 0);
-                    x_11 = capdagFormal__l_String_ddecEq(x_10, x_9);
-                    return x_11;
-                }
-                case 4: {
-                    x_12 = lungo_ctor_get(x_2, 0);
-                    x_13 = lungo_ctor_get(x_1, 0);
-                    x_14 = capdagFormal__l_String_ddecEq(x_13, x_12);
-                    return x_14;
-                }
-                case 5: {
-                    x_15 = lungo_ctor_get(x_2, 0);
-                    x_16 = lungo_ctor_get(x_1, 0);
-                    x_4 = x_16;
-                    x_5 = x_15;
-                    goto block_3;
-                }
-                case 6: {
-                    x_17 = (uint8_t)1u;
-                    return x_17;
-                }
-                default: {
-                    x_18 = (uint8_t)0u;
-                    return x_18;
-                }
-            }
-        }
-        case 3: {
-            switch (lungo_obj_tag(x_1)) {
-                case 3: {
-                    x_19 = (uint8_t)1u;
-                    return x_19;
-                }
-                case 4: {
-                    x_20 = (uint8_t)1u;
-                    return x_20;
-                }
-                case 5: {
-                    x_21 = (uint8_t)1u;
-                    return x_21;
-                }
-                default: {
-                    x_22 = (uint8_t)0u;
-                    return x_22;
-                }
-            }
-        }
-        case 4: {
-            switch (lungo_obj_tag(x_1)) {
-                case 4: {
-                    x_23 = lungo_ctor_get(x_2, 0);
-                    x_24 = lungo_ctor_get(x_1, 0);
-                    x_25 = capdagFormal__l_String_ddecEq(x_24, x_23);
-                    return x_25;
-                }
-                case 5: {
-                    x_26 = lungo_ctor_get(x_2, 0);
-                    x_27 = lungo_ctor_get(x_1, 0);
-                    x_4 = x_27;
-                    x_5 = x_26;
-                    goto block_3;
-                }
-                default: {
-                    x_28 = (uint8_t)0u;
-                    return x_28;
-                }
-            }
-        }
-        case 5: {
-            switch (lungo_obj_tag(x_1)) {
-                case 5: {
-                    x_29 = lungo_ctor_get(x_2, 0);
-                    x_30 = lungo_ctor_get(x_1, 0);
-                    x_31 = capdagFormal__l_String_ddecEq(x_30, x_29);
-                    return x_31;
-                }
-                default: {
-                    x_32 = (uint8_t)0u;
-                    return x_32;
-                }
-            }
-        }
-        case 6: {
-            switch (lungo_obj_tag(x_1)) {
-                case 6: {
-                    x_33 = (uint8_t)1u;
-                    return x_33;
-                }
-                default: {
-                    x_34 = (uint8_t)0u;
-                    return x_34;
-                }
-            }
+    x_7 = capdagFormal__l_TaggedUrn_dConstraint_dmayBeAbsent(x_1);
+    switch (x_7) {
+        case 0: {
+            goto block_3;
         }
         default: {
-            x_35 = (uint8_t)1u;
-            return x_35;
+            x_8 = capdagFormal__l_TaggedUrn_dConstraint_dmayBeAbsent(x_2);
+            switch (x_8) {
+                case 0: {
+                    return x_8;
+                }
+                default: {
+                    goto block_3;
+                }
+            }
         }
     }
     block_3:;
-    x_6 = capdagFormal__l_String_ddecEq(x_4, x_5);
-    switch (x_6) {
-        case 0: {
-            x_7 = (uint8_t)1u;
-            return x_7;
-        }
-        default: {
-            x_8 = (uint8_t)0u;
-            return x_8;
-        }
-    }
+    x_4 = capdagFormal__l_TaggedUrn_dConstraint_dvals(x_1);
+    x_5 = capdagFormal__l_TaggedUrn_dConstraint_dvals(x_2);
+    x_6 = capdagFormal__l_TaggedUrn_dValues_dsub(x_4, x_5);
+    lungo_dec_ref(x_5);
+    lungo_dec_ref(x_4);
+    return x_6;
 }
 
 /* Lean: TaggedUrn.tagMeets */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:158:1 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:361:1 */
 uint8_t capdagFormal__l_TaggedUrn_dtagMeets(lungo_obj x_1, lungo_obj x_2) {
-    lungo_obj x_4;
+    uint8_t x_4;
     lungo_obj x_5;
-    uint8_t x_6;
-    uint8_t x_7;
+    lungo_obj x_6;
+    lungo_obj x_7;
     uint8_t x_8;
     uint8_t x_9;
     uint8_t x_10;
     uint8_t x_11;
-    uint8_t x_12;
-    uint8_t x_13;
-    uint8_t x_14;
-    uint8_t x_15;
-    uint8_t x_16;
-    uint8_t x_17;
-    uint8_t x_18;
-    lungo_obj x_19;
-    lungo_obj x_20;
-    uint8_t x_21;
-    lungo_obj x_22;
-    lungo_obj x_24;
-    uint8_t x_25;
-    uint8_t x_26;
-    uint8_t x_27;
-    uint8_t x_28;
-    uint8_t x_29;
-    uint8_t x_30;
-    lungo_obj x_31;
-    uint8_t x_32;
-    lungo_obj x_33;
-    lungo_obj x_34;
-    uint8_t x_35;
-    uint8_t x_36;
-    uint8_t x_37;
-    uint8_t x_38;
-    lungo_obj x_39;
-    lungo_obj x_40;
-    uint8_t x_41;
-    uint8_t x_42;
-    uint8_t x_43;
-    uint8_t x_44;
-    uint8_t x_45;
-    switch (lungo_obj_tag(x_1)) {
+    x_10 = capdagFormal__l_TaggedUrn_dConstraint_dmayBeAbsent(x_1);
+    switch (x_10) {
         case 0: {
-            x_9 = (uint8_t)1u;
-            return x_9;
-        }
-        case 1: {
-            x_10 = (uint8_t)1u;
-            return x_10;
-        }
-        case 6: {
-            switch (lungo_obj_tag(x_2)) {
-                case 0: {
-                    x_11 = (uint8_t)1u;
-                    return x_11;
-                }
-                case 1: {
-                    x_12 = (uint8_t)1u;
-                    return x_12;
-                }
-                case 6: {
-                    x_13 = (uint8_t)1u;
-                    return x_13;
-                }
-                case 2: {
-                    x_14 = (uint8_t)1u;
-                    return x_14;
-                }
-                default: {
-                    x_15 = (uint8_t)0u;
-                    return x_15;
-                }
-            }
-        }
-        case 2: {
-            switch (lungo_obj_tag(x_2)) {
-                case 0: {
-                    x_16 = (uint8_t)1u;
-                    return x_16;
-                }
-                case 1: {
-                    x_17 = (uint8_t)1u;
-                    return x_17;
-                }
-                case 6: {
-                    x_18 = (uint8_t)1u;
-                    return x_18;
-                }
-                case 5: {
-                    x_19 = lungo_ctor_get(x_1, 0);
-                    x_20 = lungo_ctor_get(x_2, 0);
-                    x_4 = x_19;
-                    x_5 = x_20;
-                    goto block_3;
-                }
-                default: {
-                    x_21 = (uint8_t)1u;
-                    return x_21;
-                }
-            }
-        }
-        case 5: {
-            x_22 = lungo_ctor_get(x_1, 0);
-            switch (lungo_obj_tag(x_2)) {
-                case 0: {
-                    x_28 = (uint8_t)1u;
-                    return x_28;
-                }
-                case 1: {
-                    x_29 = (uint8_t)1u;
-                    return x_29;
-                }
-                case 6: {
-                    x_30 = (uint8_t)0u;
-                    return x_30;
-                }
-                case 5: {
-                    x_31 = lungo_ctor_get(x_2, 0);
-                    x_32 = capdagFormal__l_String_ddecEq(x_22, x_31);
-                    return x_32;
-                }
-                case 4: {
-                    x_33 = lungo_ctor_get(x_2, 0);
-                    x_24 = x_33;
-                    goto block_23;
-                }
-                case 2: {
-                    x_34 = lungo_ctor_get(x_2, 0);
-                    x_24 = x_34;
-                    goto block_23;
-                }
-                default: {
-                    x_35 = (uint8_t)1u;
-                    return x_35;
-                }
-            }
-            block_23:;
-            x_25 = capdagFormal__l_String_ddecEq(x_22, x_24);
-            switch (x_25) {
-                case 0: {
-                    x_26 = (uint8_t)1u;
-                    return x_26;
-                }
-                default: {
-                    x_27 = (uint8_t)0u;
-                    return x_27;
-                }
-            }
-        }
-        case 4: {
-            switch (lungo_obj_tag(x_2)) {
-                case 0: {
-                    x_36 = (uint8_t)1u;
-                    return x_36;
-                }
-                case 1: {
-                    x_37 = (uint8_t)1u;
-                    return x_37;
-                }
-                case 6: {
-                    x_38 = (uint8_t)0u;
-                    return x_38;
-                }
-                case 5: {
-                    x_39 = lungo_ctor_get(x_1, 0);
-                    x_40 = lungo_ctor_get(x_2, 0);
-                    x_4 = x_39;
-                    x_5 = x_40;
-                    goto block_3;
-                }
-                default: {
-                    x_41 = (uint8_t)1u;
-                    return x_41;
-                }
-            }
+            x_4 = x_10;
+            goto block_3;
         }
         default: {
-            switch (lungo_obj_tag(x_2)) {
-                case 0: {
-                    x_42 = (uint8_t)1u;
-                    return x_42;
-                }
-                case 1: {
-                    x_43 = (uint8_t)1u;
-                    return x_43;
-                }
-                case 6: {
-                    x_44 = (uint8_t)0u;
-                    return x_44;
-                }
-                default: {
-                    x_45 = (uint8_t)1u;
-                    return x_45;
-                }
-            }
+            x_11 = capdagFormal__l_TaggedUrn_dConstraint_dmayBeAbsent(x_2);
+            x_4 = x_11;
+            goto block_3;
         }
     }
     block_3:;
-    x_6 = capdagFormal__l_String_ddecEq(x_5, x_4);
-    switch (x_6) {
+    switch (x_4) {
         case 0: {
-            x_7 = (uint8_t)1u;
-            return x_7;
+            x_5 = capdagFormal__l_TaggedUrn_dConstraint_dvals(x_1);
+            x_6 = capdagFormal__l_TaggedUrn_dConstraint_dvals(x_2);
+            x_7 = capdagFormal__l_TaggedUrn_dValues_dmeet(x_5, x_6);
+            x_8 = capdagFormal__l_TaggedUrn_dValues_dnone(x_7);
+            lungo_dec_ref(x_7);
+            switch (x_8) {
+                case 0: {
+                    x_9 = (uint8_t)1u;
+                    return x_9;
+                }
+                default: {
+                    return x_4;
+                }
+            }
         }
         default: {
-            x_8 = (uint8_t)0u;
-            return x_8;
+            return x_4;
         }
     }
 }
 
 /* Lean: TaggedUrn.tagMeets._boxed */
 /* Compiled from: TaggedUrn.tagMeets */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:158:1 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Constraint.lean:361:1 */
 lungo_obj capdagFormal__l_TaggedUrn_dtagMeets_d__boxed(lungo_obj x_1, lungo_obj x_2) {
     uint8_t x_3;
     lungo_obj x_4;

@@ -186,7 +186,7 @@ func (s InputStructure) ApplyToUrn(baseUrn string) string {
 		if hasRecord {
 			return baseUrn
 		}
-		withRecord, err := mediaUrn.WithTag("record", taggedurn.ConstraintPresent{})
+		withRecord, err := mediaUrn.WithTag("record", taggedurn.Present())
 		if err != nil {
 			panic(fmt.Sprintf("failed to add the record marker to '%s': %v", mediaUrn, err))
 		}

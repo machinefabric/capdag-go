@@ -142,6 +142,14 @@ type StoredMediaDef struct {
 	Extensions []string         `json:"extensions,omitempty"`
 }
 
+// IsBookend reports whether a value of this media can begin or end a planned
+// machine (a strand bookend): its definition lists a file extension, so it can
+// be read from a file or saved as one. The one rule every planner graph marks
+// its bookends by. Matches Rust: StoredMediaDef::is_bookend
+func (s *StoredMediaDef) IsBookend() bool {
+	return len(s.Extensions) > 0
+}
+
 // ToMediaDef converts StoredMediaDef to MediaDef
 func (s *StoredMediaDef) ToMediaDef() MediaDef {
 	return MediaDef{

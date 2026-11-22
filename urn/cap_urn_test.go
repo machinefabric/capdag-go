@@ -689,6 +689,24 @@ func Test031_wildcard_restrictions(t *testing.T) {
 	assert.True(t, validValue.HasMarkerTag("key"))
 }
 
+// TEST7230: a cap-tag may be a set of values, and a value given twice in one set
+// is refused as a DuplicateValue.
+func Test7230_a_cap_tag_set_and_a_value_given_twice(t *testing.T) {
+	cap, err := NewCapUrnFromString(testUrn("format=yaml|json"))
+	require.NoError(t, err)
+	format, ok := cap.GetTag("format")
+	require.True(t, ok)
+	assert.Equal(t, taggedurn.OneOf([]string{"json", "yaml"}, false), format)
+	assert.Contains(t, cap.String(), "format=json|yaml")
+
+	duplicate, err := NewCapUrnFromString(testUrn("format=json|json"))
+	assert.Nil(t, duplicate)
+	capError, ok := err.(*CapUrnError)
+	require.True(t, ok, "%v", err)
+	assert.Equal(t, ErrorDuplicateValue, capError.Code)
+	assert.Contains(t, capError.Message, "json")
+}
+
 // TEST32: Test duplicate keys are rejected with DuplicateKey error
 func Test032_duplicate_key_rejection(t *testing.T) {
 	duplicate, err := NewCapUrnFromString(testUrn("key=value1;key=value2"))
@@ -753,7 +771,7 @@ func Test035_has_tag_case_sensitive(t *testing.T) {
 // TEST36: Test with_tag preserves value case
 func Test036_with_tag_preserves_value(t *testing.T) {
 	cap := NewCapUrn(standard.MediaVoid, standard.MediaObject, map[string]taggedurn.Constraint{})
-	modified, err := cap.WithTag("key", taggedurn.ConstraintExact{Value: "ValueWithCase"})
+	modified, err := cap.WithTag("key", taggedurn.Exact("ValueWithCase"))
 	require.NoError(t, err)
 
 	value, exists := modified.ExactValue("key")
@@ -764,7 +782,7 @@ func Test036_with_tag_preserves_value(t *testing.T) {
 // TEST37: Test with_tag rejects empty value
 func Test037_with_tag_rejects_empty_value(t *testing.T) {
 	cap := NewCapUrn(standard.MediaVoid, standard.MediaObject, map[string]taggedurn.Constraint{})
-	modified, err := cap.WithTag("key", taggedurn.ConstraintExact{Value: ""})
+	modified, err := cap.WithTag("key", taggedurn.Exact(""))
 	assert.Error(t, err, "with_tag should reject empty value")
 	assert.Nil(t, modified)
 }
@@ -1236,7 +1254,7 @@ func Test566_with_tag_ignores_in_out(t *testing.T) {
 	)
 	require.NoError(t, err)
 	for _, key := range []string{"in", "out", "effect"} {
-		_, err := cap.WithTag(key, taggedurn.ConstraintExact{Value: "media:"})
+		_, err := cap.WithTag(key, taggedurn.Exact("media:"))
 		capError, ok := err.(*CapUrnError)
 		require.True(t, ok, key)
 		assert.Equal(t, ErrorInvalidTagFormat, capError.Code, key)
@@ -2287,7 +2305,7 @@ func Test8123_effect_conformance_patch_requires_patched_input(t *testing.T) {
 
 // TEST6759: NewCapUrnWithEffect and NewCapUrnFromTags read direction tags as parsing does: * is media:, an empty spec is refused, and a cap-tag map naming a structural key is refused
 func Test6759_constructors_normalize_directions_like_parsing(t *testing.T) {
-	op := map[string]taggedurn.Constraint{"op": taggedurn.ConstraintPresent{}}
+	op := map[string]taggedurn.Constraint{"op": taggedurn.Present()}
 	made, err := NewCapUrnWithEffect("*", "media:record", "declared", op)
 	require.NoError(t, err)
 	parsed, err := NewCapUrnFromString("cap:op;out=media:record")
@@ -2295,7 +2313,7 @@ func Test6759_constructors_normalize_directions_like_parsing(t *testing.T) {
 	assert.True(t, made.Equals(parsed))
 
 	fromTags, err := NewCapUrnFromTags(map[string]taggedurn.Constraint{
-		"in": taggedurn.ConstraintPresent{}, "out": taggedurn.ConstraintPresent{}, "op": taggedurn.ConstraintPresent{},
+		"in": taggedurn.Present(), "out": taggedurn.Present(), "op": taggedurn.Present(),
 	})
 	require.NoError(t, err)
 	parsedStars, err := NewCapUrnFromString("cap:in=*;op;out=*")
@@ -2305,7 +2323,7 @@ func Test6759_constructors_normalize_directions_like_parsing(t *testing.T) {
 	_, err = NewCapUrnWithEffect("", "media:record", "declared", op)
 	require.Error(t, err)
 
-	structural := map[string]taggedurn.Constraint{"op": taggedurn.ConstraintPresent{}, "in": taggedurn.ConstraintExact{Value: "media:pdf"}}
+	structural := map[string]taggedurn.Constraint{"op": taggedurn.Present(), "in": taggedurn.Exact("media:pdf")}
 	_, err = NewCapUrnWithEffect("media:pdf", "media:record", "declared", structural)
 	capError, ok := err.(*CapUrnError)
 	require.True(t, ok, "%v", err)
