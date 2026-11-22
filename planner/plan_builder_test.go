@@ -92,9 +92,9 @@ func Test766_validation_to_json_with_constraints(t *testing.T) {
 
 // TEST880: Tests duplicate detection passes for caps with unique URN combinations Verifies that check_for_duplicate_caps() correctly accepts caps with different op/in/out combinations
 func Test880_no_duplicates_with_unique_caps(t *testing.T) {
-	c1, err := makeTestCap("extract_metadata", "media:document;ext=pdf", "media:file-metadata;record;enc=utf8", "Extract Metadata")
+	c1, err := makeTestCap("extract-metadata", "media:document;ext=pdf", "media:file-metadata;record;enc=utf8", "Extract Metadata")
 	require.NoError(t, err)
-	c2, err := makeTestCap("extract_outline", "media:document;ext=pdf", "media:document-outline;record;enc=utf8", "Extract Outline")
+	c2, err := makeTestCap("extract-outline", "media:document;ext=pdf", "media:document-outline;record;enc=utf8", "Extract Outline")
 	require.NoError(t, err)
 	c3, err := makeTestCap("disbind", "media:document;ext=pdf", "media:disbound-pages;list;enc=utf8", "Disbind PDF")
 	require.NoError(t, err)
@@ -132,9 +132,9 @@ func Test992_different_ops_same_types_not_duplicates(t *testing.T) {
 
 // TEST993: Tests caps with same operation but different input types are not duplicates Verifies that input type differences distinguish caps with the same operation name
 func Test993_same_op_different_input_types_not_duplicates(t *testing.T) {
-	c1, err := makeTestCap("extract_metadata", "media:document;ext=pdf", "media:file-metadata;record;enc=utf8", "Extract PDF Metadata")
+	c1, err := makeTestCap("extract-metadata", "media:document;ext=pdf", "media:file-metadata;record;enc=utf8", "Extract PDF Metadata")
 	require.NoError(t, err)
-	c2, err := makeTestCap("extract_metadata", "media:txt;enc=utf8", "media:file-metadata;record;enc=utf8", "Extract TXT Metadata")
+	c2, err := makeTestCap("extract-metadata", "media:txt;enc=utf8", "media:file-metadata;record;enc=utf8", "Extract TXT Metadata")
 	require.NoError(t, err)
 
 	count, err := checkForDuplicateCaps([]*cap.Cap{c1, c2})
