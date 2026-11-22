@@ -55,7 +55,7 @@ const (
 	ValueAdapterNotInside = "not-inside"
 )
 
-type registeredAdapter struct {
+type registeredValueAdapter struct {
 	key     *urn.MediaUrn
 	adapter ValueAdapter
 }
@@ -69,7 +69,7 @@ type registeredAdapter struct {
 // specific keys neither of which refines the other are ambiguous, and refused.
 type ValueAdapterRegistry struct {
 	// adapters by the key they are registered under, in registration order.
-	adapters []registeredAdapter
+	adapters []registeredValueAdapter
 }
 
 // NewValueAdapterRegistry creates an empty registry.
@@ -101,7 +101,7 @@ func (r *ValueAdapterRegistry) Register(key string, adapter ValueAdapter) error 
 			}
 		}
 	}
-	r.adapters = append(r.adapters, registeredAdapter{key: k, adapter: adapter})
+	r.adapters = append(r.adapters, registeredValueAdapter{key: k, adapter: adapter})
 	return nil
 }
 

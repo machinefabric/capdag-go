@@ -23,7 +23,7 @@ func capTestUrn(tags string) string {
 
 // TEST108: Test creating new cap with URN, title, and command verifies correct initialization
 func Test108_cap_creation(t *testing.T) {
-	id, err := urn.NewCapUrnFromString(capTestUrn("transform;format=json;data_processing"))
+	id, err := urn.NewCapUrnFromString(capTestUrn("transform;format=json;data-processing"))
 	require.NoError(t, err)
 
 	cap := NewCap(id, "Transform JSON Data", []string{"test-command"})
@@ -68,15 +68,15 @@ func Test109_cap_with_metadata(t *testing.T) {
 
 // TEST110: Test cap matching with subset semantics for request fulfillment
 func Test110_cap_matching(t *testing.T) {
-	// Use type=data_processing key-value instead of flag for proper matching
-	id, err := urn.NewCapUrnFromString(capTestUrn("transform;format=json;type=data_processing"))
+	// Use type=data-processing key-value instead of flag for proper matching
+	id, err := urn.NewCapUrnFromString(capTestUrn("transform;format=json;type=data-processing"))
 	require.NoError(t, err)
 
 	cap := NewCap(id, "Transform JSON Data", []string{"test-command"})
 
-	assert.True(t, cap.MatchesRequest(capTestUrn("transform;format=json;type=data_processing")))
-	assert.True(t, cap.MatchesRequest(capTestUrn("transform;format=*;type=data_processing")))
-	assert.True(t, cap.MatchesRequest(capTestUrn("type=data_processing")))
+	assert.True(t, cap.MatchesRequest(capTestUrn("transform;format=json;type=data-processing")))
+	assert.True(t, cap.MatchesRequest(capTestUrn("transform;format=*;type=data-processing")))
+	assert.True(t, cap.MatchesRequest(capTestUrn("type=data-processing")))
 	assert.False(t, cap.MatchesRequest(capTestUrn("type=compute")))
 }
 

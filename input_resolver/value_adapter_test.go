@@ -11,7 +11,7 @@ import (
 	taggedurn "github.com/machinefabric/tagged-urn-go"
 )
 
-func media(t *testing.T, s string) *urn.MediaUrn {
+func mediaUrnOf(t *testing.T, s string) *urn.MediaUrn {
 	t.Helper()
 	m, err := urn.NewMediaUrnFromString(s)
 	require.NoError(t, err, s)
@@ -93,9 +93,9 @@ func Test1221_RefineWithMatchingAdapter(t *testing.T) {
 	registry := NewValueAdapterRegistry()
 	require.NoError(t, registry.Register("media:test", specialAdapter{}))
 
-	result, err := registry.RefineMediaUrn(media(t, "media:test;enc=utf8"), "a-special-value")
+	result, err := registry.RefineMediaUrn(mediaUrnOf(t, "media:test;enc=utf8"), "a-special-value")
 	require.NoError(t, err)
-	assert.True(t, result.IsEquivalent(media(t, "media:enc=utf8;refined;test")), result.String())
+	assert.True(t, result.IsEquivalent(mediaUrnOf(t, "media:enc=utf8;refined;test")), result.String())
 }
 
 // TEST1222: Base URNs without a registered adapter are returned unchanged.
@@ -103,7 +103,7 @@ func Test1222_RefineNoMatchingAdapter(t *testing.T) {
 	registry := NewValueAdapterRegistry()
 	require.NoError(t, registry.Register("media:test", specialAdapter{}))
 
-	base := media(t, "media:other;enc=utf8")
+	base := mediaUrnOf(t, "media:other;enc=utf8")
 	result, err := registry.RefineMediaUrn(base, "a-special-value")
 	require.NoError(t, err)
 	assert.True(t, result.IsEquivalent(base))
@@ -114,7 +114,7 @@ func Test1223_RefineAdapterReturnsNone(t *testing.T) {
 	registry := NewValueAdapterRegistry()
 	require.NoError(t, registry.Register("media:test", specialAdapter{}))
 
-	base := media(t, "media:test;enc=utf8")
+	base := mediaUrnOf(t, "media:test;enc=utf8")
 	result, err := registry.RefineMediaUrn(base, "ordinary-value")
 	require.NoError(t, err)
 	assert.True(t, result.IsEquivalent(base))
@@ -126,7 +126,7 @@ func Test1224_RefineMostSpecificKey(t *testing.T) {
 	require.NoError(t, registry.Register("media:test", specialAdapter{}))
 	require.NoError(t, registry.Register("media:specific;test", specificAdapter{}))
 
-	result, err := registry.RefineMediaUrn(media(t, "media:foo;specific;test"), "a-special-value")
+	result, err := registry.RefineMediaUrn(mediaUrnOf(t, "media:foo;specific;test"), "a-special-value")
 	require.NoError(t, err)
 	assert.True(t, result.HasMarkerTag("chosen-specific"), result.String())
 	assert.False(t, result.HasMarkerTag("refined"), result.String())
@@ -135,7 +135,7 @@ func Test1224_RefineMostSpecificKey(t *testing.T) {
 // TEST1225: An empty value adapter registry returns the input media URN unchanged.
 func Test1225_EmptyRegistry(t *testing.T) {
 	registry := NewValueAdapterRegistry()
-	base := media(t, "media:anything")
+	base := mediaUrnOf(t, "media:anything")
 	result, err := registry.RefineMediaUrn(base, "any-value")
 	require.NoError(t, err)
 	assert.True(t, result.IsEquivalent(base))
@@ -158,7 +158,7 @@ func Test1226_HasAdapter(t *testing.T) {
 func Test1228_ValueAdapterRefineMatch(t *testing.T) {
 	result := testValueAdapter{}.Refine("media:enc=utf8;test", "something-special")
 	require.NotNil(t, result)
-	assert.True(t, media(t, result.MediaUrn).IsEquivalent(media(t, "media:enc=utf8;special;test")), result.MediaUrn)
+	assert.True(t, mediaUrnOf(t, result.MediaUrn).IsEquivalent(mediaUrnOf(t, "media:enc=utf8;special;test")), result.MediaUrn)
 }
 
 // TEST1229: Value adapters return no refinement when the base media URN is outside their domain.
@@ -186,13 +186,13 @@ func Test6758_ValueAdaptersChosenByInclusion(t *testing.T) {
 	assert.Equal(t, ValueAdapterDuplicateKey, adapterErrorKind(t, registry.Register("MEDIA:A", specialAdapter{})))
 
 	require.NoError(t, registry.Register("media:b", specialAdapter{}))
-	_, err := registry.RefineMediaUrn(media(t, "media:a;b"), "special")
+	_, err := registry.RefineMediaUrn(mediaUrnOf(t, "media:a;b"), "special")
 	assert.Equal(t, ValueAdapterAmbiguous, adapterErrorKind(t, err))
 	assert.Contains(t, err.Error(), "'media:a' and 'media:b'")
 
 	outside := NewValueAdapterRegistry()
 	require.NoError(t, outside.Register("media:a", fixedAdapter("media:other")))
-	_, err = outside.RefineMediaUrn(media(t, "media:a"), "v")
+	_, err = outside.RefineMediaUrn(mediaUrnOf(t, "media:a"), "v")
 	assert.Equal(t, ValueAdapterNotInside, adapterErrorKind(t, err))
 
 	// A key fires for a base that falls under it whatever the base's text
@@ -200,7 +200,7 @@ func Test6758_ValueAdaptersChosenByInclusion(t *testing.T) {
 	asked := false
 	modelSpec := NewValueAdapterRegistry()
 	require.NoError(t, modelSpec.Register("media:model-spec", askedAdapter{asked: &asked}))
-	_, err = modelSpec.RefineMediaUrn(media(t, "media:enc=utf8;llm;model-spec"), "hf:x")
+	_, err = modelSpec.RefineMediaUrn(mediaUrnOf(t, "media:enc=utf8;llm;model-spec"), "hf:x")
 	require.NoError(t, err)
 	assert.True(t, asked)
 }
