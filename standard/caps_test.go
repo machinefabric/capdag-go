@@ -142,7 +142,7 @@ func Test850_all_format_conversion_paths_build_valid_urns(t *testing.T) {
 	assert.True(t, len(paths) > 0, "Format conversion paths must not be empty")
 
 	for _, p := range paths {
-		urnStr := FormatConversionUrn(p.InMedia, p.OutMedia, p.Patch)
+		urnStr := FormatConversionUrn(p)
 		assert.True(t, strings.HasPrefix(urnStr, "cap:"),
 			"Format conversion URN must be a cap URN, got %s", urnStr)
 		assert.True(t, strings.Contains(urnStr, "convert-format"),
@@ -152,7 +152,7 @@ func Test850_all_format_conversion_paths_build_valid_urns(t *testing.T) {
 
 // TEST851: format_conversion_urn in/out specs match the input constants
 func Test851_format_conversion_urn_specs(t *testing.T) {
-	urnStr := FormatConversionUrn(MediaJSONValue, MediaYAMLContent, true)
+	urnStr := FormatConversionUrn(AllFormatConversionPaths()[0])
 	assert.True(t, strings.Contains(urnStr, "convert-format"), "must have convert-format")
 	assert.True(t, strings.Contains(urnStr, "in="), "must have in spec")
 	assert.True(t, strings.Contains(urnStr, "out="), "must have out spec")

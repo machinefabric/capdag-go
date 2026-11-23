@@ -2,7 +2,7 @@
 
 Generated from the test catalogue. Edit the tests, not this file.
 
-1454 tests: 1431 numbered, 23 unnumbered.
+1455 tests: 1432 numbered, 23 unnumbered.
 
 ## Numbered
 
@@ -1315,6 +1315,7 @@ Generated from the test catalogue. Edit the tests, not this file.
 | TEST7231 | capdag/capdag-go | go | `Test7231_a_media_type_splits_into_its_shapes_and_ends_on_their_bookends` | urn/media_urn_test.go:759 | TEST7231: a media type splits into the shapes it may have — absence apart from presence, each value of a set apart — and ends on the bookends those shapes are, read complete; one shape that is no bookend ends it on none. |
 | TEST7240 | capdag/capdag-go | go | `Test7240_InProcessHostTiesGoToTheFirstRegistered` | bifaci/in_process_host_test.go:649 | TEST7240: The in-process host chooses among tied handlers by the proved selection: the first registered, every time |
 | TEST7242 | capdag/capdag-go | go | `Test7242_media_def_kind_predicates_read_the_marker` | media/spec_test.go:670 | TEST7242: A resolved media definition's kind predicates read the marker: !x and ?x are not x |
+| TEST7243 | capdag/capdag-go | go | `Test7243_format_conversion_urns_are_the_published_caps` | standard/format_conversion_test.go:15 | TEST7243: every format conversion's URN is its published cap's: the JSON↔YAML patches carry the json-to-yaml and yaml-to-json markers their caps carry, so a request for either names a cap that the path's URN serves. |
 | TEST7270 | capdag/capdag-go | go | `Test7270_retry_is_refused_on_a_step_that_streams` | machine/notation_test.go:919 | TEST7270: a step given `retry` whose cap declares a streaming output is refused when the machine is read. A retried step's outputs are held until an attempt succeeds, and a streaming output, which may never end, cannot be held. The same step with no retry, or with only `on_error`, resolves, and `retry` on a step whose outputs are all bounded still does. |
 | TEST7271 | capdag/capdag-go | go | `Test7271_paths_of_as_many_steps_are_ordered_by_specificity` | planner/live_cap_fab_test.go:243 | TEST7271: Among paths with as many cap steps, the one whose steps' specificities sum higher comes first, whatever order the caps were added in |
 | TEST7272 | capdag/capdag-go | go | `Test7272_equal_paths_are_ordered_structurally_not_by_text` | planner/live_cap_fab_test.go:266 | TEST7272: Paths equal in cap steps and specificity are ordered by their cap URNs' structure, not by their text or titles |
