@@ -1076,7 +1076,7 @@ func (c *CapUrn) Equals(other *CapUrn) bool {
 
 	for key, value := range c.tags {
 		otherValue, exists := other.tags[key]
-		if !exists || value != otherValue {
+		if !exists || !taggedurn.ConstraintsEqual(value, otherValue) {
 			return false
 		}
 	}
