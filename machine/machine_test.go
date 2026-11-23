@@ -1458,7 +1458,7 @@ func Test1308_CyclicStrandFailsHard(t *testing.T) {
 }
 
 // TEST12836: a strand's steps name where each input comes from. A strand's own
-// input, taken by two steps, is one node holding the most specific type either
+// input, taken by two steps, is one node holding the narrower type either
 // declares for it; a step that names a producer no step of the strand is makes
 // the strand disconnected, and is refused.
 func Test12836_a_strand_input_is_one_node_and_a_missing_producer_is_refused(t *testing.T) {
@@ -1504,7 +1504,7 @@ func Test12836_a_strand_input_is_one_node_and_a_missing_producer_is_refused(t *t
 		require.Len(t, resolved.InputAnchorIds(), 1)
 		anchor := resolved.InputAnchorIds()[0]
 		assert.True(t, resolved.NodeUrn(anchor).IsEquivalent(mediaUrn("media:enc=utf8;page")),
-			"the most specific type a step declares for it, whichever step comes first")
+			"the narrower type a step declares for it, whichever step comes first")
 		for _, edge := range resolved.Edges() {
 			assert.Equal(t, []NodeId{anchor}, edge.SourceNodes())
 		}
@@ -1518,6 +1518,62 @@ func Test12836_a_strand_input_is_one_node_and_a_missing_producer_is_refused(t *t
 	assert.Equal(t, ErrAbstractionDisconnectedStrand, err.Kind)
 	require.NotNil(t, err.StrandIndex)
 	assert.Equal(t, 4, *err.StrandIndex)
+}
+
+// TEST7228: two steps that take the strand's input give it two types; the node
+// keeps the one inside the other, even where the two score the same specificity
+// (`ext=jpeg|png|webp` and `ext=jpeg|png`), and two types neither of which is
+// inside the other are a conflict.
+func Test7228_a_strand_input_keeps_the_narrower_of_two_types(t *testing.T) {
+	const (
+		wideUrn   = `cap:in="media:ext=jpeg|png|webp;image";measure;out="media:numeric;size"`
+		narrowUrn = `cap:in="media:ext=jpeg|png;image";thumbnail;out="media:ext=png;image;thumbnail"`
+		otherUrn  = `cap:in="media:ext=png|webp;image";sharpen;out="media:ext=png;image;sharp"`
+	)
+	registry := registryWith([]*cap.Cap{
+		buildCap(wideUrn, "measure", []string{"media:ext=jpeg|png|webp;image"}, "media:numeric;size"),
+		buildCap(narrowUrn, "thumbnail", []string{"media:ext=jpeg|png;image"}, "media:ext=png;image;thumbnail"),
+		buildCap(otherUrn, "sharpen", []string{"media:ext=png|webp;image"}, "media:ext=png;image;sharp"),
+	})
+	wide := func() *planner.StrandStep {
+		return capStep(wideUrn, "measure", "media:ext=jpeg|png|webp;image", "media:numeric;size")
+	}
+	narrow := func() *planner.StrandStep {
+		return capStep(narrowUrn, "thumbnail", "media:ext=jpeg|png;image", "media:ext=png;image;thumbnail")
+	}
+	other := func() *planner.StrandStep {
+		return capStep(otherUrn, "sharpen", "media:ext=png|webp;image", "media:ext=png;image;sharp")
+	}
+	strandOf := func(steps ...*planner.StrandStep) *planner.Strand {
+		return &planner.Strand{
+			Steps:          steps,
+			SourceMediaUrn: steps[0].FromSpec,
+			TargetMediaUrn: steps[len(steps)-1].ToSpec,
+			TotalSteps:     len(steps),
+			CapStepCount:   len(steps),
+			Description:    "fan-out",
+		}
+	}
+	assert.Equal(t,
+		mediaUrn("media:ext=jpeg|png|webp;image").Specificity(),
+		mediaUrn("media:ext=jpeg|png;image").Specificity(),
+		"the two types score the same")
+
+	for _, steps := range [][]*planner.StrandStep{{wide(), narrow()}, {narrow(), wide()}} {
+		resolved, err := resolveStrand(strandOf(steps...), registry, 0)
+		require.Nil(t, err)
+		anchor := resolved.InputAnchorIds()[0]
+		assert.True(t, resolved.NodeUrn(anchor).IsEquivalent(mediaUrn("media:ext=jpeg|png;image")),
+			"the type inside the other, whichever step comes first")
+	}
+
+	_, err := resolveStrand(strandOf(narrow(), other()), registry, 2)
+	require.NotNil(t, err)
+	assert.Equal(t, ErrAbstractionNodeMediaConflict, err.Kind)
+	assert.Equal(t,
+		"node 'strand 2 input' is given media URNs neither of which is inside the other: "+
+			"'media:ext=jpeg|png;image' and 'media:ext=png|webp;image'",
+		err.Message)
 }
 
 // TEST12837: the resolver holds a wiring it is handed to the names its cap's

@@ -24,7 +24,7 @@ func withMarker(base, marker string) string {
 	if err != nil {
 		panic(err)
 	}
-	refined, err := m.WithTag(marker, taggedurn.ConstraintPresent{})
+	refined, err := m.WithTag(marker, taggedurn.Present())
 	if err != nil {
 		panic(err)
 	}

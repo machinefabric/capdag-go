@@ -93,12 +93,12 @@ func Test12369_AQuerysTagsAreAskedOfTheTagsACapHas(t *testing.T) {
 	someImage := queryCap(t, `cap:render;in="media:document;ext=pdf";out="media:ext;image"`)
 	anyImage := queryMedia(t, "media:image")
 
-	converters, err := CapQueryProducing(anyImage, map[string]taggedurn.Constraint{"convert-image": taggedurn.ConstraintPresent{}})
+	converters, err := CapQueryProducing(anyImage, map[string]taggedurn.Constraint{"convert-image": taggedurn.Present()})
 	require.NoError(t, err)
 	assert.True(t, converters.Admits(toJpeg))
 	assert.False(t, converters.Admits(someImage), "it renders; it is not tagged convert-image")
 
-	notConverters, err := CapQueryProducing(anyImage, map[string]taggedurn.Constraint{"convert-image": taggedurn.ConstraintAbsent{}})
+	notConverters, err := CapQueryProducing(anyImage, map[string]taggedurn.Constraint{"convert-image": taggedurn.Absent()})
 	require.NoError(t, err)
 	assert.True(t, notConverters.Admits(someImage), "it does not have the tag")
 	assert.False(t, notConverters.Admits(toJpeg), "it has it")

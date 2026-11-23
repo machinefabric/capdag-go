@@ -3168,7 +3168,7 @@ static lungo_obj capdagFormal__l_CapDAG_dmediaVoid_d__closed__1__init(void) {
     lungo_obj x_1;
     lungo_obj x_2;
     lungo_obj x_3;
-    x_1 = lungo_box(3);
+    x_1 = capdagFormal__l_TaggedUrn_dConstraint_dpresent();
     x_2 = capdagFormal__l_CapDAG_dmediaVoid_d__closed__0();
     x_3 = lungo_alloc_ctor(0, 2, 0);
     lungo_ctor_set(x_3, 0, x_2);

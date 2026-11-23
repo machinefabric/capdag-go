@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	capformal "github.com/machinefabric/capdag-go/formal"
 	"github.com/machinefabric/capdag-go/standard"
 	taggedurn "github.com/machinefabric/tagged-urn-go"
 	taggedformal "github.com/machinefabric/tagged-urn-go/formal"
@@ -114,8 +115,7 @@ func (m *MediaUrn) ExactValue(tag string) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	exact, ok := c.(taggedurn.ConstraintExact)
-	return exact.Value, ok
+	return taggedurn.ExactValue(c)
 }
 
 // IsVoid returns true if this represents void/no data — the **unit
@@ -434,11 +434,10 @@ func (m *MediaUrn) ReferenceBase() *MediaUrn {
 // where branches of different media converge.
 //
 // Made by tagged-urn's proved model (taggedurn.LeastUpperBound): key by key, the
-// bound allows every state some input allows, and where no single form says
-// exactly that, it is the least bound that excludes only values the inputs
-// name.
+// bound allows exactly the states some input allows, and a key some input
+// allows every state of is left out.
 //
-//   - [media:document;ext=pdf, media:ext=png;image] -> media:ext
+//   - [media:document;ext=pdf, media:ext=png;image] -> media:ext=pdf|png
 //   - [media:ext=png, media:ext!=pdf] -> media:ext!=pdf (one holds the other)
 //   - [media:enc=utf8;fmt=json;list, media:enc=utf8;fmt=json] -> media:enc=utf8;fmt=json
 //   - no inputs -> media:
@@ -455,6 +454,52 @@ func LeastUpperBound(urns []*MediaUrn) *MediaUrn {
 		panic(fmt.Sprintf("capdag: the bound of media URNs: %v", err))
 	}
 	return &MediaUrn{inner: bound}
+}
+
+// Splits is the shapes this media type may have: at every key it writes,
+// absence apart from presence, and each value of a finite set apart from the
+// others; a key allowing every value but some stays whole. Read complete, the
+// parts hold exactly what this type holds.
+//
+//   - media:enc=utf8;fmt=json;?list -> media:enc=utf8;fmt=json;!list, media:enc=utf8;fmt=json;list
+//   - media:ext=jpeg|png;image -> media:ext=jpeg;image, media:ext=png;image
+func (m *MediaUrn) Splits() []*MediaUrn {
+	parts := decided(capformal.Splits(m.inner.Formal()))
+	out := make([]*MediaUrn, 0, len(parts))
+	for _, part := range parts {
+		out = append(out, mediaFromFormal(part))
+	}
+	return out
+}
+
+// EndsOn is the bookends a node of this type ends on: for each of its parts
+// (Splits), the first of bookends that is the same as the part read complete;
+// false when some part is none of them. A route reaching a node that ends on
+// bookends may give a file of any of them.
+func (m *MediaUrn) EndsOn(bookends []*MediaUrn) ([]*MediaUrn, bool) {
+	handles := make([]taggedformal.Wf, 0, len(bookends))
+	for _, b := range bookends {
+		handles = append(handles, b.inner.Formal())
+	}
+	ends := decided(capformal.EndsOn(handles, m.inner.Formal()))
+	if !ends.Valid {
+		return nil, false
+	}
+	out := make([]*MediaUrn, 0, len(ends.Value))
+	for _, end := range ends.Value {
+		out = append(out, mediaFromFormal(end))
+	}
+	return out, true
+}
+
+// mediaFromFormal is a media URN the generated model gave back for media URNs
+// it was handed.
+func mediaFromFormal(w taggedformal.Wf) *MediaUrn {
+	tagged, err := taggedurn.NewTaggedUrnFromFormal(w)
+	if err != nil {
+		panic(fmt.Sprintf("capdag: the model gave back a URN that is not well-formed: %v", err))
+	}
+	return &MediaUrn{inner: tagged}
 }
 
 // =========================================================================

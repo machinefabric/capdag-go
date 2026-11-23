@@ -97,6 +97,8 @@ const (
 	// ErrCharter: the registry's charter could not be had, or was refused.
 	// Nothing the registry serves is used without it.
 	ErrCharter ErrorKind = "charter"
+	// ErrCaps: the caps the pinned manifest names could not all be loaded.
+	ErrCaps ErrorKind = "caps"
 )
 
 // Error is a registry failure carrying the kind callers branch on.
@@ -1448,6 +1450,98 @@ func (r *FabricRegistry) GetCachedCaps() []*cap.Cap {
 	return out
 }
 
+// capFetchesAtOnce is how many caps ManifestCaps fetches at once on a cold
+// cache.
+const capFetchesAtOnce = 16
+
+// ManifestCaps is every cap the pinned manifest names — the whole capability
+// graph of the fabric — in URN order.
+//
+// The caps not in memory yet are fetched, capFetchesAtOnce at a time, each
+// with the media definitions and dims it names (GetCap), and kept in this
+// manifest version's cache; a later call, and a later command reading the same
+// cache, fetches nothing. What it answers never depends on what earlier
+// commands happened to fetch.
+//
+// A cap that cannot be had fails the call, naming each one and why (a refused
+// or unanswered fetch, a definition the registry does not hold, a fetch
+// blocked offline): an answer from part of the fabric's caps would be a wrong
+// answer.
+// Matches Rust: FabricRegistry::manifest_caps
+func (r *FabricRegistry) ManifestCaps() ([]*cap.Cap, error) {
+	r.mu.RLock()
+	manifestVersion := r.manifestVersion
+	named := len(r.manifest.Caps)
+	caps := make([]*cap.Cap, 0, named)
+	var missing []string
+	for key := range r.manifest.Caps {
+		if c, ok := r.cachedCaps[key]; ok {
+			caps = append(caps, c)
+		} else {
+			missing = append(missing, key)
+		}
+	}
+	r.mu.RUnlock()
+
+	type fetched struct {
+		urn string
+		c   *cap.Cap
+		err error
+	}
+	results := make(chan fetched, len(missing))
+	gate := make(chan struct{}, capFetchesAtOnce)
+	var fetches sync.WaitGroup
+	for _, key := range missing {
+		fetches.Add(1)
+		go func(key string) {
+			defer fetches.Done()
+			gate <- struct{}{}
+			defer func() { <-gate }()
+			c, err := r.GetCap(key)
+			results <- fetched{urn: key, c: c, err: err}
+		}(key)
+	}
+	fetches.Wait()
+	close(results)
+
+	var failures []string
+	for result := range results {
+		if result.err != nil {
+			failures = append(failures, fmt.Sprintf("%s: %v", result.urn, result.err))
+			continue
+		}
+		caps = append(caps, result.c)
+	}
+	if len(failures) > 0 {
+		sort.Strings(failures)
+		return nil, errf(ErrCaps,
+			"%d of the %d caps of manifest v%d could not be loaded, so the fabric's "+
+				"capabilities are not all known: %s",
+			len(failures), named, manifestVersion, strings.Join(failures, "; "))
+	}
+	sort.Slice(caps, func(i, j int) bool { return caps[i].Urn.String() < caps[j].Urn.String() })
+	return caps, nil
+}
+
+// ManifestMediaUrns is every media URN the pinned manifest publishes a
+// definition for, in no particular order. Nothing is fetched: the definitions
+// themselves are had with GetMediaDef.
+// Matches Rust: FabricRegistry::manifest_media_urns
+func (r *FabricRegistry) ManifestMediaUrns() ([]*urn.MediaUrn, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]*urn.MediaUrn, 0, len(r.manifest.Media))
+	for key := range r.manifest.Media {
+		mediaUrn, err := urn.NewMediaUrnFromString(key)
+		if err != nil {
+			return nil, &Error{Kind: ErrParse,
+				Message: fmt.Sprintf("the manifest publishes media '%s', which is not a media URN", key), Err: err}
+		}
+		out = append(out, mediaUrn)
+	}
+	return out, nil
+}
+
 // GetCachedCap is a synchronous in-memory lookup that never touches the
 // network: the cap, or why it is not at hand — ErrNotFound when the
 // registry's answer is that it has no such cap (the pinned manifest does not
@@ -1668,6 +1762,26 @@ func (r *FabricRegistry) MediaDefExists(urnStr string) (bool, error) {
 	default:
 		return false, err
 	}
+}
+
+// BookendUrns is a snapshot of every bookend media URN currently in the cache:
+// the cached media definitions that are bookends (StoredMediaDef.IsBookend).
+// Matches Rust: FabricRegistry::bookend_urns
+func (r *FabricRegistry) BookendUrns() []*urn.MediaUrn {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var out []*urn.MediaUrn
+	for _, spec := range r.cachedSpecs {
+		if !spec.IsBookend() {
+			continue
+		}
+		mediaUrn, err := urn.NewMediaUrnFromString(spec.Urn)
+		if err != nil {
+			panic(fmt.Sprintf("fabric registry invariant: cached media def URN '%s' is a valid MediaUrn: %v", spec.Urn, err))
+		}
+		out = append(out, mediaUrn)
+	}
+	return out
 }
 
 // FileMediaForExtension is the file media types a file with this extension

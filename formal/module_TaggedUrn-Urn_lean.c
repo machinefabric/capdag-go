@@ -2,6 +2,80 @@
 /* Compiled Lean module TaggedUrn.Urn. */
 #include "capdagFormal_program.h"
 
+/* Lean: List.any._at_.TaggedUrn.twoDistinct.spec_0 */
+/* Compiled from: List.any */
+/* Source: <lean>/Init/Data/List/Basic.lean:1894:1 */
+uint8_t capdagFormal__l_List_dany_d__at___dTaggedUrn_dtwoDistinct_dspec__0(lungo_obj x_1, lungo_obj x_2) {
+    uint8_t x_3;
+    lungo_obj x_4;
+    lungo_obj x_5;
+    uint8_t x_6;
+    uint8_t x_7;
+    _start:
+    switch (lungo_obj_tag(x_2)) {
+        case 0: {
+            x_3 = (uint8_t)0u;
+            return x_3;
+        }
+        default: {
+            x_4 = lungo_ctor_get(x_2, 0);
+            x_5 = lungo_ctor_get(x_2, 1);
+            x_6 = capdagFormal__l_String_ddecEq(x_1, x_4);
+            switch (x_6) {
+                case 0: {
+                    x_7 = (uint8_t)1u;
+                    return x_7;
+                }
+                default: {
+                    {
+                        lungo_obj t_0 = x_1;
+                        lungo_obj t_1 = x_5;
+                        x_1 = t_0;
+                        x_2 = t_1;
+                        goto _start;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/* Lean: List.any._at_.TaggedUrn.twoDistinct.spec_1 */
+/* Compiled from: List.any */
+/* Source: <lean>/Init/Data/List/Basic.lean:1894:1 */
+uint8_t capdagFormal__l_List_dany_d__at___dTaggedUrn_dtwoDistinct_dspec__1(lungo_obj x_1, lungo_obj x_2) {
+    uint8_t x_3;
+    lungo_obj x_4;
+    lungo_obj x_5;
+    uint8_t x_6;
+    _start:
+    switch (lungo_obj_tag(x_2)) {
+        case 0: {
+            x_3 = (uint8_t)0u;
+            return x_3;
+        }
+        default: {
+            x_4 = lungo_ctor_get(x_2, 0);
+            x_5 = lungo_ctor_get(x_2, 1);
+            x_6 = capdagFormal__l_List_dany_d__at___dTaggedUrn_dtwoDistinct_dspec__0(x_4, x_1);
+            switch (x_6) {
+                case 0: {
+                    {
+                        lungo_obj t_0 = x_1;
+                        lungo_obj t_1 = x_5;
+                        x_1 = t_0;
+                        x_2 = t_1;
+                        goto _start;
+                    }
+                }
+                default: {
+                    return x_6;
+                }
+            }
+        }
+    }
+}
+
 /* Lean: List.find?._at_.TaggedUrn.Urn.tag.spec_0 */
 /* Compiled from: List.find? */
 /* Source: <lean>/Init/Data/List/Basic.lean:1606:1 */
@@ -876,7 +950,7 @@ lungo_obj capdagFormal__l_TaggedUrn_dinstDecidableEqUrn_ddecEq_d__lam__0_d__boxe
 }
 
 /* Lean: TaggedUrn.instDecidableMeets */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:147:1 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:165:1 */
 uint8_t capdagFormal__l_TaggedUrn_dinstDecidableMeets(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     lungo_obj x_4;
@@ -912,7 +986,7 @@ uint8_t capdagFormal__l_TaggedUrn_dinstDecidableMeets(lungo_obj x_1, lungo_obj x
 
 /* Lean: TaggedUrn.instDecidableMeets._lam_0 */
 /* Compiled from: TaggedUrn.instDecidableMeets */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:147:1 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:165:1 */
 uint8_t capdagFormal__l_TaggedUrn_dinstDecidableMeets_d__lam__0(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3) {
     lungo_obj x_4;
     lungo_obj x_5;
@@ -927,7 +1001,7 @@ uint8_t capdagFormal__l_TaggedUrn_dinstDecidableMeets_d__lam__0(lungo_obj x_1, l
 
 /* Lean: TaggedUrn.instDecidableMeets._lam_0._boxed */
 /* Compiled from: TaggedUrn.instDecidableMeets */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:147:1 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:165:1 */
 lungo_obj capdagFormal__l_TaggedUrn_dinstDecidableMeets_d__lam__0_d__boxed(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3) {
     uint8_t x_4;
     lungo_obj x_5;
@@ -940,7 +1014,7 @@ lungo_obj capdagFormal__l_TaggedUrn_dinstDecidableMeets_d__lam__0_d__boxed(lungo
 }
 
 /* Lean: TaggedUrn.instDecidableMeetsClosed */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:265:1 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:284:1 */
 uint8_t capdagFormal__l_TaggedUrn_dinstDecidableMeetsClosed(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     lungo_obj x_4;
@@ -976,7 +1050,7 @@ uint8_t capdagFormal__l_TaggedUrn_dinstDecidableMeetsClosed(lungo_obj x_1, lungo
 
 /* Lean: TaggedUrn.instDecidableMeetsClosed._lam_0 */
 /* Compiled from: TaggedUrn.instDecidableMeetsClosed */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:265:1 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:284:1 */
 uint8_t capdagFormal__l_TaggedUrn_dinstDecidableMeetsClosed_d__lam__0(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3) {
     lungo_obj x_4;
     lungo_obj x_5;
@@ -994,7 +1068,7 @@ uint8_t capdagFormal__l_TaggedUrn_dinstDecidableMeetsClosed_d__lam__0(lungo_obj 
 
 /* Lean: TaggedUrn.instDecidableMeetsClosed._lam_0._boxed */
 /* Compiled from: TaggedUrn.instDecidableMeetsClosed */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:265:1 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:284:1 */
 lungo_obj capdagFormal__l_TaggedUrn_dinstDecidableMeetsClosed_d__lam__0_d__boxed(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3) {
     uint8_t x_4;
     lungo_obj x_5;
@@ -1007,7 +1081,7 @@ lungo_obj capdagFormal__l_TaggedUrn_dinstDecidableMeetsClosed_d__lam__0_d__boxed
 }
 
 /* Lean: TaggedUrn.instDecidableRefines */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:33:1 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:51:1 */
 uint8_t capdagFormal__l_TaggedUrn_dinstDecidableRefines(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     lungo_obj x_4;
@@ -1043,7 +1117,7 @@ uint8_t capdagFormal__l_TaggedUrn_dinstDecidableRefines(lungo_obj x_1, lungo_obj
 
 /* Lean: TaggedUrn.instDecidableRefines._lam_0 */
 /* Compiled from: TaggedUrn.instDecidableRefines */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:33:1 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:51:1 */
 uint8_t capdagFormal__l_TaggedUrn_dinstDecidableRefines_d__lam__0(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3) {
     lungo_obj x_4;
     lungo_obj x_5;
@@ -1058,7 +1132,7 @@ uint8_t capdagFormal__l_TaggedUrn_dinstDecidableRefines_d__lam__0(lungo_obj x_1,
 
 /* Lean: TaggedUrn.instDecidableRefines._lam_0._boxed */
 /* Compiled from: TaggedUrn.instDecidableRefines */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:33:1 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:51:1 */
 lungo_obj capdagFormal__l_TaggedUrn_dinstDecidableRefines_d__lam__0_d__boxed(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3) {
     uint8_t x_4;
     lungo_obj x_5;
@@ -1071,7 +1145,7 @@ lungo_obj capdagFormal__l_TaggedUrn_dinstDecidableRefines_d__lam__0_d__boxed(lun
 }
 
 /* Lean: TaggedUrn.instDecidableRefinesBothClosed */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:308:1 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:329:1 */
 uint8_t capdagFormal__l_TaggedUrn_dinstDecidableRefinesBothClosed(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     lungo_obj x_4;
@@ -1107,7 +1181,7 @@ uint8_t capdagFormal__l_TaggedUrn_dinstDecidableRefinesBothClosed(lungo_obj x_1,
 
 /* Lean: TaggedUrn.instDecidableRefinesBothClosed._lam_0 */
 /* Compiled from: TaggedUrn.instDecidableRefinesBothClosed */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:308:1 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:329:1 */
 uint8_t capdagFormal__l_TaggedUrn_dinstDecidableRefinesBothClosed_d__lam__0(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3) {
     lungo_obj x_4;
     lungo_obj x_5;
@@ -1128,7 +1202,7 @@ uint8_t capdagFormal__l_TaggedUrn_dinstDecidableRefinesBothClosed_d__lam__0(lung
 
 /* Lean: TaggedUrn.instDecidableRefinesBothClosed._lam_0._boxed */
 /* Compiled from: TaggedUrn.instDecidableRefinesBothClosed */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:308:1 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:329:1 */
 lungo_obj capdagFormal__l_TaggedUrn_dinstDecidableRefinesBothClosed_d__lam__0_d__boxed(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3) {
     uint8_t x_4;
     lungo_obj x_5;
@@ -1141,7 +1215,7 @@ lungo_obj capdagFormal__l_TaggedUrn_dinstDecidableRefinesBothClosed_d__lam__0_d_
 }
 
 /* Lean: TaggedUrn.instDecidableRefinesClosed */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:205:1 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:223:1 */
 uint8_t capdagFormal__l_TaggedUrn_dinstDecidableRefinesClosed(lungo_obj x_1, lungo_obj x_2) {
     lungo_obj x_3;
     lungo_obj x_4;
@@ -1177,7 +1251,7 @@ uint8_t capdagFormal__l_TaggedUrn_dinstDecidableRefinesClosed(lungo_obj x_1, lun
 
 /* Lean: TaggedUrn.instDecidableRefinesClosed._lam_0 */
 /* Compiled from: TaggedUrn.instDecidableRefinesClosed */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:205:1 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:223:1 */
 uint8_t capdagFormal__l_TaggedUrn_dinstDecidableRefinesClosed_d__lam__0(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3) {
     lungo_obj x_4;
     lungo_obj x_5;
@@ -1195,7 +1269,7 @@ uint8_t capdagFormal__l_TaggedUrn_dinstDecidableRefinesClosed_d__lam__0(lungo_ob
 
 /* Lean: TaggedUrn.instDecidableRefinesClosed._lam_0._boxed */
 /* Compiled from: TaggedUrn.instDecidableRefinesClosed */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:205:1 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:223:1 */
 lungo_obj capdagFormal__l_TaggedUrn_dinstDecidableRefinesClosed_d__lam__0_d__boxed(lungo_obj x_1, lungo_obj x_2, lungo_obj x_3) {
     uint8_t x_4;
     lungo_obj x_5;
@@ -1582,44 +1656,120 @@ lungo_obj capdagFormal__l_TaggedUrn_dinstReprUrn_drepr_d__redArg_d__closed__9(vo
 }
 
 /* Lean: TaggedUrn.tagScore */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:357:1 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:399:1 */
 lungo_obj capdagFormal__l_TaggedUrn_dtagScore(lungo_obj x_1) {
     lungo_obj x_2;
-    lungo_obj x_3;
+    uint8_t x_3;
     lungo_obj x_4;
     lungo_obj x_5;
-    lungo_obj x_6;
-    lungo_obj x_7;
+    uint8_t x_6;
+    uint8_t x_7;
+    lungo_obj x_8;
+    lungo_obj x_9;
+    lungo_obj x_10;
+    lungo_obj x_11;
+    uint8_t x_12;
+    lungo_obj x_13;
+    lungo_obj x_14;
+    lungo_obj x_15;
+    lungo_obj x_16;
+    uint8_t x_17;
+    lungo_obj x_18;
+    lungo_obj x_19;
+    lungo_obj x_20;
+    uint8_t x_21;
+    lungo_obj x_22;
+    lungo_obj x_23;
     switch (lungo_obj_tag(x_1)) {
-        case 2: {
-            x_2 = lungo_usize_to_nat(1u);
+        case 0: {
+            x_2 = lungo_usize_to_nat(0u);
             return x_2;
         }
-        case 3: {
-            x_3 = lungo_usize_to_nat(2u);
-            return x_3;
-        }
-        case 4: {
-            x_4 = lungo_usize_to_nat(3u);
-            return x_4;
-        }
-        case 5: {
-            x_5 = lungo_usize_to_nat(4u);
-            return x_5;
-        }
-        case 6: {
-            x_6 = lungo_usize_to_nat(5u);
-            return x_6;
-        }
         default: {
-            x_7 = lungo_usize_to_nat(0u);
-            return x_7;
+            x_3 = lungo_ctor_get_uint8(x_1, 1 * sizeof(size_t));
+            switch (x_3) {
+                case 0: {
+                    x_4 = lungo_ctor_get(x_1, 0);
+                    switch (lungo_obj_tag(x_4)) {
+                        case 0: {
+                            x_5 = lungo_ctor_get(x_4, 0);
+                            x_6 = capdagFormal__l_List_disEmpty_d__redArg(x_5);
+                            switch (x_6) {
+                                case 0: {
+                                    x_7 = capdagFormal__l_List_dany_d__at___dTaggedUrn_dtwoDistinct_dspec__1(x_5, x_5);
+                                    switch (x_7) {
+                                        case 0: {
+                                            x_8 = lungo_usize_to_nat(4u);
+                                            return x_8;
+                                        }
+                                        default: {
+                                            x_9 = lungo_usize_to_nat(3u);
+                                            return x_9;
+                                        }
+                                    }
+                                }
+                                default: {
+                                    x_10 = lungo_usize_to_nat(5u);
+                                    return x_10;
+                                }
+                            }
+                        }
+                        default: {
+                            x_11 = lungo_ctor_get(x_4, 0);
+                            x_12 = capdagFormal__l_List_disEmpty_d__redArg(x_11);
+                            switch (x_12) {
+                                case 0: {
+                                    x_13 = lungo_usize_to_nat(3u);
+                                    return x_13;
+                                }
+                                default: {
+                                    x_14 = lungo_usize_to_nat(2u);
+                                    return x_14;
+                                }
+                            }
+                        }
+                    }
+                }
+                default: {
+                    x_15 = lungo_ctor_get(x_1, 0);
+                    switch (lungo_obj_tag(x_15)) {
+                        case 0: {
+                            x_16 = lungo_ctor_get(x_15, 0);
+                            x_17 = capdagFormal__l_List_disEmpty_d__redArg(x_16);
+                            switch (x_17) {
+                                case 0: {
+                                    x_18 = lungo_usize_to_nat(1u);
+                                    return x_18;
+                                }
+                                default: {
+                                    x_19 = lungo_usize_to_nat(5u);
+                                    return x_19;
+                                }
+                            }
+                        }
+                        default: {
+                            x_20 = lungo_ctor_get(x_15, 0);
+                            x_21 = capdagFormal__l_List_disEmpty_d__redArg(x_20);
+                            switch (x_21) {
+                                case 0: {
+                                    x_22 = lungo_usize_to_nat(1u);
+                                    return x_22;
+                                }
+                                default: {
+                                    x_23 = lungo_usize_to_nat(0u);
+                                    return x_23;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
 
 /* Lean: TaggedUrn.urnScore */
-/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:366:1 */
+/* Source: <package:tagged_urn_formal>/TaggedUrn/Urn.lean:415:1 */
 lungo_obj capdagFormal__l_TaggedUrn_durnScore(lungo_obj x_1) {
     lungo_obj x_2;
     lungo_obj x_3;

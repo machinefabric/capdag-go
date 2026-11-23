@@ -170,7 +170,7 @@ const (
 	// does not conform to the type of the machine input it names.
 	ErrAbstractionSourceDoesNotConformToMachineInput
 	// ErrAbstractionNodeMediaConflict — the wirings that touch a node give it
-	// URNs that are not on one specialization chain.
+	// two URNs neither of which is inside the other.
 	ErrAbstractionNodeMediaConflict
 	// ErrAbstractionUncachedMediaDef — a node's media has no cached
 	// definition, so the render payload has no title for it.
@@ -464,7 +464,7 @@ func nodeMediaConflictError(node, first, second string) *MachineAbstractionError
 	return &MachineAbstractionError{
 		Kind: ErrAbstractionNodeMediaConflict,
 		Message: fmt.Sprintf(
-			"node '%s' is given media URNs that are not on one specialization chain: '%s' and '%s'",
+			"node '%s' is given media URNs neither of which is inside the other: '%s' and '%s'",
 			node, first, second),
 	}
 }

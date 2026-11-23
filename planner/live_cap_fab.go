@@ -339,13 +339,26 @@ type PathFindingEventComplete struct {
 func (PathFindingEventComplete) isPathFindingEvent() {}
 
 // LiveCapFab is a precomputed graph of capabilities for path finding.
+//
+// Its indexes are keyed by a media or cap URN's canonical string, which is the
+// URN's structural (tag-set) identity.
 type LiveCapFab struct {
-	edges        []*LiveMachinePlanEdge
-	outgoing     map[string][]int
-	incoming     map[string][]int
-	nodes        map[string]bool
-	capToEdges   map[string][]int
-	bookendNodes map[string]bool
+	edges      []*LiveMachinePlanEdge
+	outgoing   map[string][]int
+	incoming   map[string][]int
+	nodes      map[string]*urn.MediaUrn
+	capToEdges map[string][]int
+	// bookendNodes holds the nodes that end on bookends (sources or targets of
+	// a transmute), each with the bookends it ends on: one for each shape the
+	// node may have, the published file type that shape is read complete
+	// (MediaUrn.EndsOn). A node of one shape that is a file type ends on that
+	// file type; a node any of whose shapes is no file type ends on none and
+	// is not listed.
+	//
+	// Computed at sync time from the registry snapshot supplied to SyncFromCaps
+	// / SyncFromCapUrns / SetBookends. The graph is rebuilt on every cap-set
+	// change, so the bookend set tracks the live registry state exactly.
+	bookendNodes map[string][]*urn.MediaUrn
 }
 
 // NewLiveCapFab creates a new empty capability graph.
@@ -353,9 +366,9 @@ func NewLiveCapFab() *LiveCapFab {
 	return &LiveCapFab{
 		outgoing:     make(map[string][]int),
 		incoming:     make(map[string][]int),
-		nodes:        make(map[string]bool),
+		nodes:        make(map[string]*urn.MediaUrn),
 		capToEdges:   make(map[string][]int),
-		bookendNodes: make(map[string]bool),
+		bookendNodes: make(map[string][]*urn.MediaUrn),
 	}
 }
 
@@ -364,9 +377,43 @@ func (g *LiveCapFab) Clear() {
 	g.edges = nil
 	g.outgoing = make(map[string][]int)
 	g.incoming = make(map[string][]int)
-	g.nodes = make(map[string]bool)
+	g.nodes = make(map[string]*urn.MediaUrn)
 	g.capToEdges = make(map[string][]int)
-	g.bookendNodes = make(map[string]bool)
+	g.bookendNodes = make(map[string][]*urn.MediaUrn)
+}
+
+// IsBookend reports whether the given node ends on bookends: every shape it
+// may have is a file type, so whatever a route reaching it gives can sit on
+// disk as a file.
+//
+// Strand bookends (transmute source or target) MUST end on bookends. Internal
+// URNs that appear as cap inputs/outputs but do not name a concrete file
+// format (wildcards like `media:enc=utf8`, primitives like
+// `media:integer;numeric`) are tracked as nodes for path finding but end on no
+// bookend and never appear as transmute sources/targets.
+func (g *LiveCapFab) IsBookend(node *urn.MediaUrn) bool {
+	_, ok := g.bookendNodes[node.String()]
+	return ok
+}
+
+// EndsOn is the bookends node ends on, one for each shape it may have; empty
+// when it ends on none.
+func (g *LiveCapFab) EndsOn(node *urn.MediaUrn) []*urn.MediaUrn {
+	return g.bookendNodes[node.String()]
+}
+
+// reaches reports whether a route reaching node reaches target: the node is
+// the target, or ends on bookends one of which is.
+func (g *LiveCapFab) reaches(node, target *urn.MediaUrn) bool {
+	if node.IsEquivalent(target) {
+		return true
+	}
+	for _, bookend := range g.EndsOn(node) {
+		if bookend.IsEquivalent(target) {
+			return true
+		}
+	}
+	return false
 }
 
 // Stats returns (node_count, edge_count).
@@ -375,23 +422,60 @@ func (g *LiveCapFab) Stats() (int, int) {
 }
 
 // SyncFromCaps rebuilds the graph from a list of Cap definitions.
-func (g *LiveCapFab) SyncFromCaps(caps []*cap.Cap) {
+//
+// bookendUrns is the live snapshot of media-registry URNs whose stored
+// definition is a bookend (FabricRegistry.BookendUrns). Each node in the graph
+// is marked with the bookends among them it ends on, once per sync; lookups
+// during traversal are map hits with no registry calls.
+func (g *LiveCapFab) SyncFromCaps(caps []*cap.Cap, bookendUrns []*urn.MediaUrn) {
 	g.Clear()
 	for _, c := range caps {
 		g.AddCap(c)
 	}
+	g.refreshBookends(bookendUrns)
 }
 
-// refreshBookends recomputes the bookend node set as the intersection of the
-// graph's nodes and the supplied bookend media-URN set. Bookend URNs are keyed
-// by their canonical media-URN string. Mirrors Rust's LiveCapFab::refresh_bookends.
-func (g *LiveCapFab) refreshBookends(bookendUrns map[string]bool) {
-	g.bookendNodes = make(map[string]bool)
-	for node := range g.nodes {
-		if bookendUrns[node] {
-			g.bookendNodes[node] = true
+// SetBookends recomputes which nodes end on bookends, and on which, from the
+// supplied registry snapshot, so a graph built with AddCap can have its
+// bookends set without a full sync.
+func (g *LiveCapFab) SetBookends(bookendUrns []*urn.MediaUrn) {
+	g.refreshBookends(bookendUrns)
+}
+
+// refreshBookends recomputes which nodes end on bookends, and on which, from
+// the supplied registry snapshot. Mirrors Rust's LiveCapFab::refresh_bookends.
+func (g *LiveCapFab) refreshBookends(bookendUrns []*urn.MediaUrn) {
+	g.bookendNodes = nodesEndingOn(g.nodes, sortedDistinctMediaUrns(bookendUrns))
+}
+
+// nodesEndingOn is each of nodes that ends on bookends, with the bookends it
+// ends on, each named once, keyed as nodes is.
+func nodesEndingOn(nodes map[string]*urn.MediaUrn, bookends []*urn.MediaUrn) map[string][]*urn.MediaUrn {
+	ending := make(map[string][]*urn.MediaUrn)
+	for key, node := range nodes {
+		ends, ok := node.EndsOn(bookends)
+		if !ok {
+			continue
 		}
+		ending[key] = sortedDistinctMediaUrns(ends)
 	}
+	return ending
+}
+
+// sortedDistinctMediaUrns is urns in structural order (MediaUrn.Compare), each
+// named once.
+func sortedDistinctMediaUrns(urns []*urn.MediaUrn) []*urn.MediaUrn {
+	sorted := make([]*urn.MediaUrn, len(urns))
+	copy(sorted, urns)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Compare(sorted[j]) < 0 })
+	distinct := sorted[:0]
+	for _, u := range sorted {
+		if len(distinct) > 0 && distinct[len(distinct)-1].Compare(u) == 0 {
+			continue
+		}
+		distinct = append(distinct, u)
+	}
+	return distinct
 }
 
 // SyncFromCapUrns rebuilds the graph from a list of cap URN strings using the
@@ -400,13 +484,14 @@ func (g *LiveCapFab) refreshBookends(bookendUrns map[string]bool) {
 // Caps are matched by equivalence (IsEquivalent): the cartridge's reported URN
 // must have an exact semantic match in the registry. Identity caps are skipped.
 // Unmatched URNs are dropped from this pass — a subsequent refresh picks them up
-// once the registry cache contains them.
+// once the registry cache contains them. bookendUrns is as SyncFromCaps takes
+// it.
 //
 // Mirrors Rust's LiveCapFab::sync_from_cap_urns. The Rust fallback to an
 // in-memory registry hydration path has no synchronous Go analog; Go's
 // FabricRegistry.GetCachedCaps already returns the full cached set, so the
 // equivalence lookup over that set is the complete match path.
-func (g *LiveCapFab) SyncFromCapUrns(capUrns []string, registry *fabric.FabricRegistry, bookendUrns map[string]bool) {
+func (g *LiveCapFab) SyncFromCapUrns(capUrns []string, registry *fabric.FabricRegistry, bookendUrns []*urn.MediaUrn) {
 	g.Clear()
 
 	allCaps := registry.GetCachedCaps()
@@ -443,8 +528,70 @@ func (g *LiveCapFab) SyncFromCapUrns(capUrns []string, registry *fabric.FabricRe
 	g.refreshBookends(bookendUrns)
 }
 
+// NewLiveCapFabFromFabric is the graph of the whole fabric: every cap the
+// registry's pinned manifest names (FabricRegistry.ManifestCaps), each node
+// marked with the bookends it ends on: for each shape it may have, the media
+// definition the manifest publishes for that shape, read complete, when that
+// definition is a bookend (media.StoredMediaDef.IsBookend).
+//
+// Nothing comes from what the cache happens to hold: the caps not cached are
+// fetched, and so is every definition a node's shape is. A cap or a definition
+// that cannot be had is an error naming it, never a graph with a part of the
+// fabric missing.
+// Matches Rust: LiveCapFab::from_fabric
+func NewLiveCapFabFromFabric(registry *fabric.FabricRegistry) (*LiveCapFab, error) {
+	caps, err := registry.ManifestCaps()
+	if err != nil {
+		return nil, err
+	}
+	fab := NewLiveCapFab()
+	for _, c := range caps {
+		fab.AddCap(c)
+	}
+	manifestMedia, err := registry.ManifestMediaUrns()
+	if err != nil {
+		return nil, err
+	}
+	// `media:` takes anything and names no definition: nothing is a file of it.
+	published := make([]*urn.MediaUrn, 0, len(manifestMedia))
+	for _, mediaUrn := range manifestMedia {
+		if !mediaUrn.IsTop() {
+			published = append(published, mediaUrn)
+		}
+	}
+	isBookend := make(map[string]bool)
+	for key, shapes := range nodesEndingOn(fab.nodes, sortedDistinctMediaUrns(published)) {
+		endsOnBookends := true
+		for _, shape := range shapes {
+			shapeKey := shape.String()
+			bookend, known := isBookend[shapeKey]
+			if !known {
+				def, err := registry.GetMediaDef(shapeKey)
+				if err != nil {
+					return nil, err
+				}
+				bookend = def.IsBookend()
+				isBookend[shapeKey] = bookend
+			}
+			endsOnBookends = endsOnBookends && bookend
+		}
+		if endsOnBookends {
+			fab.bookendNodes[key] = shapes
+		}
+	}
+	return fab, nil
+}
+
 // AddCap adds a capability as an edge in the graph.
 func (g *LiveCapFab) AddCap(c *cap.Cap) {
+	// Abstract caps are dispatch umbrellas — never backed by a cartridge and
+	// never a runnable edge. Adding one would put an unbacked edge in the
+	// graph (the planner could offer a path that fails at execution). They are
+	// narrowed to a concrete specialization at the CLI layer instead.
+	if c.IsAbstract {
+		return
+	}
+
 	inSpecStr := c.Urn.InSpec()
 	outSpecStr := c.Urn.OutSpec()
 
@@ -520,8 +667,8 @@ func (g *LiveCapFab) pushCapEdge(c *cap.Cap, fromSpec, toSpec *urn.MediaUrn, inp
 
 	g.outgoing[fromCanonical] = append(g.outgoing[fromCanonical], edgeIdx)
 	g.incoming[toCanonical] = append(g.incoming[toCanonical], edgeIdx)
-	g.nodes[fromCanonical] = true
-	g.nodes[toCanonical] = true
+	g.nodes[fromCanonical] = fromSpec
+	g.nodes[toCanonical] = toSpec
 	g.capToEdges[capCanonical] = append(g.capToEdges[capCanonical], edgeIdx)
 }
 
@@ -574,7 +721,9 @@ func (g *LiveCapFab) getOutgoingEdges(source *urn.MediaUrn, isSequence bool) ([]
 	return edges, outSeqs
 }
 
-// GetReachableTargets performs BFS from source and returns reachable targets.
+// GetReachableTargets performs BFS from source and returns the reachable
+// targets: the bookends the reached nodes end on, one target for each, sorted
+// by (MinPathLength, DisplayName).
 func (g *LiveCapFab) GetReachableTargets(source *urn.MediaUrn, isSequence bool, maxDepth int) []ReachableTargetInfo {
 	type visitKey struct {
 		canonical      string
@@ -662,8 +811,36 @@ func (g *LiveCapFab) GetReachableTargets(source *urn.MediaUrn, isSequence bool, 
 		}
 	}
 
-	results := make([]ReachableTargetInfo, 0, len(visited))
-	for _, info := range visited {
+	// The targets are the bookends the reached nodes end on. Reachability in
+	// the cap graph includes URNs that exist only as cap-input wildcards (e.g.
+	// `media:enc=utf8`, `media:integer;numeric`). Such URNs describe the value
+	// type a cap accepts, not a file format that can sit on disk, so they are
+	// never valid transmute targets. A node that may have several shapes
+	// reaches each bookend it ends on, one target each. The bookends are
+	// precomputed at sync time from the live media registry — no registry call
+	// here.
+	byBookend := make(map[string]*ReachableTargetInfo)
+	for _, reached := range visited {
+		for _, bookend := range g.EndsOn(reached.MediaDef) {
+			key := bookend.String()
+			if target, ok := byBookend[key]; ok {
+				if reached.MinPathLength < target.MinPathLength {
+					target.MinPathLength = reached.MinPathLength
+				}
+				target.PathCount += reached.PathCount
+				continue
+			}
+			byBookend[key] = &ReachableTargetInfo{
+				MediaDef:      bookend,
+				DisplayName:   key,
+				MinPathLength: reached.MinPathLength,
+				PathCount:     reached.PathCount,
+			}
+		}
+	}
+
+	results := make([]ReachableTargetInfo, 0, len(byBookend))
+	for _, info := range byBookend {
 		results = append(results, *info)
 	}
 	sort.Slice(results, func(i, j int) bool {
@@ -723,8 +900,9 @@ func (g *LiveCapFab) distancesToExactTarget(source, target *urn.MediaUrn, isSequ
 			}
 			next := searchState{canonical: edge.ToSpec.String(), isSequence: outSeqs[i], pendingForEach: edge.Type == EdgeTypeForEach}
 			stepsInto[next] = append(stepsInto[next], from)
-			// The target: its media, reached by a step, not waiting on a ForEach's cap.
-			if !next.pendingForEach && edge.ToSpec.IsEquivalent(target) {
+			// The target: a node that reaches it, reached by a step, not
+			// waiting on a ForEach's cap.
+			if !next.pendingForEach && g.reaches(edge.ToSpec, target) {
 				targetStates[next] = true
 			}
 			if !seen[next] {
@@ -936,10 +1114,11 @@ func (g *LiveCapFab) iddfsFind(
 	}
 	pendingForEach := len(path) > 0 && path[len(path)-1].Type == EdgeTypeForEach
 
-	// Check if we've reached the EXACT target.
-	// Skip this check at the starting node (empty path) — when source==target,
-	// we still want to explore edges to find round-trip transformation paths.
-	if current.IsEquivalent(target) && len(path) > 0 {
+	// Check if we've reached the EXACT target: the node is it, or ends on
+	// bookends one of which is (reaches). Skip this check at the starting node
+	// (empty path) — when source==target, we still want to explore edges to
+	// find round-trip transformation paths.
+	if len(path) > 0 && g.reaches(current, target) {
 		// Only record the path when it exactly fills the depth budget for this IDDFS
 		// iteration (depthLimit == 0). This mirrors Rust's `current_path.len() == depth_limit`
 		// check and ensures each path is found exactly once — at the shallowest depth that
@@ -1001,7 +1180,7 @@ func (g *LiveCapFab) iddfsFind(
 	// intermediate paths. Cycle prevention is handled by depth_limit.
 	isRoundtrip := originalSource.IsEquivalent(target)
 	vk := visitedKey{canonical: current.String(), isSequence: isSequence}
-	if !(isRoundtrip && current.IsEquivalent(target)) {
+	if !(isRoundtrip && g.reaches(current, target)) {
 		if visited[vk] {
 			return
 		}
