@@ -1099,6 +1099,66 @@ func Test7217_a_given_node_binds_by_satisfaction_at_a_negative_distance(t *testi
 	assert.Equal(t, ErrAbstractionUnmatchedSourceInCapArgs, err.Kind)
 }
 
+// jsonToYaml is JSON to YAML as the fabric publishes it: a patch that keeps the
+// shape it is given and gives content, not a file.
+const jsonToYaml = `cap:convert-format;effect=patch;in="media:enc=utf8;fmt=json";json-to-yaml;out="media:enc=utf8;!ext;fmt=yaml"`
+
+// TEST7244: a machine read back from its text types a patch step's nodes by
+// what the step gives: JSON to YAML then a save that takes a YAML list of
+// records types the node between them a YAML list of records, content and no
+// file, and the input of the machine a JSON list of records.
+func Test7244_a_patch_steps_nodes_are_typed_by_what_it_gives_when_read_back(t *testing.T) {
+	save := `cap:in="media:enc=utf8;fmt=yaml;list;record;!ext";out="media:enc=utf8;ext=yaml;fmt=yaml;list;record";save-as-yaml`
+	registry := registryWith([]*cap.Cap{
+		buildCap(jsonToYaml, "json to yaml", []string{"media:enc=utf8;fmt=json"}, "media:enc=utf8;!ext;fmt=yaml"),
+		buildCap(save, "save as yaml list of records", []string{"media:enc=utf8;fmt=yaml;list;record;!ext"}, "media:enc=utf8;ext=yaml;fmt=yaml;list;record"),
+	})
+	text := "[to_yaml " + jsonToYaml + "][save " + save + "][json -> to_yaml -> yaml][yaml -> save -> file]"
+	machine, err := ParseMachine(text, registry)
+	require.Nil(t, err, "the machine reads back")
+	strand := machine.Strands()[0]
+	inputs := strand.InputAnchors()
+	require.Len(t, inputs, 1)
+	assert.True(t, inputs[0].IsEquivalent(mediaUrn("media:enc=utf8;fmt=json;list;record")), "the input is %s", inputs[0])
+	var middle *urn.MediaUrn
+	for _, edge := range strand.Edges() {
+		if edge.CapUrn.IsEquivalent(capUrnVal(jsonToYaml)) {
+			middle = strand.NodeUrn(edge.Outputs[0].Node)
+		}
+	}
+	require.NotNil(t, middle, "the patch is a step")
+	assert.True(t, middle.IsEquivalent(mediaUrn("media:enc=utf8;!ext;fmt=yaml;list;record")), "the node between the steps is %s", middle)
+}
+
+// TEST7245: what a patch gives a complete thing is a complete thing: a JSON
+// record a step gives, converted to YAML, is a YAML record and no list, and
+// feeds a save that takes a record and refuses lists, whether the machine is
+// read from text or is the strand a plan found.
+func Test7245_a_patch_of_a_complete_thing_is_a_complete_thing(t *testing.T) {
+	makeRecord := `cap:in="media:enc=utf8";make-record;out="media:enc=utf8;fmt=json;record"`
+	save := `cap:in="media:enc=utf8;fmt=yaml;!list;record;!ext";out="media:enc=utf8;ext=yaml;fmt=yaml;record";save-as-yaml`
+	registry := registryWith([]*cap.Cap{
+		buildCap(makeRecord, "make a record", []string{"media:enc=utf8"}, "media:enc=utf8;fmt=json;record"),
+		buildCap(jsonToYaml, "json to yaml", []string{"media:enc=utf8;fmt=json"}, "media:enc=utf8;!ext;fmt=yaml"),
+		buildCap(save, "save as yaml record", []string{"media:enc=utf8;fmt=yaml;!list;record;!ext"}, "media:enc=utf8;ext=yaml;fmt=yaml;record"),
+	})
+	text := "[make " + makeRecord + "][to_yaml " + jsonToYaml + "][save " + save + "]" +
+		"[text -> make -> json][json -> to_yaml -> yaml][yaml -> save -> file]"
+	machine, err := ParseMachine(text, registry)
+	require.Nil(t, err, "the YAML record feeds the save")
+	assert.Len(t, machine.Strands()[0].Edges(), 3)
+
+	yamlRecord := "media:enc=utf8;!ext;fmt=yaml;record"
+	strand := strandFromSteps([]*planner.StrandStep{
+		capStep(makeRecord, "make a record", "media:enc=utf8", "media:enc=utf8;fmt=json;record"),
+		capStep(jsonToYaml, "json to yaml", "media:enc=utf8;fmt=json;record", yamlRecord),
+		capStep(save, "save as yaml record", yamlRecord, "media:enc=utf8;ext=yaml;fmt=yaml;record"),
+	}, "text to a YAML record file")
+	resolved, resolveErr := resolveStrand(strand, registry, 0)
+	require.Nil(t, resolveErr, "the planned YAML record feeds the save")
+	assert.Len(t, resolved.Edges(), 3)
+}
+
 // TEST1184: Resolving a strand with one cap produces one resolved machine edge.
 func Test1184_resolve_strand_single_cap_produces_one_edge(t *testing.T) {
 	c := buildCap(

@@ -280,8 +280,10 @@ func resolveWirings(
 	// A node some wiring produces from a declared output holds what that step
 	// gives, a complete thing. The main output of an effect=none or
 	// effect=patch cap says how what it gives follows from what it takes, not
-	// what it gives, so a node it produces holds a type, as every node nothing
-	// produces does: one the text or an input anchor wrote.
+	// what it gives, so a node it produces holds what it gives for what it is
+	// sent: a complete thing when what it is sent is one (read below), and
+	// otherwise a type, as every node nothing produces holds: one the text or an
+	// input anchor wrote.
 	nodeIsSequence := make([]bool, len(nodes))
 	nodeIsGiven := make([]bool, len(nodes))
 	definitions := make([]*cap.Cap, len(wirings))
@@ -335,6 +337,39 @@ func resolveWirings(
 			return outputs[a].OutputMediaUrn.Compare(outputs[b].OutputMediaUrn) < 0
 		})
 		wiringOutputs[index] = outputs
+	}
+
+	// What an effect=none or effect=patch step gives a complete thing is a
+	// complete thing: its main output's node holds what the step gives for what
+	// it is sent, so it is given when the node it is sent on its main input is.
+	// Read again until nothing changes, so a chain of such steps is typed
+	// whatever order it is written in.
+	type passing struct{ sent, given NodeId }
+	var passesThrough []passing
+	for index, wiring := range wirings {
+		definition := definitions[index]
+		if mainOutputIsGiven(definition) {
+			continue
+		}
+		sent, ok := mainInputNode(wiring, definition)
+		if !ok {
+			continue
+		}
+		for _, target := range wiring.targets {
+			main := definition.MainOutput()
+			if !target.hasName || (main != nil && main.Name == target.name) {
+				passesThrough = append(passesThrough, passing{sent: sent, given: target.node})
+			}
+		}
+	}
+	for changed := true; changed; {
+		changed = false
+		for _, p := range passesThrough {
+			if nodeIsGiven[p.sent] && !nodeIsGiven[p.given] {
+				nodeIsGiven[p.given] = true
+				changed = true
+			}
+		}
 	}
 
 	// Step 1: per-wiring binding of sources to cap args. Named members bind
@@ -686,6 +721,39 @@ type undecidedSource struct {
 func mainOutputIsGiven(definition *cap.Cap) bool {
 	effect := definition.Urn.Effect()
 	return effect != urn.CapEffectNone && effect != urn.CapEffectPatch
+}
+
+// mainInputNode is the node a wiring sends on its cap's main input, when the
+// wiring says which: the member named for the main input, or the wiring's one
+// unnamed member. Not ok when the cap takes no input, or when only matching by
+// type can tell.
+func mainInputNode(wiring preInternedWiring, definition *cap.Cap) (NodeId, bool) {
+	inSpec, err := urn.NewMediaUrnFromString(definition.Urn.InSpec())
+	if err != nil || inSpec.IsEquivalent(mustMedia(standard.MediaVoid, "media:void")) {
+		return 0, false
+	}
+	var main *cap.CapArg
+	for i := range definition.Args {
+		if definition.Args[i].IsMainInput(inSpec) {
+			main = &definition.Args[i]
+			break
+		}
+	}
+	if main == nil {
+		return 0, false
+	}
+	for _, named := range wiring.namedSources {
+		if named.name == main.Name {
+			if named.source.IsConstant {
+				return 0, false
+			}
+			return named.source.Node, true
+		}
+	}
+	if len(wiring.sourceNodeIds) == 1 {
+		return wiring.sourceNodeIds[0], true
+	}
+	return 0, false
 }
 
 // isMainOutput says whether output is the cap's main output.
