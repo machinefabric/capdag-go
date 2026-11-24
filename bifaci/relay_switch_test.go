@@ -1765,7 +1765,7 @@ func (h constHandler) HandleRequest(_ string, input <-chan Frame, output *Respon
 			break
 		}
 	}
-	output.EmitResponse("media:", []byte(h.value))
+	output.EmitResponse(nil, []byte(h.value))
 }
 
 // wireInProcessHost connects an InProcessCartridgeHost directly to one

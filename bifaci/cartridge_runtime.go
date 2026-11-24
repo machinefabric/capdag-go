@@ -42,6 +42,19 @@ type StreamEmitter interface {
 	// STREAM_END carries the final chunk_count. (matches Rust
 	// OutputStream::start_unbounded)
 	StartUnbounded(isSequence bool) error
+	// Label states what this stream gives, more exactly than its default
+	// label: for example what detection reads back from the file a save
+	// wrote. Its STREAM_START carries it in place of the default, and the
+	// engine audits it and carries it on as the value's type (13.2 §Response
+	// media labeling). Refused, naming the default label and mediaUrn, once
+	// the stream has started; for an output whose type is fixed by its input
+	// (the main output of an effect=none or effect=patch cap, an output that
+	// carries the input); for the main output of a declared cap, unless
+	// mediaUrn is inside the declared out= read complete; and for another
+	// output, unless mediaUrn is inside its media URN. A sequence output
+	// carries one label for the whole stream: the least type holding every
+	// item (urn.LeastUpperBound). (matches Rust OutputStream::label)
+	Label(mediaUrn string) error
 	// EmitCbor emits a CBOR value as output.
 	// The value is CBOR-encoded once and sent as raw CBOR bytes in CHUNK frames.
 	EmitCbor(value interface{}) error
@@ -1268,8 +1281,8 @@ func (c *terminalClaim) forCancel() bool {
 	return c.state.CompareAndSwap(terminalOpen, terminalByCancel)
 }
 
-// DeriveResponseMedia is the media URN a cap's response STREAM_START must
-// carry, derived from the cap's declared effect over its declared main
+// DeriveResponseMedia is the default label of a cap's main response
+// STREAM_START, derived from the cap's declared effect over its declared main
 // input — the label every engine-fed input stream carries (spec 13.2):
 //
 //   - effect=declared → the declared out=
@@ -1278,10 +1291,10 @@ func (c *terminalClaim) forCancel() bool {
 //
 // This is CapUrn.InferRuntimeOutputMedia over the declared input — the SAME
 // inference the engine's effect audit checks emissions against
-// (CapUrn.IsConformantRuntimeOutput), so a runtime-labeled response is
-// conformant by construction. Every runtime that labels a response must go
-// through this function; a hand-picked label is how a cap lies about its
-// effect. (matches Rust derive_response_media)
+// (CapUrn.IsConformantRuntimeOutput), so a response the handler does not
+// label is conformant by construction. A handler narrows it only by its own
+// statement, inside the declared output (StreamEmitter.Label), and the engine
+// audits what it states. (matches Rust derive_response_media)
 func DeriveResponseMedia(capUrn string) (string, error) {
 	parsed, err := urn.NewCapUrnFromString(capUrn)
 	if err != nil {
@@ -1314,11 +1327,12 @@ func runLiveHandler(qr *liveHandlerRequest, manifest *CapManifest, writer *syncF
 	// construction. An underivable label is a broken cap declaration: fail
 	// the request, never fall back.
 	opened := 0
-	outputs, deriveErr := responseOutputsForCap(qr.capUrn, manifest, func(label string, output *string) outputStream {
+	outputs, deriveErr := responseOutputsForCap(qr.capUrn, manifest, func(label string, output *string, rule labelRule) outputStream {
 		streamID := fmt.Sprintf("resp-%s-%d", requestID.ToString()[:8], opened)
 		opened++
 		stream := newThreadSafeEmitter(writer, requestID, qr.routingId, streamID, label, limits.MaxChunk, creditRouter, uint64(limits.InitialCredit))
 		stream.output = output
+		stream.labelRule = rule
 		return stream
 	})
 	if deriveErr != nil {
@@ -2480,8 +2494,8 @@ func (pr *CartridgeRuntime) dispatchCliPayload(capDef *cap.Cap, handler HandlerF
 	// a debugging surface for the same contract. It has one standard output,
 	// and that carries the cap's main output; another output is a stream the
 	// handler may write to, and its data is not printed.
-	outputs, err := responseOutputsForCap(capDef.UrnString(), pr.manifest, func(_ string, output *string) outputStream {
-		return &cliStreamEmitter{unprinted: output != nil}
+	outputs, err := responseOutputsForCap(capDef.UrnString(), pr.manifest, func(label string, output *string, rule labelRule) outputStream {
+		return &cliStreamEmitter{unprinted: output != nil, defaultLabel: label, labelRule: rule}
 	})
 	if err != nil {
 		return err
@@ -3275,8 +3289,15 @@ type threadSafeEmitter struct {
 	requestID     MessageId
 	routingId     *MessageId // XID from incoming request (preserved for response routing)
 	streamID      string     // Response stream ID
-	mediaUrn      string     // Response media URN
+	mediaUrn      string     // Response media URN: the stream's default label
 	streamStarted bool       // Track if STREAM_START was sent
+	// labelRule is what the handler may state of what this stream gave
+	// (Label). Set once, before the handler runs; the zero value takes no
+	// stated label.
+	labelRule labelRule
+	// stated is the label the handler stated, which the STREAM_START carries
+	// in place of mediaUrn; empty when none was. Guarded by seqMu.
+	stated string
 	// output is the output this stream names in its STREAM_START: the media
 	// URN of an output other than the cap's main one. nil on the main
 	// output's stream, which names none.
@@ -3393,11 +3414,15 @@ func (e *threadSafeEmitter) ensureStreamStarted(isSequence bool) error {
 		e.creditRouter.Register(e.requestID, &streamID, e.creditGate)
 	}
 	seq := isSequence
+	label := e.mediaUrn
+	if e.stated != "" {
+		label = e.stated
+	}
 	var startFrame *Frame
 	if e.unbounded {
-		startFrame = NewStreamStartUnbounded(e.requestID, e.streamID, e.mediaUrn, &seq)
+		startFrame = NewStreamStartUnbounded(e.requestID, e.streamID, label, &seq)
 	} else {
-		startFrame = NewStreamStart(e.requestID, e.streamID, e.mediaUrn, &seq)
+		startFrame = NewStreamStart(e.requestID, e.streamID, label, &seq)
 	}
 	if e.output != nil {
 		startFrame.ForOutput(*e.output)
@@ -3408,6 +3433,27 @@ func (e *threadSafeEmitter) ensureStreamStarted(isSequence bool) error {
 
 // requestOutputs returns the outputs of the request this stream belongs to.
 func (e *threadSafeEmitter) requestOutputs() *responseOutputs { return e.outputs }
+
+// Label states what this stream gives, held to its labelRule; see
+// StreamEmitter.Label.
+func (e *threadSafeEmitter) Label(mediaUrn string) error {
+	// Held while the label is checked and kept, so a concurrent first write
+	// either sends it or this call sees the stream started.
+	e.seqMu.Lock()
+	defer e.seqMu.Unlock()
+	if e.streamStarted {
+		return fmt.Errorf("the stream labelled '%s' cannot be labelled '%s': the label is stated before the stream starts", e.mediaUrn, mediaUrn)
+	}
+	stated, err := parseStatedLabel(e.mediaUrn, mediaUrn)
+	if err != nil {
+		return err
+	}
+	if err := e.labelRule.check(e.mediaUrn, stated); err != nil {
+		return err
+	}
+	e.stated = stated.String()
+	return nil
+}
 
 // isStarted reports whether this stream's STREAM_START was sent.
 func (e *threadSafeEmitter) isStarted() bool {
@@ -3878,9 +3924,23 @@ type cliStreamEmitter struct {
 	unprinted bool
 	// outputs is the outputs of the invocation this stream belongs to.
 	outputs *responseOutputs
+	// defaultLabel and labelRule hold a label the handler states to the same
+	// rule as on the wire; a command line has no STREAM_START to carry it.
+	defaultLabel string
+	labelRule    labelRule
 }
 
 func (e *cliStreamEmitter) requestOutputs() *responseOutputs { return e.outputs }
+
+// Label holds what the handler states to its output's rule, as the wire path
+// does; with no stream framing there is nothing to carry it on.
+func (e *cliStreamEmitter) Label(mediaUrn string) error {
+	stated, err := parseStatedLabel(e.defaultLabel, mediaUrn)
+	if err != nil {
+		return err
+	}
+	return e.labelRule.check(e.defaultLabel, stated)
+}
 
 // A command line has no stream framing: there is nothing to open for an
 // output nobody wrote to, and nothing to close for one somebody did. Every

@@ -58,10 +58,11 @@ func newRecordedOutputs(t *testing.T, capUrn string, manifest *CapManifest) *rec
 	recorded.writer = newSyncFrameWriter(NewFrameWriter(recorded.wire), NewDropCounters(), NewStragglerCounters())
 	rid := NewMessageIdRandom()
 	opened := 0
-	outputs, err := responseOutputsForCap(capUrn, manifest, func(label string, output *string) outputStream {
+	outputs, err := responseOutputsForCap(capUrn, manifest, func(label string, output *string, rule labelRule) outputStream {
 		opened++
 		stream := newThreadSafeEmitter(recorded.writer, rid, nil, "s"+string(rune('0'+opened)), label, DefaultMaxChunk, nil, 0)
 		stream.output = output
+		stream.labelRule = rule
 		return stream
 	})
 	require.NoError(t, err, "the cap's outputs")
@@ -112,6 +113,84 @@ func startNaming(t *testing.T, sent []started, output string) started {
 	}
 	t.Fatalf("no STREAM_START names %q: %+v", output, sent)
 	return started{}
+}
+
+// TEST7273: a handler may state what an output gave, inside what the output
+// declares, before its stream starts. A declared cap's main output takes a
+// label inside its declared out=, read complete, and its STREAM_START carries
+// it; another output takes one inside its own URN. A label outside the
+// output, one stated after the stream started, one on the main output of an
+// effect=none cap and one on an output that carries the input are each
+// refused, naming the stream's default label and the label stated.
+func Test7273_a_handler_states_what_an_output_gave_inside_what_it_declares(t *testing.T) {
+	media := func(text string) string {
+		parsed, err := urn.NewMediaUrnFromString(text)
+		require.NoError(t, err)
+		return parsed.String()
+	}
+	declaredOut := media("media:enc=utf8;fmt=json;?list;?record")
+	save := `cap:in="media:enc=utf8;fmt=json;!ext";save;out="` + declaredOut + `"`
+	listOfRecords := media("media:enc=utf8;fmt=json;list;record")
+	yaml := media("media:enc=utf8;fmt=yaml")
+	refusal := func(err error) string {
+		require.Error(t, err, "the label is refused")
+		return err.Error()
+	}
+
+	// Inside the declared output: the stream opens with the stated label.
+	recorded := newRecordedOutputs(t, save, nil)
+	main := recorded.outputs.main.stream
+	require.NoError(t, main.Label(listOfRecords))
+	require.NoError(t, main.startDeclared(false))
+	assert.Equal(t, listOfRecords, startsOf(recorded.frames(t))[0].label)
+	// Once the stream has started, its label is said.
+	after := refusal(main.Label(listOfRecords))
+	assert.Contains(t, after, "before the stream starts")
+	assert.Contains(t, after, listOfRecords)
+
+	// Unstated, the stream opens with its default: the declared output.
+	recorded = newRecordedOutputs(t, save, nil)
+	require.NoError(t, recorded.outputs.main.stream.startDeclared(false))
+	assert.Equal(t, declaredOut, startsOf(recorded.frames(t))[0].label)
+
+	// Outside the declared output: refused, naming both, and nothing sent.
+	recorded = newRecordedOutputs(t, save, nil)
+	main = recorded.outputs.main.stream
+	outside := refusal(main.Label(yaml))
+	assert.Contains(t, outside, yaml)
+	assert.Contains(t, outside, declaredOut)
+	// A tag the declared output does not say, read complete, is outside it.
+	refusal(main.Label(media("media:enc=utf8;fmt=json;record;table")))
+	require.NoError(t, main.startDeclared(false))
+	assert.Equal(t, declaredOut, startsOf(recorded.frames(t))[0].label, "a refused label is not kept")
+
+	// The main output of an effect=none cap is what it was sent.
+	tidy := `cap:effect=none;in="media:enc=utf8;fmt=json";tidy;out="media:enc=utf8;fmt=json"`
+	recorded = newRecordedOutputs(t, tidy, nil)
+	fixed := refusal(recorded.outputs.main.stream.Label(listOfRecords))
+	assert.Contains(t, fixed, "fixed by its input")
+	assert.Contains(t, fixed, listOfRecords)
+	assert.Contains(t, fixed, media("media:enc=utf8;fmt=json"))
+
+	// Another output: inside its own URN it is stated, an output that
+	// carries the input takes none.
+	definition := regressCap(t)
+	manifest := createTestManifest("Regress", "1.0.0", "Test", []*cap.Cap{definition})
+	recorded = newRecordedOutputs(t, definition.UrnString(), manifest)
+	shortNote := media("media:enc=utf8;note;short")
+	note, err := recorded.outputs.streamFor(noteOut)
+	require.NoError(t, err)
+	require.NoError(t, note.Label(shortNote))
+	require.NoError(t, note.(outputStream).startDeclared(false))
+	assert.Equal(t, shortNote, startNaming(t, startsOf(recorded.frames(t)), noteOut).label)
+	residuals, err := recorded.outputs.streamFor(residualsOut)
+	require.NoError(t, err)
+	outsideNote := refusal(residuals.Label(shortNote))
+	assert.Contains(t, outsideNote, residualsOut)
+	assert.Contains(t, outsideNote, shortNote)
+	rejected, err := recorded.outputs.streamFor(rejectedOut)
+	require.NoError(t, err)
+	assert.Contains(t, refusal(rejected.Label(media(seriesOut))), "fixed by its input")
 }
 
 // TEST12719: a request answers on every output its cap declares. Each has a
@@ -381,8 +460,8 @@ func Test12720_unwritten_outputs_when_the_handler_returns(t *testing.T) {
 func Test12722_standard_output_carries_the_main_output(t *testing.T) {
 	definition := regressCap(t)
 	manifest := createTestManifest("Regress", "1.0.0", "Test", []*cap.Cap{definition})
-	outputs, err := responseOutputsForCap(definition.UrnString(), manifest, func(_ string, output *string) outputStream {
-		return &cliStreamEmitter{unprinted: output != nil}
+	outputs, err := responseOutputsForCap(definition.UrnString(), manifest, func(label string, output *string, rule labelRule) outputStream {
+		return &cliStreamEmitter{unprinted: output != nil, defaultLabel: label, labelRule: rule}
 	})
 	require.NoError(t, err)
 	for _, output := range outputs.all() {

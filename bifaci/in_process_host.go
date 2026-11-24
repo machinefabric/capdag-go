@@ -77,20 +77,45 @@ type FrameHandler interface {
 //
 // All frames sent via ResponseWriter get the correct request_id and routing_id
 // for relay routing. Seq is left at 0 — the wire writer's SeqAssigner handles it.
+//
+// A response is labelled as a cartridge runtime labels it (13.2 §Response
+// media labeling): by default with what the served cap's effect derives, and
+// with a label the handler states only when it is inside the cap's declared
+// output.
 type ResponseWriter struct {
 	requestId MessageId
 	routingId *MessageId
 	tx        chan<- Frame
 	maxChunk  int
+	// served is the cap the request is served with.
+	served *urn.CapUrn
 }
 
-func newResponseWriter(requestId MessageId, routingId *MessageId, tx chan<- Frame, maxChunk int) *ResponseWriter {
+func newResponseWriter(requestId MessageId, routingId *MessageId, tx chan<- Frame, maxChunk int, served *urn.CapUrn) *ResponseWriter {
 	return &ResponseWriter{
 		requestId: requestId,
 		routingId: routingId,
 		tx:        tx,
 		maxChunk:  maxChunk,
+		served:    served,
 	}
+}
+
+// responseLabel is the label a response opens with: the default the served
+// cap's effect derives, or `label` when the cap lets a handler state it. The
+// error says why it may not, naming both labels.
+func (w *ResponseWriter) responseLabel(label *urn.MediaUrn) (string, error) {
+	defaultLabel, err := DeriveResponseMedia(w.served.String())
+	if err != nil {
+		return "", err
+	}
+	if label == nil {
+		return defaultLabel, nil
+	}
+	if err := labelRuleForMainOutput(w.served).check(defaultLabel, label); err != nil {
+		return "", err
+	}
+	return label.String(), nil
 }
 
 // Send sends a frame, stamping it with the request_id and routing_id.
@@ -108,7 +133,18 @@ func (w *ResponseWriter) MaxChunk() int {
 
 // EmitResponseWithMeta sends a complete data response with metadata on
 // STREAM_START: STREAM_START + CBOR-encoded CHUNK(s) + STREAM_END + END.
-func (w *ResponseWriter) EmitResponseWithMeta(mediaUrn string, data []byte, meta map[string]interface{}) {
+//
+// `label` is what the handler states the data is; nil sends the label the
+// served cap's effect derives. A label the cap does not let the handler state
+// (outside a declared cap's out=, or any label for an effect=none or
+// effect=patch cap) sends ERR HANDLER_ERROR naming both labels, in place of
+// the response.
+func (w *ResponseWriter) EmitResponseWithMeta(label *urn.MediaUrn, data []byte, meta map[string]interface{}) {
+	mediaUrn, err := w.responseLabel(label)
+	if err != nil {
+		w.EmitError("HANDLER_ERROR", err.Error())
+		return
+	}
 	streamId := "result"
 
 	scalar := false
@@ -148,9 +184,9 @@ func (w *ResponseWriter) EmitResponseWithMeta(mediaUrn string, data []byte, meta
 }
 
 // EmitResponse sends a complete data response: STREAM_START + CBOR-encoded
-// CHUNK(s) + STREAM_END + END.
-func (w *ResponseWriter) EmitResponse(mediaUrn string, data []byte) {
-	w.EmitResponseWithMeta(mediaUrn, data, nil)
+// CHUNK(s) + STREAM_END + END. `label` as EmitResponseWithMeta.
+func (w *ResponseWriter) EmitResponse(label *urn.MediaUrn, data []byte) {
+	w.EmitResponseWithMeta(label, data, nil)
 }
 
 // EmitError sends an error response.
@@ -480,12 +516,12 @@ func registeredCaps(handlers []handlerEntry) ([]*urn.CapUrn, []int) {
 // findHandlerForCap returns the index of the handler that serves request, and
 // true, or 0 and false when no handler serves it. The proved selection
 // (urn.Select): least ranking key; of equal keys, the first registered.
-func findHandlerForCap(caps []*urn.CapUrn, owners []int, request *urn.CapUrn) (int, bool) {
+func findHandlerForCap(caps []*urn.CapUrn, owners []int, request *urn.CapUrn) (int, *urn.CapUrn, bool) {
 	i, ok := urn.Select(caps, request)
 	if !ok {
-		return 0, false
+		return 0, nil, false
 	}
-	return owners[i], true
+	return owners[i], caps[i], true
 }
 
 // inProcessPoolStates is the host's full pool-state map: one at-rest
@@ -615,10 +651,13 @@ readLoop:
 			}
 
 			var handler FrameHandler
+			// The cap the request is served with, which labels its response.
+			var served *urn.CapUrn
 			if isIdentity {
 				handler = identity
+				served = inProcessIdentityCap().Urn
 			} else {
-				idx, ok := findHandlerForCap(caps, owners, parsedCap)
+				idx, registered, ok := findHandlerForCap(caps, owners, parsedCap)
 				if !ok {
 					// No registered handler for a dispatched cap is a
 					// deployment mismatch — Environment.
@@ -628,13 +667,14 @@ readLoop:
 					continue
 				}
 				handler = h.handlers[idx].handler
+				served = registered
 			}
 
 			// Create channel for forwarding frames to handler.
 			inputTx := make(chan Frame, 256)
 			active[rid.ToString()] = inputTx
 
-			output := newResponseWriter(rid, xid, writeTx, maxChunk)
+			output := newResponseWriter(rid, xid, writeTx, maxChunk, served)
 			capUrnOwned := capUrn
 			peer := PeerInvoker(&noPeerInvoker{})
 			// Tracked, because the handler writes to `writeTx` and shutdown

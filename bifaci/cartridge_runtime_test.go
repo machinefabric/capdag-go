@@ -35,6 +35,11 @@ func (m *mockStreamEmitter) StartUnbounded(isSequence bool) error {
 	return nil
 }
 
+func (m *mockStreamEmitter) Label(mediaUrn string) error {
+	// No-op for tests — this mock carries no labels.
+	return nil
+}
+
 func (m *mockStreamEmitter) EmitCbor(value interface{}) error {
 	// CBOR-encode the value
 	cborPayload, err := cborlib.Marshal(value)
@@ -5252,6 +5257,7 @@ type recordedLog struct {
 }
 
 func (e *recordingEmitter) StartUnbounded(isSequence bool) error { panic("not used by forwarding") }
+func (e *recordingEmitter) Label(mediaUrn string) error           { panic("not used by forwarding") }
 func (e *recordingEmitter) EmitCbor(value interface{}) error     { panic("not used by forwarding") }
 func (e *recordingEmitter) Write(data []byte) error              { panic("not used by forwarding") }
 func (e *recordingEmitter) EmitListItem(value interface{}) error { panic("not used by forwarding") }

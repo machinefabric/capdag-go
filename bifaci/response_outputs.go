@@ -25,6 +25,82 @@ func (e *UnknownOutputError) Error() string {
 	return fmt.Sprintf("Cap '%s' declares no output '%s'", e.CapUrn, e.Output)
 }
 
+// labelRuleKind says which outputs a stated label must lie inside.
+type labelRuleKind int
+
+const (
+	// labelFixed: the stream's type is fixed by its input — the main output
+	// of an effect=none or effect=patch cap, an output that carries the
+	// input. It takes no stated label.
+	labelFixed labelRuleKind = iota
+	// labelDeclared: the main output of a declared cap. A stated label is
+	// inside the declared out= read complete, as the proved model's audit
+	// decides (CapUrn.DeclaredOutputHolds).
+	labelDeclared
+	// labelWithin: an output other than the main one. A stated label is
+	// inside its media URN (MediaUrn.Satisfies).
+	labelWithin
+)
+
+// labelRule is what a handler may state of what an output stream gave (13.2
+// §Response media labeling): the rule a stream's Label holds a stated label
+// to. The runtime opens every response stream with a default label; a handler
+// may narrow it, inside what the output declares, before the stream starts.
+type labelRule struct {
+	kind labelRuleKind
+	// cap is the cap whose main output a labelDeclared stream is.
+	cap *urn.CapUrn
+	// output is the media URN a labelWithin stream's output declares.
+	output *urn.MediaUrn
+}
+
+// labelRuleForMainOutput is the rule for the main output of `capUrn`.
+func labelRuleForMainOutput(capUrn *urn.CapUrn) labelRule {
+	if capUrn.Effect() == urn.CapEffectDeclared {
+		return labelRule{kind: labelDeclared, cap: capUrn}
+	}
+	// effect=none and effect=patch fix the type by the input; ?effect says
+	// nothing of what the cap gives, so no response is labelled for it at all
+	// (DeriveResponseMedia refuses it).
+	return labelRule{kind: labelFixed}
+}
+
+// check says whether `stated` may label a stream whose default label is
+// `defaultLabel`; the error it returns when it may not names both.
+func (r labelRule) check(defaultLabel string, stated *urn.MediaUrn) error {
+	refused := func(why string) error {
+		return fmt.Errorf("the stream labelled '%s' cannot be labelled '%s': %s", defaultLabel, stated, why)
+	}
+	switch r.kind {
+	case labelDeclared:
+		holds, err := r.cap.DeclaredOutputHolds(stated)
+		if err != nil {
+			return refused(err.Error())
+		}
+		if !holds {
+			return refused(fmt.Sprintf("it is not inside the declared output '%s'", r.cap.OutSpec()))
+		}
+		return nil
+	case labelWithin:
+		if !stated.Satisfies(r.output) {
+			return refused(fmt.Sprintf("it is not inside the output '%s'", r.output))
+		}
+		return nil
+	default:
+		return refused("this output's type is fixed by its input")
+	}
+}
+
+// parseStatedLabel reads a label a handler states, refusing one that is no
+// media URN with the stream's default label named.
+func parseStatedLabel(defaultLabel, mediaUrn string) (*urn.MediaUrn, error) {
+	stated, err := urn.NewMediaUrnFromString(mediaUrn)
+	if err != nil {
+		return nil, fmt.Errorf("the stream labelled '%s' cannot be labelled '%s': it is not a media URN: %w", defaultLabel, mediaUrn, err)
+	}
+	return stated, nil
+}
+
 // outputStream is a response stream the runtime can open and close on a
 // handler's behalf.
 type outputStream interface {
@@ -65,17 +141,18 @@ type responseOutputs struct {
 // responseOutputsForCap returns the outputs of `capUrn` as `manifest` defines
 // it.
 //
-// `open` builds one stream from the media label its STREAM_START carries and
-// the output it names (nil for the main output). The main output carries the
-// label the cap URN's effect derives (DeriveResponseMedia) and names no
-// output; another output carries its own media URN, or the cap's declared
-// input when it carries the input, and names itself. A cap served without a
-// definition in the manifest (a built-in the cartridge did not advertise)
-// answers on the one output its URN states.
+// `open` builds one stream from the default label its STREAM_START carries,
+// the output it names (nil for the main output) and the rule a label its
+// handler states is held to. The main output's default is the label the cap
+// URN's effect derives (DeriveResponseMedia) and it names no output; another
+// output's is its own media URN, or the cap's declared input when it carries
+// the input, and it names itself. A cap served without a definition in the
+// manifest (a built-in the cartridge did not advertise) answers on the one
+// output its URN states.
 func responseOutputsForCap(
 	capUrn string,
 	manifest *CapManifest,
-	open func(label string, output *string) outputStream,
+	open func(label string, output *string, rule labelRule) outputStream,
 ) (*responseOutputs, error) {
 	parsed, err := urn.NewCapUrnFromString(capUrn)
 	if err != nil {
@@ -122,7 +199,7 @@ func responseOutputsForCap(
 		// A cap whose `out=` is void has no output: its stream exists for
 		// progress and logs, and is never opened on the handler's behalf.
 		required: !outSpec.IsEquivalent(void),
-		stream:   open(mainLabel, nil),
+		stream:   open(mainLabel, nil, labelRuleForMainOutput(parsed)),
 	}
 	if declaredMain != nil {
 		if outputs.main.urn, err = parse(declaredMain.MediaUrn); err != nil {
@@ -145,15 +222,17 @@ func responseOutputsForCap(
 			return nil, err
 		}
 		label := output.MediaUrn
+		rule := labelRule{kind: labelWithin, output: outputUrn}
 		if output.Carries != nil {
 			label = parsed.InSpec()
+			rule = labelRule{kind: labelFixed}
 		}
 		named := output.MediaUrn
 		outputs.others = append(outputs.others, responseOutput{
 			urn:        outputUrn,
 			required:   !output.Optional,
 			isSequence: output.IsSequence,
-			stream:     open(label, &named),
+			stream:     open(label, &named, rule),
 		})
 	}
 	return outputs, nil

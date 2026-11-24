@@ -858,6 +858,28 @@ func (c *CapUrn) IsConformantRuntimeOutput(runtimeInput, runtimeOutput *MediaUrn
 	return decided(capformal.Audit(c.formal, runtimeInput.Formal(), runtimeOutput.Formal())), nil
 }
 
+// DeclaredOutputHolds reports whether stated, what a handler says this
+// effect=declared cap gave, is inside the declared out= read complete. The
+// proved model's audit (CapDAG.Exec.audit, which is Cap.audits): a declared cap
+// gives its output whatever it is sent, so the answer does not depend on the
+// input.
+//
+// Errors for any other effect: what an effect=none or effect=patch cap gives is
+// fixed by what it is sent, and ?effect says nothing of it.
+func (c *CapUrn) DeclaredOutputHolds(stated *MediaUrn) (bool, error) {
+	if c.Effect() != CapEffectDeclared {
+		return false, &CapUrnError{
+			Code:    ErrorInvalidEffectApply,
+			Message: fmt.Sprintf("'%s' has effect=%s: what it gives is fixed by its input, not stated", c, c.Effect()),
+		}
+	}
+	declaredIn, err := c.InMediaUrn()
+	if err != nil {
+		return false, &CapUrnError{Code: ErrorInvalidMediaUrn, Message: fmt.Sprintf("Stored inSpec failed to parse: %v", err)}
+	}
+	return decided(capformal.Audit(c.formal, declaredIn.Formal(), stated.Formal())), nil
+}
+
 // Per-axis weights for cap-URN specificity. Two orders of magnitude
 // separate each axis to keep them in distinct digit slots while
 // folding into a single comparable integer.

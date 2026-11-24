@@ -27,7 +27,7 @@ func (echoHandler) HandleRequest(_ string, input <-chan Frame, output *ResponseW
 	for _, a := range args {
 		data = append(data, a.Value...)
 	}
-	output.EmitResponseWithMeta("media:", data, meta)
+	output.EmitResponseWithMeta(nil, data, meta)
 }
 
 func makeTestCap(t *testing.T, urnStr string) cap.Cap {
@@ -109,6 +109,104 @@ func Test7201_ResponseStreamsStateIsSequence(t *testing.T) {
 
 	testConn.Close()
 	require.NoError(t, <-hostDone)
+}
+
+// labellingHandler answers every request with an empty JSON list, labelled as
+// it is told.
+type labellingHandler struct{ label *urn.MediaUrn }
+
+func (h labellingHandler) HandleRequest(_ string, input <-chan Frame, output *ResponseWriter, _ PeerInvoker, _ NetworkAccess) {
+	if _, _, err := AccumulateInput(input); err != nil {
+		output.EmitError("ACCUMULATE_ERROR", err.Error())
+		return
+	}
+	output.EmitResponse(h.label, []byte("[]"))
+}
+
+// TEST7274: a handler in the in-process host labels its response as a
+// cartridge runtime's handler does. Stating no label sends the label the
+// served cap's effect derives; a label inside a declared cap's out= is sent as
+// stated; a label outside it, or any label for an effect=none cap, sends ERR
+// HANDLER_ERROR naming both labels, and no response stream.
+func Test7274_InProcessHandlerStatesItsLabelInsideTheCap(t *testing.T) {
+	save := `cap:in="media:enc=utf8;fmt=json;!ext";save;out="media:enc=utf8;fmt=json;?list;?record"`
+	tidy := `cap:effect=none;in="media:enc=utf8;fmt=json";tidy;out="media:enc=utf8;fmt=json"`
+	media := func(text string) *urn.MediaUrn {
+		parsed, err := urn.NewMediaUrnFromString(text)
+		require.NoError(t, err)
+		return parsed
+	}
+	declaredOut := media("media:enc=utf8;fmt=json;?list;?record").String()
+	listOfRecords := media("media:enc=utf8;fmt=json;list;record")
+	yaml := media("media:enc=utf8;fmt=yaml")
+
+	// The frames the host sends for one request to capUrn, served by a
+	// handler that states label, up to its terminal.
+	answer := func(capUrn string, label *urn.MediaUrn) []Frame {
+		handlers := []HandlerRegistration{{Name: "labelling", Caps: []cap.Cap{makeTestCap(t, capUrn)}, Handler: labellingHandler{label}}}
+		host := NewInProcessCartridgeHost(InProcessHostIdentityForTest("in-process-test"), handlers)
+		hostConn, testConn := createSocketPair(t)
+		defer hostConn.Close()
+		hostDone := make(chan error, 1)
+		go func() { hostDone <- host.Run(hostConn, hostConn) }()
+		reader := NewFrameReader(testConn)
+		writer := NewFrameWriter(testConn)
+		require.NoError(t, writer.WriteFrame(NewPolicyFrame(HostPolicy{Network: NetworkPolicyFull})))
+		notify, err := reader.ReadFrame()
+		require.NoError(t, err)
+		require.Equal(t, FrameTypeRelayNotify, notify.FrameType)
+
+		rid := NewMessageIdRandom()
+		req := NewReq(rid, capUrn, []byte{}, "application/cbor")
+		xid := NewMessageIdFromUint(1)
+		req.RoutingId = &xid
+		payload := cborBytesPayload(t, []byte("[]"))
+		require.NoError(t, writer.WriteFrame(req))
+		require.NoError(t, writer.WriteFrame(NewStreamStart(rid, "arg0", "media:enc=utf8;fmt=json", nil)))
+		require.NoError(t, writer.WriteFrame(NewChunk(rid, "arg0", 0, payload, 0, ComputeChecksum(payload))))
+		require.NoError(t, writer.WriteFrame(NewStreamEnd(rid, "arg0", 1)))
+		require.NoError(t, writer.WriteFrame(NewEnd(rid, nil)))
+
+		var frames []Frame
+		for {
+			frame, err := reader.ReadFrame()
+			require.NoError(t, err)
+			frames = append(frames, *frame)
+			if frame.FrameType == FrameTypeEnd || frame.FrameType == FrameTypeErr {
+				break
+			}
+		}
+		testConn.Close()
+		require.NoError(t, <-hostDone)
+		return frames
+	}
+	labelOf := func(frames []Frame) string {
+		require.Equal(t, FrameTypeEnd, frames[len(frames)-1].FrameType, "%+v", frames)
+		for _, frame := range frames {
+			if frame.FrameType == FrameTypeStreamStart {
+				return *frame.MediaUrn
+			}
+		}
+		t.Fatalf("the response opens no stream: %+v", frames)
+		return ""
+	}
+	refusal := func(frames []Frame) string {
+		require.Len(t, frames, 1, "the refusal is the request's only frame: %+v", frames)
+		require.Equal(t, FrameTypeErr, frames[0].FrameType)
+		require.Equal(t, "HANDLER_ERROR", frames[0].ErrorCode())
+		return frames[0].ErrorMessage()
+	}
+
+	assert.Equal(t, declaredOut, labelOf(answer(save, nil)), "no label: the derived one")
+	assert.Equal(t, listOfRecords.String(), labelOf(answer(save, listOfRecords)))
+
+	outside := refusal(answer(save, yaml))
+	assert.Contains(t, outside, yaml.String())
+	assert.Contains(t, outside, declaredOut)
+	fixed := refusal(answer(tidy, listOfRecords))
+	assert.Contains(t, fixed, "fixed by its input")
+	assert.Contains(t, fixed, listOfRecords.String())
+	assert.Equal(t, media("media:enc=utf8;fmt=json").String(), labelOf(answer(tidy, nil)))
 }
 
 // TEST6748: InProcessCartridgeHost routes REQ to matching handler and returns response
@@ -640,9 +738,10 @@ func Test660_ClosestSpecificityRouting(t *testing.T) {
 	// generic (image, specificity 2)
 	request, err := urn.NewCapUrnFromString(`cap:in="media:document;ext=pdf";thumbnail;out="media:ext=png;image"`)
 	require.NoError(t, err)
-	idx, ok := findHandlerForCap(caps, owners, request)
+	idx, served, ok := findHandlerForCap(caps, owners, request)
 	assert.True(t, ok)
 	assert.Equal(t, 1, idx) // specific handler
+	assert.True(t, served.IsEquivalent(specificCap.Urn), "it is served with the specific handler's cap")
 }
 
 // TEST7240: The in-process host chooses among tied handlers by the proved selection: the first registered, every time
@@ -657,7 +756,7 @@ func Test7240_InProcessHostTiesGoToTheFirstRegistered(t *testing.T) {
 			{name: names[1], caps: []cap.Cap{makeTestCap(t, urns[1])}, handler: taggedHandler{names[1]}},
 		}
 		caps, owners := registeredCaps(handlers)
-		idx, ok := findHandlerForCap(caps, owners, request)
+		idx, _, ok := findHandlerForCap(caps, owners, request)
 		require.True(t, ok, "both handlers serve the request")
 		return handlers[idx].name
 	}
@@ -679,7 +778,7 @@ func (h taggedHandler) HandleRequest(_ string, input <-chan Frame, output *Respo
 			break
 		}
 	}
-	output.EmitResponse("media:text", []byte(h.tag))
+	output.EmitResponse(nil, []byte(h.tag))
 }
 
 // answersAnywayHandler answers however its input ended: at END, or when the
@@ -694,7 +793,7 @@ func (h answersAnywayHandler) HandleRequest(_ string, input <-chan Frame, output
 			break
 		}
 	}
-	output.EmitResponse("media:", []byte("an answer"))
+	output.EmitResponse(nil, []byte("an answer"))
 	h.answered <- struct{}{}
 }
 
