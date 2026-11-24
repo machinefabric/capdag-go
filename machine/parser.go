@@ -789,6 +789,170 @@ func narrowerOf(held, given *urn.MediaUrn) (narrower bool, inside bool) {
 	}
 }
 
+// parsedStep is one cap step of a strand, as the node passes read it: its
+// wiring, its cap and the media its main input accepts (nil when it takes none).
+type parsedStep struct {
+	wiring     *rawWiring
+	capUrn     *urn.CapUrn
+	definition *cap.Cap
+	inMedia    *urn.MediaUrn
+}
+
+// binding is one place a node is bound into: what it is accepted as there,
+// and, when the node is a cap step's main member, that step's index among the
+// steps (-1 otherwise).
+type binding struct {
+	accepts *urn.MediaUrn
+	mainOf  int
+}
+
+// nodeBindings lists every place each node is bound into: by name into a cap's
+// arg or a machine's input, or unnamed into a cap's main input, as its one
+// unnamed member or as one of the members its main input gathers when it
+// takes a sequence. Only a member bound by the main arg's name, or the step's
+// one unnamed member, is the step's main member.
+func nodeBindings(wirings []*rawWiring, steps []parsedStep, machines map[string]*includedMachine) map[string][]binding {
+	bindings := map[string][]binding{}
+	for _, w := range wirings {
+		machine, isMachine := machines[w.capAlias]
+		if !isMachine {
+			continue
+		}
+		for _, member := range w.sources {
+			if !member.hasName || member.value.isConstant {
+				continue
+			}
+			if accepts := machine.input(member.name); accepts != nil {
+				bindings[member.value.node] = append(bindings[member.value.node], binding{accepts, -1})
+			}
+		}
+	}
+	for index, s := range steps {
+		var mainArg *cap.CapArg
+		if s.inMedia != nil {
+			for i := range s.definition.Args {
+				if s.definition.Args[i].IsMainInput(s.inMedia) {
+					mainArg = &s.definition.Args[i]
+					break
+				}
+			}
+		}
+		mainNamed := false
+		for _, member := range s.wiring.sources {
+			if !member.hasName || member.value.isConstant {
+				continue
+			}
+			// A name no arg has was refused above.
+			arg := s.definition.ArgNamed(member.name)
+			if arg == nil {
+				continue
+			}
+			mainOf := -1
+			if mainArg != nil && mainArg.Name == arg.Name {
+				mainOf = index
+				mainNamed = true
+			}
+			bindings[member.value.node] = append(bindings[member.value.node], binding{definitionMedia(arg.AcceptedUrn()), mainOf})
+		}
+		if s.inMedia == nil || mainArg == nil || mainNamed {
+			continue
+		}
+		unnamed := s.wiring.unnamedNodes()
+		switch {
+		case len(unnamed) == 1:
+			bindings[unnamed[0]] = append(bindings[unnamed[0]], binding{s.inMedia, index})
+		case mainArg.IsSequence:
+			for _, node := range unnamed {
+				bindings[node] = append(bindings[node], binding{s.inMedia, -1})
+			}
+		}
+	}
+	return bindings
+}
+
+// nodeNeed is what node must be for every step it is bound into: what each
+// accepts it as, and, where it is a step's main member, what that step requires
+// of what it is sent for what its own main output must be. nil when nothing
+// binds it, or when none of those is inside every other. Worked out once per
+// node (need); a node met again on its own way back is a cycle, which the
+// resolver refuses, and says nothing here.
+func nodeNeed(node string, bindings map[string][]binding, steps []parsedStep, need map[string]*urn.MediaUrn, visiting map[string]bool) *urn.MediaUrn {
+	if known, ok := need[node]; ok {
+		return known
+	}
+	if visiting[node] {
+		return nil
+	}
+	visiting[node] = true
+	var needs []*urn.MediaUrn
+	for _, b := range bindings[node] {
+		needs = append(needs, b.accepts)
+		if b.mainOf < 0 {
+			continue
+		}
+		s := steps[b.mainOf]
+		for _, target := range s.wiring.targets {
+			if !isMainTarget(s.definition, target) {
+				continue
+			}
+			outNeed := nodeNeed(target.node, bindings, steps, need, visiting)
+			if outNeed == nil {
+				continue
+			}
+			if required, ok := s.capUrn.Requires(outNeed); ok {
+				needs = append(needs, required)
+			}
+		}
+	}
+	delete(visiting, node)
+	narrowest := narrowestInsideAll(needs)
+	need[node] = narrowest
+	return narrowest
+}
+
+// narrowestInsideAll is the one of types that is inside every other, or nil
+// when there are none or no one of them is.
+func narrowestInsideAll(types []*urn.MediaUrn) *urn.MediaUrn {
+	if len(types) == 0 {
+		return nil
+	}
+	narrowest := types[0]
+	for _, t := range types[1:] {
+		narrower, inside := narrowerOf(narrowest, t)
+		if !inside {
+			return nil
+		}
+		if narrower {
+			narrowest = t
+		}
+	}
+	for _, t := range types {
+		if !narrowest.ConformsTo(t) {
+			return nil
+		}
+	}
+	return narrowest
+}
+
+// carriesInput says whether a target takes an output of the cap that carries
+// the cap's input.
+func carriesInput(definition *cap.Cap, target rawTarget) bool {
+	if !target.hasName {
+		return false
+	}
+	output := definition.OutputNamed(target.name)
+	return output != nil && output.Carries != nil
+}
+
+// definitionMedia parses a media URN a cap definition holds.
+func definitionMedia(text string) *urn.MediaUrn {
+	parsed, err := urn.NewMediaUrnFromString(text)
+	if err != nil {
+		panic(fmt.Sprintf("cap registry invariant: a definition's media URNs are valid: %q: %v", text, err))
+	}
+	return parsed
+}
+
 // typeNodes gives every node of one strand its media URN (see the file
 // documentation and 09 §The URN of a node). The result does not depend on the
 // order of the wirings: what produces a node and what names it are read first,
@@ -1014,30 +1178,23 @@ func typeNodes(
 		}
 	}
 
-	// What an effect=none or effect=patch cap gives follows from what it is
-	// sent (07 §What a cap gives), so the types on either side of one are read
-	// through it, both ways:
+	// The machine's text writes no types, so a node is read with the types its
+	// steps need (09 §The URN of a node), in two passes that only narrow a node
+	// along its chain; a type on no chain with the node's is left, for the
+	// binding check to report:
 	//
-	//   - forward, its main output's node holds what the cap gives for the type
-	//     of the node feeding its main input, which refines the declared output
-	//     it was given above: a JSON list of records sent to a patch to YAML
-	//     gives a YAML list of records;
-	//   - backward, a step's main input says what the patches feeding it must
-	//     give, and so what the input of the machine at the start of them must
-	//     be: walked back through each, its input put back where its output
-	//     changes it. A YAML input of the machine converted to JSON for a step
-	//     that takes JSON lists of records is a YAML list of records.
-	//
-	// Read again until nothing changes, so a chain of such caps is typed
-	// whatever order it is written in.
-	type step struct {
-		wiring     *rawWiring
-		capUrn     *urn.CapUrn
-		definition *cap.Cap
-		inMedia    *urn.MediaUrn
-	}
-	var steps []step
-	patches := map[string]*step{}
+	//   - back: what a node must be is what every step it is bound into accepts
+	//     there, and where it is a step's main member, what that step requires
+	//     of what it is sent for what its own main output must be
+	//     (CapUrn.Requires), all on one chain. An input of the machine is
+	//     narrowed to it: a YAML input converted to JSON for a step that gathers
+	//     JSON records that are not lists is a YAML record that is not a list.
+	//   - forward: a step that passes on or patches what it is sent gives its
+	//     main output's node what it gives for what its main member holds, when
+	//     that is inside its input; an output that carries the input holds what
+	//     the main member holds. Read again until nothing changes, so a chain of
+	//     such steps is typed whatever order it is written in.
+	var steps []parsedStep
 	for _, w := range wirings {
 		if _, isMachine := machines[w.capAlias]; isMachine {
 			continue
@@ -1050,74 +1207,37 @@ func typeNodes(
 		if err != nil {
 			return nil, err
 		}
-		steps = append(steps, step{w, capUrn, definition, inMedia})
+		steps = append(steps, parsedStep{w, capUrn, definition, inMedia})
 	}
-	for i := range steps {
-		if mainOutputIsGiven(steps[i].definition) {
+	bindings := nodeBindings(wirings, steps, machines)
+	need := map[string]*urn.MediaUrn{}
+	for node := range bindings {
+		nodeNeed(node, bindings, steps, need, map[string]bool{})
+	}
+	for node, must := range need {
+		if must == nil || produced[node] {
 			continue
 		}
-		for _, target := range steps[i].wiring.targets {
-			if isMainTarget(steps[i].definition, target) {
-				patches[target.node] = &steps[i]
+		if held, typed := nodeMedia[node]; typed {
+			if narrower, inside := narrowerOf(held, must); inside && narrower {
+				nodeMedia[node] = must
 			}
 		}
 	}
-	for range wirings {
+	for pass := 0; pass <= len(wirings); pass++ {
 		changed := false
 		for i := range steps {
 			s := &steps[i]
-			if s.inMedia == nil {
+			if mainOutputIsGiven(s.definition) || s.inMedia == nil {
 				continue
 			}
 			source := mainSource(s.wiring, s.definition, s.inMedia)
 			if source == "" {
 				continue
 			}
-
-			// Backward, from this step's main input to the input of the
-			// machine at the start of the patches feeding it.
-			required := s.inMedia
-			start := source
-			walked := 0
-			for patch, isPatch := patches[start]; isPatch && walked < len(wirings); patch, isPatch = patches[start] {
-				walked++
-				if patch.inMedia == nil {
-					break
-				}
-				patchOut, outErr := patch.capUrn.OutMediaUrn()
-				if outErr != nil {
-					return nil, syntaxParseError(invalidMediaUrnError(patch.wiring.capAlias, fmt.Sprintf("out= spec: %s", outErr)))
-				}
-				undo, deltaErr := patch.inMedia.DeltaFrom(patchOut)
-				if deltaErr != nil {
-					panic(fmt.Sprintf("a cap's in= and out= are both media URNs: %v", deltaErr))
-				}
-				undone, applyErr := required.ApplyDelta(undo)
-				if applyErr != nil {
-					panic(fmt.Sprintf("a media URN takes a delta between media URNs: %v", applyErr))
-				}
-				required = undone
-				feeding := mainSource(patch.wiring, patch.definition, patch.inMedia)
-				if feeding == "" {
-					break
-				}
-				start = feeding
-			}
-			if held, typed := nodeMedia[start]; walked > 0 && !produced[start] && typed && held.IsComparable(required) {
-				before := held.String()
-				if err := give(nodeMedia, start, required); err != nil {
-					return nil, err
-				}
-				changed = changed || before != nodeMedia[start].String()
-			}
-
-			// Forward, from what this step is sent to what it gives.
-			if mainOutputIsGiven(s.definition) {
-				continue
-			}
 			sent, typed := nodeMedia[source]
-			// A member that does not fit the input is the resolver's to refuse.
-			if !typed || !sent.Satisfies(s.inMedia) {
+			// A member that is not inside the input is the resolver's to refuse.
+			if !typed || !sent.ConformsTo(s.inMedia) {
 				continue
 			}
 			given, inferErr := s.capUrn.InferRuntimeOutputMedia(sent)
@@ -1125,14 +1245,20 @@ func typeNodes(
 				return nil, abstractionParseError(runtimeMediaInferenceError(strandIndex, s.capUrn.String(), sent.String(), inferErr.Error()))
 			}
 			for _, target := range s.wiring.targets {
-				if !isMainTarget(s.definition, target) {
+				var holds *urn.MediaUrn
+				switch {
+				case isMainTarget(s.definition, target):
+					holds = given
+				case carriesInput(s.definition, target):
+					holds = sent
+				default:
 					continue
 				}
 				before := ""
 				if held, ok := nodeMedia[target.node]; ok {
 					before = held.String()
 				}
-				if err := give(nodeMedia, target.node, given); err != nil {
+				if err := give(nodeMedia, target.node, holds); err != nil {
 					return nil, err
 				}
 				changed = changed || before != nodeMedia[target.node].String()

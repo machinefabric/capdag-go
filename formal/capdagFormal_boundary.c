@@ -1128,10 +1128,10 @@ static const uint8_t capdagFormal__t_142[] = {
     0x1b, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_143[] = {
-    0x1b, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x1b, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_144[] = {
-    0x02,
+    0x14, 0x1b, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_145[] = {
     0x1b, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -1143,31 +1143,31 @@ static const uint8_t capdagFormal__t_147[] = {
     0x02,
 };
 static const uint8_t capdagFormal__t_148[] = {
-    0x1b, 0x1e, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x1b, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_149[] = {
-    0x1b, 0x1e, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x1b, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_150[] = {
     0x02,
 };
 static const uint8_t capdagFormal__t_151[] = {
-    0x15, 0x1b, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x1b, 0x1e, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_152[] = {
-    0x1b, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x1b, 0x1e, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_153[] = {
-    0x14, 0x15, 0x1b, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x02,
 };
 static const uint8_t capdagFormal__t_154[] = {
-    0x1b, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x15, 0x1b, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_155[] = {
-    0x1b, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x1b, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_156[] = {
-    0x02,
+    0x14, 0x15, 0x1b, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_157[] = {
     0x1b, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -1197,7 +1197,7 @@ static const uint8_t capdagFormal__t_165[] = {
     0x02,
 };
 static const uint8_t capdagFormal__t_166[] = {
-    0x1b, 0x1f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x1b, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_167[] = {
     0x1b, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -1206,16 +1206,16 @@ static const uint8_t capdagFormal__t_168[] = {
     0x02,
 };
 static const uint8_t capdagFormal__t_169[] = {
-    0x1b, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x1b, 0x1f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_170[] = {
-    0x1b, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x1b, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_171[] = {
-    0x1b, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x02,
 };
 static const uint8_t capdagFormal__t_172[] = {
-    0x1b, 0x1f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x1b, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_173[] = {
     0x1b, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -1227,13 +1227,13 @@ static const uint8_t capdagFormal__t_175[] = {
     0x1b, 0x1f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_176[] = {
-    0x1b, 0x1f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x1b, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_177[] = {
-    0x1b, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x1b, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_178[] = {
-    0x1b, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x1b, 0x1f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_179[] = {
     0x1b, 0x1f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -1242,129 +1242,138 @@ static const uint8_t capdagFormal__t_180[] = {
     0x1b, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_181[] = {
-    0x02,
+    0x1b, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_182[] = {
-    0x1b, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x1b, 0x1f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_183[] = {
-    0x1b, 0x1f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
-static const uint8_t capdagFormal__t_184[] = {
     0x1b, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+static const uint8_t capdagFormal__t_184[] = {
+    0x02,
+};
 static const uint8_t capdagFormal__t_185[] = {
-    0x1b, 0x1f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x1b, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_186[] = {
-    0x1b, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x1b, 0x1f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_187[] = {
-    0x1b, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x1b, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_188[] = {
     0x1b, 0x1f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_189[] = {
-    0x1b, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x1b, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_190[] = {
-    0x1b, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x1b, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_191[] = {
-    0x17, 0x00, 0x00,
+    0x1b, 0x1f, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_192[] = {
-    0x15, 0x1b, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x1b, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_193[] = {
     0x1b, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_194[] = {
-    0x14, 0x1b, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x17, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_195[] = {
-    0x1b, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x15, 0x1b, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_196[] = {
-    0x00,
+    0x1b, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_197[] = {
-    0x1b, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x14, 0x1b, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_198[] = {
-    0x15, 0x1b, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x1b, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_199[] = {
-    0x1b, 0x21, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
-static const uint8_t capdagFormal__t_200[] = {
-    0x02,
-};
-static const uint8_t capdagFormal__t_201[] = {
-    0x1b, 0x22, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
-static const uint8_t capdagFormal__t_202[] = {
     0x00,
 };
+static const uint8_t capdagFormal__t_200[] = {
+    0x1b, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+static const uint8_t capdagFormal__t_201[] = {
+    0x15, 0x1b, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+static const uint8_t capdagFormal__t_202[] = {
+    0x1b, 0x21, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
 static const uint8_t capdagFormal__t_203[] = {
-    0x1b, 0x22, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x02,
 };
 static const uint8_t capdagFormal__t_204[] = {
     0x1b, 0x22, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_205[] = {
-    0x1b, 0x22, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00,
 };
 static const uint8_t capdagFormal__t_206[] = {
-    0x1b, 0x21, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x1b, 0x22, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_207[] = {
-    0x1b, 0x23, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x1b, 0x22, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_208[] = {
-    0x1b, 0x24, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x1b, 0x22, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_209[] = {
     0x1b, 0x21, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_210[] = {
-    0x02,
+    0x1b, 0x23, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_211[] = {
-    0x02,
+    0x1b, 0x24, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_212[] = {
-    0x1b, 0x22, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x1b, 0x21, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_213[] = {
-    0x1b, 0x25, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x02,
 };
 static const uint8_t capdagFormal__t_214[] = {
     0x02,
 };
 static const uint8_t capdagFormal__t_215[] = {
-    0x1b, 0x25, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x1b, 0x22, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_216[] = {
-    0x1b, 0x26, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x1b, 0x25, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_217[] = {
-    0x14, 0x1b, 0x25, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x02,
 };
 static const uint8_t capdagFormal__t_218[] = {
-    0x10,
+    0x1b, 0x25, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_219[] = {
-    0x15, 0x17, 0x10, 0x1b, 0x27, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x1b, 0x26, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_220[] = {
-    0x14, 0x1b, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x14, 0x1b, 0x25, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 static const uint8_t capdagFormal__t_221[] = {
-    0x1b, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x10,
 };
 static const uint8_t capdagFormal__t_222[] = {
+    0x15, 0x17, 0x10, 0x1b, 0x27, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+static const uint8_t capdagFormal__t_223[] = {
+    0x14, 0x1b, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+static const uint8_t capdagFormal__t_224[] = {
+    0x1b, 0x19, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+static const uint8_t capdagFormal__t_225[] = {
     0x17, 0x10, 0x15, 0x17, 0x10, 0x1b, 0x27, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
 
@@ -2234,8 +2243,8 @@ int32_t capdagFormal__call_l_CapDAG_dExec_dcapIllegal(const uint8_t *input, size
     return lungo_call_end(call, out);
 }
 
-/* CapDAG.Exec.comparable : CapDAG.Exec.WfCap → CapDAG.Exec.WfCap → Bool */
-int32_t capdagFormal__call_l_CapDAG_dExec_dcomparable(const uint8_t *input, size_t len, lungo_buffer *out) {
+/* CapDAG.Exec.capRequires : CapDAG.Exec.WfCap → TaggedUrn.Exec.Wf → Option TaggedUrn.Exec.Wf */
+int32_t capdagFormal__call_l_CapDAG_dExec_dcapRequires(const uint8_t *input, size_t len, lungo_buffer *out) {
     capdagFormal__initialize();
     lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
     lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_142, 9);
@@ -2245,15 +2254,13 @@ int32_t capdagFormal__call_l_CapDAG_dExec_dcomparable(const uint8_t *input, size
         lungo_dec(a_1);
         return lungo_call_end(call, out);
     }
-    uint8_t r = capdagFormal__l_CapDAG_dExec_dcomparable(a_0, a_1);
-    lungo_dec(a_0);
-    lungo_dec(a_1);
-    lungo_call_write(call, lungo_box((size_t)r), capdagFormal__t_144, 1);
+    lungo_obj r = capdagFormal__l_CapDAG_dExec_dcapRequires(a_0, a_1);
+    lungo_call_write(call, r, capdagFormal__t_144, 10);
     return lungo_call_end(call, out);
 }
 
-/* CapDAG.Exec.dispatch : CapDAG.Exec.WfCap → CapDAG.Exec.WfCap → Bool */
-int32_t capdagFormal__call_l_CapDAG_dExec_ddispatch(const uint8_t *input, size_t len, lungo_buffer *out) {
+/* CapDAG.Exec.comparable : CapDAG.Exec.WfCap → CapDAG.Exec.WfCap → Bool */
+int32_t capdagFormal__call_l_CapDAG_dExec_dcomparable(const uint8_t *input, size_t len, lungo_buffer *out) {
     capdagFormal__initialize();
     lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
     lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_145, 9);
@@ -2263,8 +2270,26 @@ int32_t capdagFormal__call_l_CapDAG_dExec_ddispatch(const uint8_t *input, size_t
         lungo_dec(a_1);
         return lungo_call_end(call, out);
     }
-    uint8_t r = capdagFormal__l_CapDAG_dExec_ddispatch(a_0, a_1);
+    uint8_t r = capdagFormal__l_CapDAG_dExec_dcomparable(a_0, a_1);
+    lungo_dec(a_0);
+    lungo_dec(a_1);
     lungo_call_write(call, lungo_box((size_t)r), capdagFormal__t_147, 1);
+    return lungo_call_end(call, out);
+}
+
+/* CapDAG.Exec.dispatch : CapDAG.Exec.WfCap → CapDAG.Exec.WfCap → Bool */
+int32_t capdagFormal__call_l_CapDAG_dExec_ddispatch(const uint8_t *input, size_t len, lungo_buffer *out) {
+    capdagFormal__initialize();
+    lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
+    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_148, 9);
+    lungo_obj a_1 = lungo_call_read(call, capdagFormal__t_149, 9);
+    if (!lungo_call_complete(call)) {
+        lungo_dec(a_0);
+        lungo_dec(a_1);
+        return lungo_call_end(call, out);
+    }
+    uint8_t r = capdagFormal__l_CapDAG_dExec_ddispatch(a_0, a_1);
+    lungo_call_write(call, lungo_box((size_t)r), capdagFormal__t_150, 1);
     return lungo_call_end(call, out);
 }
 
@@ -2272,8 +2297,8 @@ int32_t capdagFormal__call_l_CapDAG_dExec_ddispatch(const uint8_t *input, size_t
 int32_t capdagFormal__call_l_CapDAG_dExec_deffectOk(const uint8_t *input, size_t len, lungo_buffer *out) {
     capdagFormal__initialize();
     lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
-    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_148, 9);
-    lungo_obj a_1 = lungo_call_read(call, capdagFormal__t_149, 9);
+    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_151, 9);
+    lungo_obj a_1 = lungo_call_read(call, capdagFormal__t_152, 9);
     if (!lungo_call_complete(call)) {
         lungo_dec(a_0);
         lungo_dec(a_1);
@@ -2284,7 +2309,7 @@ int32_t capdagFormal__call_l_CapDAG_dExec_deffectOk(const uint8_t *input, size_t
     uint8_t p_1 = (uint8_t)lungo_unbox(a_1);
     lungo_dec(a_1);
     uint8_t r = capdagFormal__l_CapDAG_dExec_deffectOk(p_0, p_1);
-    lungo_call_write(call, lungo_box((size_t)r), capdagFormal__t_150, 1);
+    lungo_call_write(call, lungo_box((size_t)r), capdagFormal__t_153, 1);
     return lungo_call_end(call, out);
 }
 
@@ -2292,38 +2317,20 @@ int32_t capdagFormal__call_l_CapDAG_dExec_deffectOk(const uint8_t *input, size_t
 int32_t capdagFormal__call_l_CapDAG_dExec_dendsOn(const uint8_t *input, size_t len, lungo_buffer *out) {
     capdagFormal__initialize();
     lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
-    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_151, 10);
-    lungo_obj a_1 = lungo_call_read(call, capdagFormal__t_152, 9);
-    if (!lungo_call_complete(call)) {
-        lungo_dec(a_0);
-        lungo_dec(a_1);
-        return lungo_call_end(call, out);
-    }
-    lungo_obj r = capdagFormal__l_CapDAG_dExec_dendsOn(a_0, a_1);
-    lungo_call_write(call, r, capdagFormal__t_153, 11);
-    return lungo_call_end(call, out);
-}
-
-/* CapDAG.Exec.equivalent : CapDAG.Exec.WfCap → CapDAG.Exec.WfCap → Bool */
-int32_t capdagFormal__call_l_CapDAG_dExec_dequivalent(const uint8_t *input, size_t len, lungo_buffer *out) {
-    capdagFormal__initialize();
-    lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
-    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_154, 9);
+    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_154, 10);
     lungo_obj a_1 = lungo_call_read(call, capdagFormal__t_155, 9);
     if (!lungo_call_complete(call)) {
         lungo_dec(a_0);
         lungo_dec(a_1);
         return lungo_call_end(call, out);
     }
-    uint8_t r = capdagFormal__l_CapDAG_dExec_dequivalent(a_0, a_1);
-    lungo_dec(a_0);
-    lungo_dec(a_1);
-    lungo_call_write(call, lungo_box((size_t)r), capdagFormal__t_156, 1);
+    lungo_obj r = capdagFormal__l_CapDAG_dExec_dendsOn(a_0, a_1);
+    lungo_call_write(call, r, capdagFormal__t_156, 11);
     return lungo_call_end(call, out);
 }
 
-/* CapDAG.Exec.flows : CapDAG.Exec.WfCap → CapDAG.Exec.WfCap → Bool */
-int32_t capdagFormal__call_l_CapDAG_dExec_dflows(const uint8_t *input, size_t len, lungo_buffer *out) {
+/* CapDAG.Exec.equivalent : CapDAG.Exec.WfCap → CapDAG.Exec.WfCap → Bool */
+int32_t capdagFormal__call_l_CapDAG_dExec_dequivalent(const uint8_t *input, size_t len, lungo_buffer *out) {
     capdagFormal__initialize();
     lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
     lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_157, 9);
@@ -2333,15 +2340,15 @@ int32_t capdagFormal__call_l_CapDAG_dExec_dflows(const uint8_t *input, size_t le
         lungo_dec(a_1);
         return lungo_call_end(call, out);
     }
-    uint8_t r = capdagFormal__l_CapDAG_dExec_dflows(a_0, a_1);
+    uint8_t r = capdagFormal__l_CapDAG_dExec_dequivalent(a_0, a_1);
     lungo_dec(a_0);
     lungo_dec(a_1);
     lungo_call_write(call, lungo_box((size_t)r), capdagFormal__t_159, 1);
     return lungo_call_end(call, out);
 }
 
-/* CapDAG.Exec.mayDispatch : CapDAG.Exec.WfCap → CapDAG.Exec.WfCap → Bool */
-int32_t capdagFormal__call_l_CapDAG_dExec_dmayDispatch(const uint8_t *input, size_t len, lungo_buffer *out) {
+/* CapDAG.Exec.flows : CapDAG.Exec.WfCap → CapDAG.Exec.WfCap → Bool */
+int32_t capdagFormal__call_l_CapDAG_dExec_dflows(const uint8_t *input, size_t len, lungo_buffer *out) {
     capdagFormal__initialize();
     lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
     lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_160, 9);
@@ -2351,13 +2358,15 @@ int32_t capdagFormal__call_l_CapDAG_dExec_dmayDispatch(const uint8_t *input, siz
         lungo_dec(a_1);
         return lungo_call_end(call, out);
     }
-    uint8_t r = capdagFormal__l_CapDAG_dExec_dmayDispatch(a_0, a_1);
+    uint8_t r = capdagFormal__l_CapDAG_dExec_dflows(a_0, a_1);
+    lungo_dec(a_0);
+    lungo_dec(a_1);
     lungo_call_write(call, lungo_box((size_t)r), capdagFormal__t_162, 1);
     return lungo_call_end(call, out);
 }
 
-/* CapDAG.Exec.mayFlow : CapDAG.Exec.WfCap → CapDAG.Exec.WfCap → Bool */
-int32_t capdagFormal__call_l_CapDAG_dExec_dmayFlow(const uint8_t *input, size_t len, lungo_buffer *out) {
+/* CapDAG.Exec.mayDispatch : CapDAG.Exec.WfCap → CapDAG.Exec.WfCap → Bool */
+int32_t capdagFormal__call_l_CapDAG_dExec_dmayDispatch(const uint8_t *input, size_t len, lungo_buffer *out) {
     capdagFormal__initialize();
     lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
     lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_163, 9);
@@ -2367,13 +2376,13 @@ int32_t capdagFormal__call_l_CapDAG_dExec_dmayFlow(const uint8_t *input, size_t 
         lungo_dec(a_1);
         return lungo_call_end(call, out);
     }
-    uint8_t r = capdagFormal__l_CapDAG_dExec_dmayFlow(a_0, a_1);
+    uint8_t r = capdagFormal__l_CapDAG_dExec_dmayDispatch(a_0, a_1);
     lungo_call_write(call, lungo_box((size_t)r), capdagFormal__t_165, 1);
     return lungo_call_end(call, out);
 }
 
-/* CapDAG.Exec.queryAdmits : CapDAG.Exec.WfQuery → CapDAG.Exec.WfCap → Bool */
-int32_t capdagFormal__call_l_CapDAG_dExec_dqueryAdmits(const uint8_t *input, size_t len, lungo_buffer *out) {
+/* CapDAG.Exec.mayFlow : CapDAG.Exec.WfCap → CapDAG.Exec.WfCap → Bool */
+int32_t capdagFormal__call_l_CapDAG_dExec_dmayFlow(const uint8_t *input, size_t len, lungo_buffer *out) {
     capdagFormal__initialize();
     lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
     lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_166, 9);
@@ -2383,8 +2392,24 @@ int32_t capdagFormal__call_l_CapDAG_dExec_dqueryAdmits(const uint8_t *input, siz
         lungo_dec(a_1);
         return lungo_call_end(call, out);
     }
-    uint8_t r = capdagFormal__l_CapDAG_dExec_dqueryAdmits(a_0, a_1);
+    uint8_t r = capdagFormal__l_CapDAG_dExec_dmayFlow(a_0, a_1);
     lungo_call_write(call, lungo_box((size_t)r), capdagFormal__t_168, 1);
+    return lungo_call_end(call, out);
+}
+
+/* CapDAG.Exec.queryAdmits : CapDAG.Exec.WfQuery → CapDAG.Exec.WfCap → Bool */
+int32_t capdagFormal__call_l_CapDAG_dExec_dqueryAdmits(const uint8_t *input, size_t len, lungo_buffer *out) {
+    capdagFormal__initialize();
+    lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
+    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_169, 9);
+    lungo_obj a_1 = lungo_call_read(call, capdagFormal__t_170, 9);
+    if (!lungo_call_complete(call)) {
+        lungo_dec(a_0);
+        lungo_dec(a_1);
+        return lungo_call_end(call, out);
+    }
+    uint8_t r = capdagFormal__l_CapDAG_dExec_dqueryAdmits(a_0, a_1);
+    lungo_call_write(call, lungo_box((size_t)r), capdagFormal__t_171, 1);
     return lungo_call_end(call, out);
 }
 
@@ -2392,9 +2417,9 @@ int32_t capdagFormal__call_l_CapDAG_dExec_dqueryAdmits(const uint8_t *input, siz
 int32_t capdagFormal__call_l_CapDAG_dExec_dqueryBetween(const uint8_t *input, size_t len, lungo_buffer *out) {
     capdagFormal__initialize();
     lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
-    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_169, 9);
-    lungo_obj a_1 = lungo_call_read(call, capdagFormal__t_170, 9);
-    lungo_obj a_2 = lungo_call_read(call, capdagFormal__t_171, 9);
+    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_172, 9);
+    lungo_obj a_1 = lungo_call_read(call, capdagFormal__t_173, 9);
+    lungo_obj a_2 = lungo_call_read(call, capdagFormal__t_174, 9);
     if (!lungo_call_complete(call)) {
         lungo_dec(a_0);
         lungo_dec(a_1);
@@ -2402,28 +2427,12 @@ int32_t capdagFormal__call_l_CapDAG_dExec_dqueryBetween(const uint8_t *input, si
         return lungo_call_end(call, out);
     }
     lungo_obj r = capdagFormal__l_CapDAG_dExec_dqueryBetween(a_0, a_1, a_2);
-    lungo_call_write(call, r, capdagFormal__t_172, 9);
+    lungo_call_write(call, r, capdagFormal__t_175, 9);
     return lungo_call_end(call, out);
 }
 
 /* CapDAG.Exec.queryConsuming : TaggedUrn.Exec.Wf → TaggedUrn.Exec.Wf → CapDAG.Exec.WfQuery */
 int32_t capdagFormal__call_l_CapDAG_dExec_dqueryConsuming(const uint8_t *input, size_t len, lungo_buffer *out) {
-    capdagFormal__initialize();
-    lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
-    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_173, 9);
-    lungo_obj a_1 = lungo_call_read(call, capdagFormal__t_174, 9);
-    if (!lungo_call_complete(call)) {
-        lungo_dec(a_0);
-        lungo_dec(a_1);
-        return lungo_call_end(call, out);
-    }
-    lungo_obj r = capdagFormal__l_CapDAG_dExec_dqueryConsuming(a_0, a_1);
-    lungo_call_write(call, r, capdagFormal__t_175, 9);
-    return lungo_call_end(call, out);
-}
-
-/* CapDAG.Exec.queryGrade : CapDAG.Exec.WfQuery → CapDAG.Exec.WfCap → CapDAG.Grade */
-int32_t capdagFormal__call_l_CapDAG_dExec_dqueryGrade(const uint8_t *input, size_t len, lungo_buffer *out) {
     capdagFormal__initialize();
     lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
     lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_176, 9);
@@ -2433,13 +2442,13 @@ int32_t capdagFormal__call_l_CapDAG_dExec_dqueryGrade(const uint8_t *input, size
         lungo_dec(a_1);
         return lungo_call_end(call, out);
     }
-    uint8_t r = capdagFormal__l_CapDAG_dExec_dqueryGrade(a_0, a_1);
-    lungo_call_write(call, lungo_box((size_t)r), capdagFormal__t_178, 9);
+    lungo_obj r = capdagFormal__l_CapDAG_dExec_dqueryConsuming(a_0, a_1);
+    lungo_call_write(call, r, capdagFormal__t_178, 9);
     return lungo_call_end(call, out);
 }
 
-/* CapDAG.Exec.queryMayAdmit : CapDAG.Exec.WfQuery → CapDAG.Exec.WfCap → Bool */
-int32_t capdagFormal__call_l_CapDAG_dExec_dqueryMayAdmit(const uint8_t *input, size_t len, lungo_buffer *out) {
+/* CapDAG.Exec.queryGrade : CapDAG.Exec.WfQuery → CapDAG.Exec.WfCap → CapDAG.Grade */
+int32_t capdagFormal__call_l_CapDAG_dExec_dqueryGrade(const uint8_t *input, size_t len, lungo_buffer *out) {
     capdagFormal__initialize();
     lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
     lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_179, 9);
@@ -2449,8 +2458,24 @@ int32_t capdagFormal__call_l_CapDAG_dExec_dqueryMayAdmit(const uint8_t *input, s
         lungo_dec(a_1);
         return lungo_call_end(call, out);
     }
+    uint8_t r = capdagFormal__l_CapDAG_dExec_dqueryGrade(a_0, a_1);
+    lungo_call_write(call, lungo_box((size_t)r), capdagFormal__t_181, 9);
+    return lungo_call_end(call, out);
+}
+
+/* CapDAG.Exec.queryMayAdmit : CapDAG.Exec.WfQuery → CapDAG.Exec.WfCap → Bool */
+int32_t capdagFormal__call_l_CapDAG_dExec_dqueryMayAdmit(const uint8_t *input, size_t len, lungo_buffer *out) {
+    capdagFormal__initialize();
+    lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
+    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_182, 9);
+    lungo_obj a_1 = lungo_call_read(call, capdagFormal__t_183, 9);
+    if (!lungo_call_complete(call)) {
+        lungo_dec(a_0);
+        lungo_dec(a_1);
+        return lungo_call_end(call, out);
+    }
     uint8_t r = capdagFormal__l_CapDAG_dExec_dqueryMayAdmit(a_0, a_1);
-    lungo_call_write(call, lungo_box((size_t)r), capdagFormal__t_181, 1);
+    lungo_call_write(call, lungo_box((size_t)r), capdagFormal__t_184, 1);
     return lungo_call_end(call, out);
 }
 
@@ -2458,13 +2483,13 @@ int32_t capdagFormal__call_l_CapDAG_dExec_dqueryMayAdmit(const uint8_t *input, s
 int32_t capdagFormal__call_l_CapDAG_dExec_dqueryOfCall(const uint8_t *input, size_t len, lungo_buffer *out) {
     capdagFormal__initialize();
     lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
-    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_182, 9);
+    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_185, 9);
     if (!lungo_call_complete(call)) {
         lungo_dec(a_0);
         return lungo_call_end(call, out);
     }
     lungo_obj r = capdagFormal__l_CapDAG_dExec_dqueryOfCall(a_0);
-    lungo_call_write(call, r, capdagFormal__t_183, 9);
+    lungo_call_write(call, r, capdagFormal__t_186, 9);
     return lungo_call_end(call, out);
 }
 
@@ -2472,34 +2497,18 @@ int32_t capdagFormal__call_l_CapDAG_dExec_dqueryOfCall(const uint8_t *input, siz
 int32_t capdagFormal__call_l_CapDAG_dExec_dqueryOfPattern(const uint8_t *input, size_t len, lungo_buffer *out) {
     capdagFormal__initialize();
     lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
-    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_184, 9);
+    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_187, 9);
     if (!lungo_call_complete(call)) {
         lungo_dec(a_0);
         return lungo_call_end(call, out);
     }
     lungo_obj r = capdagFormal__l_CapDAG_dExec_dqueryOfPattern(a_0);
-    lungo_call_write(call, r, capdagFormal__t_185, 9);
+    lungo_call_write(call, r, capdagFormal__t_188, 9);
     return lungo_call_end(call, out);
 }
 
 /* CapDAG.Exec.queryProducing : TaggedUrn.Exec.Wf → TaggedUrn.Exec.Wf → CapDAG.Exec.WfQuery */
 int32_t capdagFormal__call_l_CapDAG_dExec_dqueryProducing(const uint8_t *input, size_t len, lungo_buffer *out) {
-    capdagFormal__initialize();
-    lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
-    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_186, 9);
-    lungo_obj a_1 = lungo_call_read(call, capdagFormal__t_187, 9);
-    if (!lungo_call_complete(call)) {
-        lungo_dec(a_0);
-        lungo_dec(a_1);
-        return lungo_call_end(call, out);
-    }
-    lungo_obj r = capdagFormal__l_CapDAG_dExec_dqueryProducing(a_0, a_1);
-    lungo_call_write(call, r, capdagFormal__t_188, 9);
-    return lungo_call_end(call, out);
-}
-
-/* CapDAG.Exec.rankingKey : CapDAG.Exec.WfCap → CapDAG.Exec.WfCap → Nat × Nat */
-int32_t capdagFormal__call_l_CapDAG_dExec_drankingKey(const uint8_t *input, size_t len, lungo_buffer *out) {
     capdagFormal__initialize();
     lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
     lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_189, 9);
@@ -2509,8 +2518,24 @@ int32_t capdagFormal__call_l_CapDAG_dExec_drankingKey(const uint8_t *input, size
         lungo_dec(a_1);
         return lungo_call_end(call, out);
     }
+    lungo_obj r = capdagFormal__l_CapDAG_dExec_dqueryProducing(a_0, a_1);
+    lungo_call_write(call, r, capdagFormal__t_191, 9);
+    return lungo_call_end(call, out);
+}
+
+/* CapDAG.Exec.rankingKey : CapDAG.Exec.WfCap → CapDAG.Exec.WfCap → Nat × Nat */
+int32_t capdagFormal__call_l_CapDAG_dExec_drankingKey(const uint8_t *input, size_t len, lungo_buffer *out) {
+    capdagFormal__initialize();
+    lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
+    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_192, 9);
+    lungo_obj a_1 = lungo_call_read(call, capdagFormal__t_193, 9);
+    if (!lungo_call_complete(call)) {
+        lungo_dec(a_0);
+        lungo_dec(a_1);
+        return lungo_call_end(call, out);
+    }
     lungo_obj r = capdagFormal__l_CapDAG_dExec_drankingKey(a_0, a_1);
-    lungo_call_write(call, r, capdagFormal__t_191, 3);
+    lungo_call_write(call, r, capdagFormal__t_194, 3);
     return lungo_call_end(call, out);
 }
 
@@ -2518,15 +2543,15 @@ int32_t capdagFormal__call_l_CapDAG_dExec_drankingKey(const uint8_t *input, size
 int32_t capdagFormal__call_l_CapDAG_dExec_dselect(const uint8_t *input, size_t len, lungo_buffer *out) {
     capdagFormal__initialize();
     lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
-    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_192, 10);
-    lungo_obj a_1 = lungo_call_read(call, capdagFormal__t_193, 9);
+    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_195, 10);
+    lungo_obj a_1 = lungo_call_read(call, capdagFormal__t_196, 9);
     if (!lungo_call_complete(call)) {
         lungo_dec(a_0);
         lungo_dec(a_1);
         return lungo_call_end(call, out);
     }
     lungo_obj r = capdagFormal__l_CapDAG_dExec_dselect(a_0, a_1);
-    lungo_call_write(call, r, capdagFormal__t_194, 10);
+    lungo_call_write(call, r, capdagFormal__t_197, 10);
     return lungo_call_end(call, out);
 }
 
@@ -2534,13 +2559,13 @@ int32_t capdagFormal__call_l_CapDAG_dExec_dselect(const uint8_t *input, size_t l
 int32_t capdagFormal__call_l_CapDAG_dExec_dspecificity(const uint8_t *input, size_t len, lungo_buffer *out) {
     capdagFormal__initialize();
     lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
-    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_195, 9);
+    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_198, 9);
     if (!lungo_call_complete(call)) {
         lungo_dec(a_0);
         return lungo_call_end(call, out);
     }
     lungo_obj r = capdagFormal__l_CapDAG_dExec_dspecificity(a_0);
-    lungo_call_write(call, r, capdagFormal__t_196, 1);
+    lungo_call_write(call, r, capdagFormal__t_199, 1);
     return lungo_call_end(call, out);
 }
 
@@ -2548,13 +2573,13 @@ int32_t capdagFormal__call_l_CapDAG_dExec_dspecificity(const uint8_t *input, siz
 int32_t capdagFormal__call_l_CapDAG_dExec_dsplits(const uint8_t *input, size_t len, lungo_buffer *out) {
     capdagFormal__initialize();
     lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
-    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_197, 9);
+    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_200, 9);
     if (!lungo_call_complete(call)) {
         lungo_dec(a_0);
         return lungo_call_end(call, out);
     }
     lungo_obj r = capdagFormal__l_CapDAG_dExec_dsplits(a_0);
-    lungo_call_write(call, r, capdagFormal__t_198, 10);
+    lungo_call_write(call, r, capdagFormal__t_201, 10);
     return lungo_call_end(call, out);
 }
 
@@ -2562,7 +2587,7 @@ int32_t capdagFormal__call_l_CapDAG_dExec_dsplits(const uint8_t *input, size_t l
 int32_t capdagFormal__call_l_CapDAG_dRun_dControl_dadmits(const uint8_t *input, size_t len, lungo_buffer *out) {
     capdagFormal__initialize();
     lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
-    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_199, 9);
+    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_202, 9);
     if (!lungo_call_complete(call)) {
         lungo_dec(a_0);
         return lungo_call_end(call, out);
@@ -2570,7 +2595,7 @@ int32_t capdagFormal__call_l_CapDAG_dRun_dControl_dadmits(const uint8_t *input, 
     uint8_t p_0 = (uint8_t)lungo_unbox(a_0);
     lungo_dec(a_0);
     uint8_t r = capdagFormal__l_CapDAG_dRun_dControl_dadmits(p_0);
-    lungo_call_write(call, lungo_box((size_t)r), capdagFormal__t_200, 1);
+    lungo_call_write(call, lungo_box((size_t)r), capdagFormal__t_203, 1);
     return lungo_call_end(call, out);
 }
 
@@ -2578,7 +2603,7 @@ int32_t capdagFormal__call_l_CapDAG_dRun_dControl_dadmits(const uint8_t *input, 
 int32_t capdagFormal__call_l_CapDAG_dRun_dControl_dexitStatus(const uint8_t *input, size_t len, lungo_buffer *out) {
     capdagFormal__initialize();
     lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
-    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_201, 9);
+    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_204, 9);
     if (!lungo_call_complete(call)) {
         lungo_dec(a_0);
         return lungo_call_end(call, out);
@@ -2586,32 +2611,12 @@ int32_t capdagFormal__call_l_CapDAG_dRun_dControl_dexitStatus(const uint8_t *inp
     uint8_t p_0 = (uint8_t)lungo_unbox(a_0);
     lungo_dec(a_0);
     lungo_obj r = capdagFormal__l_CapDAG_dRun_dControl_dexitStatus(p_0);
-    lungo_call_write(call, r, capdagFormal__t_202, 1);
+    lungo_call_write(call, r, capdagFormal__t_205, 1);
     return lungo_call_end(call, out);
 }
 
 /* CapDAG.Run.Control.joinOutcomes : CapDAG.Run.Control.RunOutcome → CapDAG.Run.Control.RunOutcome → CapDAG.Run.Control.RunOutcome */
 int32_t capdagFormal__call_l_CapDAG_dRun_dControl_djoinOutcomes(const uint8_t *input, size_t len, lungo_buffer *out) {
-    capdagFormal__initialize();
-    lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
-    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_203, 9);
-    lungo_obj a_1 = lungo_call_read(call, capdagFormal__t_204, 9);
-    if (!lungo_call_complete(call)) {
-        lungo_dec(a_0);
-        lungo_dec(a_1);
-        return lungo_call_end(call, out);
-    }
-    uint8_t p_0 = (uint8_t)lungo_unbox(a_0);
-    lungo_dec(a_0);
-    uint8_t p_1 = (uint8_t)lungo_unbox(a_1);
-    lungo_dec(a_1);
-    uint8_t r = capdagFormal__l_CapDAG_dRun_dControl_djoinOutcomes(p_0, p_1);
-    lungo_call_write(call, lungo_box((size_t)r), capdagFormal__t_205, 9);
-    return lungo_call_end(call, out);
-}
-
-/* CapDAG.Run.Control.next : CapDAG.Run.Control.RunPhase → CapDAG.Run.Control.RunAsk → CapDAG.Run.Control.RunNext */
-int32_t capdagFormal__call_l_CapDAG_dRun_dControl_dnext(const uint8_t *input, size_t len, lungo_buffer *out) {
     capdagFormal__initialize();
     lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
     lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_206, 9);
@@ -2625,8 +2630,28 @@ int32_t capdagFormal__call_l_CapDAG_dRun_dControl_dnext(const uint8_t *input, si
     lungo_dec(a_0);
     uint8_t p_1 = (uint8_t)lungo_unbox(a_1);
     lungo_dec(a_1);
+    uint8_t r = capdagFormal__l_CapDAG_dRun_dControl_djoinOutcomes(p_0, p_1);
+    lungo_call_write(call, lungo_box((size_t)r), capdagFormal__t_208, 9);
+    return lungo_call_end(call, out);
+}
+
+/* CapDAG.Run.Control.next : CapDAG.Run.Control.RunPhase → CapDAG.Run.Control.RunAsk → CapDAG.Run.Control.RunNext */
+int32_t capdagFormal__call_l_CapDAG_dRun_dControl_dnext(const uint8_t *input, size_t len, lungo_buffer *out) {
+    capdagFormal__initialize();
+    lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
+    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_209, 9);
+    lungo_obj a_1 = lungo_call_read(call, capdagFormal__t_210, 9);
+    if (!lungo_call_complete(call)) {
+        lungo_dec(a_0);
+        lungo_dec(a_1);
+        return lungo_call_end(call, out);
+    }
+    uint8_t p_0 = (uint8_t)lungo_unbox(a_0);
+    lungo_dec(a_0);
+    uint8_t p_1 = (uint8_t)lungo_unbox(a_1);
+    lungo_dec(a_1);
     lungo_obj r = capdagFormal__l_CapDAG_dRun_dControl_dnext(p_0, p_1);
-    lungo_call_write(call, r, capdagFormal__t_208, 9);
+    lungo_call_write(call, r, capdagFormal__t_211, 9);
     return lungo_call_end(call, out);
 }
 
@@ -2634,9 +2659,9 @@ int32_t capdagFormal__call_l_CapDAG_dRun_dControl_dnext(const uint8_t *input, si
 int32_t capdagFormal__call_l_CapDAG_dRun_dControl_doutcome(const uint8_t *input, size_t len, lungo_buffer *out) {
     capdagFormal__initialize();
     lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
-    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_209, 9);
-    lungo_obj a_1 = lungo_call_read(call, capdagFormal__t_210, 1);
-    lungo_obj a_2 = lungo_call_read(call, capdagFormal__t_211, 1);
+    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_212, 9);
+    lungo_obj a_1 = lungo_call_read(call, capdagFormal__t_213, 1);
+    lungo_obj a_2 = lungo_call_read(call, capdagFormal__t_214, 1);
     if (!lungo_call_complete(call)) {
         lungo_dec(a_0);
         lungo_dec(a_1);
@@ -2650,7 +2675,7 @@ int32_t capdagFormal__call_l_CapDAG_dRun_dControl_doutcome(const uint8_t *input,
     uint8_t p_2 = (uint8_t)lungo_unbox(a_2);
     lungo_dec(a_2);
     uint8_t r = capdagFormal__l_CapDAG_dRun_dControl_doutcome(p_0, p_1, p_2);
-    lungo_call_write(call, lungo_box((size_t)r), capdagFormal__t_212, 9);
+    lungo_call_write(call, lungo_box((size_t)r), capdagFormal__t_215, 9);
     return lungo_call_end(call, out);
 }
 
@@ -2658,7 +2683,7 @@ int32_t capdagFormal__call_l_CapDAG_dRun_dControl_doutcome(const uint8_t *input,
 int32_t capdagFormal__call_l_CapDAG_dRun_dStep_dStepState_dfinal(const uint8_t *input, size_t len, lungo_buffer *out) {
     capdagFormal__initialize();
     lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
-    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_213, 9);
+    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_216, 9);
     if (!lungo_call_complete(call)) {
         lungo_dec(a_0);
         return lungo_call_end(call, out);
@@ -2666,7 +2691,7 @@ int32_t capdagFormal__call_l_CapDAG_dRun_dStep_dStepState_dfinal(const uint8_t *
     uint8_t p_0 = (uint8_t)lungo_unbox(a_0);
     lungo_dec(a_0);
     uint8_t r = capdagFormal__l_CapDAG_dRun_dStep_dStepState_dfinal(p_0);
-    lungo_call_write(call, lungo_box((size_t)r), capdagFormal__t_214, 1);
+    lungo_call_write(call, lungo_box((size_t)r), capdagFormal__t_217, 1);
     return lungo_call_end(call, out);
 }
 
@@ -2674,8 +2699,8 @@ int32_t capdagFormal__call_l_CapDAG_dRun_dStep_dStepState_dfinal(const uint8_t *
 int32_t capdagFormal__call_l_CapDAG_dRun_dStep_don(const uint8_t *input, size_t len, lungo_buffer *out) {
     capdagFormal__initialize();
     lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
-    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_215, 9);
-    lungo_obj a_1 = lungo_call_read(call, capdagFormal__t_216, 9);
+    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_218, 9);
+    lungo_obj a_1 = lungo_call_read(call, capdagFormal__t_219, 9);
     if (!lungo_call_complete(call)) {
         lungo_dec(a_0);
         lungo_dec(a_1);
@@ -2685,7 +2710,7 @@ int32_t capdagFormal__call_l_CapDAG_dRun_dStep_don(const uint8_t *input, size_t 
     lungo_dec(a_0);
     lungo_obj r = capdagFormal__l_CapDAG_dRun_dStep_don(p_0, a_1);
     lungo_dec(a_1);
-    lungo_call_write(call, r, capdagFormal__t_217, 10);
+    lungo_call_write(call, r, capdagFormal__t_220, 10);
     return lungo_call_end(call, out);
 }
 
@@ -2693,15 +2718,15 @@ int32_t capdagFormal__call_l_CapDAG_dRun_dStep_don(const uint8_t *input, size_t 
 int32_t capdagFormal__call_l_TaggedUrn_dExec_dmake(const uint8_t *input, size_t len, lungo_buffer *out) {
     capdagFormal__initialize();
     lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
-    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_218, 1);
-    lungo_obj a_1 = lungo_call_read(call, capdagFormal__t_219, 12);
+    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_221, 1);
+    lungo_obj a_1 = lungo_call_read(call, capdagFormal__t_222, 12);
     if (!lungo_call_complete(call)) {
         lungo_dec(a_0);
         lungo_dec(a_1);
         return lungo_call_end(call, out);
     }
     lungo_obj r = capdagFormal__l_TaggedUrn_dExec_dmake(a_0, a_1);
-    lungo_call_write(call, r, capdagFormal__t_220, 10);
+    lungo_call_write(call, r, capdagFormal__t_223, 10);
     return lungo_call_end(call, out);
 }
 
@@ -2709,13 +2734,13 @@ int32_t capdagFormal__call_l_TaggedUrn_dExec_dmake(const uint8_t *input, size_t 
 int32_t capdagFormal__call_l_TaggedUrn_dExec_dparts(const uint8_t *input, size_t len, lungo_buffer *out) {
     capdagFormal__initialize();
     lungo_call *call = lungo_call_begin(capdagFormal__types(), input, len);
-    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_221, 9);
+    lungo_obj a_0 = lungo_call_read(call, capdagFormal__t_224, 9);
     if (!lungo_call_complete(call)) {
         lungo_dec(a_0);
         return lungo_call_end(call, out);
     }
     lungo_obj r = capdagFormal__l_TaggedUrn_dExec_dparts(a_0);
-    lungo_call_write(call, r, capdagFormal__t_222, 14);
+    lungo_call_write(call, r, capdagFormal__t_225, 14);
     return lungo_call_end(call, out);
 }
 

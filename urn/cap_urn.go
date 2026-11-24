@@ -809,6 +809,22 @@ func (c *CapUrn) InferRuntimeOutputMedia(runtimeInput *MediaUrn) (*MediaUrn, err
 	return runtimeOut, nil
 }
 
+// Requires says what a need on what the cap gives asks of what it is sent:
+// the widest type inside the cap's input whose things the cap gives inside
+// need, and false when nothing it is sent could be. A declared cap gives its
+// output whatever it is sent, so it asks its input when its output is inside
+// need; an effect=none cap asks its input met with need; a patch asks its
+// input met with need at every key it does not write, when what it writes is
+// inside need. Computed by the proved model (CapDAG.Exec.capRequires, which is
+// Cap.requires, sound and widest).
+func (c *CapUrn) Requires(need *MediaUrn) (*MediaUrn, bool) {
+	required := decided(capformal.CapRequires(c.formal, need.Formal()))
+	if !required.Valid {
+		return nil, false
+	}
+	return mediaFromFormal(required.Value), true
+}
+
 // IsConformantRuntimeOutput reports whether an actually-emitted runtime
 // output keeps this cap's effect contract for the given runtime input.
 //

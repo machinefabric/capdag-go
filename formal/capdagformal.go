@@ -4790,6 +4790,20 @@ func CapIllegal(c_ WfCap) (result lungo.Option[Illegal], err error) {
 	return lungo.DecodeValue(program(), status, out, lungo.OptionType(IllegalType()))
 }
 
+// CapRequires is Lean's CapDAG.Exec.capRequires : CapDAG.Exec.WfCap → TaggedUrn.Exec.Wf → Option TaggedUrn.Exec.Wf
+func CapRequires(c_ WfCap, r_ formal.Wf) (result lungo.Option[formal.Wf], err error) {
+	w := lungo.NewCall(program())
+	defer w.Release()
+	if err = WfCapType().Encode(w, c_); err != nil {
+		return
+	}
+	if err = extWfType().Encode(w, r_); err != nil {
+		return
+	}
+	status, out := call(C.lungo_entry(C.capdagFormal__call_l_CapDAG_dExec_dcapRequires), w.Bytes())
+	return lungo.DecodeValue(program(), status, out, lungo.OptionType(extWfType()))
+}
+
 // Comparable is Lean's CapDAG.Exec.comparable : CapDAG.Exec.WfCap → CapDAG.Exec.WfCap → Bool
 func Comparable(a WfCap, b WfCap) (result bool, err error) {
 	w := lungo.NewCall(program())

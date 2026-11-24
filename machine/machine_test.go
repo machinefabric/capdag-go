@@ -1768,3 +1768,61 @@ func Test12848_a_strand_through_another_output_knits_into_a_machine(t *testing.T
 		assert.Contains(t, err.Error(), "it declares: media:enc=utf8;rest, media:enc=utf8;part, media:enc=utf8;same")
 	}
 }
+
+// yamlToJson is YAML to JSON as the fabric publishes it: a patch that keeps
+// the shape it is given and gives content, not a file.
+const yamlToJson = `cap:convert-format;effect=patch;in="media:enc=utf8;fmt=yaml";yaml-to-json;out="media:enc=utf8;fmt=json;!ext"`
+
+// TEST7246: a machine read back from its text types an input of the machine by
+// what the steps after it need, carried back through a patch: JSON to YAML,
+// then a save that takes a YAML list of records, types the input a JSON list of
+// records and the node between them a YAML list of records, content and no
+// file, whether its members are named or not.
+func Test7246_an_input_is_typed_by_what_the_steps_after_a_patch_need(t *testing.T) {
+	save := `cap:in="media:enc=utf8;fmt=yaml;list;record;!ext";out="media:enc=utf8;ext=yaml;fmt=yaml;list;record";save-as-yaml`
+	registry := registryWith([]*cap.Cap{
+		buildCap(jsonToYaml, "json to yaml", []string{"media:enc=utf8;fmt=json"}, "media:enc=utf8;!ext;fmt=yaml"),
+		buildCap(save, "save", []string{"media:enc=utf8;fmt=yaml;list;record;!ext"}, "media:enc=utf8;ext=yaml;fmt=yaml;list;record"),
+	})
+	headers := "[to_yaml " + jsonToYaml + "][save " + save + "]"
+	for _, wirings := range []string{
+		"[(input=n0) -> to_yaml -> (output=n1)][(input=n1) -> save -> (output=n2)]",
+		"[n1 -> save -> n2][n0 -> to_yaml -> n1]",
+	} {
+		machine, names, err := ParseMachineWithNodeNames(headers+wirings, registry)
+		require.Nil(t, err, "%s must read back", wirings)
+		strand := machine.Strands()[0]
+		n0 := strand.NodeUrn(names[0]["n0"])
+		n1 := strand.NodeUrn(names[0]["n1"])
+		assert.True(t, n0.IsEquivalent(mediaUrn("media:enc=utf8;fmt=json;list;record")), "%s: n0 is %s", wirings, n0)
+		assert.True(t, n1.IsEquivalent(mediaUrn("media:enc=utf8;!ext;fmt=yaml;list;record")), "%s: n1 is %s", wirings, n1)
+	}
+}
+
+// TEST7247: what an input of the machine must be is carried back from every
+// step its patch's output is bound into, a gather included: YAML converted to
+// JSON and gathered with JSON records that are not lists types the YAML input a
+// YAML record that is not a list, and what the patch gives a JSON record that
+// is not a list, content and no file.
+func Test7247_an_input_is_typed_through_a_patch_by_the_gather_after_it(t *testing.T) {
+	collect := `cap:in="media:enc=utf8;fmt=json;!list;record";collect-json-objects;out="media:enc=utf8;fmt=json;list;record"`
+	collectCap := buildCap(collect, "collect", []string{"media:enc=utf8;fmt=json;!list;record"}, "media:enc=utf8;fmt=json;list;record")
+	collectCap.Args[0].IsSequence = true
+	registry := registryWith([]*cap.Cap{
+		buildCap(yamlToJson, "yaml to json", []string{"media:enc=utf8;fmt=yaml"}, "media:enc=utf8;fmt=json;!ext"),
+		collectCap,
+	})
+	headers := "[yaml_to_json " + yamlToJson + "][collect " + collect + "]"
+	for _, wirings := range []string{
+		"[from_yaml -> yaml_to_json -> converted][(converted, already_json) -> collect -> collected]",
+		"[(converted, already_json) -> collect -> collected][from_yaml -> yaml_to_json -> converted]",
+	} {
+		machine, names, err := ParseMachineWithNodeNames(headers+wirings, registry)
+		require.Nil(t, err, "%s must read back", wirings)
+		strand := machine.Strands()[0]
+		fromYaml := strand.NodeUrn(names[0]["from_yaml"])
+		converted := strand.NodeUrn(names[0]["converted"])
+		assert.True(t, fromYaml.IsEquivalent(mediaUrn("media:enc=utf8;fmt=yaml;!list;record")), "%s: from_yaml is %s", wirings, fromYaml)
+		assert.True(t, converted.IsEquivalent(mediaUrn("media:enc=utf8;!ext;fmt=json;!list;record")), "%s: converted is %s", wirings, converted)
+	}
+}
