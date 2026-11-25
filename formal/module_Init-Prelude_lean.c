@@ -348,6 +348,13 @@ lungo_obj capdagFormal__l_UInt32_dtoNat(uint32_t x_1) {
     return r;
 }
 
+/* Lean: USize.decEq */
+/* Source: <lean>/Init/Prelude.lean:2818:1 */
+uint8_t capdagFormal__l_USize_ddecEq(size_t x_1, size_t x_2) {
+    uint8_t r = lungo_lean_usize_dec_eq(x_1, x_2);
+    return r;
+}
+
 /* Lean: USize.ofNatLT */
 /* Source: <lean>/Init/Prelude.lean:2807:1 */
 size_t capdagFormal__l_USize_dofNatLT(lungo_obj x_1, lungo_obj x_2) {

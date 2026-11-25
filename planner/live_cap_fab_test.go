@@ -722,10 +722,11 @@ func Test1292_bfs_iddfs_roundtrip_consistency(t *testing.T) {
 
 // TEST7229: a node that may have several shapes ends on the bookends its
 // shapes are, read complete. A save that gives JSON which may or may not be a
-// list and may or may not be a record ends on the four JSON file types: each
-// is a target of a route through it, and a search for one of them finds the
-// route. A node one of whose shapes is no file type ends on none, and no
-// search ends at it.
+// list and may or may not be a record ends on the four JSON file types, each a
+// target of a route through it; a search for the JSON file type, which holds
+// all four, finds the route, and one for the JSON record file does not, since
+// the save may give a list or a value. A node one of whose shapes is no file
+// type ends on none.
 func Test7229_a_node_of_several_shapes_ends_on_each_bookend_it_may_be(t *testing.T) {
 	const saved = "media:enc=utf8;ext=json;fmt=json;?list;?record"
 	fileTexts := []string{
@@ -773,10 +774,11 @@ func Test7229_a_node_of_several_shapes_ends_on_each_bookend_it_may_be(t *testing
 		"every file type the save may give is a target")
 	assert.Len(t, targets, 4, "one target for each file type")
 
-	paths := graph.FindPathsToExactTarget(source, recordFile, false, 3, 10)
+	paths := graph.FindPathsToExactTarget(source, media(fileTexts[0]), false, 3, 10)
 	require.Len(t, paths, 1, "the route through the save")
 	assert.Equal(t, 1, paths[0].CapStepCount)
-	assert.True(t, paths[0].TargetMediaUrn.IsEquivalent(recordFile))
+	assert.True(t, paths[0].TargetMediaUrn.IsEquivalent(media(saved)), "the route gives what the save may be")
+	assert.Empty(t, graph.FindPathsToExactTarget(source, recordFile, false, 3, 10))
 
 	// Without a file type for JSON that is neither a list nor a record, one of
 	// the save's shapes is no file: the node ends on nothing.
@@ -784,7 +786,122 @@ func Test7229_a_node_of_several_shapes_ends_on_each_bookend_it_may_be(t *testing
 	assert.False(t, graph.IsBookend(media(saved)))
 	assert.Empty(t, graph.EndsOn(media(saved)))
 	assert.Empty(t, graph.GetReachableTargets(source, false, 3))
-	assert.Empty(t, graph.FindPathsToExactTarget(source, recordFile, false, 3, 10))
+}
+
+// capOfUrn is a cap of the cap URN capText, taking its input on stdin, as one
+// value or, with sequence, as a sequence.
+func capOfUrn(t *testing.T, capText, title string, sequence bool) *cap.Cap {
+	capUrn, err := urn.NewCapUrnFromString(capText)
+	require.NoError(t, err)
+	stdin := capUrn.InSpec()
+	mainArg := cap.NewCapArg(capUrn.InSpec(), "input", true, []cap.ArgSource{{Stdin: &stdin}})
+	mainArg.IsSequence = sequence
+	return cap.NewCapWithArgs(capUrn, title, []string{"test"}, []cap.CapArg{mainArg})
+}
+
+// TEST7277: A patch cap's edge gives what it was sent with its change, not its declared output: JSON to YAML sent a JSON list of records file gives a YAML list of records, no file, which the save of a YAML list of records takes
+func Test7277_a_patch_edge_gives_what_it_was_sent_with_its_change(t *testing.T) {
+	graph := NewLiveCapFab()
+	graph.AddCap(capOfUrn(t, `cap:convert-format;effect=patch;in="media:enc=utf8;fmt=json";json-to-yaml;out="media:enc=utf8;fmt=yaml;!ext"`, "Convert JSON to YAML", false))
+	graph.AddCap(capOfUrn(t, `cap:in="media:enc=utf8;fmt=yaml;list;record;!ext";out="media:enc=utf8;ext=yaml;fmt=yaml;list;record";save-as-yaml`, "Save as YAML List of Records", false))
+	source, err := urn.NewMediaUrnFromString("media:enc=utf8;ext=json;fmt=json;list;record")
+	require.NoError(t, err)
+	target, err := urn.NewMediaUrnFromString("media:enc=utf8;ext=yaml;fmt=yaml;list;record")
+	require.NoError(t, err)
+	graph.SetBookends([]*urn.MediaUrn{source, target})
+
+	routes := graph.FindPathsToExactTarget(source, target, false, 4, 10)
+	require.Len(t, routes, 1, "JSON to YAML, then the save")
+	assert.Equal(t, 2, routes[0].CapStepCount)
+	converted := routes[0].Steps[0].ToSpec
+	expected, err := urn.NewMediaUrnFromString("media:enc=utf8;!ext;fmt=yaml;list;record")
+	require.NoError(t, err)
+	assert.True(t, converted.IsEquivalent(expected), "the patch gives a YAML list of records, no file, not %s", converted)
+}
+
+// jsonSavesGraph is the graph a YAML record is planned to a JSON file in, as
+// the fabric declares its caps: YAML to JSON (a patch, keeping the record),
+// the merge of YAML mappings into a JSON array (taking a sequence), and the
+// four JSON saves, with the file types they read and write as bookends.
+func jsonSavesGraph(t *testing.T) *LiveCapFab {
+	graph := NewLiveCapFab()
+	graph.AddCap(capOfUrn(t, `cap:convert-format;effect=patch;in="media:enc=utf8;fmt=yaml";out="media:enc=utf8;fmt=json;!ext";yaml-to-json`, "Convert YAML to JSON", false))
+	graph.AddCap(capOfUrn(t, `cap:collect-yaml-mappings-to-json-array;in="media:enc=utf8;fmt=yaml;!list;record";out="media:enc=utf8;fmt=json;list;record"`, "Merge YAML Mappings into JSON Array", true))
+	graph.AddCap(capOfUrn(t, `cap:in="media:enc=utf8;fmt=json;!ext";out="media:enc=utf8;ext=json;fmt=json;?list;?record";save-as-json`, "Save as JSON", false))
+	graph.AddCap(capOfUrn(t, `cap:in="media:enc=utf8;fmt=json;!list;!record;!ext";out="media:enc=utf8;ext=json;fmt=json";save-as-json`, "Save as JSON Value", false))
+	graph.AddCap(capOfUrn(t, `cap:in="media:enc=utf8;fmt=json;!list;record;!ext";out="media:enc=utf8;ext=json;fmt=json;record";save-as-json`, "Save as JSON Record", false))
+	graph.AddCap(capOfUrn(t, `cap:in="media:enc=utf8;fmt=json;list;record;!ext";out="media:enc=utf8;ext=json;fmt=json;list;record";save-as-json`, "Save as JSON List of Records", false))
+	var bookends []*urn.MediaUrn
+	for _, text := range []string{
+		"media:enc=utf8;ext=yaml;fmt=yaml;record",
+		"media:enc=utf8;ext=json;fmt=json",
+		"media:enc=utf8;ext=json;fmt=json;list",
+		"media:enc=utf8;ext=json;fmt=json;record",
+		"media:enc=utf8;ext=json;fmt=json;list;record",
+	} {
+		u, err := urn.NewMediaUrnFromString(text)
+		require.NoError(t, err)
+		bookends = append(bookends, u)
+	}
+	graph.SetBookends(bookends)
+	return graph
+}
+
+// lastTitles are the titles of the routes' last steps, in order.
+func lastTitles(routes []*Strand) []string {
+	titles := make([]string, 0, len(routes))
+	for _, route := range routes {
+		titles = append(titles, route.Steps[len(route.Steps)-1].Title())
+	}
+	return titles
+}
+
+// TEST7275: A target is a search over what routes give: from a YAML record, every route whose output is inside the JSON file type reaches it, listed nearest to what was asked first, each with what it gives
+func Test7275_routes_to_a_target_are_every_route_inside_it_nearest_first(t *testing.T) {
+	graph := jsonSavesGraph(t)
+	source, err := urn.NewMediaUrnFromString("media:enc=utf8;ext=yaml;fmt=yaml;record")
+	require.NoError(t, err)
+	target, err := urn.NewMediaUrnFromString("media:enc=utf8;ext=json;fmt=json")
+	require.NoError(t, err)
+
+	routes := graph.FindPathsToExactTarget(source, target, false, 4, 50)
+	titles := lastTitles(routes)
+	at := func(title string) int {
+		for i, t := range titles {
+			if t == title {
+				return i
+			}
+		}
+		return -1
+	}
+	generic, record, listOfRecords := at("Save as JSON"), at("Save as JSON Record"), at("Save as JSON List of Records")
+	require.True(t, generic >= 0 && record >= 0 && listOfRecords >= 0, "a route ends with each save: %v", titles)
+	assert.True(t, generic < record && record < listOfRecords,
+		"the generic save (as specific as the target), then the record save, then the list-of-records save: %v", titles)
+	for _, route := range routes {
+		gives := route.Steps[len(route.Steps)-1].ToSpec
+		assert.True(t, gives.Satisfies(target), "%s is inside %s", gives, target)
+		assert.True(t, route.TargetMediaUrn.IsEquivalent(gives), "the route names what it gives, %s, not %s", gives, route.TargetMediaUrn)
+	}
+}
+
+// TEST7276: A route whose output may fall outside the target does not reach it: none from a YAML record reaches a JSON file that is neither a list nor a record, and the generic save does not reach a JSON record file, which the record save does
+func Test7276_a_route_that_may_give_more_than_was_asked_does_not_reach_it(t *testing.T) {
+	graph := jsonSavesGraph(t)
+	source, err := urn.NewMediaUrnFromString("media:enc=utf8;ext=yaml;fmt=yaml;record")
+	require.NoError(t, err)
+
+	plain, err := urn.NewMediaUrnFromString("media:enc=utf8;ext=json;fmt=json;!list;!record")
+	require.NoError(t, err)
+	assert.Empty(t, lastTitles(graph.FindPathsToExactTarget(source, plain, false, 4, 50)),
+		"no save of a YAML record's content gives JSON that is surely neither a list nor a record")
+
+	recordFile, err := urn.NewMediaUrnFromString("media:enc=utf8;ext=json;fmt=json;record")
+	require.NoError(t, err)
+	titles := lastTitles(graph.FindPathsToExactTarget(source, recordFile, false, 4, 50))
+	assert.Contains(t, titles, "Save as JSON Record")
+	assert.NotContains(t, titles, "Save as JSON",
+		"the generic save may write a list or a value, so it does not reach a JSON record file")
 }
 
 // TEST1293: IDDFS round-trip does not produce paths with 0 cap steps. Identity-only round trips (no real transformation) must be excluded.
@@ -941,8 +1058,8 @@ func Test7219_search_skips_branches_that_cannot_reach_the_target(t *testing.T) {
 	assert.Nil(t, graph.distancesToExactTarget(finish, start, false, 8))
 }
 
-// TEST1151: Exact target lookup prefers the direct singular or list-producing path over longer alternatives.
-func Test1151_exact_vs_conformance_matching(t *testing.T) {
+// TEST1151: A target is reached by every route giving something inside it, the nearest first: a singular result is reached by the singular route and then the list route, a list result only by the list route.
+func Test1151_a_target_is_reached_by_every_route_inside_it(t *testing.T) {
 	singular, err := urn.NewMediaUrnFromString("media:analysis-result")
 	require.NoError(t, err)
 	list, err := urn.NewMediaUrnFromString("media:analysis-result;list")
@@ -965,21 +1082,27 @@ func Test1151_exact_vs_conformance_matching(t *testing.T) {
 	source, err := urn.NewMediaUrnFromString("media:document;ext=pdf")
 	require.NoError(t, err)
 
-	// Query for singular result — direct path should rank first
+	firstTitles := func(routes []*Strand) []string {
+		titles := make([]string, 0, len(routes))
+		for _, route := range routes {
+			titles = append(titles, route.Steps[0].Title())
+		}
+		return titles
+	}
+
+	// The singular target, read open, holds the list as well: both routes
+	// reach it, the one giving exactly what was asked first.
 	targetSingular, err := urn.NewMediaUrnFromString("media:analysis-result")
 	require.NoError(t, err)
-	pathsSingular := graph.FindPathsToExactTarget(source, targetSingular, false, 5, 10)
-	require.GreaterOrEqual(t, len(pathsSingular), 1, "singular query should find at least 1 path")
-	assert.Equal(t, "Analyze PDF", pathsSingular[0].Steps[0].Title(),
-		"First path should be the direct cap (fewer total steps)")
+	assert.Equal(t, []string{"Analyze PDF", "Analyze PDF Multi"},
+		firstTitles(graph.FindPathsToExactTarget(source, targetSingular, false, 5, 10)), "the nearest route first")
 
-	// Query for list result — direct path should rank first
+	// The list target does not hold a result that is no list: only the list
+	// route reaches it.
 	targetPlural, err := urn.NewMediaUrnFromString("media:analysis-result;list")
 	require.NoError(t, err)
-	pathsPlural := graph.FindPathsToExactTarget(source, targetPlural, false, 5, 10)
-	require.GreaterOrEqual(t, len(pathsPlural), 1, "list query should find at least 1 path")
-	assert.Equal(t, "Analyze PDF Multi", pathsPlural[0].Steps[0].Title(),
-		"First path should be the direct cap (fewer total steps)")
+	assert.Equal(t, []string{"Analyze PDF Multi"},
+		firstTitles(graph.FindPathsToExactTarget(source, targetPlural, false, 5, 10)), "only the route giving a list")
 }
 
 // TEST1152: Path finding returns the expected two-cap chain through an intermediate media type.

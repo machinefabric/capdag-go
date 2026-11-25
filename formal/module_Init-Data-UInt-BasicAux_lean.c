@@ -30,3 +30,10 @@ size_t capdagFormal__l_USize_dofNat(lungo_obj x_1) {
     return r;
 }
 
+/* Lean: USize.sub */
+/* Source: <lean>/Init/Data/UInt/BasicAux.lean:384:1 */
+size_t capdagFormal__l_USize_dsub(size_t x_1, size_t x_2) {
+    size_t r = lungo_lean_usize_sub(x_1, x_2);
+    return r;
+}
+

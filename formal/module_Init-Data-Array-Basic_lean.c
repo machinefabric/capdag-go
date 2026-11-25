@@ -2,6 +2,15 @@
 /* Compiled Lean module Init.Data.Array.Basic. */
 #include "capdagFormal_program.h"
 
+/* Lean: Array.ugetBorrowed */
+/* Source: <lean>/Init/Data/Array/Basic.lean:177:1 */
+lungo_obj capdagFormal__l_Array_dugetBorrowed(lungo_obj x_1, lungo_obj x_2, size_t x_3, lungo_obj x_4) {
+    (void)x_1;
+    (void)x_4;
+    lungo_obj r = lungo_lean_array_uget_borrowed(x_2, x_3);
+    return r;
+}
+
 /* Lean: List.foldl._at_.Array.appendList.spec_0._redArg */
 /* Compiled from: List.foldl */
 /* Source: <lean>/Init/Prelude.lean:3102:1 */

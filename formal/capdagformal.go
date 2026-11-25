@@ -5039,6 +5039,20 @@ func RankingKey(candidate WfCap, request WfCap) (result lungo.Pair[*big.Int, *bi
 	return lungo.DecodeValue(program(), status, out, lungo.PairType(lungo.NatType, lungo.NatType))
 }
 
+// RoutesInOrder is Lean's CapDAG.Exec.routesInOrder : TaggedUrn.Exec.Wf → List (List CapDAG.Exec.WfCap × TaggedUrn.Exec.Wf) → List Nat
+func RoutesInOrder(target formal.Wf, routes []lungo.Pair[[]WfCap, formal.Wf]) (result []*big.Int, err error) {
+	w := lungo.NewCall(program())
+	defer w.Release()
+	if err = extWfType().Encode(w, target); err != nil {
+		return
+	}
+	if err = lungo.ListType(lungo.PairType(lungo.ListType(WfCapType()), extWfType())).Encode(w, routes); err != nil {
+		return
+	}
+	status, out := call(C.lungo_entry(C.capdagFormal__call_l_CapDAG_dExec_droutesInOrder), w.Bytes())
+	return lungo.DecodeValue(program(), status, out, lungo.ListType(lungo.NatType))
+}
+
 // Select is Lean's CapDAG.Exec.select : List CapDAG.Exec.WfCap → CapDAG.Exec.WfCap → Option CapDAG.Exec.WfCap
 func Select(candidates []WfCap, request WfCap) (result lungo.Option[WfCap], err error) {
 	w := lungo.NewCall(program())

@@ -294,6 +294,9 @@ func (s *StrandStep) IsCap() bool {
 type Strand struct {
 	Steps          []*StrandStep
 	SourceMediaUrn *urn.MediaUrn
+	// TargetMediaUrn is what the path gives: the media its last node holds.
+	// A path found for a target gives something inside it, not always the
+	// target itself.
 	TargetMediaUrn *urn.MediaUrn
 	TotalSteps     int
 	CapStepCount   int
@@ -402,18 +405,12 @@ func (g *LiveCapFab) EndsOn(node *urn.MediaUrn) []*urn.MediaUrn {
 	return g.bookendNodes[node.String()]
 }
 
-// reaches reports whether a route reaching node reaches target: the node is
-// the target, or ends on bookends one of which is.
-func (g *LiveCapFab) reaches(node, target *urn.MediaUrn) bool {
-	if node.IsEquivalent(target) {
-		return true
-	}
-	for _, bookend := range g.EndsOn(node) {
-		if bookend.IsEquivalent(target) {
-			return true
-		}
-	}
-	return false
+// reaches reports whether a route reaching node reaches target: what the node
+// holds, read complete, is inside the target, read open. A node that may also
+// be something outside the target (…;?list;?record for a JSON record target)
+// does not reach it: a possibility is no guarantee.
+func reaches(node, target *urn.MediaUrn) bool {
+	return node.Satisfies(target)
 }
 
 // Stats returns (node_count, edge_count).
@@ -703,8 +700,22 @@ func (g *LiveCapFab) getOutgoingEdges(source *urn.MediaUrn, isSequence bool) ([]
 			needsForEach = true
 			continue
 		}
-		edges = append(edges, edge)
-		outSeqs = append(outSeqs, edge.OutputIsSequence)
+		// The main output's runtime type follows the cap URN's effect: what the
+		// cap gives for what it is sent (an effect=patch cap keeps what it does
+		// not change). Any other output gives its own type.
+		taken := edge
+		if edge.OutputUrn == nil {
+			given, err := edge.CapUrnVal.InferRuntimeOutputMedia(source)
+			if err != nil {
+				continue
+			}
+			runtime := *edge
+			runtime.FromSpec = source
+			runtime.ToSpec = given
+			taken = &runtime
+		}
+		edges = append(edges, taken)
+		outSeqs = append(outSeqs, taken.OutputIsSequence)
 	}
 
 	// Synthesize a ForEach edge so path finding can iterate into scalar caps.
@@ -900,9 +911,9 @@ func (g *LiveCapFab) distancesToExactTarget(source, target *urn.MediaUrn, isSequ
 			}
 			next := searchState{canonical: edge.ToSpec.String(), isSequence: outSeqs[i], pendingForEach: edge.Type == EdgeTypeForEach}
 			stepsInto[next] = append(stepsInto[next], from)
-			// The target: a node that reaches it, reached by a step, not
-			// waiting on a ForEach's cap.
-			if !next.pendingForEach && g.reaches(edge.ToSpec, target) {
+			// The target: a node inside it, reached by a step, not waiting on
+			// a ForEach's cap.
+			if !next.pendingForEach && reaches(edge.ToSpec, target) {
 				targetStates[next] = true
 			}
 			if !seen[next] {
@@ -933,8 +944,11 @@ func (g *LiveCapFab) distancesToExactTarget(source, target *urn.MediaUrn, isSequ
 	return distances
 }
 
-// FindPathsToExactTarget performs iterative deepening DFS to find paths to an
-// exact target. It steps only into states the target is within reach of.
+// FindPathsToExactTarget performs iterative deepening DFS to find the routes to
+// target, read open: a route ends where its node, read complete, is inside the
+// target (reaches), and names what it gives as its TargetMediaUrn. It steps
+// only into states the target is within reach of, and returns the routes in
+// inRouteOrder.
 func (g *LiveCapFab) FindPathsToExactTarget(
 	source, target *urn.MediaUrn,
 	isSequence bool,
@@ -954,11 +968,7 @@ func (g *LiveCapFab) FindPathsToExactTarget(
 		g.iddfsFind(source, source, target, isSequence, distances, nil, visited, depth, maxPaths, &results)
 	}
 
-	sort.SliceStable(results, func(i, j int) bool {
-		return comparePaths(results[i], results[j]) < 0
-	})
-
-	return results
+	return inRouteOrder(target, results)
 }
 
 // FindPathsStreaming performs iterative deepening DFS and streams events to onEvent.
@@ -1002,9 +1012,7 @@ func (g *LiveCapFab) FindPathsStreaming(
 		})
 	}
 
-	sort.SliceStable(results, func(i, j int) bool {
-		return comparePaths(results[i], results[j]) < 0
-	})
+	results = inRouteOrder(target, results)
 
 	onEvent(PathFindingEventComplete{
 		TotalPaths:         len(results),
@@ -1016,6 +1024,32 @@ func (g *LiveCapFab) FindPathsStreaming(
 	}
 
 	return results
+}
+
+// inRouteOrder orders the routes to target as the proved model does
+// (urn.RoutesInOrder): the nearest to what was asked first, measured as
+// dispatch ranks caps, then fewer cap steps, then the higher total
+// specificity. Routes equal in all three keep comparePaths' structural order,
+// which they are handed to the model in.
+func inRouteOrder(target *urn.MediaUrn, routes []*Strand) []*Strand {
+	sort.SliceStable(routes, func(i, j int) bool {
+		return comparePaths(routes[i], routes[j]) < 0
+	})
+	caps := make([][]*urn.CapUrn, len(routes))
+	gives := make([]*urn.MediaUrn, len(routes))
+	for i, route := range routes {
+		for _, step := range route.Steps {
+			if step.IsCap() {
+				caps[i] = append(caps[i], step.CapUrnVal)
+			}
+		}
+		gives[i] = route.TargetMediaUrn
+	}
+	ordered := make([]*Strand, 0, len(routes))
+	for _, index := range urn.RoutesInOrder(target, caps, gives) {
+		ordered = append(ordered, routes[index])
+	}
+	return ordered
 }
 
 // comparePaths orders two paths: fewest cap steps first (ForEach and Collect
@@ -1114,11 +1148,10 @@ func (g *LiveCapFab) iddfsFind(
 	}
 	pendingForEach := len(path) > 0 && path[len(path)-1].Type == EdgeTypeForEach
 
-	// Check if we've reached the EXACT target: the node is it, or ends on
-	// bookends one of which is (reaches). Skip this check at the starting node
-	// (empty path) — when source==target, we still want to explore edges to
-	// find round-trip transformation paths.
-	if len(path) > 0 && g.reaches(current, target) {
+	// Check if we've reached the target: the node is inside it (reaches).
+	// Skip this check at the starting node (empty path) — when source==target,
+	// we still want to explore edges to find round-trip transformation paths.
+	if len(path) > 0 && reaches(current, target) {
 		// Only record the path when it exactly fills the depth budget for this IDDFS
 		// iteration (depthLimit == 0). This mirrors Rust's `current_path.len() == depth_limit`
 		// check and ensures each path is found exactly once — at the shallowest depth that
@@ -1157,7 +1190,8 @@ func (g *LiveCapFab) iddfsFind(
 				*results = append(*results, &Strand{
 					Steps:          steps,
 					SourceMediaUrn: originalSource,
-					TargetMediaUrn: target,
+					// What the route gives, inside the target asked for.
+					TargetMediaUrn: current,
 					TotalSteps:     len(steps),
 					CapStepCount:   capCount,
 					Description:    strings.Join(titles, " → "),
@@ -1180,7 +1214,7 @@ func (g *LiveCapFab) iddfsFind(
 	// intermediate paths. Cycle prevention is handled by depth_limit.
 	isRoundtrip := originalSource.IsEquivalent(target)
 	vk := visitedKey{canonical: current.String(), isSequence: isSequence}
-	if !(isRoundtrip && g.reaches(current, target)) {
+	if !(isRoundtrip && reaches(current, target)) {
 		if visited[vk] {
 			return
 		}

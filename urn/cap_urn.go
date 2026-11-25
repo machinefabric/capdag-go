@@ -25,6 +25,7 @@ import (
 	capformal "github.com/machinefabric/capdag-go/formal"
 	lungo "github.com/machinefabric/lungo-go"
 	taggedurn "github.com/machinefabric/tagged-urn-go"
+	taggedformal "github.com/machinefabric/tagged-urn-go/formal"
 )
 
 // CapKind is the functional category of a cap, derived from all
@@ -920,6 +921,36 @@ func (c *CapUrn) Specificity() int {
 		panic(fmt.Sprintf("capdag: the specificity of %s does not fit an int: %s", c, score))
 	}
 	return int(score.Int64())
+}
+
+// RoutesInOrder orders the routes to target, route i being the caps caps[i]
+// and giving gives[i]: it returns their indices, the nearest to target first,
+// measured as dispatch ranks caps (exactly as specific, then the nearest more
+// specific, then the nearest less specific), then fewer caps, then the more
+// specific caps. Routes equal in all three keep the order they are given in.
+//
+// Decided by the proved model (CapDAG.Exec.routesInOrder).
+func RoutesInOrder(target *MediaUrn, caps [][]*CapUrn, gives []*MediaUrn) []int {
+	if len(caps) != len(gives) {
+		panic(fmt.Sprintf("capdag: %d routes and %d outputs to order", len(caps), len(gives)))
+	}
+	routes := make([]lungo.Pair[[]capformal.WfCap, taggedformal.Wf], len(caps))
+	for i, route := range caps {
+		handles := make([]capformal.WfCap, len(route))
+		for j, c := range route {
+			handles[j] = c.formal
+		}
+		routes[i] = lungo.Pair[[]capformal.WfCap, taggedformal.Wf]{First: handles, Second: gives[i].Formal()}
+	}
+	indices := decided(capformal.RoutesInOrder(target.Formal(), routes))
+	order := make([]int, len(indices))
+	for i, index := range indices {
+		if !index.IsInt64() {
+			panic(fmt.Sprintf("capdag: a route's index does not fit an int: %s", index))
+		}
+		order[i] = int(index.Int64())
+	}
+	return order
 }
 
 // IsMoreSpecificThan checks if this cap is more specific than another
