@@ -1050,6 +1050,11 @@ func Test1183_match_more_sources_than_args_fails_hard(t *testing.T) {
 // at a distance below zero, and is preferred to an input that takes any text.
 // The same type written for an input of the machine is a type, which may be a
 // list, and binds to neither.
+//
+// Binding cost is spec(source) − spec(arg), and may be negative: clamping it at
+// zero, or making it an unsigned or expected cost, ties args that are not tied.
+// It is kept so this path is not taken again (tagged-urn formal,
+// binding_cost_is_signed).
 func Test7217_a_given_node_binds_by_satisfaction_at_a_negative_distance(t *testing.T) {
 	record := mediaUrn("media:enc=utf8;ext=json;fmt=json;record")
 	noList := mediaUrn("media:enc=utf8;fmt=json;record;!list")

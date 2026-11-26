@@ -933,8 +933,8 @@ func Test047_matching_semantics_thumbnail_void_input(t *testing.T) {
 // are unknown, not the type "anything", so it fits a cap that takes a string
 // and gives a record. Read as a type, its open output would be covered only by
 // a cap that gives `media:` — which is how a pattern search came to find
-// nothing (capdag/formal, Query.ofPattern and
-// Legacy.skipping_top_output_is_fits).
+// nothing (capdag/formal, Query.ofPattern and fits_asks_what_the_cap_gives).
+// The test is kept so this path is not taken again.
 func Test048_matching_semantics_wildcard_direction_matches_anything(t *testing.T) {
 	cap, err := NewCapUrnFromString("cap:generate")
 	require.NoError(t, err)
@@ -1395,8 +1395,9 @@ func Test824_dispatch_contravariant_input(t *testing.T) {
 // anything, and only a candidate that takes anything serves it
 //
 // A call that did not say what it sent was routed to a candidate that might not
-// take it (capdag/formal, Legacy.wildcard_input_is_not_serves). An unknown input
-// is a search's (CapQueryProducing), never a call's.
+// take it (capdag/formal, serves_needs_what_is_sent). An unknown input is a
+// search's (CapQueryProducing), never a call's. The test is kept so this path
+// is not taken again.
 func Test825_dispatch_request_unconstrained_input(t *testing.T) {
 	pdfOnly, err := NewCapUrnFromString(`cap:in="media:document;ext=pdf";analyze;out="media:record;enc=utf8"`)
 	require.NoError(t, err)
@@ -2511,6 +2512,11 @@ func Test7214_DispatchComparesWhatTheCapGivesForWhatIsSent(t *testing.T) {
 // TEST7215: a pattern over caps fits a cap when everything the cap gives is of
 // the type the pattern's output names; a pattern that names no output asks
 // nothing of it
+//
+// It is kept so this path is not taken again: the old rule asked a cap's output
+// to cover the pattern's, and skipped a pattern's `media:` output. It accepted a
+// cap that gives nothing named for a pattern asking for pdfs, refused one that
+// gives pdf documents, and was not transitive (capdag/formal, fits_asks_what_the_cap_gives).
 func Test7215_APatternFitsWhatACapGives(t *testing.T) {
 	givesPdf := mustCap(t, `cap:op=a;out="media:ext=pdf"`)
 	givesPdfDocument := mustCap(t, `cap:op=a;out="media:document;ext=pdf"`)
