@@ -74,7 +74,7 @@ cd sentiment-tagger
 go mod tidy
 go build -buildvcs=false -o sentiment-tagger .
 capdag dev install
-echo "I love this" | capdag run sentiment-tagger
+echo "I love this" | capdag run '[in -> sentiment-tagger -> out]' -
 ```
 
 The generated README explains its model-backed peer call and development loop.
